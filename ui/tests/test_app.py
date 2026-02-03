@@ -1,17 +1,20 @@
 """Tests for Beeper UI Flask application."""
 
+from collections.abc import Generator
+
 import pytest
+from flask.testing import FlaskClient
 
 from beeper_ui import __version__
 from beeper_ui.app import app
 
 
 @pytest.fixture
-def client():
+def client() -> Generator[FlaskClient, None, None]:
     """Create test client."""
     app.config["TESTING"] = True
-    with app.test_client() as client:
-        yield client
+    with app.test_client() as test_client:
+        yield test_client
 
 
 def test_version() -> None:
