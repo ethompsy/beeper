@@ -1,0 +1,58 @@
+# Source schemas for Beeper API
+
+Source:
+  type: object
+  description: An observability data source configuration
+  properties:
+    name:
+      type: string
+      description: Unique source name
+    type:
+      type: string
+      enum: [prometheus, loki]
+      description: Source type
+    endpoint:
+      type: string
+      format: uri
+      description: Source endpoint URL
+    status:
+      type: string
+      enum: [healthy, degraded, unhealthy, unknown]
+      description: Current source health status
+    last_sync:
+      type: string
+      format: date-time
+      description: Last successful data sync
+    conditions:
+      type: array
+      description: Configured alert conditions
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+            description: Condition name
+          query:
+            type: string
+            description: Query expression
+          threshold:
+            type: string
+            description: Threshold expression
+          enabled:
+            type: boolean
+            description: Whether condition is active
+    created_at:
+      type: string
+      format: date-time
+      description: When the source was created
+    updated_at:
+      type: string
+      format: date-time
+      description: When the source was last updated
+  required:
+    - name
+    - type
+    - endpoint
+    - status
+    - created_at
+    - updated_at

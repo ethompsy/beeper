@@ -1,0 +1,91 @@
+# Investigation schemas for Beeper API
+
+Investigation:
+  type: object
+  description: An investigation into a production anomaly
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: Unique investigation identifier
+    status:
+      type: string
+      enum: [active, resolved, stale]
+      description: Current investigation status
+    trigger:
+      type: object
+      description: The anomaly that triggered this investigation
+      properties:
+        source:
+          type: string
+          description: Name of the observability source
+        condition:
+          type: string
+          description: The condition that was detected
+        timestamp:
+          type: string
+          format: date-time
+          description: When the anomaly was detected
+    hypothesis:
+      type: object
+      description: Root cause hypothesis
+      properties:
+        summary:
+          type: string
+          description: Brief summary of the hypothesis
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Confidence score (0-1)
+        reasoning:
+          type: string
+          description: Detailed reasoning
+    recommendations:
+      type: array
+      description: Resolution recommendations
+      items:
+        type: object
+        properties:
+          action:
+            type: string
+            description: Recommended action
+          priority:
+            type: string
+            enum: [high, medium, low]
+          rationale:
+            type: string
+            description: Why this action is recommended
+    created_at:
+      type: string
+      format: date-time
+      description: When the investigation was created
+    updated_at:
+      type: string
+      format: date-time
+      description: When the investigation was last updated
+  required:
+    - id
+    - status
+    - trigger
+    - created_at
+    - updated_at
+
+InvestigationCreate:
+  type: object
+  description: Request to create a new investigation
+  properties:
+    source:
+      type: string
+      description: Name of the observability source
+    condition:
+      type: string
+      description: The condition to investigate
+    context:
+      type: object
+      description: Additional context for the investigation
+      additionalProperties: true
+  required:
+    - source
+    - condition

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: beeper
+description: Beeper - Agentic AI SRE Platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - sre
+  - observability
+  - ai
+  - kubernetes
+  - operator
+maintainers:
+  - name: Beeper Team
+home: https://github.com/your-org/beeper
+sources:
+  - https://github.com/your-org/beeper

@@ -1,0 +1,282 @@
+openapi: '3.1.0'
+info:
+  title: Beeper API
+  version: 0.1.0
+  description: |
+    Beeper is an agentic AI SRE platform that investigates production anomalies,
+    correlates signals across observability layers, and generates root cause
+    hypotheses with resolution recommendations.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+paths:
+  /investigations:
+    get:
+      summary: List investigations
+      description: Returns a list of all investigations
+      operationId: listInvestigations
+      tags:
+        - Investigations
+      parameters:
+        - name: status
+          in: query
+          description: Filter by investigation status
+          schema:
+            type: string
+            enum: [active, resolved, stale]
+        - name: limit
+          in: query
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of investigations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: './schemas/investigation.yaml#/Investigation'
+                  total:
+                    type: integer
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: Create investigation
+      description: Manually trigger a new investigation
+      operationId: createInvestigation
+      tags:
+        - Investigations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/investigation.yaml#/InvestigationCreate'
+      responses:
+        '201':
+          description: Investigation created
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/investigation.yaml#/Investigation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /investigations/{id}:
+    get:
+      summary: Get investigation details
+      description: Returns details of a specific investigation
+      operationId: getInvestigation
+      tags:
+        - Investigations
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Investigation ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Investigation details
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/investigation.yaml#/Investigation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /knowledge:
+    get:
+      summary: Search knowledge base
+      description: Search the knowledge base for relevant entries
+      operationId: searchKnowledge
+      tags:
+        - Knowledge
+      parameters:
+        - name: q
+          in: query
+          description: Search query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: './schemas/knowledge.yaml#/KnowledgeEntry'
+                  total:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: Create knowledge entry
+      description: Add a new entry to the knowledge base
+      operationId: createKnowledgeEntry
+      tags:
+        - Knowledge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/knowledge.yaml#/KnowledgeEntryCreate'
+      responses:
+        '201':
+          description: Knowledge entry created
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/knowledge.yaml#/KnowledgeEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sources:
+    get:
+      summary: List configured sources
+      description: Returns all configured observability data sources
+      operationId: listSources
+      tags:
+        - Sources
+      responses:
+        '200':
+          description: List of sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: './schemas/source.yaml#/Source'
+                  total:
+                    type: integer
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sources/{name}:
+    get:
+      summary: Get source details
+      description: Returns details of a specific source
+      operationId: getSource
+      tags:
+        - Sources
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Source name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Source details
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/source.yaml#/Source'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  schemas:
+    Problem:
+      type: object
+      description: RFC 7807 Problem Details
+      properties:
+        type:
+          type: string
+          format: uri
+          description: A URI reference that identifies the problem type
+        title:
+          type: string
+          description: A short, human-readable summary of the problem type
+        status:
+          type: integer
+          description: The HTTP status code
+        detail:
+          type: string
+          description: A human-readable explanation specific to this occurrence
+        instance:
+          type: string
+          description: A URI reference that identifies the specific occurrence
+      required:
+        - type
+        - title
+        - status
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+tags:
+  - name: Investigations
+    description: Investigation management
+  - name: Knowledge
+    description: Knowledge base operations
+  - name: Sources
+    description: Observability source configuration

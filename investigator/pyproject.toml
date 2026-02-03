@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "beeper-investigator"
+version = "0.1.0"
+description = "Beeper investigation agent - correlates signals and generates RCA hypotheses"
+authors = ["Beeper Team"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{include = "beeper_investigator"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+anthropic = "^0.18"
+httpx = "^0.27"
+pydantic = "^2.6"
+qdrant-client = "^1.8"
+litellm = "^1.30"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+ruff = "^0.3"
+mypy = "^1.8"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

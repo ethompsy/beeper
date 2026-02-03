@@ -1,0 +1,20 @@
+[package]
+name = "beeper-operator"
+version = "0.1.0"
+edition = "2021"
+description = "Beeper Kubernetes operator - watches for anomalies and spawns investigators"
+authors = ["Beeper Team"]
+license = "Apache-2.0"
+
+[dependencies]
+kube = { version = "0.95", features = ["runtime", "derive"] }
+kube-runtime = "0.95"
+k8s-openapi = { version = "0.23", features = ["v1_30"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tokio-test = "0.4"

@@ -1,0 +1,54 @@
+# Development overrides for Beeper Helm chart
+
+# Use local images for development
+operator:
+  image:
+    pullPolicy: Never
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+ui:
+  image:
+    pullPolicy: Never
+  service:
+    type: NodePort
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  ingress:
+    enabled: true
+    hosts:
+      - host: beeper.local
+        paths:
+          - path: /
+            pathType: Prefix
+
+# Smaller Qdrant for development
+qdrant:
+  persistence:
+    size: 1Gi
+
+# Development LLM settings
+llm:
+  provider: anthropic
+  model: claude-3-5-haiku-20241022  # Cheaper model for dev
+  maxTokensPerInvestigation: 10000
+  maxConcurrentInvestigations: 2
+
+# Local observability stack
+sources:
+  prometheus:
+    enabled: true
+    endpoint: http://prometheus:9090
+  loki:
+    enabled: true
+    endpoint: http://loki:3100

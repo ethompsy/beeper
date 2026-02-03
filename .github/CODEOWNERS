@@ -1,0 +1,23 @@
+# Beeper Code Owners
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+* @beeper-team
+
+# Rust operator
+/operator/ @beeper-team
+
+# Python investigator
+/investigator/ @beeper-team
+
+# Python UI
+/ui/ @beeper-team
+
+# Helm chart
+/helm/ @beeper-team
+
+# CI/CD
+/.github/ @beeper-team
+
+# OpenAPI spec
+/openapi/ @beeper-team

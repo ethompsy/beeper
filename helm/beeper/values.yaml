@@ -1,0 +1,96 @@
+# Default values for Beeper Helm chart
+
+# Global settings
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Operator configuration
+operator:
+  replicaCount: 1
+  image:
+    repository: beeper/operator
+    tag: ""  # Defaults to Chart appVersion
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+# UI configuration
+ui:
+  replicaCount: 1
+  image:
+    repository: beeper/ui
+    tag: ""  # Defaults to Chart appVersion
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: beeper.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+
+# Qdrant vector database
+qdrant:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+
+# LLM Provider configuration
+llm:
+  provider: anthropic
+  # API key should be provided via secret
+  secretName: beeper-llm-credentials
+  secretKey: api-key
+  model: claude-3-5-sonnet-20241022
+  # Cost management
+  maxTokensPerInvestigation: 100000
+  maxConcurrentInvestigations: 5
+
+# Observability sources
+sources:
+  prometheus:
+    enabled: true
+    endpoint: ""
+  loki:
+    enabled: false
+    endpoint: ""
+
+# Pod security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Node selector for all pods
+nodeSelector: {}
+
+# Tolerations for all pods
+tolerations: []
+
+# Affinity for all pods
+affinity: {}

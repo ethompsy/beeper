@@ -1,0 +1,81 @@
+# Knowledge base schemas for Beeper API
+
+KnowledgeEntry:
+  type: object
+  description: A knowledge base entry
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: Unique entry identifier
+    title:
+      type: string
+      description: Entry title
+    content:
+      type: string
+      description: Entry content in markdown format
+    category:
+      type: string
+      enum: [runbook, troubleshooting, architecture, reference]
+      description: Entry category
+    tags:
+      type: array
+      items:
+        type: string
+      description: Tags for categorization and search
+    source:
+      type: string
+      enum: [manual, investigation, import]
+      description: How this entry was created
+    authoring_level:
+      type: string
+      enum: [draft, verified, authoritative]
+      description: Trust level for this entry
+    version:
+      type: integer
+      description: Version number
+    created_at:
+      type: string
+      format: date-time
+      description: When the entry was created
+    updated_at:
+      type: string
+      format: date-time
+      description: When the entry was last updated
+    created_by:
+      type: string
+      description: User who created the entry
+  required:
+    - id
+    - title
+    - content
+    - category
+    - source
+    - authoring_level
+    - version
+    - created_at
+    - updated_at
+
+KnowledgeEntryCreate:
+  type: object
+  description: Request to create a knowledge entry
+  properties:
+    title:
+      type: string
+      description: Entry title
+    content:
+      type: string
+      description: Entry content in markdown format
+    category:
+      type: string
+      enum: [runbook, troubleshooting, architecture, reference]
+      description: Entry category
+    tags:
+      type: array
+      items:
+        type: string
+      description: Tags for categorization
+  required:
+    - title
+    - content
+    - category

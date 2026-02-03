@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "beeper-ui"
+version = "0.1.0"
+description = "Beeper web UI - Flask application for viewing investigations and managing knowledge base"
+authors = ["Beeper Team"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{include = "beeper_ui"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+flask = "^3.0"
+qdrant-client = "^1.8"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+ruff = "^0.3"
+mypy = "^1.8"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
