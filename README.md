@@ -131,6 +131,8 @@ Beeper uses two Custom Resource Definitions (CRDs):
 
 Configure data sources (Prometheus/Loki):
 
+**Prometheus Source:**
+
 ```yaml
 apiVersion: beeper.dev/v1
 kind: Source
@@ -142,15 +144,28 @@ spec:
   credentials_secret: prometheus-creds  # Optional - for authenticated access
 ```
 
+**Loki Source:**
+
+```yaml
+apiVersion: beeper.dev/v1
+kind: Source
+metadata:
+  name: loki-main
+spec:
+  source_type: loki
+  endpoint: http://loki:3100
+  credentials_secret: loki-creds  # Optional - for authenticated access
+```
+
 **Credential Secret Format:**
 
-If your Prometheus requires authentication, create a Secret with username and password:
+Both Prometheus and Loki sources use the same credential format. If authentication is required, create a Secret with username and password:
 
 ```yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: prometheus-creds
+  name: prometheus-creds  # or loki-creds
 type: kubernetes.io/basic-auth
 data:
   username: <base64-encoded-username>
@@ -182,6 +197,9 @@ kubectl describe source prometheus-main
 | "Access forbidden" | Insufficient permissions | Ensure credentials have read access |
 | "Connection timed out" | Slow network or overloaded server | Increase timeout or check server health |
 | "Secret not found" | Missing credentials Secret | Create the Secret in the same namespace |
+| "Prometheus API error" | Invalid PromQL query or API issue | Check Prometheus logs and query syntax |
+| "Loki API error" | Invalid LogQL query or API issue | Check Loki logs and query syntax |
+| "Invalid response" | Unexpected response format | Ensure source endpoint is correct type |
 
 #### Investigation CRD
 

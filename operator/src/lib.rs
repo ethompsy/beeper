@@ -20,4 +20,4 @@ pub mod sources;
 pub use crds::{Investigation, InvestigationSpec, InvestigationStatus, Source, SourceSpec, SourceStatus};
 pub use controllers::{run_investigation_controller, run_source_controller};
 pub use health::{health_router, start_health_server};
-pub use sources::{PrometheusClient, PrometheusError};
+pub use sources::{LokiClient, LokiError, PrometheusClient, PrometheusError};

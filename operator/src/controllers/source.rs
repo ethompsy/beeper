@@ -18,7 +18,7 @@ use serde_json::json;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::crds::{Source, SourceStatus, SourceType};
-use crate::sources::{Credentials, PrometheusClient, PrometheusError};
+use crate::sources::{Credentials, LokiClient, LokiError, PrometheusClient, PrometheusError};
 
 /// Error type for source controller operations
 #[derive(Debug, thiserror::Error)]
@@ -38,8 +38,8 @@ pub enum SourceError {
     #[error("Prometheus error: {0}")]
     PrometheusError(#[from] PrometheusError),
 
-    #[error("Source type not yet supported: {0:?}")]
-    UnsupportedSourceType(SourceType),
+    #[error("Loki error: {0}")]
+    LokiError(#[from] LokiError),
 
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
@@ -174,6 +174,16 @@ async fn check_prometheus_connectivity(
     Ok(())
 }
 
+/// Check connectivity to a Loki source
+async fn check_loki_connectivity(
+    endpoint: &str,
+    credentials: Option<Credentials>,
+) -> Result<(), LokiError> {
+    let client = LokiClient::new(endpoint.to_string(), credentials)?;
+    client.check_health().await?;
+    Ok(())
+}
+
 /// Reconcile a Source resource
 ///
 /// This function is called whenever a Source is created, updated, or deleted.
@@ -230,13 +240,16 @@ async fn reconcile(source: Arc<Source>, ctx: Arc<SourceContext>) -> Result<Actio
     };
 
     // Check connectivity based on source type
-    let check_result = match source.spec.source_type {
+    let check_result: Result<(), String> = match source.spec.source_type {
         SourceType::Prometheus => {
-            check_prometheus_connectivity(&source.spec.endpoint, credentials).await
+            check_prometheus_connectivity(&source.spec.endpoint, credentials)
+                .await
+                .map_err(|e| format_prometheus_error(&e))
         }
         SourceType::Loki => {
-            // Loki adapter will be implemented in Story 1.5
-            return Err(SourceError::UnsupportedSourceType(SourceType::Loki));
+            check_loki_connectivity(&source.spec.endpoint, credentials)
+                .await
+                .map_err(|e| format_loki_error(&e))
         }
     };
 
@@ -268,7 +281,7 @@ async fn reconcile(source: Arc<Source>, ctx: Arc<SourceContext>) -> Result<Actio
             // Requeue after 5 minutes for periodic health check
             (status, Duration::from_secs(300))
         }
-        Err(e) => {
+        Err(error_msg) => {
             // Get previous status to detect transitions
             let was_connected = source
                 .status
@@ -280,14 +293,14 @@ async fn reconcile(source: Arc<Source>, ctx: Arc<SourceContext>) -> Result<Actio
                 warn!(
                     source = %name,
                     endpoint = %source.spec.endpoint,
-                    error = %e,
+                    error = %error_msg,
                     "Source connection lost"
                 );
             } else {
                 debug!(
                     source = %name,
                     endpoint = %source.spec.endpoint,
-                    error = %e,
+                    error = %error_msg,
                     "Source still disconnected"
                 );
             }
@@ -300,7 +313,6 @@ async fn reconcile(source: Arc<Source>, ctx: Arc<SourceContext>) -> Result<Actio
                 .unwrap_or(0);
             let new_retry = current_retry.saturating_add(1);
 
-            let error_msg: String = format_error_message(&e);
             let status = SourceStatus {
                 connected: Some(false),
                 last_checked: Some(current_timestamp()),
@@ -319,10 +331,10 @@ async fn reconcile(source: Arc<Source>, ctx: Arc<SourceContext>) -> Result<Actio
     Ok(Action::requeue(requeue_delay))
 }
 
-/// Format error message for user display
+/// Format Prometheus error message for user display
 ///
 /// Makes errors actionable without exposing sensitive information
-fn format_error_message(error: &PrometheusError) -> String {
+fn format_prometheus_error(error: &PrometheusError) -> String {
     match error {
         PrometheusError::ConnectionError { message } => message.clone(),
         PrometheusError::AuthError(msg) => msg.clone(),
@@ -343,6 +355,34 @@ fn format_error_message(error: &PrometheusError) -> String {
         }
         PrometheusError::ParseError(msg) => {
             format!("Invalid response from Prometheus: {}", msg)
+        }
+    }
+}
+
+/// Format Loki error message for user display
+///
+/// Makes errors actionable without exposing sensitive information
+fn format_loki_error(error: &LokiError) -> String {
+    match error {
+        LokiError::ConnectionError { message } => message.clone(),
+        LokiError::AuthError(msg) => msg.clone(),
+        LokiError::Timeout(secs) => {
+            format!("Connection timed out after {} seconds", secs)
+        }
+        LokiError::ApiError { error_type, message } => {
+            format!("Loki API error ({}): {}", error_type, message)
+        }
+        LokiError::HttpError(e) => {
+            if e.is_connect() {
+                "Connection refused - verify endpoint is accessible".to_string()
+            } else if e.is_timeout() {
+                "Connection timed out".to_string()
+            } else {
+                format!("HTTP error: {}", e)
+            }
+        }
+        LokiError::ParseError(msg) => {
+            format!("Invalid response from Loki: {}", msg)
         }
     }
 }
@@ -419,37 +459,72 @@ mod tests {
     }
 
     #[test]
-    fn test_format_error_message_connection() {
+    fn test_format_prometheus_error_connection() {
         let err = PrometheusError::ConnectionError {
             message: "Connection refused at http://prometheus:9090".to_string(),
         };
-        assert!(format_error_message(&err).contains("Connection refused"));
+        assert!(format_prometheus_error(&err).contains("Connection refused"));
     }
 
     #[test]
-    fn test_format_error_message_auth() {
+    fn test_format_prometheus_error_auth() {
         let err = PrometheusError::AuthError("Authentication failed".to_string());
-        assert_eq!(format_error_message(&err), "Authentication failed");
+        assert_eq!(format_prometheus_error(&err), "Authentication failed");
     }
 
     #[test]
-    fn test_format_error_message_timeout() {
+    fn test_format_prometheus_error_timeout() {
         let err = PrometheusError::Timeout(30);
         assert_eq!(
-            format_error_message(&err),
+            format_prometheus_error(&err),
             "Connection timed out after 30 seconds"
         );
     }
 
     #[test]
-    fn test_format_error_message_api_error() {
+    fn test_format_prometheus_error_api_error() {
         let err = PrometheusError::ApiError {
             error_type: "bad_data".to_string(),
             message: "invalid query".to_string(),
         };
         assert_eq!(
-            format_error_message(&err),
+            format_prometheus_error(&err),
             "Prometheus API error (bad_data): invalid query"
+        );
+    }
+
+    #[test]
+    fn test_format_loki_error_connection() {
+        let err = LokiError::ConnectionError {
+            message: "Connection refused at http://loki:3100".to_string(),
+        };
+        assert!(format_loki_error(&err).contains("Connection refused"));
+    }
+
+    #[test]
+    fn test_format_loki_error_auth() {
+        let err = LokiError::AuthError("Authentication failed".to_string());
+        assert_eq!(format_loki_error(&err), "Authentication failed");
+    }
+
+    #[test]
+    fn test_format_loki_error_timeout() {
+        let err = LokiError::Timeout(30);
+        assert_eq!(
+            format_loki_error(&err),
+            "Connection timed out after 30 seconds"
+        );
+    }
+
+    #[test]
+    fn test_format_loki_error_api_error() {
+        let err = LokiError::ApiError {
+            error_type: "bad_request".to_string(),
+            message: "invalid LogQL query".to_string(),
+        };
+        assert_eq!(
+            format_loki_error(&err),
+            "Loki API error (bad_request): invalid LogQL query"
         );
     }
 
@@ -459,5 +534,91 @@ mod tests {
         // Should be in ISO 8601 format
         assert!(ts.contains("T"));
         assert!(ts.ends_with("Z"));
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn test_check_loki_connectivity_success() {
+        let mock_server = MockServer::start().await;
+
+        // Mock the /ready endpoint
+        Mock::given(method("GET"))
+            .and(path("/ready"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ready"))
+            .mount(&mock_server)
+            .await;
+
+        let result = check_loki_connectivity(&mock_server.uri(), None).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_loki_connectivity_failure() {
+        let mock_server = MockServer::start().await;
+
+        // Mock the /ready endpoint returning 503
+        Mock::given(method("GET"))
+            .and(path("/ready"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("not ready"))
+            .mount(&mock_server)
+            .await;
+
+        let result = check_loki_connectivity(&mock_server.uri(), None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_check_loki_connectivity_connection_refused() {
+        // Use a port that's not listening
+        let result = check_loki_connectivity("http://127.0.0.1:59997", None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_check_prometheus_connectivity_success() {
+        use wiremock::matchers::query_param;
+        let mock_server = MockServer::start().await;
+
+        // Mock the Prometheus query endpoint for health check (uses "up" query)
+        Mock::given(method("GET"))
+            .and(path("/api/v1/query"))
+            .and(query_param("query", "up"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [{"metric": {}, "value": [0, "1"]}]
+                }
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let result = check_prometheus_connectivity(&mock_server.uri(), None).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_prometheus_connectivity_failure() {
+        let mock_server = MockServer::start().await;
+
+        // Mock the Prometheus query endpoint returning an error
+        Mock::given(method("GET"))
+            .and(path("/api/v1/query"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "error",
+                "errorType": "bad_data",
+                "error": "invalid query"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let result = check_prometheus_connectivity(&mock_server.uri(), None).await;
+        assert!(result.is_err());
     }
 }
