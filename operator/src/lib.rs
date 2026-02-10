@@ -5,31 +5,19 @@
 //! investigator pods to analyze and generate root cause hypotheses.
 
 /// CRD definitions for Beeper resources
-pub mod crds {
-    // Placeholder for future CRD definitions
-    // - Source CRD
-    // - Investigation CRD
-    // - LLMProvider CRD
-}
+pub mod crds;
 
 /// Controllers for reconciling Beeper resources
-pub mod controllers {
-    // Placeholder for future controllers
-    // - Source controller
-    // - Investigation controller
-}
+pub mod controllers;
 
-/// Adapters for observability data sources
-pub mod adapters {
-    // Placeholder for future adapters
-    // - Prometheus adapter
-    // - Loki adapter
-}
+/// Health check endpoints
+pub mod health;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert!(true);
-    }
-}
+/// Data source adapters (Prometheus, Loki)
+pub mod sources;
+
+/// Re-export commonly used types
+pub use crds::{Investigation, InvestigationSpec, InvestigationStatus, Source, SourceSpec, SourceStatus};
+pub use controllers::{run_investigation_controller, run_source_controller};
+pub use health::{health_router, start_health_server};
+pub use sources::{PrometheusClient, PrometheusError};

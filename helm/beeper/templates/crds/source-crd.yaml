@@ -1,0 +1,72 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: sources.beeper.dev
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+spec:
+  group: beeper.dev
+  names:
+    kind: Source
+    listKind: SourceList
+    plural: sources
+    singular: source
+    shortNames:
+      - src
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - source_type
+                - endpoint
+              properties:
+                source_type:
+                  type: string
+                  description: Type of data source (prometheus or loki)
+                  enum:
+                    - prometheus
+                    - loki
+                endpoint:
+                  type: string
+                  description: URL endpoint for the data source
+                credentials_secret:
+                  type: string
+                  description: Name of the K8s Secret containing credentials
+            status:
+              type: object
+              properties:
+                connected:
+                  type: boolean
+                  description: Whether the source is currently connected
+                last_checked:
+                  type: string
+                  format: date-time
+                  description: Last time the connection was checked (ISO 8601)
+                error:
+                  type: string
+                  description: Error message if connection failed
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Type
+          type: string
+          jsonPath: .spec.source_type
+        - name: Endpoint
+          type: string
+          jsonPath: .spec.endpoint
+        - name: Connected
+          type: boolean
+          jsonPath: .status.connected
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

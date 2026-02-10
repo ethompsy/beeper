@@ -1,0 +1,17 @@
+{{- if .Values.operator.serviceAccount.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "beeper.fullname" . }}-operator
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "beeper.fullname" . }}-operator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "beeper.operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

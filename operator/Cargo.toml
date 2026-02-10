@@ -14,7 +14,16 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+schemars = "0.8"
+axum = "0.7"
+futures = "0.3"
+thiserror = "1"
+anyhow = "1"
+reqwest = { version = "0.11", features = ["json"] }
+base64 = "0.21"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
+wiremock = "0.5"

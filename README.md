@@ -96,6 +96,132 @@ cd investigator && poetry run ruff check .
 cd ui && poetry run ruff check .
 ```
 
+## Kubernetes Deployment
+
+### Prerequisites
+
+- Kubernetes cluster (1.26+)
+- Helm 3.x
+- kubectl configured for your cluster
+
+### Installing Beeper
+
+1. Install the Helm chart:
+   ```bash
+   helm install beeper ./helm/beeper
+   ```
+
+2. Create the LLM credentials secret:
+   ```bash
+   kubectl create secret generic beeper-llm-credentials \
+     --from-literal=api-key=YOUR_ANTHROPIC_API_KEY
+   ```
+
+3. Verify the operator is running:
+   ```bash
+   kubectl get pods -l app.kubernetes.io/component=operator
+   kubectl logs -l app.kubernetes.io/component=operator
+   ```
+
+### Custom Resources
+
+Beeper uses two Custom Resource Definitions (CRDs):
+
+#### Source CRD
+
+Configure data sources (Prometheus/Loki):
+
+```yaml
+apiVersion: beeper.dev/v1
+kind: Source
+metadata:
+  name: prometheus-main
+spec:
+  source_type: prometheus
+  endpoint: http://prometheus:9090
+  credentials_secret: prometheus-creds  # Optional - for authenticated access
+```
+
+**Credential Secret Format:**
+
+If your Prometheus requires authentication, create a Secret with username and password:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-creds
+type: kubernetes.io/basic-auth
+data:
+  username: <base64-encoded-username>
+  password: <base64-encoded-password>
+```
+
+**Source Status:**
+
+The operator validates connectivity and updates the Source status:
+
+```bash
+kubectl get sources
+NAME              TYPE         CONNECTED   AGE
+prometheus-main   prometheus   true        5m
+```
+
+View detailed status:
+
+```bash
+kubectl describe source prometheus-main
+```
+
+**Troubleshooting Connection Errors:**
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| "Connection refused" | Endpoint unreachable | Verify endpoint URL and network policies |
+| "Authentication failed" | Invalid credentials | Check Secret username/password are correct |
+| "Access forbidden" | Insufficient permissions | Ensure credentials have read access |
+| "Connection timed out" | Slow network or overloaded server | Increase timeout or check server health |
+| "Secret not found" | Missing credentials Secret | Create the Secret in the same namespace |
+
+#### Investigation CRD
+
+Created automatically when anomalies are detected:
+
+```yaml
+apiVersion: beeper.dev/v1
+kind: Investigation
+metadata:
+  name: inv-abc123
+spec:
+  condition: "High error rate detected"
+  service: payments
+  severity: high
+  triggered_at: "2026-02-09T12:00:00Z"
+```
+
+### RBAC Permissions
+
+The operator ServiceAccount requires:
+
+| Resource | Verbs |
+|----------|-------|
+| `sources.beeper.dev` | get, list, watch, create, update, patch, delete |
+| `investigations.beeper.dev` | get, list, watch, create, update, patch, delete |
+| `sources.beeper.dev/status` | get, update, patch |
+| `investigations.beeper.dev/status` | get, update, patch |
+| `jobs` (batch) | get, list, watch, create, update, patch, delete |
+| `pods` | get, list, watch |
+| `secrets` | get, list, watch |
+| `configmaps` | get, list, watch |
+| `events` | create, patch |
+
+### Health Endpoints
+
+The operator exposes health endpoints on port 8080:
+
+- `/healthz` - Liveness probe (always returns 200 OK)
+- `/readyz` - Readiness probe (checks Kubernetes API connectivity)
+
 ## License
 
 Apache License 2.0 - see [LICENSE](LICENSE) for details.

@@ -1,0 +1,37 @@
+{{- if .Values.operator.serviceAccount.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "beeper.fullname" . }}-operator
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+rules:
+  # Beeper CRDs - full CRUD + status
+  - apiGroups: ["beeper.dev"]
+    resources: ["sources", "investigations"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["beeper.dev"]
+    resources: ["sources/status", "investigations/status"]
+    verbs: ["get", "update", "patch"]
+  # Jobs - for spawning investigator pods
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Pods - for monitoring job status
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  # Secrets - for reading credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  # ConfigMaps - for reading configuration
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Events - for status reporting
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+{{- end }}

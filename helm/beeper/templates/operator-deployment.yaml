@@ -28,6 +28,10 @@ spec:
         - name: operator
           image: {{ include "beeper.operator.image" . }}
           imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          ports:
+            - name: health
+              containerPort: 8080
+              protocol: TCP
           env:
             - name: RUST_LOG
               value: info
@@ -40,6 +44,23 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.llm.secretName }}
                   key: {{ .Values.llm.secretKey }}
+                  optional: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.operator.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
