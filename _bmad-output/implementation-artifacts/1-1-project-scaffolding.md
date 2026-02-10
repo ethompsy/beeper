@@ -1,6 +1,6 @@
 # Story 1.1: Project Scaffolding
 
-Status: review
+Status: done
 
 ## Story
 
@@ -450,8 +450,12 @@ Claude Opus 4.5 (claude-opus-4-5-20251101)
 - README.md
 - LICENSE
 - CONTRIBUTING.md
+- VISION.md
 - .gitignore
 - docker-compose.yaml
+- operator/Cargo.lock
+- investigator/poetry.lock
+- ui/poetry.lock
 - operator/Cargo.toml
 - operator/Dockerfile
 - operator/src/main.rs
@@ -492,3 +496,10 @@ Claude Opus 4.5 (claude-opus-4-5-20251101)
 ## Change Log
 
 - 2026-02-03: Story implementation completed - all 9 tasks with 40+ subtasks finished
+- 2026-02-03: Code review fixes applied:
+  - Fixed operator/Dockerfile Rust version (1.75 → 1.85)
+  - Fixed deprecated Poetry --no-dev flag → --only main in Dockerfiles
+  - Generated lock files (Cargo.lock, poetry.lock) for reproducible builds
+  - Fixed type hints in ui/tests/test_app.py
+  - Fixed README.md investigator run command
+  - Added VISION.md and lock files to File List

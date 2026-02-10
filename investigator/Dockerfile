@@ -12,8 +12,8 @@ COPY pyproject.toml ./
 # Configure poetry to not create virtual environment
 RUN poetry config virtualenvs.create false
 
-# Install dependencies
-RUN poetry install --no-dev --no-interaction --no-ansi
+# Install dependencies (--only main replaces deprecated --no-dev)
+RUN poetry install --only main --no-interaction --no-ansi
 
 # Runtime stage
 FROM python:3.11-slim-bookworm

@@ -1,0 +1,47 @@
+{{- if .Values.qdrant.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "beeper.fullname" . }}-qdrant
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  type: {{ .Values.qdrant.service.type }}
+  ports:
+    - name: http
+      port: 6333
+      targetPort: 6333
+      protocol: TCP
+    - name: grpc
+      port: 6334
+      targetPort: 6334
+      protocol: TCP
+  selector:
+    {{- include "beeper.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+---
+# Headless service for StatefulSet DNS
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "beeper.fullname" . }}-qdrant-headless
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http
+      port: 6333
+      targetPort: 6333
+      protocol: TCP
+    - name: grpc
+      port: 6334
+      targetPort: 6334
+      protocol: TCP
+  selector:
+    {{- include "beeper.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+{{- end }}

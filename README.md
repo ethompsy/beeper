@@ -51,13 +51,20 @@ beeper/
    docker-compose up -d
    ```
 
-4. Run each component:
+4. Initialize Qdrant collections and seed sample data:
+   ```bash
+   ./scripts/seed-kb.sh
+   ```
+
+   This creates the `investigations` and `knowledge` collections with sample runbooks and investigation entries.
+
+5. Run each component:
    ```bash
    # Operator
    cd operator && cargo run
 
    # Investigator
-   cd investigator && poetry run python -m beeper_investigator
+   cd investigator && poetry run python -m beeper_investigator.main
 
    # UI
    cd ui && poetry run flask run
