@@ -13,6 +13,9 @@ pub mod controllers;
 /// Health check endpoints
 pub mod health;
 
+/// Streaming data ingestion endpoints
+pub mod ingestion;
+
 /// Data source adapters (Prometheus, Loki)
 pub mod sources;
 
@@ -20,4 +23,5 @@ pub mod sources;
 pub use crds::{Investigation, InvestigationSpec, InvestigationStatus, Source, SourceSpec, SourceStatus};
 pub use controllers::{run_investigation_controller, run_source_controller};
 pub use health::{health_router, start_health_server};
+pub use ingestion::{ingestion_router, IngestionBuffer, IngestionData};
 pub use sources::{LokiClient, LokiError, PrometheusClient, PrometheusError};

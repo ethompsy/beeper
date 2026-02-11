@@ -233,6 +233,79 @@ The operator ServiceAccount requires:
 | `configmaps` | get, list, watch |
 | `events` | create, patch |
 
+### Streaming Data Ingestion
+
+The operator accepts pushed metrics and logs via streaming ingestion endpoints on port 9090:
+
+#### Prometheus Remote Write
+
+Configure Prometheus to push metrics to Beeper:
+
+```yaml
+# prometheus.yml
+remote_write:
+  - url: http://beeper-operator:9090/api/v1/write
+```
+
+The endpoint accepts:
+- **Method:** POST
+- **Path:** `/api/v1/write`
+- **Content-Type:** `application/x-protobuf`
+- **Content-Encoding:** `snappy` (recommended)
+- **Body:** Snappy-compressed protobuf `WriteRequest`
+
+#### Loki Push
+
+Configure Loki to push logs to Beeper:
+
+```yaml
+# loki.yaml (custom client or Promtail)
+clients:
+  - url: http://beeper-operator:9090/loki/api/v1/push
+```
+
+The endpoint accepts:
+- **Method:** POST
+- **Path:** `/loki/api/v1/push`
+- **Content-Type:** `application/json`
+- **Content-Encoding:** `snappy` (optional)
+- **Body:** JSON with streams array
+
+Example JSON format:
+```json
+{
+  "streams": [
+    {
+      "stream": {"app": "myapp", "level": "error"},
+      "values": [
+        ["1676466135000000000", "log line content"]
+      ]
+    }
+  ]
+}
+```
+
+#### Backpressure Handling
+
+The ingestion endpoints implement backpressure:
+
+| Response Code | Meaning | Action |
+|---------------|---------|--------|
+| 200 OK (Prometheus) | Success | Continue sending |
+| 204 No Content (Loki) | Success | Continue sending |
+| 503 Service Unavailable | Buffer full | Retry with backoff |
+| 429 Too Many Requests | Rate limited | Retry with backoff |
+| 400 Bad Request | Invalid format | Fix request format |
+
+#### Configuration
+
+Environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BEEPER_INGESTION_PORT` | `9090` | Ingestion HTTP port |
+| `BEEPER_INGESTION_BUFFER_SIZE` | `10000` | Max buffered samples |
+
 ### Health Endpoints
 
 The operator exposes health endpoints on port 8080:

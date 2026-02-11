@@ -3,6 +3,7 @@
 //! Kubernetes operator that watches for anomalies and spawns investigator pods.
 //! This is the main entry point for the operator process.
 
+use std::env;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -14,10 +15,37 @@ use tracing_subscriber::FmtSubscriber;
 use beeper_operator::{
     controllers::{run_investigation_controller, run_source_controller},
     health::start_health_server,
+    ingestion::{ingestion_router, IngestionBuffer},
 };
 
-/// Health server port
-const HEALTH_PORT: u16 = 8080;
+/// Default health server port
+const DEFAULT_HEALTH_PORT: u16 = 8080;
+
+/// Default ingestion server port (Prometheus-compatible)
+const DEFAULT_INGESTION_PORT: u16 = 9090;
+
+/// Default ingestion buffer size
+const DEFAULT_BUFFER_SIZE: usize = 10000;
+
+/// Get configuration from environment variables with defaults
+fn get_config() -> (u16, u16, usize) {
+    let health_port = env::var("BEEPER_HEALTH_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_HEALTH_PORT);
+
+    let ingestion_port = env::var("BEEPER_INGESTION_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_INGESTION_PORT);
+
+    let buffer_size = env::var("BEEPER_INGESTION_BUFFER_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_BUFFER_SIZE);
+
+    (health_port, ingestion_port, buffer_size)
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -28,6 +56,15 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     info!("Beeper operator starting up...");
+
+    // Load configuration from environment
+    let (health_port, ingestion_port, buffer_size) = get_config();
+    info!(
+        health_port = health_port,
+        ingestion_port = ingestion_port,
+        buffer_size = buffer_size,
+        "Configuration loaded"
+    );
 
     // Initialize Kubernetes client
     let client = Client::try_default()
@@ -41,8 +78,17 @@ async fn main() -> anyhow::Result<()> {
     // Start health server in background
     let health_client = Arc::clone(&client);
     let health_handle = tokio::spawn(async move {
-        if let Err(e) = start_health_server(health_client, HEALTH_PORT).await {
+        if let Err(e) = start_health_server(health_client, health_port).await {
             error!(error = %e, "Health server failed");
+        }
+    });
+
+    // Create ingestion buffer and start ingestion server
+    let buffer = Arc::new(IngestionBuffer::new(buffer_size));
+    let ingestion_buffer = Arc::clone(&buffer);
+    let ingestion_handle = tokio::spawn(async move {
+        if let Err(e) = start_ingestion_server(ingestion_buffer, ingestion_port).await {
+            error!(error = %e, "Ingestion server failed");
         }
     });
 
@@ -71,10 +117,24 @@ async fn main() -> anyhow::Result<()> {
 
     // Abort all background tasks
     health_handle.abort();
+    ingestion_handle.abort();
     source_handle.abort();
     investigation_handle.abort();
 
     info!("Beeper operator stopped");
+
+    Ok(())
+}
+
+/// Start the ingestion HTTP server
+async fn start_ingestion_server(buffer: Arc<IngestionBuffer>, port: u16) -> anyhow::Result<()> {
+    let app = ingestion_router(buffer);
+    let addr = format!("0.0.0.0:{}", port);
+
+    info!(address = %addr, "Starting ingestion server");
+
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }
