@@ -1,0 +1,53 @@
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to fetch sources</h3>
+    <p>{{ error_message }}</p>
+    <p>Make sure the Beeper operator is running and accessible.</p>
+</div>
+{% elif sources %}
+<table class="sources-table">
+    <thead>
+        <tr>
+            <th>Status</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Endpoint</th>
+            <th>Last Check</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for source in sources %}
+        <tr class="{% if source.error %}has-error{% endif %}">
+            <td>
+                <span class="status-indicator status-{{ source.status }}"
+                      role="img"
+                      aria-label="{{ source.status }} status"></span>
+                {{ source.status }}
+            </td>
+            <td><strong>{{ source.name }}</strong></td>
+            <td>{{ source.type }}</td>
+            <td><code>{{ source.endpoint }}</code></td>
+            <td>{{ source.last_check or 'Never' }}</td>
+        </tr>
+        {% if source.error %}
+        <tr class="error-row">
+            <td colspan="5" class="error-details">
+                <strong>Error:</strong> {{ source.error.message }}
+                {% if source.error.details %}
+                <details>
+                    <summary>Show technical details</summary>
+                    <pre>{{ source.error.details }}</pre>
+                </details>
+                {% endif %}
+            </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card empty-state">
+    <p>No data sources configured.</p>
+    <p>Create a Source custom resource in your Kubernetes cluster to get started.</p>
+</div>
+{% endif %}

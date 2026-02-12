@@ -1,0 +1,44 @@
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to fetch health status</h3>
+    <p>{{ error_message }}</p>
+    <p>Make sure the Beeper operator is running and accessible.</p>
+</div>
+{% elif components %}
+<div class="health-overview">
+    <div class="card">
+        <h3>Overall Status:
+            <span class="status-indicator status-{{ overall }}"
+                  role="img"
+                  aria-label="{{ overall }} status"></span>
+            <span class="overall-status-text status-{{ overall }}">{{ overall | title }}</span>
+        </h3>
+    </div>
+</div>
+
+<div class="health-grid">
+    {% for name, component in components.items() %}
+    <div class="health-card status-{{ component.status }}">
+        <h3>{{ name | title }}</h3>
+        <div class="status-badge">{{ component.status }}</div>
+        <p>{{ component.message }}</p>
+    </div>
+    {% endfor %}
+
+    {% if ingestion_stats %}
+    <div class="health-card status-{% if ingestion_stats.is_full %}warning{% else %}healthy{% endif %}">
+        <h3>Ingestion Buffer</h3>
+        <div class="status-badge">{% if ingestion_stats.is_full %}full{% else %}ok{% endif %}</div>
+        <p>{{ ingestion_stats.buffered_count }} / {{ ingestion_stats.buffer_size }} samples</p>
+        {% if ingestion_stats.dropped_count > 0 %}
+        <p class="warning-text">{{ ingestion_stats.dropped_count }} samples dropped</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="card empty-state">
+    <p>Unable to fetch health status from operator.</p>
+    <p>Make sure the Beeper operator is running and accessible.</p>
+</div>
+{% endif %}

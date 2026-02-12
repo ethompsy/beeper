@@ -3,57 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Beeper - Agentic SRE Platform</title>
+    <title>{% block title %}Beeper - Agentic SRE Platform{% endblock %}</title>
     <script src="{{ url_for('static', filename='js/htmx.min.js') }}"></script>
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        header {
-            background-color: #1a1a2e;
-            color: white;
-            padding: 20px;
-        }
-        header h1 {
-            margin: 0;
-        }
-        main {
-            padding: 20px 0;
-        }
-        .card {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
     <header>
         <div class="container">
-            <h1>Beeper</h1>
-            <p>Agentic SRE Platform</p>
+            <div class="header-content">
+                <h1><a href="/">Beeper</a></h1>
+                <nav>
+                    <a href="/sources/">Sources</a>
+                    <a href="/health/">Health</a>
+                </nav>
+            </div>
+            <p class="tagline">Agentic SRE Platform</p>
         </div>
     </header>
     <main>
         <div class="container">
+            {% block content %}
             <div class="card">
                 <h2>Welcome to Beeper</h2>
                 <p>Beeper investigates production anomalies, correlates signals across observability layers, and generates root cause hypotheses with resolution recommendations.</p>
             </div>
-            {% block content %}{% endblock %}
+            {% endblock %}
         </div>
     </main>
 </body>

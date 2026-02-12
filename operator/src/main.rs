@@ -7,14 +7,16 @@ use std::env;
 use std::sync::Arc;
 
 use anyhow::Context;
+use axum::Router;
 use kube::Client;
 use tokio::signal;
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use beeper_operator::{
+    api::api_router,
     controllers::{run_investigation_controller, run_source_controller},
-    health::start_health_server,
+    health::health_router,
     ingestion::{ingestion_router, IngestionBuffer},
 };
 
@@ -75,16 +77,19 @@ async fn main() -> anyhow::Result<()> {
 
     let client = Arc::new(client);
 
-    // Start health server in background
+    // Create ingestion buffer
+    let buffer = Arc::new(IngestionBuffer::new(buffer_size));
+
+    // Start health + API server in background (combined on same port)
     let health_client = Arc::clone(&client);
+    let api_buffer = Arc::clone(&buffer);
     let health_handle = tokio::spawn(async move {
-        if let Err(e) = start_health_server(health_client, health_port).await {
-            error!(error = %e, "Health server failed");
+        if let Err(e) = start_health_api_server(health_client, api_buffer, health_port).await {
+            error!(error = %e, "Health/API server failed");
         }
     });
 
-    // Create ingestion buffer and start ingestion server
-    let buffer = Arc::new(IngestionBuffer::new(buffer_size));
+    // Start ingestion server on separate port
     let ingestion_buffer = Arc::clone(&buffer);
     let ingestion_handle = tokio::spawn(async move {
         if let Err(e) = start_ingestion_server(ingestion_buffer, ingestion_port).await {
@@ -122,6 +127,26 @@ async fn main() -> anyhow::Result<()> {
     investigation_handle.abort();
 
     info!("Beeper operator stopped");
+
+    Ok(())
+}
+
+/// Start the combined health + API HTTP server
+async fn start_health_api_server(
+    client: Arc<Client>,
+    buffer: Arc<IngestionBuffer>,
+    port: u16,
+) -> anyhow::Result<()> {
+    // Combine health and API routers
+    let health = health_router(Arc::clone(&client));
+    let api = api_router(client, buffer);
+    let app: Router = health.merge(api);
+
+    let addr = format!("0.0.0.0:{}", port);
+    info!(address = %addr, "Starting health/API server");
+
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }

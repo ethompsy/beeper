@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>Data Sources</h2>
+    <p>Configured data sources and their connection status.</p>
+</div>
+
+<div id="sources-list" hx-get="/sources/" hx-trigger="every 5s" hx-swap="innerHTML">
+    {% include "sources/_list_content.html" %}
+</div>
+{% endblock %}

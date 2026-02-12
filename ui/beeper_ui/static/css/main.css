@@ -1,0 +1,303 @@
+/* Beeper UI Main Stylesheet */
+
+/* CSS Reset and Base */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f5f5f5;
+    color: #1a1a2e;
+    line-height: 1.6;
+}
+
+/* Layout */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+header {
+    background-color: #1a1a2e;
+    color: white;
+    padding: 20px 0;
+}
+
+header h1 {
+    margin: 0;
+}
+
+header h1 a {
+    color: white;
+    text-decoration: none;
+}
+
+header h1 a:hover {
+    opacity: 0.9;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tagline {
+    margin: 5px 0 0 0;
+    opacity: 0.8;
+    font-size: 0.9rem;
+}
+
+/* Navigation */
+nav {
+    display: flex;
+    gap: 20px;
+}
+
+nav a {
+    color: white;
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+nav a:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Main content */
+main {
+    padding: 20px 0;
+}
+
+/* Cards */
+.card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.card h2 {
+    margin-top: 0;
+}
+
+.empty-state {
+    text-align: center;
+    color: #6b7280;
+    padding: 40px 20px;
+}
+
+/* Status Indicators */
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-connected,
+.status-healthy,
+.status-ok {
+    background-color: #22c55e;
+}
+
+.status-warning {
+    background-color: #f59e0b;
+}
+
+.status-error,
+.status-unhealthy {
+    background-color: #ef4444;
+}
+
+.status-unknown {
+    background-color: #6b7280;
+}
+
+/* Tables */
+.sources-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.sources-table th,
+.sources-table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.sources-table th {
+    background-color: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+}
+
+.sources-table tr:last-child td {
+    border-bottom: none;
+}
+
+.sources-table code {
+    background: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+/* Error rows */
+.error-row {
+    background-color: #fef2f2;
+}
+
+.error-details {
+    color: #991b1b;
+    font-size: 0.9em;
+}
+
+.error-details details {
+    margin-top: 8px;
+}
+
+.error-details summary {
+    cursor: pointer;
+    color: #7f1d1d;
+}
+
+.error-details pre {
+    margin: 8px 0 0 0;
+    padding: 8px;
+    background: #fee2e2;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.85em;
+}
+
+/* Health Grid */
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.health-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-left: 4px solid #6b7280;
+}
+
+.health-card.status-healthy,
+.health-card.status-ok {
+    border-left-color: #22c55e;
+}
+
+.health-card.status-warning {
+    border-left-color: #f59e0b;
+}
+
+.health-card.status-error,
+.health-card.status-unhealthy {
+    border-left-color: #ef4444;
+    background-color: #fef2f2;
+}
+
+.health-card h3 {
+    margin: 0 0 8px 0;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.health-card.status-healthy .status-badge,
+.health-card.status-ok .status-badge {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.health-card.status-warning .status-badge {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.health-card.status-error .status-badge,
+.health-card.status-unhealthy .status-badge {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Warning and info text */
+.warning-text {
+    color: #92400e;
+    font-weight: 500;
+}
+
+.overall-status-text {
+    font-weight: normal;
+}
+
+.overall-status-text.status-healthy,
+.overall-status-text.status-ok {
+    color: #166534;
+}
+
+.overall-status-text.status-warning {
+    color: #92400e;
+}
+
+.overall-status-text.status-error,
+.overall-status-text.status-unhealthy {
+    color: #991b1b;
+}
+
+/* Health overview */
+.health-overview {
+    margin-bottom: 20px;
+}
+
+/* Error card */
+.error-card {
+    background-color: #fef2f2;
+    border-left: 4px solid #ef4444;
+}
+
+.error-card h3 {
+    color: #991b1b;
+    margin-top: 0;
+}
+
+/* Row with error */
+.has-error {
+    background-color: #fffbeb;
+}
+
+/* HTMX loading indicator */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator {
+    display: inline;
+}

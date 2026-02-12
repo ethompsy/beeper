@@ -313,6 +313,62 @@ The operator exposes health endpoints on port 8080:
 - `/healthz` - Liveness probe (always returns 200 OK)
 - `/readyz` - Readiness probe (checks Kubernetes API connectivity)
 
+### API Endpoints
+
+The operator exposes UI-facing API endpoints on port 8080:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/sources` | GET | List all configured sources with status |
+| `/api/v1/health/components` | GET | Component health status |
+| `/api/v1/ingestion/stats` | GET | Ingestion buffer statistics |
+
+### UI Development
+
+The web UI is a Flask application with HTMX for dynamic updates.
+
+#### Running the UI
+
+```bash
+cd ui
+poetry install
+poetry run flask run
+```
+
+The UI will be available at http://localhost:5000.
+
+#### Configuration
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FLASK_ENV` | `development` | Flask environment |
+| `BEEPER_OPERATOR_URL` | `http://localhost:8080` | Operator API URL |
+| `BEEPER_OPERATOR_TIMEOUT` | `5.0` | API request timeout (seconds) |
+| `BEEPER_UI_PORT` | `5000` | UI server port |
+
+#### UI Pages
+
+| Route | Description |
+|-------|-------------|
+| `/` | Home page |
+| `/sources/` | View configured data sources and their status |
+| `/health/` | View operator component health |
+| `/health/api` | UI health check endpoint |
+
+#### Testing
+
+```bash
+cd ui
+poetry run pytest -v
+poetry run ruff check .
+```
+
 ## License
 
 Apache License 2.0 - see [LICENSE](LICENSE) for details.

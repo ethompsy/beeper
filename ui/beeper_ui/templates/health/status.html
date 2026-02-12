@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>Operator Health</h2>
+    <p>Current status of Beeper operator components.</p>
+</div>
+
+<div id="health-status" hx-get="/health/" hx-trigger="every 5s" hx-swap="innerHTML">
+    {% include "health/_status_content.html" %}
+</div>
+{% endblock %}

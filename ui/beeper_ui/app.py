@@ -1,21 +1,43 @@
-"""Beeper UI Flask application."""
+"""Beeper UI Flask application factory."""
 
 from flask import Flask, render_template
 
-app = Flask(__name__)
+from beeper_ui.config import get_config
 
 
-@app.route("/")
-def index() -> str:
-    """Render the main page."""
-    return render_template("base.html")
+def create_app(config_class: type | None = None) -> Flask:
+    """Create and configure the Flask application.
+
+    Args:
+        config_class: Optional configuration class to use. If not provided,
+                     the configuration is determined from the FLASK_ENV environment variable.
+
+    Returns:
+        Configured Flask application instance.
+    """
+    app = Flask(__name__)
+
+    # Load configuration
+    if config_class is None:
+        config_class = get_config()
+    app.config.from_object(config_class)
+
+    # Register blueprints
+    from beeper_ui.routes import register_blueprints
+
+    register_blueprints(app)
+
+    # Register root route
+    @app.route("/")
+    def index() -> str:
+        """Render the main page."""
+        return render_template("base.html")
+
+    return app
 
 
-@app.route("/health")
-def health() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "healthy"}
-
+# For backwards compatibility and direct running
+app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=True)

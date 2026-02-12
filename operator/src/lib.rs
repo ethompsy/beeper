@@ -4,6 +4,9 @@
 //! The operator watches for anomalies detected by observability sources and spawns
 //! investigator pods to analyze and generate root cause hypotheses.
 
+/// API endpoints for UI
+pub mod api;
+
 /// CRD definitions for Beeper resources
 pub mod crds;
 
@@ -20,6 +23,7 @@ pub mod ingestion;
 pub mod sources;
 
 /// Re-export commonly used types
+pub use api::api_router;
 pub use crds::{Investigation, InvestigationSpec, InvestigationStatus, Source, SourceSpec, SourceStatus};
 pub use controllers::{run_investigation_controller, run_source_controller};
 pub use health::{health_router, start_health_server};
