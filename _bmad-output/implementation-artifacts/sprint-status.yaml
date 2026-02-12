@@ -49,8 +49,8 @@ development_status:
   1-5-loki-adapter: done
   1-6-streaming-data-ingestion: done
   1-7-source-status-ui: done
-  1-8-llm-provider-configuration: backlog
-  1-9-investigation-crd-pod-spawning: backlog
+  1-8-llm-provider-configuration: done
+  1-9-investigation-crd-pod-spawning: ready-for-dev
   epic-1-retrospective: optional
 
   # Epic 2: Knowledge Base

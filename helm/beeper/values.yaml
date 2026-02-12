@@ -78,13 +78,25 @@ qdrant:
     distanceMetric: Cosine
 
 # LLM Provider configuration
+# Supported providers: anthropic, openai, azure, ollama
+# See helm/beeper/examples/llm-secret.yaml for secret creation instructions
 llm:
+  # Provider selection: anthropic (default), openai, azure, ollama
   provider: anthropic
-  # API key should be provided via secret
-  secretName: beeper-llm-credentials
-  secretKey: api-key
-  model: claude-3-5-sonnet-20241022
-  # Cost management
+  # Model identifier (depends on provider)
+  # Anthropic: claude-sonnet-4, claude-3-haiku, claude-opus-4
+  # OpenAI: gpt-4o, gpt-4-turbo
+  # Azure: azure/<deployment-name>
+  # Ollama: ollama/llama3
+  model: claude-sonnet-4
+  # Kubernetes Secret containing the API key
+  # Create with: kubectl create secret generic llm-credentials --from-literal=api-key=<your-key>
+  apiKeySecret: llm-credentials
+  # Key within the secret (default: api-key)
+  apiKeySecretKey: api-key
+  # Optional: custom endpoint (required for Azure, optional for Ollama)
+  # endpoint: ""
+  # Cost management (future implementation in Story 3.9)
   maxTokensPerInvestigation: 100000
   maxConcurrentInvestigations: 5
 

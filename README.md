@@ -111,10 +111,10 @@ cd ui && poetry run ruff check .
    helm install beeper ./helm/beeper
    ```
 
-2. Create the LLM credentials secret:
+2. Create the LLM credentials secret (see [LLM Configuration](#llm-configuration) below):
    ```bash
-   kubectl create secret generic beeper-llm-credentials \
-     --from-literal=api-key=YOUR_ANTHROPIC_API_KEY
+   kubectl create secret generic llm-credentials \
+     --from-literal=api-key=YOUR_API_KEY
    ```
 
 3. Verify the operator is running:
@@ -322,6 +322,81 @@ The operator exposes UI-facing API endpoints on port 8080:
 | `/api/v1/sources` | GET | List all configured sources with status |
 | `/api/v1/health/components` | GET | Component health status |
 | `/api/v1/ingestion/stats` | GET | Ingestion buffer statistics |
+
+### LLM Configuration
+
+Beeper uses LLM providers for AI-powered root cause analysis. Configuration is done via Helm values and Kubernetes Secrets.
+
+#### Supported Providers
+
+| Provider | Model Examples | API Key Required |
+|----------|---------------|------------------|
+| **Anthropic** | `claude-sonnet-4`, `claude-3-haiku`, `claude-opus-4` | Yes |
+| **OpenAI** | `gpt-4o`, `gpt-4-turbo` | Yes |
+| **Azure OpenAI** | `azure/<deployment-name>` | Yes (+ endpoint) |
+| **Ollama** | `ollama/llama3` | No |
+
+#### Creating the LLM Secret
+
+```bash
+# For Anthropic (default)
+kubectl create secret generic llm-credentials \
+  --from-literal=api-key=YOUR_ANTHROPIC_API_KEY
+
+# For OpenAI
+kubectl create secret generic llm-credentials \
+  --from-literal=api-key=YOUR_OPENAI_API_KEY
+
+# For Azure OpenAI
+kubectl create secret generic llm-credentials \
+  --from-literal=api-key=YOUR_AZURE_API_KEY
+```
+
+Or use the example manifest:
+
+```bash
+# Edit helm/beeper/examples/llm-secret.yaml with your key
+kubectl apply -f helm/beeper/examples/llm-secret.yaml
+```
+
+#### Helm Configuration
+
+Configure the LLM provider in `values.yaml`:
+
+```yaml
+llm:
+  provider: anthropic          # anthropic, openai, azure, ollama
+  model: claude-sonnet-4       # Model identifier
+  apiKeySecret: llm-credentials  # Secret name
+  apiKeySecretKey: api-key     # Key within secret
+  # endpoint: ""               # Required for Azure, optional for Ollama
+```
+
+#### Health Monitoring
+
+LLM connectivity status is visible in the `/api/v1/health/components` endpoint and the UI Health page. Status values:
+
+| Status | Meaning |
+|--------|---------|
+| `healthy` | LLM configured and credentials accessible |
+| `unconfigured` | LLM provider not configured |
+| `unhealthy` | Configuration error (missing secret, invalid model, etc.) |
+
+#### Local Development
+
+For local investigator development, copy `.env.example` to `.env`:
+
+```bash
+cd investigator
+cp .env.example .env
+# Edit .env with your API key
+```
+
+Environment variables:
+- `BEEPER_LLM_PROVIDER` - Provider name
+- `BEEPER_LLM_MODEL` - Model identifier
+- `BEEPER_LLM_API_KEY` - API key
+- `BEEPER_LLM_ENDPOINT` - Custom endpoint (optional)
 
 ### UI Development
 

@@ -18,9 +18,13 @@
 
 <div class="health-grid">
     {% for name, component in components.items() %}
-    <div class="health-card status-{{ component.status }}">
-        <h3>{{ name | title }}</h3>
-        <div class="status-badge">{{ component.status }}</div>
+    <div class="health-card status-{{ component.status }}"
+         role="region"
+         aria-label="{{ name | upper if name == 'llm' else name | title }} component status">
+        <h3>{{ name | upper if name == 'llm' else name | title }}</h3>
+        <div class="status-badge"
+             role="status"
+             aria-label="Status: {{ component.status }}">{{ component.status }}</div>
         <p>{{ component.message }}</p>
     </div>
     {% endfor %}

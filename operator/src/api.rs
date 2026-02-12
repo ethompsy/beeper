@@ -17,17 +17,32 @@ use tracing::{debug, warn};
 
 use crate::crds::Source;
 use crate::ingestion::IngestionBuffer;
+use crate::llm::LlmManager;
 
 /// Shared state for API endpoints
 #[derive(Clone)]
 pub struct ApiState {
     pub client: Arc<Client>,
     pub buffer: Arc<IngestionBuffer>,
+    pub llm_manager: Option<Arc<LlmManager>>,
 }
 
 /// Create the API router
 pub fn api_router(client: Arc<Client>, buffer: Arc<IngestionBuffer>) -> Router {
-    let state = ApiState { client, buffer };
+    api_router_with_llm(client, buffer, None)
+}
+
+/// Create the API router with optional LLM manager
+pub fn api_router_with_llm(
+    client: Arc<Client>,
+    buffer: Arc<IngestionBuffer>,
+    llm_manager: Option<Arc<LlmManager>>,
+) -> Router {
+    let state = ApiState {
+        client,
+        buffer,
+        llm_manager,
+    };
 
     Router::new()
         .route("/api/v1/sources", get(list_sources))
@@ -195,6 +210,35 @@ async fn health_components(State(state): State<ApiState>) -> impl IntoResponse {
         },
     );
 
+    // Check LLM connectivity if configured
+    if let Some(ref llm_manager) = state.llm_manager {
+        let llm_health = llm_manager.check_health().await;
+        let (status, message) = match llm_health.status.as_str() {
+            "healthy" => ("healthy", llm_health.message),
+            "unconfigured" => ("warning", llm_health.message),
+            _ => {
+                overall_healthy = false;
+                ("unhealthy", llm_health.message)
+            }
+        };
+        components.insert(
+            "llm".to_string(),
+            ComponentStatusResponse {
+                status: status.to_string(),
+                message,
+            },
+        );
+    } else {
+        // LLM not configured
+        components.insert(
+            "llm".to_string(),
+            ComponentStatusResponse {
+                status: "unconfigured".to_string(),
+                message: "LLM provider not configured".to_string(),
+            },
+        );
+    }
+
     let overall = if overall_healthy { "healthy" } else { "unhealthy" };
 
     (
@@ -341,6 +385,70 @@ mod tests {
         assert!(json.contains("\"overall\":\"healthy\""));
         assert!(json.contains("\"operator\""));
         assert!(json.contains("\"ingestion\""));
+    }
+
+    #[test]
+    fn test_health_components_with_llm_serialization() {
+        let mut components = std::collections::HashMap::new();
+        components.insert(
+            "operator".to_string(),
+            ComponentStatusResponse {
+                status: "healthy".to_string(),
+                message: "Running".to_string(),
+            },
+        );
+        components.insert(
+            "kubernetes".to_string(),
+            ComponentStatusResponse {
+                status: "healthy".to_string(),
+                message: "Connected to API server".to_string(),
+            },
+        );
+        components.insert(
+            "ingestion".to_string(),
+            ComponentStatusResponse {
+                status: "healthy".to_string(),
+                message: "Buffer: 50/10000".to_string(),
+            },
+        );
+        components.insert(
+            "llm".to_string(),
+            ComponentStatusResponse {
+                status: "healthy".to_string(),
+                message: "Configured: anthropic/claude-sonnet-4".to_string(),
+            },
+        );
+
+        let response = HealthComponentsResponse {
+            components,
+            overall: "healthy".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"overall\":\"healthy\""));
+        assert!(json.contains("\"llm\""));
+        assert!(json.contains("\"Configured: anthropic/claude-sonnet-4\""));
+    }
+
+    #[test]
+    fn test_health_components_llm_unconfigured() {
+        let mut components = std::collections::HashMap::new();
+        components.insert(
+            "llm".to_string(),
+            ComponentStatusResponse {
+                status: "unconfigured".to_string(),
+                message: "LLM provider not configured".to_string(),
+            },
+        );
+
+        let response = HealthComponentsResponse {
+            components,
+            overall: "healthy".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"status\":\"unconfigured\""));
+        assert!(json.contains("\"LLM provider not configured\""));
     }
 
     #[test]

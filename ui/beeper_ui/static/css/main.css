@@ -123,6 +123,10 @@ main {
     background-color: #6b7280;
 }
 
+.status-unconfigured {
+    background-color: #9ca3af;
+}
+
 /* Tables */
 .sources-table {
     width: 100%;
@@ -215,6 +219,11 @@ main {
     background-color: #fef2f2;
 }
 
+.health-card.status-unconfigured {
+    border-left-color: #9ca3af;
+    background-color: #f9fafb;
+}
+
 .health-card h3 {
     margin: 0 0 8px 0;
 }
@@ -246,6 +255,11 @@ main {
 .health-card.status-unhealthy .status-badge {
     background: #fee2e2;
     color: #991b1b;
+}
+
+.health-card.status-unconfigured .status-badge {
+    background: #e5e7eb;
+    color: #4b5563;
 }
 
 /* Warning and info text */
