@@ -42,19 +42,17 @@ pub struct Credentials {
 impl Credentials {
     /// Create credentials from base64-encoded username and password
     pub fn from_base64(username_b64: &str, password_b64: &str) -> Result<Self, PrometheusError> {
-        let username = String::from_utf8(
-            BASE64
-                .decode(username_b64)
-                .map_err(|e| PrometheusError::AuthError(format!("Invalid base64 username: {}", e)))?,
-        )
-        .map_err(|e| PrometheusError::AuthError(format!("Invalid UTF-8 username: {}", e)))?;
+        let username =
+            String::from_utf8(BASE64.decode(username_b64).map_err(|e| {
+                PrometheusError::AuthError(format!("Invalid base64 username: {}", e))
+            })?)
+            .map_err(|e| PrometheusError::AuthError(format!("Invalid UTF-8 username: {}", e)))?;
 
-        let password = String::from_utf8(
-            BASE64
-                .decode(password_b64)
-                .map_err(|e| PrometheusError::AuthError(format!("Invalid base64 password: {}", e)))?,
-        )
-        .map_err(|e| PrometheusError::AuthError(format!("Invalid UTF-8 password: {}", e)))?;
+        let password =
+            String::from_utf8(BASE64.decode(password_b64).map_err(|e| {
+                PrometheusError::AuthError(format!("Invalid base64 password: {}", e))
+            })?)
+            .map_err(|e| PrometheusError::AuthError(format!("Invalid UTF-8 password: {}", e)))?;
 
         Ok(Self { username, password })
     }
@@ -129,7 +127,10 @@ impl PrometheusClient {
     /// # Arguments
     /// * `endpoint` - Base URL of Prometheus server (e.g., "http://prometheus:9090")
     /// * `credentials` - Optional credentials for Basic Auth
-    pub fn new(endpoint: String, credentials: Option<Credentials>) -> Result<Self, PrometheusError> {
+    pub fn new(
+        endpoint: String,
+        credentials: Option<Credentials>,
+    ) -> Result<Self, PrometheusError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -200,8 +201,12 @@ impl PrometheusClient {
 
         if prom_response.status == "error" {
             return Err(PrometheusError::ApiError {
-                error_type: prom_response.error_type.unwrap_or_else(|| "unknown".to_string()),
-                message: prom_response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                error_type: prom_response
+                    .error_type
+                    .unwrap_or_else(|| "unknown".to_string()),
+                message: prom_response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
             });
         }
 
@@ -284,8 +289,12 @@ impl PrometheusClient {
 
         if prom_response.status == "error" {
             return Err(PrometheusError::ApiError {
-                error_type: prom_response.error_type.unwrap_or_else(|| "unknown".to_string()),
-                message: prom_response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                error_type: prom_response
+                    .error_type
+                    .unwrap_or_else(|| "unknown".to_string()),
+                message: prom_response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
             });
         }
 
@@ -371,11 +380,7 @@ mod tests {
 
     #[test]
     fn test_prometheus_client_normalizes_endpoint() {
-        let client = PrometheusClient::new(
-            "http://prometheus:9090/".to_string(),
-            None,
-        )
-        .unwrap();
+        let client = PrometheusClient::new("http://prometheus:9090/".to_string(), None).unwrap();
         assert_eq!(client.endpoint(), "http://prometheus:9090");
     }
 

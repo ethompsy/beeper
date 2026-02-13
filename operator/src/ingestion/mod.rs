@@ -32,8 +32,8 @@ mod integration_tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use prost::Message;
     use prometheus::{Label, Sample, TimeSeries, WriteRequest};
+    use prost::Message;
     use tower::ServiceExt;
 
     #[tokio::test]

@@ -6,5 +6,5 @@
 pub mod investigation;
 pub mod source;
 
-pub use investigation::run_investigation_controller;
+pub use investigation::{run_investigation_controller, run_investigation_controller_with_config};
 pub use source::run_source_controller;

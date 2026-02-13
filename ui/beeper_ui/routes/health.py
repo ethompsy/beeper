@@ -24,7 +24,7 @@ def health_status() -> str:
     """
     service = get_health_service()
     error_message = None
-    components: dict = {}
+    components: dict[str, dict[str, str | None]] = {}
     overall = "unknown"
     ingestion_stats = None
 

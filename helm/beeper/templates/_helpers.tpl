@@ -86,3 +86,28 @@ UI image
 {{- printf "%s:%s" $repository $tag -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+Create the name of the investigator service account
+*/}}
+{{- define "beeper.investigatorServiceAccountName" -}}
+{{- if .Values.investigator.serviceAccount.create }}
+{{- default (printf "%s-investigator" (include "beeper.fullname" .)) .Values.investigator.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.investigator.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Investigator image
+*/}}
+{{- define "beeper.investigator.image" -}}
+{{- $registry := .Values.global.imageRegistry | default "" -}}
+{{- $repository := .Values.investigator.image.repository -}}
+{{- $tag := .Values.investigator.image.tag | default .Chart.AppVersion -}}
+{{- if $registry -}}
+{{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end -}}
+{{- end }}

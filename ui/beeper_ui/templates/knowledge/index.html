@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Knowledge Base - Beeper{% endblock %}
+
+{% block content %}
+<div class="kb-header">
+    <h2>Knowledge Base</h2>
+    <p class="kb-description">Browse investigations, runbooks, and corrections</p>
+</div>
+
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to fetch KB entries</h3>
+    <p>{{ error_message }}</p>
+</div>
+{% else %}
+
+<div class="kb-search">
+    <div class="search-input-wrapper">
+        <input type="search"
+               id="kb-search"
+               name="q"
+               placeholder="Search knowledge base... (Press / to focus)"
+               hx-get="{{ url_for('knowledge.kb_search') }}"
+               hx-trigger="keyup changed delay:300ms, search"
+               hx-target="#search-results"
+               hx-indicator="#search-loading"
+               hx-include="[name='entry_type'],[name='service']"
+               autocomplete="off">
+        <span id="search-loading" class="htmx-indicator">Searching...</span>
+    </div>
+</div>
+
+<div id="search-results">
+    <!-- Search results appear here via HTMX -->
+</div>
+
+<div class="kb-filters">
+    <form hx-get="{{ url_for('knowledge.kb_index') }}" hx-target="#entry-list" hx-swap="innerHTML" hx-trigger="change">
+        <div class="filter-group">
+            <label for="entry_type">Type:</label>
+            <select name="entry_type" id="entry_type">
+                <option value="">All types</option>
+                {% for type in entry_types %}
+                <option value="{{ type }}" {% if selected_entry_type == type %}selected{% endif %}>{{ type|capitalize }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="service">Service:</label>
+            <select name="service" id="service">
+                <option value="">All services</option>
+                {% for svc in services %}
+                <option value="{{ svc }}" {% if selected_service == svc %}selected{% endif %}>{{ svc }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <noscript>
+            <button type="submit">Filter</button>
+        </noscript>
+    </form>
+</div>
+
+<div id="entry-list">
+    {% include "knowledge/_entry_list.html" %}
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Keyboard shortcut: / to focus search
+document.addEventListener('keydown', function(e) {
+    if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        document.getElementById('kb-search').focus();
+    }
+});
+</script>
+{% endblock %}

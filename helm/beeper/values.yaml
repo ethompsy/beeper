@@ -77,6 +77,33 @@ qdrant:
     vectorDimension: 1536
     distanceMetric: Cosine
 
+# Investigator Job configuration
+# Jobs are spawned by the operator for each Investigation CR
+investigator:
+  image:
+    repository: beeper/investigator
+    tag: ""  # Defaults to Chart appVersion
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  # Job behavior configuration
+  # Number of retries before marking investigation as failed
+  backoffLimit: 2
+  # Time to keep completed Jobs before automatic cleanup (seconds)
+  ttlSecondsAfterFinished: 3600  # 1 hour
+  # Maximum time for an investigation to complete (seconds)
+  activeDeadlineSeconds: 1800   # 30 minutes
+  # ServiceAccount for investigator pods
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
 # LLM Provider configuration
 # Supported providers: anthropic, openai, azure, ollama
 # See helm/beeper/examples/llm-secret.yaml for secret creation instructions

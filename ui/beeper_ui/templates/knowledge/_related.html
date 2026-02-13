@@ -1,0 +1,16 @@
+{% if related_entries %}
+<div class="related-section">
+    <h3>Related Entries</h3>
+    <div class="related-list">
+        {% for entry in related_entries %}
+        <div class="related-item">
+            <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}">{{ entry.title }}</a>
+            <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+            {% if entry.created_at %}
+            <span class="entry-date">{{ entry.created_at.strftime('%Y-%m-%d') }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

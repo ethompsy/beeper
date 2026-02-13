@@ -188,20 +188,25 @@ impl LokiClient {
 
         let response = self.send_request(request).await?;
 
-        let loki_response: LokiResponse<LogQueryData> = response.json().await.map_err(|e| {
-            LokiError::ParseError(format!("Failed to parse Loki response: {}", e))
-        })?;
+        let loki_response: LokiResponse<LogQueryData> = response
+            .json()
+            .await
+            .map_err(|e| LokiError::ParseError(format!("Failed to parse Loki response: {}", e)))?;
 
         if loki_response.status == "error" {
             return Err(LokiError::ApiError {
-                error_type: loki_response.error_type.unwrap_or_else(|| "unknown".to_string()),
-                message: loki_response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                error_type: loki_response
+                    .error_type
+                    .unwrap_or_else(|| "unknown".to_string()),
+                message: loki_response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
             });
         }
 
-        let data = loki_response.data.ok_or_else(|| {
-            LokiError::ParseError("Response missing data field".to_string())
-        })?;
+        let data = loki_response
+            .data
+            .ok_or_else(|| LokiError::ParseError("Response missing data field".to_string()))?;
 
         Ok(QueryResult {
             result_type: data.result_type,
@@ -246,20 +251,25 @@ impl LokiClient {
 
         let response = self.send_request(request).await?;
 
-        let loki_response: LokiResponse<LogQueryData> = response.json().await.map_err(|e| {
-            LokiError::ParseError(format!("Failed to parse Loki response: {}", e))
-        })?;
+        let loki_response: LokiResponse<LogQueryData> = response
+            .json()
+            .await
+            .map_err(|e| LokiError::ParseError(format!("Failed to parse Loki response: {}", e)))?;
 
         if loki_response.status == "error" {
             return Err(LokiError::ApiError {
-                error_type: loki_response.error_type.unwrap_or_else(|| "unknown".to_string()),
-                message: loki_response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                error_type: loki_response
+                    .error_type
+                    .unwrap_or_else(|| "unknown".to_string()),
+                message: loki_response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
             });
         }
 
-        let data = loki_response.data.ok_or_else(|| {
-            LokiError::ParseError("Response missing data field".to_string())
-        })?;
+        let data = loki_response
+            .data
+            .ok_or_else(|| LokiError::ParseError("Response missing data field".to_string()))?;
 
         Ok(RangeResult {
             result_type: data.result_type,
@@ -323,19 +333,12 @@ mod tests {
             error_type: "bad_data".to_string(),
             message: "invalid query".to_string(),
         };
-        assert_eq!(
-            err.to_string(),
-            "Loki API error (bad_data): invalid query"
-        );
+        assert_eq!(err.to_string(), "Loki API error (bad_data): invalid query");
     }
 
     #[test]
     fn test_loki_client_normalizes_endpoint() {
-        let client = LokiClient::new(
-            "http://loki:3100/".to_string(),
-            None,
-        )
-        .unwrap();
+        let client = LokiClient::new("http://loki:3100/".to_string(), None).unwrap();
         assert_eq!(client.endpoint(), "http://loki:3100");
     }
 
@@ -374,10 +377,7 @@ mod tests {
         let data = response.data.unwrap();
         assert_eq!(data.result_type, "streams");
         assert_eq!(data.result.len(), 1);
-        assert_eq!(
-            data.result[0].stream.get("app"),
-            Some(&"myapp".to_string())
-        );
+        assert_eq!(data.result[0].stream.get("app"), Some(&"myapp".to_string()));
         assert_eq!(data.result[0].values.len(), 2);
         assert_eq!(data.result[0].values[0].1, "error log line here");
     }
@@ -408,8 +408,14 @@ mod tests {
         }"#;
 
         let stream: LogStream = serde_json::from_str(json).unwrap();
-        assert_eq!(stream.stream.get("namespace"), Some(&"production".to_string()));
-        assert_eq!(stream.stream.get("pod"), Some(&"api-server-abc123".to_string()));
+        assert_eq!(
+            stream.stream.get("namespace"),
+            Some(&"production".to_string())
+        );
+        assert_eq!(
+            stream.stream.get("pod"),
+            Some(&"api-server-abc123".to_string())
+        );
         assert_eq!(stream.values.len(), 3);
 
         // Verify timestamp format (nanoseconds as string)
@@ -434,7 +440,10 @@ mod tests {
     #[test]
     fn test_auth_error() {
         let err = LokiError::AuthError("Authentication failed".to_string());
-        assert_eq!(err.to_string(), "Authentication failed: Authentication failed");
+        assert_eq!(
+            err.to_string(),
+            "Authentication failed: Authentication failed"
+        );
     }
 }
 
@@ -571,7 +580,12 @@ mod integration_tests {
 
         let client = LokiClient::new(mock_server.uri(), None).unwrap();
         let result = client
-            .query_range("{app=\"test\"}", 1676466135000000000, 1676466140000000000, 100)
+            .query_range(
+                "{app=\"test\"}",
+                1676466135000000000,
+                1676466140000000000,
+                100,
+            )
             .await
             .unwrap();
 

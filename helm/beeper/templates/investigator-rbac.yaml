@@ -1,0 +1,50 @@
+{{- if .Values.investigator.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "beeper.investigatorServiceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: investigator
+  {{- with .Values.investigator.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+# Role for investigator pods to access Qdrant and update their own status
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "beeper.fullname" . }}-investigator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: investigator
+rules:
+  # Allow reading Secrets for source credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  # Allow reading ConfigMaps for configuration
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "beeper.fullname" . }}-investigator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: investigator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "beeper.fullname" . }}-investigator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "beeper.investigatorServiceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

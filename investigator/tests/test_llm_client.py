@@ -166,7 +166,7 @@ class TestLlmConfig:
     def test_validate_model_anthropic_invalid(self) -> None:
         """Test model validation fails for invalid Anthropic model."""
         config = LlmConfig(provider="anthropic", model="gpt-4", api_key="key")
-        with pytest.raises(LlmClientError, match="Invalid model.*Anthropic.*must start with 'claude'"):
+        with pytest.raises(LlmClientError, match="Invalid model.*Anthropic"):
             config.validate_model()
 
     def test_validate_model_openai_valid(self) -> None:

@@ -55,7 +55,10 @@ pub async fn loki_push_handler(
         && !content_type.contains("application/json")
         && !content_type.contains("application/x-protobuf")
     {
-        warn!(content_type = content_type, "Invalid content type for Loki push");
+        warn!(
+            content_type = content_type,
+            "Invalid content type for Loki push"
+        );
         return (
             StatusCode::BAD_REQUEST,
             "Content-Type must be application/json",
@@ -256,13 +259,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("content-type", "application/json".parse().unwrap());
 
-        let response = loki_push_handler(
-            State(buffer),
-            headers,
-            Bytes::from("not valid json"),
-        )
-        .await
-        .into_response();
+        let response = loki_push_handler(State(buffer), headers, Bytes::from("not valid json"))
+            .await
+            .into_response();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
@@ -274,13 +273,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("content-type", "text/plain".parse().unwrap());
 
-        let response = loki_push_handler(
-            State(buffer),
-            headers,
-            Bytes::from(r#"{"streams":[]}"#),
-        )
-        .await
-        .into_response();
+        let response = loki_push_handler(State(buffer), headers, Bytes::from(r#"{"streams":[]}"#))
+            .await
+            .into_response();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
@@ -292,7 +287,8 @@ mod tests {
 
         let headers = HeaderMap::new(); // No content-type header
 
-        let json = r#"{"streams":[{"stream":{"app":"test"},"values":[["1234567890000000000","log"]]}]}"#;
+        let json =
+            r#"{"streams":[{"stream":{"app":"test"},"values":[["1234567890000000000","log"]]}]}"#;
 
         let response = loki_push_handler(State(buffer.clone()), headers, Bytes::from(json))
             .await

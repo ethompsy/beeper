@@ -1,0 +1,38 @@
+{% if error_message %}
+<div class="search-error">
+    {{ error_message }}
+</div>
+{% elif query and not entries %}
+<div class="search-no-results">
+    <p>No results found for "{{ query }}"</p>
+</div>
+{% elif entries %}
+{% if not has_exact_matches %}
+<div class="search-notice">
+    No exact matches found. Showing related entries.
+</div>
+{% endif %}
+<div class="search-results-list">
+    {% for entry in entries %}
+    <div class="search-result-item">
+        <div class="result-header">
+            <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}" class="result-title">
+                {{ entry.title }}
+            </a>
+            {% if entry.relevance_score is not none %}
+            <span class="relevance-score" title="Relevance: {{ (entry.relevance_score * 100)|int }}%">
+                {{ (entry.relevance_score * 100)|int }}%
+            </span>
+            {% endif %}
+        </div>
+        <div class="result-meta">
+            <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+            {% if entry.service %}
+            <span class="service-badge">{{ entry.service }}</span>
+            {% endif %}
+        </div>
+        <p class="result-snippet">{{ entry.content|strip_markdown|truncate(200)|highlight_query(query) }}</p>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

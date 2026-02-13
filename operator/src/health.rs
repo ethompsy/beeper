@@ -3,13 +3,7 @@
 //! Provides `/healthz` and `/readyz` endpoints for Kubernetes
 //! liveness and readiness probes.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-    Router,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Router};
 use kube::Client;
 use std::sync::Arc;
 use tracing::{debug, info, warn};

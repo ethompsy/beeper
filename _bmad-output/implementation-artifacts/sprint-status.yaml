@@ -41,7 +41,7 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Platform Foundation
-  epic-1: in-progress
+  epic-1: done
   1-1-project-scaffolding: done
   1-2-qdrant-infrastructure: done
   1-3-k8s-operator-scaffold: done
@@ -50,13 +50,13 @@ development_status:
   1-6-streaming-data-ingestion: done
   1-7-source-status-ui: done
   1-8-llm-provider-configuration: done
-  1-9-investigation-crd-pod-spawning: ready-for-dev
-  epic-1-retrospective: optional
+  1-9-investigation-crd-pod-spawning: done
+  epic-1-retrospective: done
 
   # Epic 2: Knowledge Base
-  epic-2: backlog
-  2-1-kb-wiki-interface: backlog
-  2-2-semantic-search: backlog
+  epic-2: in-progress
+  2-1-kb-wiki-interface: done
+  2-2-semantic-search: done
   2-3-structured-search-filtering: backlog
   2-4-runbook-import: backlog
   2-5-kb-entry-editing: backlog

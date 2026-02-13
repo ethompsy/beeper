@@ -3,13 +3,7 @@
 //! Provides REST API endpoints for the UI to fetch source status,
 //! health information, and ingestion statistics.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-    Json, Router,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
 use kube::{api::ListParams, Api, Client};
 use serde::Serialize;
 use std::sync::Arc;
@@ -239,7 +233,11 @@ async fn health_components(State(state): State<ApiState>) -> impl IntoResponse {
         );
     }
 
-    let overall = if overall_healthy { "healthy" } else { "unhealthy" };
+    let overall = if overall_healthy {
+        "healthy"
+    } else {
+        "unhealthy"
+    };
 
     (
         StatusCode::OK,
@@ -468,16 +466,14 @@ mod tests {
     #[test]
     fn test_source_list_response_serialization() {
         let response = SourceListResponse {
-            sources: vec![
-                SourceResponse {
-                    name: "prometheus-main".to_string(),
-                    source_type: "prometheus".to_string(),
-                    endpoint: "http://prometheus:9090".to_string(),
-                    status: "connected".to_string(),
-                    last_check: Some("2026-02-10T12:00:00Z".to_string()),
-                    error: None,
-                },
-            ],
+            sources: vec![SourceResponse {
+                name: "prometheus-main".to_string(),
+                source_type: "prometheus".to_string(),
+                endpoint: "http://prometheus:9090".to_string(),
+                status: "connected".to_string(),
+                last_check: Some("2026-02-10T12:00:00Z".to_string()),
+                error: None,
+            }],
         };
 
         let json = serde_json::to_string(&response).unwrap();

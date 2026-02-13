@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entry.title if entry else 'Not Found' }} - Knowledge Base - Beeper{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+    <a href="{{ url_for('knowledge.kb_index') }}">Knowledge Base</a>
+    <span class="separator">/</span>
+    <span class="current">{{ entry.title if entry else 'Not Found' }}</span>
+</nav>
+
+{% if error_message %}
+<div class="card error-card">
+    <h3>Error</h3>
+    <p>{{ error_message }}</p>
+    <p><a href="{{ url_for('knowledge.kb_index') }}">Return to Knowledge Base</a></p>
+</div>
+{% elif not entry %}
+<div class="card error-card">
+    <h3>Entry Not Found</h3>
+    <p>The requested KB entry could not be found.</p>
+    <p><a href="{{ url_for('knowledge.kb_index') }}">Return to Knowledge Base</a></p>
+</div>
+{% else %}
+<article class="kb-entry">
+    <header class="entry-header-full">
+        <h2>{{ entry.title }}</h2>
+        <div class="entry-meta-full">
+            <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+            {% if entry.service %}
+            <a href="{{ url_for('knowledge.kb_index', service=entry.service) }}" class="service-badge">
+                {{ entry.service }}
+            </a>
+            {% endif %}
+            {% if entry.created_at %}
+            <span class="entry-date" title="{{ entry.created_at.isoformat() }}">
+                Created: {{ entry.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+            </span>
+            {% endif %}
+            {% if entry.author %}
+            <span class="entry-author">by {{ entry.author }}</span>
+            {% endif %}
+            <span class="entry-version">v{{ entry.version }}</span>
+        </div>
+    </header>
+
+    {% if entry.tags %}
+    <div class="entry-tags">
+        {% for tag in entry.tags %}
+        <span class="tag">{{ tag }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="entry-content card">
+        {{ entry.content|markdown }}
+    </div>
+</article>
+
+<aside class="related-entries"
+       hx-get="{{ url_for('knowledge.kb_related', entry_id=entry.entry_id, service=entry.service) }}"
+       hx-trigger="load"
+       hx-swap="innerHTML">
+    <span class="htmx-indicator">Loading related entries...</span>
+</aside>
+{% endif %}
+{% endblock %}

@@ -42,7 +42,8 @@ class LlmConfig:
             valid_prefixes = ("gpt-", "o1", "chatgpt")
             if not any(self.model.startswith(p) for p in valid_prefixes):
                 raise LlmClientError(
-                    f"Invalid model '{self.model}' for OpenAI: must start with 'gpt-', 'o1', or 'chatgpt'"
+                    f"Invalid model '{self.model}' for OpenAI: "
+                    "must start with 'gpt-', 'o1', or 'chatgpt'"
                 )
         # Azure and Ollama accept any model name (deployment names / local models)
 
@@ -75,8 +76,9 @@ class LlmConfig:
         # Validate provider
         valid_providers = {"anthropic", "openai", "azure", "ollama"}
         if provider not in valid_providers:
+            valid_str = ", ".join(sorted(valid_providers))
             raise LlmClientError(
-                f"Invalid provider '{provider}'. Must be one of: {', '.join(sorted(valid_providers))}"
+                f"Invalid provider '{provider}'. Must be one of: {valid_str}"
             )
 
         # Cloud providers require API key

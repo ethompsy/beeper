@@ -100,7 +100,7 @@ class KBClient:
             info = self.client.get_collection(collection_name)
             return CollectionInfo(
                 name=collection_name,
-                vectors_count=info.vectors_count or 0,
+                vectors_count=info.indexed_vectors_count or 0,
                 points_count=info.points_count or 0,
             )
         except Exception as e:
@@ -138,9 +138,9 @@ class KBClient:
 
         query_filter = Filter(must=conditions) if conditions else None
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=KNOWLEDGE_COLLECTION,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=query_filter,
             limit=limit,
         )
@@ -151,7 +151,7 @@ class KBClient:
                 score=r.score,
                 payload=r.payload or {},
             )
-            for r in results
+            for r in results.points
         ]
 
     def search_investigations(
@@ -184,9 +184,9 @@ class KBClient:
 
         query_filter = Filter(must=conditions) if conditions else None
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=INVESTIGATIONS_COLLECTION,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=query_filter,
             limit=limit,
         )
@@ -197,7 +197,7 @@ class KBClient:
                 score=r.score,
                 payload=r.payload or {},
             )
-            for r in results
+            for r in results.points
         ]
 
     def close(self) -> None:

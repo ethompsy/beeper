@@ -3,6 +3,7 @@
 from flask import Flask, render_template
 
 from beeper_ui.config import get_config
+from beeper_ui.utils import setup_markdown_filter
 
 
 def create_app(config_class: type | None = None) -> Flask:
@@ -21,6 +22,9 @@ def create_app(config_class: type | None = None) -> Flask:
     if config_class is None:
         config_class = get_config()
     app.config.from_object(config_class)
+
+    # Register markdown template filter
+    setup_markdown_filter(app)
 
     # Register blueprints
     from beeper_ui.routes import register_blueprints

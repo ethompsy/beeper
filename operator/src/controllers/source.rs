@@ -101,9 +101,9 @@ async fn load_credentials(
         }
     })?;
 
-    let data = secret.data.ok_or_else(|| {
-        SourceError::InvalidSecret("Secret has no data field".to_string())
-    })?;
+    let data = secret
+        .data
+        .ok_or_else(|| SourceError::InvalidSecret("Secret has no data field".to_string()))?;
 
     // Try to get username and password from the secret
     let username = extract_secret_field(&data, "username")?;
@@ -117,9 +117,9 @@ fn extract_secret_field(
     data: &BTreeMap<String, k8s_openapi::ByteString>,
     field: &str,
 ) -> Result<String, SourceError> {
-    let bytes = data.get(field).ok_or_else(|| {
-        SourceError::InvalidSecret(format!("Secret missing '{}' field", field))
-    })?;
+    let bytes = data
+        .get(field)
+        .ok_or_else(|| SourceError::InvalidSecret(format!("Secret missing '{}' field", field)))?;
 
     String::from_utf8(bytes.0.clone()).map_err(|e| {
         SourceError::InvalidSecret(format!("Invalid UTF-8 in '{}' field: {}", field, e))
@@ -241,16 +241,12 @@ async fn reconcile(source: Arc<Source>, ctx: Arc<SourceContext>) -> Result<Actio
 
     // Check connectivity based on source type
     let check_result: Result<(), String> = match source.spec.source_type {
-        SourceType::Prometheus => {
-            check_prometheus_connectivity(&source.spec.endpoint, credentials)
-                .await
-                .map_err(|e| format_prometheus_error(&e))
-        }
-        SourceType::Loki => {
-            check_loki_connectivity(&source.spec.endpoint, credentials)
-                .await
-                .map_err(|e| format_loki_error(&e))
-        }
+        SourceType::Prometheus => check_prometheus_connectivity(&source.spec.endpoint, credentials)
+            .await
+            .map_err(|e| format_prometheus_error(&e)),
+        SourceType::Loki => check_loki_connectivity(&source.spec.endpoint, credentials)
+            .await
+            .map_err(|e| format_loki_error(&e)),
     };
 
     // Update status based on result
@@ -341,7 +337,10 @@ fn format_prometheus_error(error: &PrometheusError) -> String {
         PrometheusError::Timeout(secs) => {
             format!("Connection timed out after {} seconds", secs)
         }
-        PrometheusError::ApiError { error_type, message } => {
+        PrometheusError::ApiError {
+            error_type,
+            message,
+        } => {
             format!("Prometheus API error ({}): {}", error_type, message)
         }
         PrometheusError::HttpError(e) => {
@@ -369,7 +368,10 @@ fn format_loki_error(error: &LokiError) -> String {
         LokiError::Timeout(secs) => {
             format!("Connection timed out after {} seconds", secs)
         }
-        LokiError::ApiError { error_type, message } => {
+        LokiError::ApiError {
+            error_type,
+            message,
+        } => {
             format!("Loki API error ({}): {}", error_type, message)
         }
         LokiError::HttpError(e) => {

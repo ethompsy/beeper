@@ -285,13 +285,10 @@ mod tests {
         headers.insert("content-type", "application/x-protobuf".parse().unwrap());
         headers.insert("content-encoding", "snappy".parse().unwrap());
 
-        let response = prometheus_write_handler(
-            State(buffer.clone()),
-            headers,
-            Bytes::from(compressed),
-        )
-        .await
-        .into_response();
+        let response =
+            prometheus_write_handler(State(buffer.clone()), headers, Bytes::from(compressed))
+                .await
+                .into_response();
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(buffer.buffered_count(), 1);
@@ -350,13 +347,10 @@ mod tests {
         headers.insert("content-type", "application/x-protobuf".parse().unwrap());
         headers.insert("content-encoding", "snappy".parse().unwrap());
 
-        let response = prometheus_write_handler(
-            State(buffer.clone()),
-            headers,
-            Bytes::from(compressed),
-        )
-        .await
-        .into_response();
+        let response =
+            prometheus_write_handler(State(buffer.clone()), headers, Bytes::from(compressed))
+                .await
+                .into_response();
 
         // Should return 503 due to buffer overflow
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);

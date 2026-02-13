@@ -267,10 +267,7 @@ impl LlmManager {
 
         LlmHealthStatus {
             status: "healthy".to_string(),
-            message: format!(
-                "Configured: {}/{}",
-                self.config.provider, self.config.model
-            ),
+            message: format!("Configured: {}/{}", self.config.provider, self.config.model),
             provider: Some(self.config.provider.to_string()),
             model: Some(self.config.model.clone()),
         }
@@ -338,10 +335,7 @@ fn map_error_to_message(error: &LlmConfigError) -> String {
         }
         LlmConfigError::DecodeError(_) => "Failed to decode API key from secret".to_string(),
         LlmConfigError::MissingApiKeySecret { provider } => {
-            format!(
-                "API key secret is required for provider {}",
-                provider
-            )
+            format!("API key secret is required for provider {}", provider)
         }
         LlmConfigError::MissingEndpoint { provider } => {
             format!("Endpoint URL is required for provider {}", provider)
@@ -389,9 +383,7 @@ mod tests {
     #[test]
     fn test_llm_provider_validate_model_azure() {
         // Azure accepts any model name (it's a deployment name)
-        assert!(LlmProvider::Azure
-            .validate_model("my-deployment")
-            .is_ok());
+        assert!(LlmProvider::Azure.validate_model("my-deployment").is_ok());
         assert!(LlmProvider::Azure.validate_model("gpt-4").is_ok());
     }
 

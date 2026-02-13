@@ -11,9 +11,7 @@ use tracing_subscriber::FmtSubscriber;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize logging
-    FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
-        .init();
+    FmtSubscriber::builder().with_max_level(Level::DEBUG).init();
 
     let port = 9090;
     let buffer = Arc::new(IngestionBuffer::new(1000));
@@ -25,13 +23,17 @@ async fn main() -> anyhow::Result<()> {
     println!("Listening on http://0.0.0.0:{}\n", port);
     println!("Test with:\n");
     println!("# Prometheus remote_write:");
-    println!(r#"curl -X POST http://localhost:9090/api/v1/write \
+    println!(
+        r#"curl -X POST http://localhost:9090/api/v1/write \
   -H "Content-Type: application/x-protobuf" \
-  -d "test" --write-out "%{{http_code}}\n""#);
+  -d "test" --write-out "%{{http_code}}\n""#
+    );
     println!("\n# Loki push:");
-    println!(r#"curl -X POST http://localhost:9090/loki/api/v1/push \
+    println!(
+        r#"curl -X POST http://localhost:9090/loki/api/v1/push \
   -H "Content-Type: application/json" \
-  -d '{{"streams":[{{"stream":{{"app":"test"}},"values":[["1234567890000000000","Hello from test"]]}}]}}'"#);
+  -d '{{"streams":[{{"stream":{{"app":"test"}},"values":[["1234567890000000000","Hello from test"]]}}]}}'"#
+    );
     println!("\n========================================\n");
 
     info!(port = port, "Starting ingestion server");

@@ -1,0 +1,16 @@
+{% if error_message %}
+<div class="card error-card">
+    <p>{{ error_message }}</p>
+</div>
+{% elif entries %}
+<div class="entry-grid">
+    {% for entry in entries %}
+    {% include "knowledge/_entry_card.html" %}
+    {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+    <p>No KB entries found.</p>
+    <p>Import runbooks or wait for investigations to populate the knowledge base.</p>
+</div>
+{% endif %}

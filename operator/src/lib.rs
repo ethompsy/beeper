@@ -19,6 +19,9 @@ pub mod health;
 /// Streaming data ingestion endpoints
 pub mod ingestion;
 
+/// Investigator Job building and lifecycle management
+pub mod investigator_job;
+
 /// LLM provider configuration and management
 pub mod llm;
 
@@ -27,9 +30,15 @@ pub mod sources;
 
 /// Re-export commonly used types
 pub use api::{api_router, api_router_with_llm};
-pub use crds::{Investigation, InvestigationSpec, InvestigationStatus, Source, SourceSpec, SourceStatus};
 pub use controllers::{run_investigation_controller, run_source_controller};
+pub use crds::{
+    Investigation, InvestigationSpec, InvestigationStatus, Source, SourceSpec, SourceStatus,
+};
 pub use health::{health_router, start_health_server};
 pub use ingestion::{ingestion_router, IngestionBuffer, IngestionData};
+pub use investigator_job::{
+    build_investigator_job, is_job_completed, is_job_failed, set_phase_completed, set_phase_failed,
+    set_phase_pending, set_phase_running, InvestigatorConfig, InvestigatorJobError,
+};
 pub use llm::{LlmConfig, LlmConfigError, LlmManager, LlmProvider};
 pub use sources::{LokiClient, LokiError, PrometheusClient, PrometheusError};

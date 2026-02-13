@@ -67,7 +67,9 @@ def create_collection(
     # Check if collection exists
     try:
         existing = client.get_collection(name)
-        logger.info(f"Collection '{name}' already exists (vectors: {existing.vectors_count})")
+        logger.info(
+            f"Collection '{name}' already exists (points: {existing.points_count})"
+        )
         return False
     except UnexpectedResponse:
         pass  # Collection doesn't exist, create it
