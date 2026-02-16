@@ -1,0 +1,47 @@
+{# Duplicate detection partial #}
+<div class="import-duplicate">
+    <div class="duplicate-warning">
+        <h3>Duplicate Entry Detected</h3>
+        <p>A similar runbook already exists in the Knowledge Base:</p>
+
+        <div class="duplicate-preview card">
+            <h4>{{ duplicate.title }}</h4>
+            <div class="duplicate-meta">
+                {% if duplicate.service %}
+                <span class="badge">{{ duplicate.service }}</span>
+                {% endif %}
+                <span class="entry-version">Version {{ duplicate.version }}</span>
+            </div>
+            <p class="duplicate-content-preview">
+                {{ duplicate.content[:200] }}{% if duplicate.content|length > 200 %}...{% endif %}
+            </p>
+            <a href="{{ url_for('knowledge.kb_entry', entry_id=duplicate.entry_id) }}"
+               target="_blank" class="view-link">View existing entry &rarr;</a>
+        </div>
+
+        <p>What would you like to do?</p>
+
+        <form hx-post="{{ url_for('knowledge.kb_import') }}"
+              hx-target="#import-result"
+              hx-swap="outerHTML"
+              class="duplicate-actions">
+            {# Hidden fields to preserve import data #}
+            <input type="hidden" name="import_mode" value="paste">
+            <input type="hidden" name="title" value="{{ title }}">
+            <input type="hidden" name="content" value="{{ content }}">
+            <input type="hidden" name="service" value="{{ service or '' }}">
+            <input type="hidden" name="tags" value="{{ tags }}">
+            <input type="hidden" name="duplicate_entry_id" value="{{ duplicate.entry_id }}">
+
+            <button type="submit" name="duplicate_action" value="create" class="btn btn-primary">
+                Create New Entry
+            </button>
+            <button type="submit" name="duplicate_action" value="update" class="btn btn-secondary">
+                Update Existing (New Version)
+            </button>
+            <button type="submit" name="duplicate_action" value="skip" class="btn btn-outline">
+                Skip Import
+            </button>
+        </form>
+    </div>
+</div>

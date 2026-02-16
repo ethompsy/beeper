@@ -1,0 +1,37 @@
+{# Import result partial #}
+<div class="import-result {% if result.success %}import-success{% else %}import-error{% endif %}">
+    {% if result.success %}
+    <div class="result-icon">&#10003;</div>
+    <h3>Import Successful</h3>
+    <p>
+        <strong>{{ result.title }}</strong> has been imported.
+    </p>
+    {% if result.entry_id %}
+    <p>
+        <a href="{{ url_for('knowledge.kb_entry', entry_id=result.entry_id) }}"
+           class="btn btn-primary">View Entry</a>
+        <a href="{{ url_for('knowledge.kb_import') }}" class="btn btn-secondary">Import Another</a>
+    </p>
+    {% endif %}
+    {% if result.warnings %}
+    <div class="result-warnings">
+        <strong>Notes:</strong>
+        <ul>
+            {% for warning in result.warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="result-icon">&#10007;</div>
+    <h3>Import Failed</h3>
+    {% if result.error %}
+    <p class="error-message">{{ result.error }}</p>
+    {% endif %}
+    <p>
+        <a href="{{ url_for('knowledge.kb_import') }}" class="btn btn-secondary">Try Again</a>
+    </p>
+    {% endif %}
+</div>

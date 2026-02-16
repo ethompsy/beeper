@@ -1,0 +1,71 @@
+{# Filter panel for Knowledge Base search and filtering #}
+{# CSS-only accordion - no JavaScript required #}
+<div class="filter-panel" id="filter-panel">
+    <input type="checkbox" id="filter-toggle-checkbox" class="filter-toggle-checkbox" checked aria-hidden="true">
+    <div class="filter-header">
+        <h4>Filters</h4>
+        <label for="filter-toggle-checkbox" class="filter-toggle" aria-label="Toggle filters">
+            <span class="toggle-icon"></span>
+        </label>
+    </div>
+
+    <div class="filter-body">
+        <div class="filter-row">
+            {# Entry Type Filter #}
+            <div class="filter-group">
+                <label for="filter-entry-type">Type</label>
+                <select name="entry_type"
+                        id="filter-entry-type"
+                        hx-get="{{ url_for('knowledge.kb_search') }}"
+                        hx-trigger="change"
+                        hx-target="#search-results"
+                        hx-include="#filter-panel select, #filter-panel input, #kb-search"
+                        hx-push-url="true">
+                    <option value="">All types</option>
+                    {% for type in entry_types %}
+                    <option value="{{ type }}" {% if selected_entry_type == type %}selected{% endif %}>
+                        {{ type|capitalize }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            {# Service Filter #}
+            <div class="filter-group">
+                <label for="filter-service">Service</label>
+                <select name="service"
+                        id="filter-service"
+                        hx-get="{{ url_for('knowledge.kb_search') }}"
+                        hx-trigger="change"
+                        hx-target="#search-results"
+                        hx-include="#filter-panel select, #filter-panel input, #kb-search"
+                        hx-push-url="true">
+                    <option value="">All services</option>
+                    {% for svc in services %}
+                    <option value="{{ svc }}" {% if selected_service == svc %}selected{% endif %}>
+                        {{ svc }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            {# Date Range Filter #}
+            <div class="filter-group">
+                <label for="filter-date-range">Date Range</label>
+                <select name="date_range"
+                        id="filter-date-range"
+                        hx-get="{{ url_for('knowledge.kb_search') }}"
+                        hx-trigger="change"
+                        hx-target="#search-results"
+                        hx-include="#filter-panel select, #filter-panel input, #kb-search"
+                        hx-push-url="true">
+                    <option value="">All time</option>
+                    <option value="today" {% if selected_date_range == 'today' %}selected{% endif %}>Today</option>
+                    <option value="7d" {% if selected_date_range == '7d' %}selected{% endif %}>Last 7 days</option>
+                    <option value="30d" {% if selected_date_range == '30d' %}selected{% endif %}>Last 30 days</option>
+                    <option value="90d" {% if selected_date_range == '90d' %}selected{% endif %}>Last 90 days</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>

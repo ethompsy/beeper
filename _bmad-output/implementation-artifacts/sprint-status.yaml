@@ -57,9 +57,9 @@ development_status:
   epic-2: in-progress
   2-1-kb-wiki-interface: done
   2-2-semantic-search: done
-  2-3-structured-search-filtering: backlog
-  2-4-runbook-import: backlog
-  2-5-kb-entry-editing: backlog
+  2-3-structured-search-filtering: done
+  2-4-runbook-import: done
+  2-5-kb-entry-editing: in-progress
   2-6-version-history: backlog
   2-7-version-diff-view: backlog
   epic-2-retrospective: optional

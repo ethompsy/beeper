@@ -1,11 +1,17 @@
 """Tests for the Knowledge Base service."""
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from beeper_ui.services.embedding_service import EmbeddingService, EmbeddingServiceError
-from beeper_ui.services.kb_service import KBEntry, KBService, KBServiceError
+from beeper_ui.services.kb_service import (
+    KBEntry,
+    KBService,
+    KBServiceError,
+    parse_date_range,
+)
 
 
 class TestKBEntry:
@@ -437,3 +443,522 @@ class TestKBServiceSemanticSearch:
         """Test KBEntry has relevance_score field with default None."""
         entry = KBEntry.from_qdrant("point-1", {"entry_id": "kb-1"})
         assert entry.relevance_score is None
+
+
+class TestKBServiceFilterMetadata:
+    """Tests for filter metadata retrieval and caching."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_get_available_services_caching(self, mock_client_class: MagicMock) -> None:
+        """Test that get_available_services caches results."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_points = []
+        for svc in ["api", "payments"]:
+            point = MagicMock()
+            point.id = f"point-{svc}"
+            point.payload = {"service": svc}
+            mock_points.append(point)
+
+        mock_client.scroll.return_value = (mock_points, None)
+
+        service = KBService()
+
+        # First call should hit Qdrant
+        services1 = service.get_available_services()
+        assert services1 == ["api", "payments"]
+        assert mock_client.scroll.call_count == 1
+
+        # Second call should use cache
+        services2 = service.get_available_services()
+        assert services2 == ["api", "payments"]
+        assert mock_client.scroll.call_count == 1  # Still 1 - cached
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_get_entry_types_caching(self, mock_client_class: MagicMock) -> None:
+        """Test that get_entry_types caches results."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_points = []
+        for entry_type in ["investigation", "runbook"]:
+            point = MagicMock()
+            point.id = f"point-{entry_type}"
+            point.payload = {"entry_type": entry_type}
+            mock_points.append(point)
+
+        mock_client.scroll.return_value = (mock_points, None)
+
+        service = KBService()
+
+        # First call should hit Qdrant
+        types1 = service.get_entry_types()
+        assert "investigation" in types1
+        assert "runbook" in types1
+
+        # Second call should use cache
+        types2 = service.get_entry_types()
+        assert types1 == types2
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_clear_filter_cache(self, mock_client_class: MagicMock) -> None:
+        """Test clearing the filter metadata cache."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_points = [MagicMock(id="p1", payload={"service": "api"})]
+        mock_client.scroll.return_value = (mock_points, None)
+
+        service = KBService()
+
+        # First call
+        service.get_available_services()
+        assert mock_client.scroll.call_count == 1
+
+        # Clear cache
+        service.clear_filter_cache()
+
+        # Next call should hit Qdrant again
+        service.get_available_services()
+        assert mock_client.scroll.call_count == 2
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_get_entry_types_returns_known_types(self, mock_client_class: MagicMock) -> None:
+        """Test that get_entry_types always includes known types even if not in Qdrant."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        # Empty collection
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService()
+        types = service.get_entry_types()
+
+        # Should still return known types
+        assert "investigation" in types
+        assert "runbook" in types
+        assert "correction" in types
+
+
+class TestParseDateRange:
+    """Tests for parse_date_range function."""
+
+    def test_parse_empty_string(self) -> None:
+        """Test that empty string returns None, None."""
+        date_from, date_to = parse_date_range("")
+        assert date_from is None
+        assert date_to is None
+
+    def test_parse_none(self) -> None:
+        """Test that None returns None, None."""
+        date_from, date_to = parse_date_range(None)  # type: ignore
+        assert date_from is None
+        assert date_to is None
+
+    def test_parse_today(self) -> None:
+        """Test parsing 'today' date range."""
+        date_from, date_to = parse_date_range("today")
+
+        assert date_from is not None
+        assert date_to is not None
+        assert date_from.tzinfo == timezone.utc
+        assert date_to.tzinfo == timezone.utc
+        assert date_from.date() == date_to.date()
+        assert date_from.hour == 0
+        assert date_to.hour == 23
+
+    def test_parse_7d(self) -> None:
+        """Test parsing '7d' date range."""
+        date_from, date_to = parse_date_range("7d")
+
+        assert date_from is not None
+        assert date_to is not None
+        # date_from should be 7 days before date_to
+        delta = date_to.date() - date_from.date()
+        assert delta.days == 7
+
+    def test_parse_30d(self) -> None:
+        """Test parsing '30d' date range."""
+        date_from, date_to = parse_date_range("30d")
+
+        assert date_from is not None
+        assert date_to is not None
+        delta = date_to.date() - date_from.date()
+        assert delta.days == 30
+
+    def test_parse_90d(self) -> None:
+        """Test parsing '90d' date range."""
+        date_from, date_to = parse_date_range("90d")
+
+        assert date_from is not None
+        assert date_to is not None
+        delta = date_to.date() - date_from.date()
+        assert delta.days == 90
+
+    def test_parse_unknown_range(self) -> None:
+        """Test that unknown range returns None, None."""
+        date_from, date_to = parse_date_range("unknown")
+        assert date_from is None
+        assert date_to is None
+
+
+class TestKBServiceWriteOperations:
+    """Tests for write operations (create, update, duplicate check)."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_create_entry_success(self, mock_client_class: MagicMock) -> None:
+        """Test creating a new KB entry successfully."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.upsert.return_value = None
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        entry_id = service.create_entry(
+            title="Test Runbook",
+            content="## Overview\n\nThis is a test runbook.",
+            entry_type="runbook",
+            service="payments",
+            tags=["database", "timeout"],
+            author="import",
+            embedding_service=mock_embedding_service,
+        )
+
+        assert entry_id is not None
+        assert len(entry_id) > 0
+        mock_client.upsert.assert_called_once()
+        mock_embedding_service.get_embedding.assert_called_once()
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_create_entry_generates_embedding(self, mock_client_class: MagicMock) -> None:
+        """Test that create_entry generates embedding from title and content."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.5] * 1536
+
+        service = KBService()
+        service.create_entry(
+            title="My Title",
+            content="My content here",
+            entry_type="runbook",
+            embedding_service=mock_embedding_service,
+        )
+
+        # Embedding should be generated from title + content
+        call_args = mock_embedding_service.get_embedding.call_args
+        embedded_text = call_args[0][0]
+        assert "My Title" in embedded_text
+        assert "My content" in embedded_text
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_create_entry_clears_services_cache(self, mock_client_class: MagicMock) -> None:
+        """Test that create_entry clears the services cache for new services."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+
+        # Prime the cache
+        service.get_available_services()
+        assert service._services_cache is not None
+
+        # Create entry should clear cache
+        service.create_entry(
+            title="Test",
+            content="Content",
+            entry_type="runbook",
+            service="new-service",
+            embedding_service=mock_embedding_service,
+        )
+
+        assert service._services_cache is None
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_create_entry_error(self, mock_client_class: MagicMock) -> None:
+        """Test create_entry handles errors."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.upsert.side_effect = Exception("Connection failed")
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        with pytest.raises(KBServiceError, match="Failed to create KB entry"):
+            service.create_entry(
+                title="Test",
+                content="Content",
+                entry_type="runbook",
+                embedding_service=mock_embedding_service,
+            )
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_check_duplicate_found(self, mock_client_class: MagicMock) -> None:
+        """Test duplicate detection when a matching entry exists."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-existing"
+        mock_point.payload = {
+            "entry_id": "kb-existing",
+            "entry_type": "runbook",
+            "title": "Database Runbook",
+            "content": "Existing content",
+            "service": "payments",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        duplicate = service.check_duplicate(
+            title="Database Runbook",
+            service="payments",
+            entry_type="runbook",
+        )
+
+        assert duplicate is not None
+        assert duplicate.entry_id == "kb-existing"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_check_duplicate_case_insensitive(self, mock_client_class: MagicMock) -> None:
+        """Test duplicate detection is case-insensitive for titles."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-1",
+            "entry_type": "runbook",
+            "title": "DATABASE RUNBOOK",
+            "service": "api",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        duplicate = service.check_duplicate(
+            title="database runbook",  # lowercase
+            service="api",
+            entry_type="runbook",
+        )
+
+        assert duplicate is not None
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_check_duplicate_not_found(self, mock_client_class: MagicMock) -> None:
+        """Test duplicate detection when no matching entry exists."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService()
+        duplicate = service.check_duplicate(
+            title="New Runbook",
+            service="payments",
+            entry_type="runbook",
+        )
+
+        assert duplicate is None
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_check_duplicate_different_title(self, mock_client_class: MagicMock) -> None:
+        """Test duplicate not found when title differs."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-1",
+            "entry_type": "runbook",
+            "title": "Different Title",
+            "service": "payments",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        duplicate = service.check_duplicate(
+            title="My New Runbook",
+            service="payments",
+            entry_type="runbook",
+        )
+
+        assert duplicate is None
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_update_entry_success(self, mock_client_class: MagicMock) -> None:
+        """Test updating an existing KB entry."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        # Mock getting the existing entry
+        mock_point = MagicMock()
+        mock_point.id = "point-existing"
+        mock_point.payload = {
+            "entry_id": "kb-existing",
+            "entry_type": "runbook",
+            "title": "Original Title",
+            "content": "Original content",
+            "service": "payments",
+            "version": 1,
+            "created_at": "2026-01-15T10:00:00Z",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+        mock_client.upsert.return_value = None
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        new_version = service.update_entry(
+            entry_id="kb-existing",
+            title="Updated Title",
+            content="Updated content",
+            embedding_service=mock_embedding_service,
+        )
+
+        assert new_version == 2
+        mock_client.upsert.assert_called_once()
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_update_entry_not_found(self, mock_client_class: MagicMock) -> None:
+        """Test updating a non-existent entry raises error."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        mock_embedding_service = MagicMock()
+
+        service = KBService()
+        with pytest.raises(KBServiceError, match="Entry not found"):
+            service.update_entry(
+                entry_id="non-existent",
+                title="New Title",
+                content="New content",
+                embedding_service=mock_embedding_service,
+            )
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_update_entry_increments_version(self, mock_client_class: MagicMock) -> None:
+        """Test that update_entry increments the version number."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-1",
+            "version": 5,
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        new_version = service.update_entry(
+            entry_id="kb-1",
+            content="Updated",
+            embedding_service=mock_embedding_service,
+        )
+
+        assert new_version == 6
+
+        # Verify the upsert was called with version 6
+        call_args = mock_client.upsert.call_args
+        points = call_args.kwargs.get("points") or call_args[1].get("points")
+        assert points[0].payload["version"] == 6
+
+
+class TestKBServiceDateFiltering:
+    """Tests for date range filtering in KBService."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_list_recent_entries_with_date_range(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test listing entries with date range filter."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService()
+        date_from = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        date_to = datetime(2026, 1, 31, tzinfo=timezone.utc)
+
+        service.list_recent_entries(date_from=date_from, date_to=date_to)
+
+        # Verify filter was applied
+        call_args = mock_client.scroll.call_args
+        assert call_args is not None
+        filter_arg = call_args.kwargs.get("scroll_filter")
+        assert filter_arg is not None
+        # Should have date filter
+        assert len(filter_arg.must) == 1
+        assert filter_arg.must[0].key == "created_at"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_list_recent_entries_with_all_filters(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test listing entries with all filters combined."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService()
+        date_from = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+        service.list_recent_entries(
+            entry_type="investigation",
+            service="payments",
+            date_from=date_from,
+        )
+
+        # Verify all filters were applied
+        call_args = mock_client.scroll.call_args
+        filter_arg = call_args.kwargs.get("scroll_filter")
+        assert len(filter_arg.must) == 3  # entry_type + service + date
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_search_semantic_with_date_range(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test semantic search with date range filter."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_results = MagicMock()
+        mock_results.points = []
+        mock_client.query_points.return_value = mock_results
+
+        mock_embedding_service = MagicMock(spec=EmbeddingService)
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        date_from = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        date_to = datetime(2026, 1, 31, tzinfo=timezone.utc)
+
+        service.search_semantic(
+            query="test query",
+            date_from=date_from,
+            date_to=date_to,
+            embedding_service=mock_embedding_service,
+        )
+
+        # Verify date filter was passed
+        call_args = mock_client.query_points.call_args
+        filter_arg = call_args.kwargs.get("query_filter")
+        assert filter_arg is not None
+        assert len(filter_arg.must) == 1
+        assert filter_arg.must[0].key == "created_at"

@@ -4,8 +4,13 @@
 
 {% block content %}
 <div class="kb-header">
-    <h2>Knowledge Base</h2>
-    <p class="kb-description">Browse investigations, runbooks, and corrections</p>
+    <div class="kb-header-content">
+        <div>
+            <h2>Knowledge Base</h2>
+            <p class="kb-description">Browse investigations, runbooks, and corrections</p>
+        </div>
+        <a href="{{ url_for('knowledge.kb_import') }}" class="btn btn-primary">Import Runbook</a>
+    </div>
 </div>
 
 {% if error_message %}
@@ -25,40 +30,20 @@
                hx-trigger="keyup changed delay:300ms, search"
                hx-target="#search-results"
                hx-indicator="#search-loading"
-               hx-include="[name='entry_type'],[name='service']"
-               autocomplete="off">
+               hx-include="#filter-panel select"
+               hx-push-url="true"
+               autocomplete="off"
+               value="{{ query|default('', true) }}">
         <span id="search-loading" class="htmx-indicator">Searching...</span>
     </div>
 </div>
 
-<div id="search-results">
-    <!-- Search results appear here via HTMX -->
-</div>
+{% include "knowledge/_filter_panel.html" %}
 
-<div class="kb-filters">
-    <form hx-get="{{ url_for('knowledge.kb_index') }}" hx-target="#entry-list" hx-swap="innerHTML" hx-trigger="change">
-        <div class="filter-group">
-            <label for="entry_type">Type:</label>
-            <select name="entry_type" id="entry_type">
-                <option value="">All types</option>
-                {% for type in entry_types %}
-                <option value="{{ type }}" {% if selected_entry_type == type %}selected{% endif %}>{{ type|capitalize }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="filter-group">
-            <label for="service">Service:</label>
-            <select name="service" id="service">
-                <option value="">All services</option>
-                {% for svc in services %}
-                <option value="{{ svc }}" {% if selected_service == svc %}selected{% endif %}>{{ svc }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <noscript>
-            <button type="submit">Filter</button>
-        </noscript>
-    </form>
+<div id="search-results">
+    {# Active filters shown here when filters are applied #}
+    {% include "knowledge/_active_filters.html" %}
+    <!-- Search results appear here via HTMX -->
 </div>
 
 <div id="entry-list">

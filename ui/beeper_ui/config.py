@@ -20,6 +20,9 @@ class Config:
     UI_PORT = int(os.environ.get("BEEPER_UI_PORT", "5000"))
     UI_HOST = os.environ.get("BEEPER_UI_HOST", "0.0.0.0")
 
+    # File upload settings
+    MAX_CONTENT_LENGTH = 2 * 1024 * 1024  # 2MB max upload size
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""

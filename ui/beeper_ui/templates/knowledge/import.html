@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Import Runbook - Knowledge Base - Beeper{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+    <a href="{{ url_for('knowledge.kb_index') }}">Knowledge Base</a>
+    <span class="separator">/</span>
+    <span class="current">Import Runbook</span>
+</nav>
+
+<div class="import-page">
+    <h2>Import Runbook</h2>
+    <p class="import-description">
+        Import existing runbooks into the Knowledge Base. You can upload a markdown file
+        or paste content directly.
+    </p>
+
+    <form hx-post="{{ url_for('knowledge.kb_import') }}"
+          hx-target="#import-result"
+          hx-swap="innerHTML"
+          hx-indicator="#import-loading"
+          enctype="multipart/form-data"
+          class="import-form card">
+
+        {# Import mode tabs - CSS-only (no JavaScript) #}
+        {# Radio inputs placed before tabs div for CSS sibling selectors #}
+        <input type="radio" name="import_mode" value="file" id="mode-file" class="import-mode-radio" checked>
+        <input type="radio" name="import_mode" value="paste" id="mode-paste" class="import-mode-radio">
+
+        <div class="import-tabs">
+            <label for="mode-file" class="import-tab">Upload File</label>
+            <label for="mode-paste" class="import-tab">Paste Content</label>
+        </div>
+
+        {# File upload section - shown when mode-file is checked #}
+        <div id="file-section" class="import-section import-section-file">
+            <label for="file">Select File</label>
+            <input type="file" name="file" id="file" accept=".md,.txt,.json,.markdown">
+            <p class="help-text">Accepted formats: Markdown (.md), Text (.txt), JSON (.json)</p>
+        </div>
+
+        {# Paste section - shown when mode-paste is checked #}
+        <div id="paste-section" class="import-section import-section-paste">
+            <label for="title">Title</label>
+            <input type="text" name="title" id="title" placeholder="Runbook Title">
+
+            <label for="content">Content (Markdown)</label>
+            <textarea name="content" id="content" rows="12"
+                      placeholder="Paste markdown content here..."></textarea>
+        </div>
+
+        {# Metadata (always visible) #}
+        <div class="import-metadata">
+            <div class="form-group">
+                <label for="service">Service (optional)</label>
+                <select name="service" id="service">
+                    <option value="">Select service...</option>
+                    {% for svc in services %}
+                    <option value="{{ svc }}">{{ svc }}</option>
+                    {% endfor %}
+                </select>
+                <p class="help-text">Or include service in file's YAML front matter</p>
+            </div>
+
+            <div class="form-group">
+                <label for="tags">Tags (optional)</label>
+                <input type="text" name="tags" id="tags" placeholder="tag1, tag2, tag3">
+                <p class="help-text">Comma-separated tags</p>
+            </div>
+        </div>
+
+        <div class="import-actions">
+            <button type="submit" class="btn btn-primary">Import Runbook</button>
+            <span id="import-loading" class="htmx-indicator">Importing...</span>
+        </div>
+    </form>
+
+    <div id="import-result"></div>
+</div>
+{% endblock %}

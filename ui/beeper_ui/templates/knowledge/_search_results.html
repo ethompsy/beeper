@@ -1,10 +1,17 @@
+{# Include active filters at top of results #}
+{% include "knowledge/_active_filters.html" %}
+
 {% if error_message %}
 <div class="search-error">
     {{ error_message }}
 </div>
-{% elif query and not entries %}
+{% elif (query or any_filter_active) and not entries %}
 <div class="search-no-results">
+    {% if query %}
     <p>No results found for "{{ query }}"</p>
+    {% else %}
+    <p>No entries match the selected filters.</p>
+    {% endif %}
 </div>
 {% elif entries %}
 {% if not has_exact_matches %}

@@ -1,0 +1,64 @@
+{# Active filter chips display #}
+{# Note: any_filter_active is passed from the route, don't recalculate #}
+{% if any_filter_active %}
+<div class="active-filters">
+    {% if selected_entry_type %}
+    <span class="filter-chip">
+        <span class="chip-label">Type:</span>
+        {{ selected_entry_type|capitalize }}
+        <button type="button"
+                class="chip-remove"
+                hx-get="{{ url_for('knowledge.kb_search') }}"
+                hx-target="#search-results"
+                hx-include="#filter-panel select, #kb-search"
+                hx-vals='{"entry_type": ""}'
+                hx-push-url="true"
+                aria-label="Remove type filter">&times;</button>
+    </span>
+    {% endif %}
+
+    {% if selected_service %}
+    <span class="filter-chip">
+        <span class="chip-label">Service:</span>
+        {{ selected_service }}
+        <button type="button"
+                class="chip-remove"
+                hx-get="{{ url_for('knowledge.kb_search') }}"
+                hx-target="#search-results"
+                hx-include="#filter-panel select, #kb-search"
+                hx-vals='{"service": ""}'
+                hx-push-url="true"
+                aria-label="Remove service filter">&times;</button>
+    </span>
+    {% endif %}
+
+    {% if selected_date_range %}
+    <span class="filter-chip">
+        <span class="chip-label">Date:</span>
+        {% if selected_date_range == 'today' %}Today
+        {% elif selected_date_range == '7d' %}Last 7 days
+        {% elif selected_date_range == '30d' %}Last 30 days
+        {% elif selected_date_range == '90d' %}Last 90 days
+        {% else %}{{ selected_date_range }}
+        {% endif %}
+        <button type="button"
+                class="chip-remove"
+                hx-get="{{ url_for('knowledge.kb_search') }}"
+                hx-target="#search-results"
+                hx-include="#filter-panel select, #kb-search"
+                hx-vals='{"date_range": ""}'
+                hx-push-url="true"
+                aria-label="Remove date filter">&times;</button>
+    </span>
+    {% endif %}
+
+    <button type="button"
+            class="clear-all-filters"
+            hx-get="{{ url_for('knowledge.kb_search') }}"
+            hx-target="#search-results"
+            hx-vals='{"q": "{{ query|default('', true) }}", "entry_type": "", "service": "", "date_range": ""}'
+            hx-push-url="true">
+        Clear all
+    </button>
+</div>
+{% endif %}

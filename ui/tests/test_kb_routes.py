@@ -4,9 +4,15 @@ from unittest.mock import MagicMock, patch
 
 from flask.testing import FlaskClient
 
-from beeper_ui.routes.knowledge import MAX_QUERY_LENGTH, sanitize_query
+from beeper_ui.routes.knowledge import (
+    MAX_QUERY_LENGTH,
+    VALID_ENTRY_TYPES,
+    sanitize_query,
+    validate_entry_type,
+)
 from beeper_ui.services.embedding_service import EmbeddingService
 from beeper_ui.services.kb_service import KBEntry, KBServiceError
+from beeper_ui.services.import_service import ImportResult
 
 
 class TestSanitizeQuery:
@@ -44,6 +50,43 @@ class TestSanitizeQuery:
     def test_removes_nested_tags(self) -> None:
         """Test that nested tags are removed."""
         assert sanitize_query("<div><script>x</script></div>") == "x"
+
+
+class TestValidateEntryType:
+    """Tests for validate_entry_type function."""
+
+    def test_valid_investigation(self) -> None:
+        """Test that 'investigation' is valid."""
+        assert validate_entry_type("investigation") == "investigation"
+
+    def test_valid_runbook(self) -> None:
+        """Test that 'runbook' is valid."""
+        assert validate_entry_type("runbook") == "runbook"
+
+    def test_valid_correction(self) -> None:
+        """Test that 'correction' is valid."""
+        assert validate_entry_type("correction") == "correction"
+
+    def test_invalid_type_returns_none(self) -> None:
+        """Test that invalid entry types return None."""
+        assert validate_entry_type("invalid") is None
+        assert validate_entry_type("<script>alert(1)</script>") is None
+        assert validate_entry_type("INVESTIGATION") is None  # Case-sensitive
+
+    def test_empty_returns_none(self) -> None:
+        """Test that empty string returns None."""
+        assert validate_entry_type("") is None
+
+    def test_none_returns_none(self) -> None:
+        """Test that None returns None."""
+        assert validate_entry_type(None) is None
+
+    def test_valid_types_constant(self) -> None:
+        """Test that VALID_ENTRY_TYPES contains expected values."""
+        assert "investigation" in VALID_ENTRY_TYPES
+        assert "runbook" in VALID_ENTRY_TYPES
+        assert "correction" in VALID_ENTRY_TYPES
+        assert len(VALID_ENTRY_TYPES) == 3
 
 
 def _make_entry(
@@ -137,7 +180,7 @@ class TestKBIndexRoute:
         response = client.get("/knowledge/?service=api")
         assert response.status_code == 200
         mock_service.list_recent_entries.assert_called_with(
-            limit=20, entry_type=None, service="api"
+            limit=20, entry_type=None, service="api", date_from=None, date_to=None
         )
 
     @patch("beeper_ui.routes.knowledge.get_kb_service")
@@ -373,6 +416,8 @@ class TestKBSearchRoute:
             limit=10,
             entry_type="runbook",
             service="payments",
+            date_from=None,
+            date_to=None,
             embedding_service=mock_embedding_service,
         )
 
@@ -417,3 +462,465 @@ class TestKBSearchRoute:
         response = client.get("/knowledge/search?q=test")
         assert response.status_code == 200
         assert b"not configured" in response.data.lower()
+
+
+class TestKBSearchWithDateRange:
+    """Tests for KB search with date range filtering."""
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_kb_search_with_date_range(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding_service: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test search with date range filter."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+
+        mock_embedding_service = MagicMock(spec=EmbeddingService)
+        mock_embedding_service.is_configured.return_value = True
+        mock_get_embedding_service.return_value = mock_embedding_service
+
+        entry = _make_entry("kb-1", "investigation", "Test Entry")
+        entry.relevance_score = 0.85
+        mock_kb_service.search_semantic.return_value = ([entry], True)
+
+        response = client.get("/knowledge/search?q=test&date_range=30d")
+        assert response.status_code == 200
+
+        # Verify date range was passed to search_semantic
+        call_args = mock_kb_service.search_semantic.call_args
+        assert call_args.kwargs.get("date_from") is not None
+        assert call_args.kwargs.get("date_to") is not None
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_kb_search_filter_only_mode(
+        self,
+        mock_get_kb_service: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test search with filters but no query (filter-only mode)."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+
+        entry = _make_entry("kb-1", "investigation", "Test Entry")
+        mock_kb_service.list_recent_entries.return_value = [entry]
+
+        response = client.get("/knowledge/search?entry_type=investigation&service=api")
+        assert response.status_code == 200
+        assert b"Test Entry" in response.data
+
+        # Should use list_recent_entries, not search_semantic
+        mock_kb_service.list_recent_entries.assert_called_once()
+        mock_kb_service.search_semantic.assert_not_called()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_kb_search_filter_only_with_date_range(
+        self,
+        mock_get_kb_service: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test filter-only search with date range."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.list_recent_entries.return_value = []
+
+        response = client.get("/knowledge/search?date_range=7d")
+        assert response.status_code == 200
+
+        # Verify date range was passed to list_recent_entries
+        call_args = mock_kb_service.list_recent_entries.call_args
+        assert call_args.kwargs.get("date_from") is not None
+        assert call_args.kwargs.get("date_to") is not None
+
+    def test_kb_search_no_filters_no_query(
+        self,
+        client: FlaskClient,
+    ) -> None:
+        """Test search with no query and no filters returns empty."""
+        response = client.get("/knowledge/search")
+        assert response.status_code == 200
+        # Should not contain any result content
+        assert b"search-results-list" not in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_kb_search_filter_only_no_results(
+        self,
+        mock_get_kb_service: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test filter-only search with no matching results."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.list_recent_entries.return_value = []
+
+        response = client.get("/knowledge/search?entry_type=investigation")
+        assert response.status_code == 200
+        assert b"No entries match the selected filters" in response.data
+
+    def test_kb_search_clear_all_filters(
+        self,
+        client: FlaskClient,
+    ) -> None:
+        """Test clearing all filters returns to empty state."""
+        # When all filter params are empty strings, should return empty (no filters active)
+        response = client.get("/knowledge/search?q=&entry_type=&service=&date_range=")
+        assert response.status_code == 200
+        # Should not contain result list (no query, no filters)
+        assert b"search-results-list" not in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_kb_search_invalid_entry_type_ignored(
+        self,
+        mock_get_kb_service: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test that invalid entry_type values are ignored (security)."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.list_recent_entries.return_value = []
+
+        # Pass an invalid/malicious entry_type
+        response = client.get("/knowledge/search?entry_type=<script>alert(1)</script>")
+        assert response.status_code == 200
+
+        # Should not have been called with the malicious value
+        # Since entry_type is invalid, it becomes None, so no filter is active
+        # and no query means empty response
+        mock_kb_service.list_recent_entries.assert_not_called()
+        mock_kb_service.search_semantic.assert_not_called()
+
+
+class TestKBIndexWithDateRange:
+    """Tests for KB index with date range filtering."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_kb_index_with_date_range(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test KB index with date range filter."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.list_recent_entries.return_value = []
+        mock_service.get_available_services.return_value = []
+        mock_service.get_entry_types.return_value = ["investigation"]
+
+        response = client.get("/knowledge/?date_range=30d")
+        assert response.status_code == 200
+
+        # Verify date range was passed to list_recent_entries
+        call_args = mock_service.list_recent_entries.call_args
+        assert call_args.kwargs.get("date_from") is not None
+        assert call_args.kwargs.get("date_to") is not None
+
+
+class TestKBImportRoute:
+    """Tests for KB import routes."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_page_get(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test GET request to import page."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_available_services.return_value = ["api", "payments"]
+
+        response = client.get("/knowledge/import")
+        assert response.status_code == 200
+        assert b"Import Runbook" in response.data
+        assert b"api" in response.data
+        assert b"payments" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_paste_success(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test successful paste import."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.check_duplicate.return_value = None
+        mock_kb_service.create_entry.return_value = "kb-new-123"
+        mock_kb_service.get_available_services.return_value = []
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = True
+
+        response = client.post(
+            "/knowledge/import",
+            data={
+                "import_mode": "paste",
+                "title": "Test Runbook",
+                "content": "This is the runbook content with enough text.",
+                "service": "api",
+                "tags": "tag1, tag2",
+            },
+        )
+
+        assert response.status_code == 200
+        assert b"kb-new-123" in response.data or b"imported" in response.data.lower()
+        mock_kb_service.create_entry.assert_called_once()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_paste_validation_error(
+        self, mock_get_kb_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test paste import with validation errors."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.get_available_services.return_value = []
+
+        response = client.post(
+            "/knowledge/import",
+            data={
+                "import_mode": "paste",
+                "title": "AB",  # Too short
+                "content": "short",  # Too short
+                "service": "",
+                "tags": "",
+            },
+        )
+
+        assert response.status_code == 200
+        assert b"at least" in response.data.lower() or b"error" in response.data.lower()
+        mock_kb_service.create_entry.assert_not_called()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_duplicate_detected(
+        self, mock_get_kb_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test import when duplicate is detected."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.check_duplicate.return_value = _make_entry(
+            "kb-existing", "runbook", "Existing Runbook"
+        )
+        mock_kb_service.get_available_services.return_value = []
+
+        response = client.post(
+            "/knowledge/import",
+            data={
+                "import_mode": "paste",
+                "title": "Existing Runbook",
+                "content": "This is some content that is long enough.",
+                "service": "api",
+                "tags": "",
+            },
+        )
+
+        assert response.status_code == 200
+        assert b"duplicate" in response.data.lower() or b"exists" in response.data.lower()
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_file_upload_success(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test successful file upload import."""
+        import io
+
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.check_duplicate.return_value = None
+        mock_kb_service.create_entry.return_value = "kb-file-123"
+        mock_kb_service.get_available_services.return_value = []
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = True
+
+        # Create a fake markdown file
+        file_content = b"""# My Test Runbook
+
+## Overview
+
+This is a test runbook for the import feature.
+
+## Steps
+
+1. Do something
+2. Do something else
+"""
+        data = {
+            "import_mode": "file",
+            "file": (io.BytesIO(file_content), "test-runbook.md"),
+            "service": "payments",
+            "tags": "database, guide",
+        }
+
+        response = client.post(
+            "/knowledge/import",
+            data=data,
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 200
+        mock_kb_service.create_entry.assert_called_once()
+        call_args = mock_kb_service.create_entry.call_args
+        assert call_args.kwargs.get("title") == "My Test Runbook"
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_file_invalid_extension(
+        self, mock_get_kb_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test file upload with invalid extension is rejected."""
+        import io
+
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.get_available_services.return_value = []
+
+        data = {
+            "import_mode": "file",
+            "file": (io.BytesIO(b"content"), "script.exe"),
+            "service": "",
+            "tags": "",
+        }
+
+        response = client.post(
+            "/knowledge/import",
+            data=data,
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 200
+        assert b"not allowed" in response.data.lower() or b"invalid" in response.data.lower()
+        mock_kb_service.create_entry.assert_not_called()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_no_file_selected(
+        self, mock_get_kb_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test file upload with no file selected."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.get_available_services.return_value = []
+
+        response = client.post(
+            "/knowledge/import",
+            data={
+                "import_mode": "file",
+                "service": "",
+                "tags": "",
+            },
+        )
+
+        assert response.status_code == 200
+        assert b"no file" in response.data.lower() or b"select" in response.data.lower()
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_with_duplicate_create_new(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test creating new entry when duplicate exists but user chooses create."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.check_duplicate.return_value = _make_entry(
+            "kb-existing", "runbook", "Existing Title"
+        )
+        mock_kb_service.create_entry.return_value = "kb-new-456"
+        mock_kb_service.get_available_services.return_value = []
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = True
+
+        response = client.post(
+            "/knowledge/import",
+            data={
+                "import_mode": "paste",
+                "title": "Existing Title",
+                "content": "New content that is long enough for validation.",
+                "service": "api",
+                "tags": "",
+                "duplicate_action": "create",  # User chose to create new
+            },
+        )
+
+        assert response.status_code == 200
+        mock_kb_service.create_entry.assert_called_once()
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_with_duplicate_update(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test updating existing entry when duplicate is found."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.update_entry.return_value = 2
+        mock_kb_service.get_available_services.return_value = []
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = True
+
+        response = client.post(
+            "/knowledge/import",
+            data={
+                "import_mode": "paste",
+                "title": "Existing Title",
+                "content": "Updated content that is long enough.",
+                "service": "api",
+                "tags": "",
+                "duplicate_action": "update",
+                "duplicate_entry_id": "kb-existing",  # Entry ID from hidden form field
+            },
+        )
+
+        assert response.status_code == 200
+        mock_kb_service.update_entry.assert_called_once()
+        # Verify update was called with correct entry_id
+        call_kwargs = mock_kb_service.update_entry.call_args.kwargs
+        assert call_kwargs.get("entry_id") == "kb-existing"
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_import_update_not_configured(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test update path shows error when embedding service not configured."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.get_available_services.return_value = []
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = False  # Not configured
+
+        response = client.post(
+            "/knowledge/import",
+            data={
+                "import_mode": "paste",
+                "title": "Existing Title",
+                "content": "Updated content that is long enough.",
+                "service": "api",
+                "tags": "",
+                "duplicate_action": "update",
+                "duplicate_entry_id": "kb-existing",
+            },
+        )
+
+        assert response.status_code == 200
+        assert b"not configured" in response.data.lower()
+        mock_kb_service.update_entry.assert_not_called()
