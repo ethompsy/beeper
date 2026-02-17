@@ -12,7 +12,6 @@ from beeper_ui.routes.knowledge import (
 )
 from beeper_ui.services.embedding_service import EmbeddingService
 from beeper_ui.services.kb_service import KBEntry, KBServiceError
-from beeper_ui.services.import_service import ImportResult
 
 
 class TestSanitizeQuery:
@@ -923,4 +922,413 @@ This is a test runbook for the import feature.
 
         assert response.status_code == 200
         assert b"not configured" in response.data.lower()
+        mock_kb_service.update_entry.assert_not_called()
+
+
+class TestKBEditRoute:
+    """Tests for KB entry edit routes."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_edit_page_loads_with_entry_data(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test edit page loads with populated form data (Task 5.1)."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_entry.return_value = _make_entry(
+            "kb-edit-1", "runbook", "Edit Me", "# Content\n\nSome markdown"
+        )
+        mock_service.get_available_services.return_value = ["api", "payments"]
+
+        response = client.get("/knowledge/kb-edit-1/edit")
+        assert response.status_code == 200
+        assert b"Edit Me" in response.data
+        assert b"Content" in response.data
+        assert b"Some markdown" in response.data
+        assert b"api" in response.data
+        assert b"payments" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_save_updates_entry_and_increments_version(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test save updates entry and increments version (Task 5.2)."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.update_entry.return_value = 2
+        mock_kb_service.get_available_services.return_value = []
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = True
+
+        response = client.post(
+            "/knowledge/kb-edit-1/edit",
+            data={
+                "title": "Updated Title",
+                "content": "Updated content that is long enough for validation.",
+                "service": "api",
+                "tags": "tag1, tag2",
+            },
+        )
+
+        assert response.status_code == 200
+        mock_kb_service.update_entry.assert_called_once()
+        call_kwargs = mock_kb_service.update_entry.call_args.kwargs
+        assert call_kwargs["entry_id"] == "kb-edit-1"
+        assert call_kwargs["title"] == "Updated Title"
+        assert call_kwargs["content"] == "Updated content that is long enough for validation."
+        assert call_kwargs["tags"] == ["tag1", "tag2"]
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_validation_errors_display(
+        self, mock_get_kb_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test validation errors display correctly (Task 5.3)."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.get_available_services.return_value = []
+
+        response = client.post(
+            "/knowledge/kb-edit-1/edit",
+            data={
+                "title": "AB",  # Too short
+                "content": "short",  # Too short
+                "service": "",
+                "tags": "",
+            },
+        )
+
+        assert response.status_code == 200
+        assert b"at least" in response.data.lower() or b"error" in response.data.lower()
+        mock_kb_service.update_entry.assert_not_called()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_preview_endpoint_renders_markdown(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test preview endpoint renders markdown (Task 5.4)."""
+        response = client.post(
+            "/knowledge/preview",
+            data={"content": "# Hello\n\n**Bold text** and *italic*"},
+        )
+
+        assert response.status_code == 200
+        assert b"Hello" in response.data
+        assert b"<strong>" in response.data or b"Bold text" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_embedding_not_configured_error(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test embedding service not configured error (Task 5.5)."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.get_available_services.return_value = []
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = False
+
+        response = client.post(
+            "/knowledge/kb-edit-1/edit",
+            data={
+                "title": "Valid Title Here",
+                "content": "Valid content that is long enough for validation.",
+                "service": "api",
+                "tags": "",
+            },
+        )
+
+        assert response.status_code == 200
+        assert b"not configured" in response.data.lower()
+        mock_kb_service.update_entry.assert_not_called()
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_save_handles_service_error(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test save handles KBServiceError during update_entry."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.get_entry.return_value = _make_entry("kb-edit-1")
+        mock_kb_service.update_entry.side_effect = KBServiceError("Qdrant write failed")
+        mock_kb_service.get_available_services.return_value = []
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = True
+
+        response = client.post(
+            "/knowledge/kb-edit-1/edit",
+            data={
+                "title": "Valid Title Here",
+                "content": "Valid content that is long enough for validation.",
+                "service": "api",
+                "tags": "",
+                "version": "1",
+            },
+        )
+
+        assert response.status_code == 200
+        assert b"Qdrant write failed" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_save_detects_concurrent_edit(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test save detects concurrent edit via version mismatch."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        # Current entry is at version 2, but form was loaded with version 1
+        mock_kb_service.get_entry.return_value = _make_entry("kb-edit-1")
+        mock_kb_service.get_entry.return_value.version = 2
+        mock_kb_service.get_available_services.return_value = []
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = True
+
+        response = client.post(
+            "/knowledge/kb-edit-1/edit",
+            data={
+                "title": "Valid Title Here",
+                "content": "Valid content that is long enough for validation.",
+                "service": "api",
+                "tags": "",
+                "version": "1",  # Stale version
+            },
+        )
+
+        assert response.status_code == 200
+        assert b"modified by another user" in response.data
+        mock_kb_service.update_entry.assert_not_called()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_edit_entry_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test entry not found error on edit page (Task 5.6)."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_entry.return_value = None
+        mock_service.get_available_services.return_value = []
+
+        response = client.get("/knowledge/non-existent/edit")
+        assert response.status_code == 404
+        assert b"not found" in response.data.lower()
+
+
+class TestKBHistoryRoute:
+    """Tests for KB version history routes."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_history_page_loads_with_versions(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test history page loads with version list and change summaries (Task 6.5)."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-hist-1", "runbook", "History Entry v3", "Updated content here")
+        entry.version = 3
+        mock_service.get_entry.return_value = entry
+        mock_service.list_versions.return_value = [
+            {"version": 2, "author": "edit", "updated_at": "2026-02-16T10:00:00Z", "title": "History Entry v2", "content_length": 20, "tags": ["test"], "service": "api"},
+            {"version": 1, "author": "import", "updated_at": "2026-02-15T10:00:00Z", "title": "History Entry v1", "content_length": 15, "tags": ["test"], "service": "api"},
+        ]
+
+        response = client.get("/knowledge/kb-hist-1/history")
+        assert response.status_code == 200
+        assert b"Version History" in response.data
+        assert b"History Entry" in response.data
+        assert b"v3" in response.data  # Current version
+        assert b"v2" in response.data
+        assert b"v1" in response.data
+        assert b"Current" in response.data
+        # Verify change summaries are displayed
+        assert b"Initial version" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_history_entry_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test history page for non-existent entry returns 404 (Task 6.9)."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_entry.return_value = None
+
+        response = client.get("/knowledge/non-existent/history")
+        assert response.status_code == 404
+        assert b"not found" in response.data.lower()
+
+
+class TestKBVersionViewRoute:
+    """Tests for KB version view routes."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_version_view_shows_content_with_banner(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test version view shows correct content with banner and navigation (Task 6.6)."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-ver-1", "runbook", "Version Entry")
+        entry.version = 3
+        mock_service.get_entry.return_value = entry
+        mock_service.get_version.return_value = {
+            "entry_id": "kb-ver-1",
+            "version": 2,
+            "title": "Version Entry v2",
+            "content": "Content at version 2",
+            "author": "edit",
+            "entry_type": "runbook",
+            "service": "api",
+            "tags": ["tag1"],
+        }
+        mock_service.list_versions.return_value = [
+            {"version": 3, "author": "edit", "updated_at": "2026-02-17T10:00:00Z", "title": "v3", "content_length": 10, "tags": [], "service": "api"},
+            {"version": 2, "author": "edit", "updated_at": "2026-02-16T10:00:00Z", "title": "v2", "content_length": 10, "tags": [], "service": "api"},
+            {"version": 1, "author": "import", "updated_at": "2026-02-15T10:00:00Z", "title": "v1", "content_length": 10, "tags": [], "service": "api"},
+        ]
+
+        response = client.get("/knowledge/kb-ver-1/version/2")
+        assert response.status_code == 200
+        assert b"Viewing version 2 of 3" in response.data
+        assert b"Version Entry v2" in response.data
+        assert b"Content at version 2" in response.data
+        assert b"Restore" in response.data
+        # Verify Previous and Next navigation links exist
+        assert b"Previous" in response.data
+        assert b"Next" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_version_view_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test version view for non-existent version returns 404 (Task 6.9)."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-ver-1")
+        entry.version = 2
+        mock_service.get_entry.return_value = entry
+        mock_service.get_version.return_value = None
+
+        response = client.get("/knowledge/kb-ver-1/version/99")
+        assert response.status_code == 404
+        assert b"not found" in response.data.lower()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_version_view_entry_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test version view for non-existent entry returns 404 (Task 6.9)."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_entry.return_value = None
+
+        response = client.get("/knowledge/non-existent/version/1")
+        assert response.status_code == 404
+        assert b"not found" in response.data.lower()
+
+
+class TestKBRestoreRoute:
+    """Tests for KB version restore routes."""
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_restore_creates_new_version(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test restore creates new version with old content (Task 6.7)."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+
+        mock_kb_service.get_version.return_value = {
+            "entry_id": "kb-restore-1",
+            "version": 1,
+            "title": "Original Title",
+            "content": "Original content",
+            "service": "api",
+            "tags": ["tag1"],
+        }
+        mock_kb_service.update_entry.return_value = 4
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = True
+
+        response = client.post("/knowledge/kb-restore-1/restore/1")
+        assert response.status_code == 200
+        assert b"Version Restored" in response.data
+        assert b"version 4" in response.data
+
+        mock_kb_service.update_entry.assert_called_once()
+        call_kwargs = mock_kb_service.update_entry.call_args.kwargs
+        assert call_kwargs["title"] == "Original Title"
+        assert call_kwargs["content"] == "Original content"
+        assert call_kwargs["author"] == "restore"
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_restore_embedding_not_configured(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test restore with embedding service not configured (Task 6.8)."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = False
+
+        response = client.post("/knowledge/kb-restore-1/restore/1")
+        assert response.status_code == 200
+        assert b"not configured" in response.data.lower()
+        mock_kb_service.update_entry.assert_not_called()
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_restore_version_not_found(
+        self,
+        mock_get_kb_service: MagicMock,
+        mock_get_embedding: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        """Test restore for non-existent version returns error (Task 6.9)."""
+        mock_kb_service = MagicMock()
+        mock_get_kb_service.return_value = mock_kb_service
+        mock_kb_service.get_version.return_value = None
+
+        mock_embedding = MagicMock()
+        mock_get_embedding.return_value = mock_embedding
+        mock_embedding.is_configured.return_value = True
+
+        response = client.post("/knowledge/kb-restore-1/restore/99")
+        assert response.status_code == 200
+        assert b"not found" in response.data.lower()
         mock_kb_service.update_entry.assert_not_called()

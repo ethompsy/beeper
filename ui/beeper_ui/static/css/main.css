@@ -1193,3 +1193,368 @@ main {
     background: #f3f4f6;
     border-color: #9ca3af;
 }
+
+/* Entry title row with edit button */
+.entry-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.entry-title-row h2 {
+    margin: 0;
+}
+
+/* Edit Page Styles */
+.edit-page {
+    max-width: 900px;
+}
+
+.edit-form {
+    padding: 1.5rem;
+}
+
+/* CSS-only edit/preview tabs (no JavaScript) */
+.edit-mode-radio {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.edit-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 1rem;
+}
+
+.edit-tab {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #f3f4f6;
+    transition: all 0.2s;
+}
+
+/* Active tab styling using :has() for CSS-only approach */
+.edit-form:has(#mode-edit:checked) label[for="mode-edit"],
+.edit-form:has(#mode-preview:checked) label[for="mode-preview"] {
+    background: #6366f1;
+    color: white;
+}
+
+/* CSS-only show/hide sections based on radio state */
+.edit-section-edit {
+    display: block;
+}
+
+.edit-section-preview {
+    display: none;
+}
+
+.edit-form:has(#mode-preview:checked) .edit-section-edit {
+    display: none;
+}
+
+.edit-form:has(#mode-preview:checked) .edit-section-preview {
+    display: block;
+}
+
+.edit-section {
+    margin-bottom: 1.5rem;
+}
+
+.edit-section label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.edit-section textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 0.9rem;
+    resize: vertical;
+    min-height: 400px;
+}
+
+.edit-section textarea:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.edit-metadata {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 600px) {
+    .edit-metadata {
+        grid-template-columns: 1fr;
+    }
+}
+
+.edit-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Edit Result Styles */
+.edit-result {
+    padding: 2rem;
+    text-align: center;
+    border-radius: 8px;
+    margin-top: 1rem;
+}
+
+.edit-success {
+    background: #ecfdf5;
+    border: 1px solid #10b981;
+}
+
+.edit-success .result-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    color: #10b981;
+}
+
+.edit-error {
+    background: #fef2f2;
+    border: 1px solid #ef4444;
+}
+
+.edit-error .result-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    color: #ef4444;
+}
+
+.edit-result h3 {
+    margin-bottom: 0.5rem;
+}
+
+.edit-result p {
+    margin: 0.5rem 0;
+}
+
+/* Preview pane styling (matches entry-content) */
+.edit-section-preview .entry-content {
+    min-height: 200px;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fafafa;
+}
+
+/* Entry Actions (History + Edit buttons) */
+.entry-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* History Page Styles */
+.history-page {
+    max-width: 900px;
+}
+
+.history-subtitle {
+    color: #6b7280;
+    margin-bottom: 1.5rem;
+}
+
+/* Version List */
+.version-list {
+    padding: 0;
+    overflow: hidden;
+}
+
+.version-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.version-item:last-child {
+    border-bottom: none;
+}
+
+.version-item.version-current {
+    background: #f0fdf4;
+}
+
+.version-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.version-number {
+    font-weight: 600;
+    color: #374151;
+    white-space: nowrap;
+}
+
+.version-badge-current {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #dcfce7;
+    color: #166534;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.version-title {
+    color: #4b5563;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.version-meta {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+    color: #9ca3af;
+    white-space: nowrap;
+}
+
+.version-summary {
+    color: #6b7280;
+    font-style: italic;
+}
+
+.version-actions {
+    white-space: nowrap;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.8rem;
+}
+
+/* Version View Page */
+.version-page {
+    max-width: 900px;
+}
+
+.version-banner {
+    padding: 0.75rem 1.25rem;
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-weight: 500;
+}
+
+.version-banner-note {
+    font-weight: 400;
+    opacity: 0.8;
+    margin-left: 0.5rem;
+}
+
+.version-nav {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+/* Restore Section */
+.restore-section {
+    margin-top: 2rem;
+}
+
+.restore-section h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+}
+
+.restore-section p {
+    color: #6b7280;
+    margin-bottom: 1rem;
+}
+
+/* Restore Result Styles */
+.restore-result {
+    padding: 2rem;
+    text-align: center;
+    border-radius: 8px;
+    margin-top: 1rem;
+}
+
+.restore-success {
+    background: #ecfdf5;
+    border: 1px solid #10b981;
+}
+
+.restore-success .result-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    color: #10b981;
+}
+
+.restore-error {
+    background: #fef2f2;
+    border: 1px solid #ef4444;
+}
+
+.restore-error .result-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    color: #ef4444;
+}
+
+.restore-result h3 {
+    margin-bottom: 0.5rem;
+}
+
+.restore-result p {
+    margin: 0.5rem 0;
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: #6366f1;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #4f46e5;
+}
+
+.btn-secondary {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+}
+
+.btn-secondary:hover {
+    background: #e5e7eb;
+}

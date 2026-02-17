@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Edit: {{ entry.title if entry else 'Not Found' }} - Knowledge Base - Beeper{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+    <a href="{{ url_for('knowledge.kb_index') }}">Knowledge Base</a>
+    <span class="separator">/</span>
+    {% if entry %}
+    <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}">{{ entry.title }}</a>
+    <span class="separator">/</span>
+    <span class="current">Edit</span>
+    {% else %}
+    <span class="current">Not Found</span>
+    {% endif %}
+</nav>
+
+{% if error_message %}
+<div class="card error-card">
+    <h3>Error</h3>
+    <p>{{ error_message }}</p>
+    <p><a href="{{ url_for('knowledge.kb_index') }}">Return to Knowledge Base</a></p>
+</div>
+{% elif not entry %}
+<div class="card error-card">
+    <h3>Entry Not Found</h3>
+    <p>The requested KB entry could not be found.</p>
+    <p><a href="{{ url_for('knowledge.kb_index') }}">Return to Knowledge Base</a></p>
+</div>
+{% else %}
+<div class="edit-page">
+    <h2>Edit Entry</h2>
+
+    <form hx-post="{{ url_for('knowledge.kb_edit', entry_id=entry.entry_id) }}"
+          hx-target="#edit-result"
+          hx-swap="innerHTML"
+          hx-indicator="#edit-loading"
+          class="edit-form card">
+
+        <input type="hidden" name="version" value="{{ entry.version }}">
+
+        <div class="form-group">
+            <label for="title">Title</label>
+            <input type="text" name="title" id="title" value="{{ entry.title }}" required>
+        </div>
+
+        {# Edit/Preview tabs - CSS-only (no JavaScript) #}
+        <input type="radio" name="edit_mode" value="edit" id="mode-edit" class="edit-mode-radio" checked>
+        <input type="radio" name="edit_mode" value="preview" id="mode-preview" class="edit-mode-radio">
+
+        <div class="edit-tabs">
+            <label for="mode-edit" class="edit-tab">Edit</label>
+            <label for="mode-preview" class="edit-tab">Preview</label>
+        </div>
+
+        <div class="edit-section edit-section-edit">
+            <label for="content">Content (Markdown)</label>
+            <textarea name="content" id="content" rows="20" required
+                      hx-post="{{ url_for('knowledge.kb_preview') }}"
+                      hx-trigger="input delay:500ms"
+                      hx-target="#preview-content">{{ entry.content }}</textarea>
+        </div>
+
+        <div class="edit-section edit-section-preview">
+            <div id="preview-content" class="entry-content">
+                {{ entry.content|markdown }}
+            </div>
+        </div>
+
+        <div class="edit-metadata">
+            <div class="form-group">
+                <label for="service">Service</label>
+                <select name="service" id="service">
+                    <option value="">Select service...</option>
+                    {% for svc in services %}
+                    <option value="{{ svc }}" {% if entry.service == svc %}selected{% endif %}>{{ svc }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="tags">Tags</label>
+                <input type="text" name="tags" id="tags" value="{{ entry.tags|join(', ') }}"
+                       placeholder="tag1, tag2, tag3">
+                <p class="help-text">Comma-separated tags</p>
+            </div>
+        </div>
+
+        <div class="edit-actions">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}" class="btn btn-secondary">Cancel</a>
+            <span id="edit-loading" class="htmx-indicator">Saving...</span>
+        </div>
+    </form>
+
+    <div id="edit-result"></div>
+</div>
+{% endif %}
+{% endblock %}

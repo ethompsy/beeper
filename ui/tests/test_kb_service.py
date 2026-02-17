@@ -629,7 +629,8 @@ class TestKBServiceWriteOperations:
 
         assert entry_id is not None
         assert len(entry_id) > 0
-        mock_client.upsert.assert_called_once()
+        # 2 upsert calls: knowledge entry + version snapshot
+        assert mock_client.upsert.call_count == 2
         mock_embedding_service.get_embedding.assert_called_once()
 
     @patch("beeper_ui.services.kb_service.QdrantClient")
@@ -827,7 +828,8 @@ class TestKBServiceWriteOperations:
         )
 
         assert new_version == 2
-        mock_client.upsert.assert_called_once()
+        # 2 upsert calls: version snapshot + knowledge update
+        assert mock_client.upsert.call_count == 2
 
     @patch("beeper_ui.services.kb_service.QdrantClient")
     def test_update_entry_not_found(self, mock_client_class: MagicMock) -> None:
@@ -878,6 +880,241 @@ class TestKBServiceWriteOperations:
         call_args = mock_client.upsert.call_args
         points = call_args.kwargs.get("points") or call_args[1].get("points")
         assert points[0].payload["version"] == 6
+
+
+class TestKBServiceVersionHistory:
+    """Tests for version history methods."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_save_version_snapshot_stores_correct_data(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test _save_version_snapshot stores current entry state."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        service = KBService()
+        payload = {
+            "entry_id": "kb-abc123",
+            "version": 2,
+            "title": "Test Title",
+            "content": "Test content",
+            "author": "edit",
+            "created_at": "2026-02-17T10:00:00Z",
+            "updated_at": "2026-02-17T11:00:00Z",
+            "entry_type": "runbook",
+            "service": "api",
+            "tags": ["tag1", "tag2"],
+        }
+
+        service._save_version_snapshot(
+            entry_id="kb-abc123", payload=payload, point_id="point-1"
+        )
+
+        mock_client.upsert.assert_called_once()
+        call_args = mock_client.upsert.call_args
+        assert call_args.kwargs["collection_name"] == "knowledge_versions"
+        point = call_args.kwargs["points"][0]
+        assert point.payload["entry_id"] == "kb-abc123"
+        assert point.payload["version"] == 2
+        assert point.payload["title"] == "Test Title"
+        assert point.payload["content"] == "Test content"
+        assert point.vector == [0.0]
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_list_versions_returns_ordered(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test list_versions returns versions in descending order with extra fields."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_points = []
+        for v in [1, 3, 2]:
+            point = MagicMock()
+            point.id = f"point-v{v}"
+            point.payload = {
+                "entry_id": "kb-abc123",
+                "version": v,
+                "author": "edit",
+                "updated_at": f"2026-02-1{v}T10:00:00Z",
+                "title": f"Title v{v}",
+                "content": f"Content v{v}",
+                "tags": ["tag1"],
+                "service": "api",
+            }
+            mock_points.append(point)
+
+        mock_client.scroll.return_value = (mock_points, None)
+
+        service = KBService()
+        versions = service.list_versions("kb-abc123")
+
+        assert len(versions) == 3
+        assert versions[0]["version"] == 3
+        assert versions[1]["version"] == 2
+        assert versions[2]["version"] == 1
+        # Verify extra fields for change summary computation
+        assert versions[0]["content_length"] == len("Content v3")
+        assert versions[0]["tags"] == ["tag1"]
+        assert versions[0]["service"] == "api"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_get_version_returns_correct_content(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test get_version returns correct version content."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-v2"
+        mock_point.payload = {
+            "entry_id": "kb-abc123",
+            "version": 2,
+            "title": "Title v2",
+            "content": "Content at version 2",
+            "author": "edit",
+            "entry_type": "runbook",
+            "service": "api",
+            "tags": ["tag1"],
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        version = service.get_version("kb-abc123", 2)
+
+        assert version is not None
+        assert version["version"] == 2
+        assert version["title"] == "Title v2"
+        assert version["content"] == "Content at version 2"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_get_version_not_found(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test get_version returns None for missing version."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService()
+        version = service.get_version("kb-abc123", 99)
+
+        assert version is None
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_update_entry_saves_snapshot_before_overwrite(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test update_entry saves snapshot before overwriting."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-existing"
+        mock_point.payload = {
+            "entry_id": "kb-existing",
+            "entry_type": "runbook",
+            "title": "Original Title",
+            "content": "Original content",
+            "service": "payments",
+            "version": 1,
+            "created_at": "2026-01-15T10:00:00Z",
+            "updated_at": "2026-01-15T10:00:00Z",
+            "author": "import",
+            "tags": [],
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+        mock_client.upsert.return_value = None
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        new_version = service.update_entry(
+            entry_id="kb-existing",
+            title="Updated Title",
+            embedding_service=mock_embedding_service,
+        )
+
+        assert new_version == 2
+        # Two upsert calls: one for version snapshot, one for the actual update
+        assert mock_client.upsert.call_count == 2
+        # First call should be to knowledge_versions
+        first_call = mock_client.upsert.call_args_list[0]
+        assert first_call.kwargs["collection_name"] == "knowledge_versions"
+        snapshot_payload = first_call.kwargs["points"][0].payload
+        assert snapshot_payload["version"] == 1
+        assert snapshot_payload["title"] == "Original Title"
+        # Second call should be to knowledge
+        second_call = mock_client.upsert.call_args_list[1]
+        assert second_call.kwargs["collection_name"] == "knowledge"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_create_entry_saves_initial_version_snapshot(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test create_entry saves version 1 snapshot."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.upsert.return_value = None
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        entry_id = service.create_entry(
+            title="New Entry",
+            content="New content here",
+            entry_type="runbook",
+            service="api",
+            tags=["tag1"],
+            author="import",
+            embedding_service=mock_embedding_service,
+        )
+
+        assert entry_id is not None
+        # Two upsert calls: one to knowledge, one to knowledge_versions
+        assert mock_client.upsert.call_count == 2
+        # First call is the main entry (knowledge collection)
+        first_call = mock_client.upsert.call_args_list[0]
+        assert first_call.kwargs["collection_name"] == "knowledge"
+        # Second call is the version snapshot (knowledge_versions)
+        second_call = mock_client.upsert.call_args_list[1]
+        assert second_call.kwargs["collection_name"] == "knowledge_versions"
+        snapshot_payload = second_call.kwargs["points"][0].payload
+        assert snapshot_payload["version"] == 1
+        assert snapshot_payload["title"] == "New Entry"
+
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_create_entry_snapshot_failure_non_fatal(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test create_entry succeeds even if initial version snapshot fails."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        # First upsert (main entry) succeeds, second (snapshot) fails
+        mock_client.upsert.side_effect = [None, Exception("Snapshot failed")]
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        entry_id = service.create_entry(
+            title="Test Entry",
+            content="Test content here",
+            entry_type="runbook",
+            service="api",
+            embedding_service=mock_embedding_service,
+        )
+
+        # Entry should still be created successfully
+        assert entry_id is not None
+        assert len(entry_id) > 0
+        assert mock_client.upsert.call_count == 2
 
 
 class TestKBServiceDateFiltering:

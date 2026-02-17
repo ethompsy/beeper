@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Version {{ version_data.version if version_data else '?' }} - {{ entry.title if entry else 'Not Found' }} - Beeper{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+    <a href="{{ url_for('knowledge.kb_index') }}">Knowledge Base</a>
+    <span class="separator">/</span>
+    {% if entry %}
+    <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}">{{ entry.title }}</a>
+    <span class="separator">/</span>
+    <a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}">History</a>
+    <span class="separator">/</span>
+    <span class="current">Version {{ version_data.version if version_data else '?' }}</span>
+    {% else %}
+    <span class="current">Not Found</span>
+    {% endif %}
+</nav>
+
+{% if error_message %}
+<div class="card error-card">
+    <h3>Error</h3>
+    <p>{{ error_message }}</p>
+    {% if entry %}
+    <p><a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}">Return to History</a></p>
+    {% else %}
+    <p><a href="{{ url_for('knowledge.kb_index') }}">Return to Knowledge Base</a></p>
+    {% endif %}
+</div>
+{% elif not version_data %}
+<div class="card error-card">
+    <h3>Version Not Found</h3>
+    <p>The requested version could not be found.</p>
+    {% if entry %}
+    <p><a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}">Return to History</a></p>
+    {% endif %}
+</div>
+{% else %}
+<div class="version-page">
+    <div class="version-banner">
+        Viewing version {{ version_data.version }} of {{ current_version }}
+        {% if version_data.version != current_version %}
+        <span class="version-banner-note">This is not the current version.</span>
+        {% endif %}
+    </div>
+
+    <div class="version-nav">
+        {% if prev_version is not none %}
+        <a href="{{ url_for('knowledge.kb_version', entry_id=entry.entry_id, version_num=prev_version) }}" class="btn btn-secondary btn-sm">&larr; Previous</a>
+        {% endif %}
+        {% if next_version is not none %}
+        <a href="{{ url_for('knowledge.kb_version', entry_id=entry.entry_id, version_num=next_version) }}" class="btn btn-secondary btn-sm">Next &rarr;</a>
+        {% endif %}
+        <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}" class="btn btn-secondary btn-sm">Current Version</a>
+        <a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}" class="btn btn-secondary btn-sm">All Versions</a>
+    </div>
+
+    <article class="kb-entry">
+        <header class="entry-header-full">
+            <h2>{{ version_data.title }}</h2>
+            <div class="entry-meta-full">
+                {% if version_data.entry_type %}
+                <span class="entry-type-badge badge-{{ version_data.entry_type }}">{{ version_data.entry_type }}</span>
+                {% endif %}
+                {% if version_data.service %}
+                <span class="service-badge">{{ version_data.service }}</span>
+                {% endif %}
+                {% if version_data.author %}
+                <span class="entry-author">by {{ version_data.author }}</span>
+                {% endif %}
+                {% if version_data.updated_at %}
+                <span class="entry-date">{{ version_data.updated_at[:19] }}</span>
+                {% endif %}
+                <span class="entry-version">v{{ version_data.version }}</span>
+            </div>
+        </header>
+
+        {% if version_data.tags %}
+        <div class="entry-tags">
+            {% for tag in version_data.tags %}
+            <span class="tag">{{ tag }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="entry-content card">
+            {{ version_data.content|markdown }}
+        </div>
+    </article>
+
+    {% if version_data.version != current_version %}
+    <div class="restore-section card">
+        <h3>Restore This Version</h3>
+        <p>This will create a new version (v{{ current_version + 1 }}) with the content from version {{ version_data.version }}.</p>
+        <form hx-post="{{ url_for('knowledge.kb_restore', entry_id=entry.entry_id, version_num=version_data.version) }}"
+              hx-target="#restore-result"
+              hx-swap="innerHTML"
+              hx-indicator="#restore-loading">
+            <button type="submit" class="btn btn-primary">Restore Version {{ version_data.version }}</button>
+            <span id="restore-loading" class="htmx-indicator">Restoring...</span>
+        </form>
+        <div id="restore-result"></div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

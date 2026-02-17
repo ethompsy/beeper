@@ -17,7 +17,7 @@ class Config:
     OPERATOR_TIMEOUT = float(os.environ.get("BEEPER_OPERATOR_TIMEOUT", "5.0"))
 
     # UI settings
-    UI_PORT = int(os.environ.get("BEEPER_UI_PORT", "5000"))
+    UI_PORT = int(os.environ.get("BEEPER_UI_PORT", "5050"))
     UI_HOST = os.environ.get("BEEPER_UI_HOST", "0.0.0.0")
 
     # File upload settings

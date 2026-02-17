@@ -59,8 +59,8 @@ development_status:
   2-2-semantic-search: done
   2-3-structured-search-filtering: done
   2-4-runbook-import: done
-  2-5-kb-entry-editing: in-progress
-  2-6-version-history: backlog
+  2-5-kb-entry-editing: done
+  2-6-version-history: done
   2-7-version-diff-view: backlog
   epic-2-retrospective: optional
 

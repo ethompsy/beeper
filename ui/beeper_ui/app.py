@@ -44,4 +44,4 @@ def create_app(config_class: type | None = None) -> Flask:
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, host=app.config["UI_HOST"], port=app.config["UI_PORT"])

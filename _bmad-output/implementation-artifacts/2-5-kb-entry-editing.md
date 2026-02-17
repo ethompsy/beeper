@@ -1,6 +1,6 @@
 # Story 2.5: KB Entry Editing
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -37,37 +37,37 @@ So that I can correct errors and add context.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create edit route and template (AC: #1)
-  - [ ] 1.1: Add `GET /knowledge/<entry_id>/edit` route to load edit form
-  - [ ] 1.2: Create `templates/knowledge/edit.html` with edit form
-  - [ ] 1.3: Add "Edit" button to entry detail page (`entry.html`)
-  - [ ] 1.4: Include title, content textarea, service dropdown, tags input
+- [x] Task 1: Create edit route and template (AC: #1)
+  - [x] 1.1: Add `GET /knowledge/<entry_id>/edit` route to load edit form
+  - [x] 1.2: Create `templates/knowledge/edit.html` with edit form
+  - [x] 1.3: Add "Edit" button to entry detail page (`entry.html`)
+  - [x] 1.4: Include title, content textarea, service dropdown, tags input
 
-- [ ] Task 2: Implement save functionality (AC: #2)
-  - [ ] 2.1: Add `POST /knowledge/<entry_id>/edit` route for saving
-  - [ ] 2.2: Validate form input (title, content required; validate tags format)
-  - [ ] 2.3: Call `KBService.update_entry()` with embedding regeneration
-  - [ ] 2.4: Display success message and redirect to entry view
-  - [ ] 2.5: Handle validation errors with inline error display
+- [x] Task 2: Implement save functionality (AC: #2)
+  - [x] 2.1: Add `POST /knowledge/<entry_id>/edit` route for saving
+  - [x] 2.2: Validate form input (title, content required; validate tags format)
+  - [x] 2.3: Call `KBService.update_entry()` with embedding regeneration
+  - [x] 2.4: Display success message and redirect to entry view
+  - [x] 2.5: Handle validation errors with inline error display
 
-- [ ] Task 3: Create edit/preview toggle (AC: #3)
-  - [ ] 3.1: Add preview section to edit template
-  - [ ] 3.2: Use CSS-only tab switching for edit/preview modes (like import.html)
-  - [ ] 3.3: Add HTMX for live preview rendering (`hx-post` to preview endpoint)
-  - [ ] 3.4: Create `POST /knowledge/preview` endpoint for markdown rendering
+- [x] Task 3: Create edit/preview toggle (AC: #3)
+  - [x] 3.1: Add preview section to edit template
+  - [x] 3.2: Use CSS-only tab switching for edit/preview modes (like import.html)
+  - [x] 3.3: Add HTMX for live preview rendering (`hx-post` to preview endpoint)
+  - [x] 3.4: Create `POST /knowledge/preview` endpoint for markdown rendering
 
-- [ ] Task 4: Add edit form styles (AC: #1, #3)
-  - [ ] 4.1: Add CSS for edit form layout (full-width textarea, metadata row)
-  - [ ] 4.2: Style edit/preview tabs consistent with import tabs
-  - [ ] 4.3: Style preview pane to match entry content display
+- [x] Task 4: Add edit form styles (AC: #1, #3)
+  - [x] 4.1: Add CSS for edit form layout (full-width textarea, metadata row)
+  - [x] 4.2: Style edit/preview tabs consistent with import tabs
+  - [x] 4.3: Style preview pane to match entry content display
 
-- [ ] Task 5: Add tests (AC: all)
-  - [ ] 5.1: Test edit page loads with populated form data
-  - [ ] 5.2: Test save updates entry and increments version
-  - [ ] 5.3: Test validation errors display correctly
-  - [ ] 5.4: Test preview endpoint renders markdown
-  - [ ] 5.5: Test embedding service not configured error
-  - [ ] 5.6: Test entry not found error
+- [x] Task 5: Add tests (AC: all)
+  - [x] 5.1: Test edit page loads with populated form data
+  - [x] 5.2: Test save updates entry and increments version
+  - [x] 5.3: Test validation errors display correctly
+  - [x] 5.4: Test preview endpoint renders markdown
+  - [x] 5.5: Test embedding service not configured error
+  - [x] 5.6: Test entry not found error
 
 ## Dev Notes
 
@@ -318,11 +318,47 @@ Key patterns to apply:
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6
 
 ### Debug Log References
 
+No blocking issues encountered during implementation.
+
 ### Completion Notes List
+
+- Implemented GET/POST `/knowledge/<entry_id>/edit` route with full CRUD support
+- Reused existing `validate_import_data()` and `parse_tags()` from import_service for input validation
+- Reused existing `KBService.update_entry()` for saving with automatic version increment and embedding regeneration
+- Created CSS-only edit/preview tab switching using `:has()` pseudo-class (consistent with import.html pattern)
+- Added HTMX-powered live preview via `POST /knowledge/preview` endpoint using existing `render_markdown()`
+- Added "Edit" button to entry detail page header
+- Created `_edit_result.html` partial for HTMX inline success/error feedback
+- All 8 test cases pass covering: form load, save flow, validation errors, preview rendering, embedding not configured, entry not found, service error on save, concurrent edit detection
+- No new dependencies introduced
+
+### Change Log
+
+- 2026-02-16: Implemented KB entry editing (Story 2.5) - edit routes, templates, CSS, tests
+- 2026-02-17: Code review fixes - added optimistic concurrency control (AC4), fixed HTMX preview trigger, renamed edit CSS classes, added 2 tests
 
 ### File List
 
+New files:
+- ui/beeper_ui/templates/knowledge/edit.html
+- ui/beeper_ui/templates/knowledge/_edit_result.html
+
+Modified files:
+- ui/beeper_ui/routes/knowledge.py
+- ui/beeper_ui/templates/knowledge/entry.html
+- ui/beeper_ui/static/css/main.css
+- ui/tests/test_kb_routes.py
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- _bmad-output/implementation-artifacts/2-5-kb-entry-editing.md
+
+Unrelated changes in git (not part of this story):
+- ui/beeper_ui/app.py (host/port config for app.run)
+- ui/beeper_ui/config.py (default port 5000→5050)
+- ui/.env.example (port change + FLASK_APP)
+- local-testing.sh (deleted, moved to scripts/)
+- scripts/demo.sh (new)
+- scripts/local-testing.sh (new)

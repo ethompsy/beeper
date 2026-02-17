@@ -29,8 +29,9 @@ from beeper_ui.services.embedding_service import EmbeddingService, EmbeddingServ
 
 logger = logging.getLogger(__name__)
 
-# Collection name (must match init-collections.py)
+# Collection names (must match init-collections.py)
 KNOWLEDGE_COLLECTION = "knowledge"
+VERSIONS_COLLECTION = "knowledge_versions"
 
 # Maximum entries to scan for filter metadata (services, types)
 # Note: If KB grows beyond this, filter dropdowns may be incomplete
@@ -428,6 +429,115 @@ class KBService:
             range=DatetimeRange(**range_params),
         )
 
+    def _save_version_snapshot(self, entry_id: str, payload: dict, point_id: str) -> None:
+        """Save current entry state as a version snapshot before overwriting.
+
+        Args:
+            entry_id: The entry_id of the entry
+            payload: The current payload to snapshot
+            point_id: The point ID (unused, kept for traceability)
+        """
+        version_point_id = str(uuid.uuid4())
+        version_payload = {
+            "entry_id": payload.get("entry_id", entry_id),
+            "version": payload.get("version", 1),
+            "title": payload.get("title", ""),
+            "content": payload.get("content", ""),
+            "author": payload.get("author"),
+            "created_at": payload.get("created_at"),
+            "updated_at": payload.get("updated_at"),
+            "entry_type": payload.get("entry_type"),
+            "service": payload.get("service"),
+            "tags": payload.get("tags", []),
+        }
+        self.client.upsert(
+            collection_name=VERSIONS_COLLECTION,
+            points=[PointStruct(id=version_point_id, vector=[0.0], payload=version_payload)],
+        )
+
+    def list_versions(self, entry_id: str) -> list[dict]:
+        """List all version snapshots for an entry, ordered by version descending.
+
+        Args:
+            entry_id: The entry_id to list versions for
+
+        Returns:
+            List of version metadata dicts with version, author, updated_at, title,
+            content_length, tags, and service (used for change summary computation).
+
+        Note:
+            Limited to 100 versions per entry. Entries with more than 100 versions
+            will show only the most recent 100 (by Qdrant scroll order).
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=VERSIONS_COLLECTION,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="entry_id", match=MatchValue(value=entry_id))]
+                ),
+                limit=100,
+                with_payload=True,
+                with_vectors=False,
+            )
+            versions = [
+                {
+                    "version": p.payload.get("version", 1),
+                    "author": p.payload.get("author"),
+                    "updated_at": p.payload.get("updated_at"),
+                    "title": p.payload.get("title"),
+                    "content_length": len(p.payload.get("content", "")),
+                    "tags": p.payload.get("tags", []),
+                    "service": p.payload.get("service"),
+                }
+                for p in results
+            ]
+            return sorted(versions, key=lambda v: v["version"], reverse=True)
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant query failed: {e}")
+            raise KBServiceError(f"Failed to list versions: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to list versions: {e}") from e
+
+    def get_version(self, entry_id: str, version_num: int) -> Optional[dict]:
+        """Get a specific version snapshot's full content.
+
+        Args:
+            entry_id: The entry_id of the entry
+            version_num: The version number to retrieve
+
+        Returns:
+            Full payload dict of the version, or None if not found.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=VERSIONS_COLLECTION,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(key="entry_id", match=MatchValue(value=entry_id)),
+                        FieldCondition(key="version", match=MatchValue(value=version_num)),
+                    ]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+            if not results:
+                return None
+            return results[0].payload
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant query failed: {e}")
+            raise KBServiceError(f"Failed to get version: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to get version: {e}") from e
+
     def search_semantic(
         self,
         query: str,
@@ -606,6 +716,14 @@ class KBService:
                 points=[point],
             )
 
+            # Save initial version snapshot (non-fatal: entry already created)
+            try:
+                self._save_version_snapshot(
+                    entry_id=entry_id, payload=payload, point_id=point_id
+                )
+            except Exception:
+                logger.warning(f"Failed to save initial version snapshot for {entry_id}")
+
             # Clear services cache since a new service might have been added
             self.clear_filter_cache()
 
@@ -759,6 +877,13 @@ class KBService:
                 "version": new_version,
                 "tags": new_tags,
             }
+
+            # Save version snapshot BEFORE overwriting
+            self._save_version_snapshot(
+                entry_id=entry_id,
+                payload=existing_payload,
+                point_id=str(existing_point.id),
+            )
 
             # Create new point with same ID to replace
             point = PointStruct(

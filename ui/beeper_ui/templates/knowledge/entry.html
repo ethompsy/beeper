@@ -24,7 +24,13 @@
 {% else %}
 <article class="kb-entry">
     <header class="entry-header-full">
-        <h2>{{ entry.title }}</h2>
+        <div class="entry-title-row">
+            <h2>{{ entry.title }}</h2>
+            <div class="entry-actions">
+                <a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}" class="btn btn-secondary">History</a>
+                <a href="{{ url_for('knowledge.kb_edit', entry_id=entry.entry_id) }}" class="btn btn-secondary">Edit</a>
+            </div>
+        </div>
         <div class="entry-meta-full">
             <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
             {% if entry.service %}

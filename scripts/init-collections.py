@@ -47,6 +47,14 @@ COLLECTIONS = {
             ("created_at", PayloadSchemaType.DATETIME),
         ],
     },
+    "knowledge_versions": {
+        "description": "Version history for knowledge base entries",
+        "vector_dim": 1,  # No semantic search needed; use minimal dummy vector
+        "payload_indexes": [
+            ("entry_id", PayloadSchemaType.KEYWORD),
+            ("version", PayloadSchemaType.INTEGER),
+        ],
+    },
 }
 
 
@@ -74,11 +82,12 @@ def create_collection(
     except UnexpectedResponse:
         pass  # Collection doesn't exist, create it
 
-    # Create collection
-    logger.info(f"Creating collection '{name}' with vector dimension {vector_dim}")
+    # Create collection (use per-collection vector_dim if specified)
+    col_vector_dim = config.get("vector_dim", vector_dim)
+    logger.info(f"Creating collection '{name}' with vector dimension {col_vector_dim}")
     client.create_collection(
         collection_name=name,
-        vectors_config=VectorParams(size=vector_dim, distance=Distance.COSINE),
+        vectors_config=VectorParams(size=col_vector_dim, distance=Distance.COSINE),
     )
 
     # Create payload indexes for efficient filtering
