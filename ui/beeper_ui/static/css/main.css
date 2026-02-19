@@ -1558,3 +1558,174 @@ main {
 .btn-secondary:hover {
     background: #e5e7eb;
 }
+
+/* Diff View Page */
+.diff-container {
+    max-width: 1000px;
+}
+
+.diff-header h2 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+}
+
+.diff-meta {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.diff-summary {
+    font-weight: 500;
+    color: #374151;
+}
+
+/* CSS-only toggle for changes-only / full-context */
+.diff-mode-radio {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.diff-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1rem;
+}
+
+.diff-tab {
+    padding: 0.5rem 1rem;
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: #374151;
+    transition: all 0.2s;
+}
+
+.diff-tab:first-of-type {
+    border-radius: 6px 0 0 6px;
+}
+
+.diff-tab:last-of-type {
+    border-radius: 0 6px 6px 0;
+    border-left: none;
+}
+
+.diff-container:has(#mode-changes:checked) label[for="mode-changes"],
+.diff-container:has(#mode-full:checked) label[for="mode-full"] {
+    background: #6366f1;
+    color: white;
+    border-color: #6366f1;
+}
+
+/* "Changes Only" mode: hide context lines */
+.diff-container:has(#mode-changes:checked) .diff-line-context {
+    display: none;
+}
+
+/* Diff navigation */
+.diff-nav {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.diff-nav-label {
+    font-weight: 500;
+    color: #6b7280;
+    font-size: 0.85rem;
+}
+
+/* Diff hunk */
+.diff-hunk {
+    margin-bottom: 1rem;
+    overflow-x: auto;
+}
+
+.diff-hunk-header {
+    padding: 0.5rem 1rem;
+    background: #f0f0ff;
+    color: #6366f1;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.8rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.diff-lines {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.diff-line {
+    display: flex;
+    align-items: stretch;
+    min-height: 1.5em;
+}
+
+.diff-line-num {
+    min-width: 3rem;
+    padding: 0 0.5rem;
+    text-align: right;
+    color: #9ca3af;
+    user-select: none;
+    flex-shrink: 0;
+    border-right: 1px solid #e5e7eb;
+}
+
+.diff-line-marker {
+    width: 1.5rem;
+    text-align: center;
+    flex-shrink: 0;
+    font-weight: 600;
+    user-select: none;
+}
+
+.diff-line-content {
+    padding: 0 0.5rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    flex: 1;
+}
+
+/* Diff line types */
+.diff-line-add {
+    background: #dcfce7;
+    border-left: 3px solid #22c55e;
+}
+
+.diff-line-add .diff-line-marker {
+    color: #166534;
+}
+
+.diff-line-remove {
+    background: #fee2e2;
+    border-left: 3px solid #ef4444;
+}
+
+.diff-line-remove .diff-line-marker {
+    color: #991b1b;
+}
+
+.diff-line-context {
+    background: #fafafa;
+    border-left: 3px solid transparent;
+}
+
+.diff-line-context .diff-line-marker {
+    color: #d1d5db;
+}
+
+/* Diff actions */
+.diff-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+}

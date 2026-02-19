@@ -10,6 +10,7 @@ from beeper_ui.services.kb_service import (
     KBEntry,
     KBService,
     KBServiceError,
+    generate_diff,
     parse_date_range,
 )
 
@@ -1199,3 +1200,124 @@ class TestKBServiceDateFiltering:
         assert filter_arg is not None
         assert len(filter_arg.must) == 1
         assert filter_arg.must[0].key == "created_at"
+
+
+class TestGenerateDiff:
+    """Tests for generate_diff function."""
+
+    def test_additions_only(self) -> None:
+        """Test diff with content additions."""
+        old = "line 1\nline 2"
+        new = "line 1\nline 2\nline 3\nline 4"
+        result = generate_diff(old, new)
+
+        assert result["has_changes"] is True
+        assert "2 additions" in result["summary"]
+        added = [
+            ln for h in result["hunks"] for ln in h["lines"] if ln["type"] == "add"
+        ]
+        assert len(added) == 2
+        assert added[0]["content"] == "line 3"
+        assert added[1]["content"] == "line 4"
+
+    def test_deletions_only(self) -> None:
+        """Test diff with content deletions."""
+        old = "line 1\nline 2\nline 3"
+        new = "line 1"
+        result = generate_diff(old, new)
+
+        assert result["has_changes"] is True
+        assert "2 deletions" in result["summary"]
+        removed = [
+            ln for h in result["hunks"] for ln in h["lines"] if ln["type"] == "remove"
+        ]
+        assert len(removed) == 2
+
+    def test_mixed_changes(self) -> None:
+        """Test diff with both additions and deletions."""
+        old = "line 1\nold line 2\nline 3"
+        new = "line 1\nnew line 2\nline 3"
+        result = generate_diff(old, new)
+
+        assert result["has_changes"] is True
+        assert "addition" in result["summary"]
+        assert "deletion" in result["summary"]
+
+    def test_identical_content(self) -> None:
+        """Test diff with identical content returns no changes."""
+        content = "line 1\nline 2\nline 3"
+        result = generate_diff(content, content)
+
+        assert result["has_changes"] is False
+        assert result["hunks"] == []
+        assert result["summary"] == "No changes"
+
+    def test_empty_to_content(self) -> None:
+        """Test diff from empty to content."""
+        result = generate_diff("", "line 1\nline 2")
+
+        assert result["has_changes"] is True
+        assert "2 additions" in result["summary"]
+
+    def test_content_to_empty(self) -> None:
+        """Test diff from content to empty."""
+        result = generate_diff("line 1\nline 2", "")
+
+        assert result["has_changes"] is True
+        assert "2 deletions" in result["summary"]
+
+    def test_both_empty(self) -> None:
+        """Test diff with both contents empty."""
+        result = generate_diff("", "")
+
+        assert result["has_changes"] is False
+
+    def test_line_numbers_correct(self) -> None:
+        """Test that line numbers are correctly assigned."""
+        old = "a\nb\nc"
+        new = "a\nx\nc"
+        result = generate_diff(old, new)
+
+        assert result["has_changes"] is True
+        for hunk in result["hunks"]:
+            for ln in hunk["lines"]:
+                if ln["type"] == "add":
+                    assert ln["old_num"] is None
+                    assert ln["new_num"] is not None
+                elif ln["type"] == "remove":
+                    assert ln["old_num"] is not None
+                    assert ln["new_num"] is None
+                elif ln["type"] == "context":
+                    assert ln["old_num"] is not None
+                    assert ln["new_num"] is not None
+
+    def test_hunk_header_present(self) -> None:
+        """Test that each hunk has a header."""
+        old = "line 1\nline 2"
+        new = "line 1\nchanged"
+        result = generate_diff(old, new)
+
+        assert len(result["hunks"]) > 0
+        for hunk in result["hunks"]:
+            assert hunk["header"].startswith("@@")
+
+    def test_singular_summary(self) -> None:
+        """Test summary uses singular form for single change."""
+        old = "line 1"
+        new = "line 1\nline 2"
+        result = generate_diff(old, new)
+
+        assert "1 addition" in result["summary"]
+        assert "additions" not in result["summary"]
+
+    def test_content_with_markdown_horizontal_rule(self) -> None:
+        """Test diff correctly handles content containing --- (markdown HR)."""
+        old = "title\n---\ncontent"
+        new = "title\ncontent"
+        result = generate_diff(old, new)
+
+        assert result["has_changes"] is True
+        removed = [
+            ln for h in result["hunks"] for ln in h["lines"] if ln["type"] == "remove"
+        ]
+        assert any(ln["content"] == "---" for ln in removed)

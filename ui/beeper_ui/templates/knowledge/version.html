@@ -51,6 +51,9 @@
         {% if next_version is not none %}
         <a href="{{ url_for('knowledge.kb_version', entry_id=entry.entry_id, version_num=next_version) }}" class="btn btn-secondary btn-sm">Next &rarr;</a>
         {% endif %}
+        {% if prev_version is not none %}
+        <a href="{{ url_for('knowledge.kb_diff', entry_id=entry.entry_id, from_version=prev_version, to_version=version_data.version) }}" class="btn btn-secondary btn-sm">Compare with Previous</a>
+        {% endif %}
         <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}" class="btn btn-secondary btn-sm">Current Version</a>
         <a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}" class="btn btn-secondary btn-sm">All Versions</a>
     </div>

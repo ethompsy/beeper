@@ -59,6 +59,7 @@
                 <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}" class="btn btn-secondary btn-sm">View</a>
                 {% else %}
                 <a href="{{ url_for('knowledge.kb_version', entry_id=entry.entry_id, version_num=v.version) }}" class="btn btn-secondary btn-sm">View</a>
+                <a href="{{ url_for('knowledge.kb_diff', entry_id=entry.entry_id, from_version=v.version, to_version=entry.version) }}" class="btn btn-secondary btn-sm">Compare</a>
                 {% endif %}
             </div>
         </div>

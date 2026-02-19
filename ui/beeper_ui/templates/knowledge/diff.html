@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Diff: {{ entry.title if entry else 'Not Found' }} - Knowledge Base - Beeper{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+    <a href="{{ url_for('knowledge.kb_index') }}">Knowledge Base</a>
+    <span class="separator">/</span>
+    {% if entry %}
+    <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}">{{ entry.title }}</a>
+    <span class="separator">/</span>
+    <a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}">History</a>
+    <span class="separator">/</span>
+    <span class="current">Diff</span>
+    {% else %}
+    <span class="current">Not Found</span>
+    {% endif %}
+</nav>
+
+{% if error_message %}
+<div class="card error-card">
+    <h3>Error</h3>
+    <p>{{ error_message }}</p>
+    {% if entry %}
+    <p><a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}">Return to History</a></p>
+    {% else %}
+    <p><a href="{{ url_for('knowledge.kb_index') }}">Return to Knowledge Base</a></p>
+    {% endif %}
+</div>
+{% else %}
+<div class="diff-container">
+    <div class="diff-header card">
+        <h2>Comparing version {{ from_version.version }} &rarr; {{ to_version.version }}</h2>
+        <div class="diff-meta">
+            <span class="diff-summary">{{ summary }}</span>
+            {% if from_version.author %}
+            <span class="diff-author">v{{ from_version.version }} by {{ from_version.author }}</span>
+            {% endif %}
+            {% if to_version.author %}
+            <span class="diff-author">v{{ to_version.version }} by {{ to_version.author }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not has_changes %}
+    <div class="card empty-state">
+        <p>These versions are identical &mdash; no content changes detected.</p>
+    </div>
+    {% else %}
+
+    <!-- CSS-only mode toggle -->
+    <input type="radio" id="mode-changes" name="diff_mode" class="diff-mode-radio" checked>
+    <input type="radio" id="mode-full" name="diff_mode" class="diff-mode-radio">
+
+    <div class="diff-tabs">
+        <label for="mode-changes" class="diff-tab">Changes Only</label>
+        <label for="mode-full" class="diff-tab">Full Context</label>
+    </div>
+
+    {% if hunks|length > 1 %}
+    <div class="diff-nav card">
+        <span class="diff-nav-label">Jump to:</span>
+        {% for hunk in hunks %}
+        <a href="#hunk-{{ loop.index }}" class="btn btn-secondary btn-sm">Hunk {{ loop.index }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="diff-hunks">
+        {% for hunk in hunks %}
+        <div class="diff-hunk card" id="hunk-{{ loop.index }}">
+            <div class="diff-hunk-header">{{ hunk.header }}</div>
+            <div class="diff-lines">
+                {% for line in hunk.lines %}
+                <div class="diff-line diff-line-{{ line.type }}">
+                    <span class="diff-line-num diff-line-num-old">{{ line.old_num if line.old_num is not none else '' }}</span>
+                    <span class="diff-line-num diff-line-num-new">{{ line.new_num if line.new_num is not none else '' }}</span>
+                    <span class="diff-line-marker">{% if line.type == 'add' %}+{% elif line.type == 'remove' %}-{% else %} {% endif %}</span>
+                    <span class="diff-line-content">{{ line.content }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% endif %}
+
+    <div class="diff-actions">
+        <a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}" class="btn btn-secondary">Back to History</a>
+        {% if from_version.version == entry.version %}
+        <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}" class="btn btn-secondary btn-sm">View v{{ from_version.version }} (current)</a>
+        {% else %}
+        <a href="{{ url_for('knowledge.kb_version', entry_id=entry.entry_id, version_num=from_version.version) }}" class="btn btn-secondary btn-sm">View v{{ from_version.version }}</a>
+        {% endif %}
+        {% if to_version.version == entry.version %}
+        <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}" class="btn btn-secondary btn-sm">View v{{ to_version.version }} (current)</a>
+        {% else %}
+        <a href="{{ url_for('knowledge.kb_version', entry_id=entry.entry_id, version_num=to_version.version) }}" class="btn btn-secondary btn-sm">View v{{ to_version.version }}</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -54,19 +54,19 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: Knowledge Base
-  epic-2: in-progress
+  epic-2: done
   2-1-kb-wiki-interface: done
   2-2-semantic-search: done
   2-3-structured-search-filtering: done
   2-4-runbook-import: done
   2-5-kb-entry-editing: done
   2-6-version-history: done
-  2-7-version-diff-view: backlog
+  2-7-version-diff-view: done
   epic-2-retrospective: optional
 
   # Epic 3: Investigation Engine
-  epic-3: backlog
-  3-1-anomaly-detection-engine: backlog
+  epic-3: in-progress
+  3-1-anomaly-detection-engine: ready-for-dev
   3-2-investigator-agent-scaffold: backlog
   3-3-customer-impact-assessment: backlog
   3-4-kb-query-prior-research: backlog

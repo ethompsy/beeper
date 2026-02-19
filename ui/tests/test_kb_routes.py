@@ -1332,3 +1332,175 @@ class TestKBRestoreRoute:
         assert response.status_code == 200
         assert b"not found" in response.data.lower()
         mock_kb_service.update_entry.assert_not_called()
+
+
+class TestKBDiffRoute:
+    """Tests for KB version diff routes."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_diff_page_loads_with_correct_data(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test diff page loads with correct diff data."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-diff-1", "runbook", "Diff Entry")
+        entry.version = 3
+        mock_service.get_entry.return_value = entry
+        mock_service.get_version.side_effect = lambda eid, v: {
+            1: {
+                "entry_id": "kb-diff-1",
+                "version": 1,
+                "title": "Diff Entry v1",
+                "content": "line 1\nline 2",
+                "author": "import",
+            },
+            3: {
+                "entry_id": "kb-diff-1",
+                "version": 3,
+                "title": "Diff Entry v3",
+                "content": "line 1\nline 2\nline 3",
+                "author": "edit",
+            },
+        }.get(v)
+
+        response = client.get("/knowledge/kb-diff-1/diff/1/3")
+        assert response.status_code == 200
+        assert b"Comparing version 1" in response.data
+        assert b"3" in response.data
+        assert b"1 addition" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_diff_page_shows_additions_highlighted(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test diff page shows additions with add class."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-diff-1", "runbook", "Diff Entry")
+        entry.version = 2
+        mock_service.get_entry.return_value = entry
+        mock_service.get_version.side_effect = lambda eid, v: {
+            1: {"entry_id": "kb-diff-1", "version": 1, "title": "v1", "content": "old line", "author": "import"},
+            2: {"entry_id": "kb-diff-1", "version": 2, "title": "v2", "content": "old line\nnew line", "author": "edit"},
+        }.get(v)
+
+        response = client.get("/knowledge/kb-diff-1/diff/1/2")
+        assert response.status_code == 200
+        assert b"diff-line-add" in response.data
+        assert b"new line" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_diff_entry_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test diff page for non-existent entry returns 404."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_entry.return_value = None
+
+        response = client.get("/knowledge/non-existent/diff/1/2")
+        assert response.status_code == 404
+        assert b"not found" in response.data.lower()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_diff_from_version_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test diff page when from_version doesn't exist returns 404."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-diff-1")
+        entry.version = 2
+        mock_service.get_entry.return_value = entry
+        mock_service.get_version.return_value = None
+
+        response = client.get("/knowledge/kb-diff-1/diff/99/2")
+        assert response.status_code == 404
+        assert b"Version 99 not found" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_diff_to_version_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test diff page when to_version doesn't exist returns 404."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-diff-1")
+        entry.version = 2
+        mock_service.get_entry.return_value = entry
+        mock_service.get_version.side_effect = lambda eid, v: (
+            {"entry_id": "kb-diff-1", "version": 1, "title": "v1", "content": "line", "author": "import"}
+            if v == 1
+            else None
+        )
+
+        response = client.get("/knowledge/kb-diff-1/diff/1/99")
+        assert response.status_code == 404
+        assert b"Version 99 not found" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_diff_identical_versions(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test diff page with identical versions shows no changes."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-diff-1")
+        entry.version = 2
+        mock_service.get_entry.return_value = entry
+        same_content = {"entry_id": "kb-diff-1", "version": 1, "title": "v1", "content": "same content", "author": "import"}
+        mock_service.get_version.return_value = same_content
+
+        response = client.get("/knowledge/kb-diff-1/diff/1/1")
+        assert response.status_code == 200
+        assert b"identical" in response.data.lower()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_diff_falls_back_to_live_entry_for_current_version(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test diff route uses live entry content when current version not in snapshots."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-diff-1", "runbook", "Diff Entry", "line 1\nline 2\nline 3")
+        entry.version = 3
+        mock_service.get_entry.return_value = entry
+        # get_version returns data for v1 but None for v3 (current, not snapshotted)
+        mock_service.get_version.side_effect = lambda eid, v: (
+            {"entry_id": "kb-diff-1", "version": 1, "title": "v1", "content": "line 1\nline 2", "author": "import"}
+            if v == 1
+            else None
+        )
+
+        response = client.get("/knowledge/kb-diff-1/diff/1/3")
+        assert response.status_code == 200
+        assert b"Comparing version 1" in response.data
+        assert b"1 addition" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_history_page_has_compare_links(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test history page has Compare links for non-current versions."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        entry = _make_entry("kb-cmp-1", "runbook", "Compare Entry")
+        entry.version = 3
+        mock_service.get_entry.return_value = entry
+        mock_service.list_versions.return_value = [
+            {"version": 2, "author": "edit", "updated_at": "2026-02-16T10:00:00Z", "title": "v2", "content_length": 20, "tags": [], "service": "api"},
+            {"version": 1, "author": "import", "updated_at": "2026-02-15T10:00:00Z", "title": "v1", "content_length": 15, "tags": [], "service": "api"},
+        ]
+
+        response = client.get("/knowledge/kb-cmp-1/history")
+        assert response.status_code == 200
+        assert b"Compare" in response.data
+        assert b"/diff/" in response.data

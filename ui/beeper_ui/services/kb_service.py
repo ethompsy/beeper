@@ -4,8 +4,10 @@ This module provides high-level operations for interacting with the
 Knowledge Base stored in Qdrant.
 """
 
+import difflib
 import logging
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -124,6 +126,98 @@ class KBServiceError(Exception):
     """Exception raised by KB service operations."""
 
     pass
+
+
+def generate_diff(old_content: str, new_content: str) -> dict:
+    """Generate structured diff data from two content strings.
+
+    Uses Python's difflib.unified_diff to produce line-by-line changes,
+    parsed into structured hunks for template rendering.
+
+    Args:
+        old_content: Content of the older version
+        new_content: Content of the newer version
+
+    Returns:
+        Dict with keys: hunks (list of hunk dicts), has_changes (bool), summary (str).
+        Each hunk has: header (str), lines (list of line dicts).
+        Each line has: type ('add'|'remove'|'context'), content (str),
+                       old_num (int|None), new_num (int|None).
+    """
+    old_lines = old_content.splitlines(keepends=False)
+    new_lines = new_content.splitlines(keepends=False)
+
+    diff_output = list(
+        difflib.unified_diff(old_lines, new_lines, lineterm="", n=3)
+    )
+
+    # No changes
+    if not diff_output:
+        return {"hunks": [], "has_changes": False, "summary": "No changes"}
+
+    hunks: list[dict] = []
+    current_hunk: dict | None = None
+    old_num = 0
+    new_num = 0
+    additions = 0
+    deletions = 0
+
+    for i, line in enumerate(diff_output):
+        # Skip the first two lines (file headers: --- and +++)
+        if i < 2 and (line.startswith("---") or line.startswith("+++")):
+            continue
+
+        # Hunk header: @@ -old_start,old_count +new_start,new_count @@
+        if line.startswith("@@"):
+            match = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", line)
+            if match:
+                old_num = int(match.group(1))
+                new_num = int(match.group(2))
+            current_hunk = {"header": line, "lines": []}
+            hunks.append(current_hunk)
+            continue
+
+        if current_hunk is None:
+            continue
+
+        if line.startswith("+"):
+            current_hunk["lines"].append({
+                "type": "add",
+                "content": line[1:],
+                "old_num": None,
+                "new_num": new_num,
+            })
+            new_num += 1
+            additions += 1
+        elif line.startswith("-"):
+            current_hunk["lines"].append({
+                "type": "remove",
+                "content": line[1:],
+                "old_num": old_num,
+                "new_num": None,
+            })
+            old_num += 1
+            deletions += 1
+        else:
+            # Context line (starts with space or is empty)
+            content = line[1:] if line.startswith(" ") else line
+            current_hunk["lines"].append({
+                "type": "context",
+                "content": content,
+                "old_num": old_num,
+                "new_num": new_num,
+            })
+            old_num += 1
+            new_num += 1
+
+    parts = []
+    if additions:
+        parts.append(f"{additions} addition{'s' if additions != 1 else ''}")
+    if deletions:
+        parts.append(f"{deletions} deletion{'s' if deletions != 1 else ''}")
+    summary = ", ".join(parts) if parts else "No changes"
+
+    return {"hunks": hunks, "has_changes": True, "summary": summary}
 
 
 class KBService:

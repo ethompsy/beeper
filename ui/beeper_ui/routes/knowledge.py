@@ -17,6 +17,7 @@ from beeper_ui.services.kb_service import (
     KBEntry,
     KBService,
     KBServiceError,
+    generate_diff,
     parse_date_range,
 )
 
@@ -670,6 +671,114 @@ def kb_version(entry_id: str, version_num: int) -> tuple[str, int] | str:
         current_version=entry.version,
         prev_version=prev_version,
         next_version=next_version,
+    )
+
+
+@knowledge_bp.route("/<entry_id>/diff/<int:from_version>/<int:to_version>")
+def kb_diff(entry_id: str, from_version: int, to_version: int) -> tuple[str, int] | str:
+    """Compare two versions of a KB entry.
+
+    Args:
+        entry_id: The unique identifier of the entry
+        from_version: The older version number
+        to_version: The newer version number
+
+    Returns:
+        Rendered diff page or 404 error.
+    """
+    service_client = get_kb_service()
+
+    try:
+        entry = service_client.get_entry(entry_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/diff.html",
+            entry=None,
+            error_message=str(e),
+        )
+
+    if not entry:
+        return (
+            render_template(
+                "knowledge/diff.html",
+                entry=None,
+                error_message=f"Entry '{entry_id}' not found",
+            ),
+            404,
+        )
+
+    # Helper: build version payload from live entry (current version isn't
+    # stored in knowledge_versions until the next update overwrites it).
+    def _entry_as_version(e: KBEntry) -> dict:
+        return {
+            "entry_id": e.entry_id,
+            "version": e.version,
+            "title": e.title,
+            "content": e.content,
+            "author": e.author,
+            "updated_at": e.updated_at.isoformat() if e.updated_at else None,
+            "entry_type": e.entry_type,
+            "service": e.service,
+            "tags": e.tags,
+        }
+
+    try:
+        from_data = service_client.get_version(entry_id, from_version)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/diff.html",
+            entry=entry,
+            error_message=str(e),
+        )
+
+    if not from_data and entry.version == from_version:
+        from_data = _entry_as_version(entry)
+
+    if not from_data:
+        return (
+            render_template(
+                "knowledge/diff.html",
+                entry=entry,
+                error_message=f"Version {from_version} not found",
+            ),
+            404,
+        )
+
+    try:
+        to_data = service_client.get_version(entry_id, to_version)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/diff.html",
+            entry=entry,
+            error_message=str(e),
+        )
+
+    if not to_data and entry.version == to_version:
+        to_data = _entry_as_version(entry)
+
+    if not to_data:
+        return (
+            render_template(
+                "knowledge/diff.html",
+                entry=entry,
+                error_message=f"Version {to_version} not found",
+            ),
+            404,
+        )
+
+    diff_data = generate_diff(
+        from_data.get("content", ""),
+        to_data.get("content", ""),
+    )
+
+    return render_template(
+        "knowledge/diff.html",
+        entry=entry,
+        from_version=from_data,
+        to_version=to_data,
+        hunks=diff_data["hunks"],
+        has_changes=diff_data["has_changes"],
+        summary=diff_data["summary"],
     )
 
 
