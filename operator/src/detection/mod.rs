@@ -1,0 +1,157 @@
+//! Anomaly detection module
+//!
+//! Provides continuous monitoring of incoming metric and log streams,
+//! detecting anomalous patterns using Exponentially Weighted Moving Average (EWMA).
+//! When anomalies are detected, Investigation CRDs are created for further analysis.
+
+pub mod consumer;
+pub mod ewma;
+pub mod logs;
+pub mod metrics;
+pub mod types;
+
+pub use consumer::DetectionConsumer;
+pub use ewma::EwmaDetector;
+pub use types::{AnomalyEvent, AnomalySignal, AnomalyType};
+
+use std::env;
+
+/// Configuration for the detection module, loaded from environment variables.
+#[derive(Debug, Clone)]
+pub struct DetectionConfig {
+    /// Whether detection is enabled
+    pub enabled: bool,
+    /// EWMA smoothing factor for metrics
+    pub metric_alpha: f64,
+    /// Stddev multiplier for metric anomalies
+    pub metric_threshold: f64,
+    /// EWMA smoothing factor for log error rates
+    pub log_alpha: f64,
+    /// Stddev multiplier for log anomalies
+    pub log_threshold: f64,
+    /// Minimum data points before detection activates
+    pub min_samples: u64,
+    /// Seconds between duplicate investigation creations
+    pub cooldown_secs: u64,
+    /// Maximum tracked metric series
+    pub max_metrics: usize,
+    /// Maximum tracked services for log detection
+    pub max_services: usize,
+    /// Sliding window duration in seconds for log error rates
+    pub window_secs: u64,
+    /// Kubernetes namespace for Investigation CRDs
+    pub namespace: String,
+}
+
+impl DetectionConfig {
+    /// Load configuration from environment variables with defaults.
+    pub fn from_env() -> Self {
+        Self {
+            enabled: env_bool("BEEPER_DETECTION_ENABLED", true),
+            metric_alpha: env_f64("BEEPER_DETECTION_METRIC_ALPHA", 0.2),
+            metric_threshold: env_f64("BEEPER_DETECTION_METRIC_THRESHOLD", 3.0),
+            log_alpha: env_f64("BEEPER_DETECTION_LOG_ALPHA", 0.2),
+            log_threshold: env_f64("BEEPER_DETECTION_LOG_THRESHOLD", 3.0),
+            min_samples: env_u64("BEEPER_DETECTION_MIN_SAMPLES", 10),
+            cooldown_secs: env_u64("BEEPER_DETECTION_COOLDOWN_SECS", 600),
+            max_metrics: env_usize("BEEPER_DETECTION_MAX_METRICS", 10000),
+            max_services: env_usize("BEEPER_DETECTION_MAX_SERVICES", 1000),
+            window_secs: env_u64("BEEPER_DETECTION_WINDOW_SECS", 300),
+            namespace: env::var("BEEPER_DETECTION_NAMESPACE")
+                .unwrap_or_else(|_| "default".to_string()),
+        }
+    }
+}
+
+impl Default for DetectionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            metric_alpha: 0.2,
+            metric_threshold: 3.0,
+            log_alpha: 0.2,
+            log_threshold: 3.0,
+            min_samples: 10,
+            cooldown_secs: 600,
+            max_metrics: 10000,
+            max_services: 1000,
+            window_secs: 300,
+            namespace: "default".to_string(),
+        }
+    }
+}
+
+/// Detection statistics shared via atomic counters.
+pub struct DetectionStats {
+    pub metrics_tracked: std::sync::atomic::AtomicU64,
+    pub services_tracked: std::sync::atomic::AtomicU64,
+    pub anomalies_detected: std::sync::atomic::AtomicU64,
+    pub cooldown_entries: std::sync::atomic::AtomicU64,
+}
+
+impl DetectionStats {
+    pub fn new() -> Self {
+        use std::sync::atomic::AtomicU64;
+        Self {
+            metrics_tracked: AtomicU64::new(0),
+            services_tracked: AtomicU64::new(0),
+            anomalies_detected: AtomicU64::new(0),
+            cooldown_entries: AtomicU64::new(0),
+        }
+    }
+}
+
+impl Default for DetectionStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn env_bool(key: &str, default: bool) -> bool {
+    env::var(key)
+        .ok()
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(default)
+}
+
+fn env_f64(key: &str, default: f64) -> f64 {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_u64(key: &str, default: u64) -> u64 {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_usize(key: &str, default: usize) -> usize {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = DetectionConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.metric_alpha, 0.2);
+        assert_eq!(config.metric_threshold, 3.0);
+        assert_eq!(config.log_alpha, 0.2);
+        assert_eq!(config.log_threshold, 3.0);
+        assert_eq!(config.min_samples, 10);
+        assert_eq!(config.cooldown_secs, 600);
+        assert_eq!(config.max_metrics, 10000);
+        assert_eq!(config.max_services, 1000);
+        assert_eq!(config.window_secs, 300);
+        assert_eq!(config.namespace, "default");
+    }
+}

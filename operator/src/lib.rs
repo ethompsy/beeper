@@ -7,6 +7,9 @@
 /// API endpoints for UI
 pub mod api;
 
+/// Anomaly detection engine
+pub mod detection;
+
 /// CRD definitions for Beeper resources
 pub mod crds;
 
@@ -42,3 +45,4 @@ pub use investigator_job::{
 };
 pub use llm::{LlmConfig, LlmConfigError, LlmManager, LlmProvider};
 pub use sources::{LokiClient, LokiError, PrometheusClient, PrometheusError};
+pub use detection::{DetectionConfig, DetectionConsumer, DetectionStats};

@@ -14,8 +14,8 @@ use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use beeper_operator::{
-    api::api_router,
     controllers::{run_investigation_controller, run_source_controller},
+    detection::{DetectionConfig, DetectionConsumer, DetectionStats},
     health::health_router,
     ingestion::{ingestion_router, IngestionBuffer},
 };
@@ -80,11 +80,24 @@ async fn main() -> anyhow::Result<()> {
     // Create ingestion buffer
     let buffer = Arc::new(IngestionBuffer::new(buffer_size));
 
+    // Load detection configuration
+    let detection_config = DetectionConfig::from_env();
+    let detection_stats = Arc::new(DetectionStats::new());
+    info!(
+        enabled = detection_config.enabled,
+        namespace = %detection_config.namespace,
+        "Detection configuration loaded"
+    );
+
     // Start health + API server in background (combined on same port)
     let health_client = Arc::clone(&client);
     let api_buffer = Arc::clone(&buffer);
+    let api_detection_stats = Arc::clone(&detection_stats);
     let health_handle = tokio::spawn(async move {
-        if let Err(e) = start_health_api_server(health_client, api_buffer, health_port).await {
+        if let Err(e) =
+            start_health_api_server(health_client, api_buffer, api_detection_stats, health_port)
+                .await
+        {
             error!(error = %e, "Health/API server failed");
         }
     });
@@ -113,6 +126,22 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Start detection consumer in background (if enabled)
+    let detection_handle = if detection_config.enabled {
+        let detection_buffer = Arc::clone(&buffer);
+        let detection_client = (*client).clone();
+        let detection_namespace = detection_config.namespace.clone();
+        let consumer = DetectionConsumer::new(detection_config, detection_stats);
+        Some(tokio::spawn(async move {
+            consumer
+                .run(detection_buffer, detection_client, detection_namespace)
+                .await;
+        }))
+    } else {
+        info!("Detection consumer disabled");
+        None
+    };
+
     info!("Beeper operator started");
 
     // Wait for shutdown signal
@@ -125,6 +154,9 @@ async fn main() -> anyhow::Result<()> {
     ingestion_handle.abort();
     source_handle.abort();
     investigation_handle.abort();
+    if let Some(handle) = detection_handle {
+        handle.abort();
+    }
 
     info!("Beeper operator stopped");
 
@@ -135,11 +167,13 @@ async fn main() -> anyhow::Result<()> {
 async fn start_health_api_server(
     client: Arc<Client>,
     buffer: Arc<IngestionBuffer>,
+    detection_stats: Arc<DetectionStats>,
     port: u16,
 ) -> anyhow::Result<()> {
+    use beeper_operator::api::api_router_with_detection;
     // Combine health and API routers
     let health = health_router(Arc::clone(&client));
-    let api = api_router(client, buffer);
+    let api = api_router_with_detection(client, buffer, None, Some(detection_stats));
     let app: Router = health.merge(api);
 
     let addr = format!("0.0.0.0:{}", port);

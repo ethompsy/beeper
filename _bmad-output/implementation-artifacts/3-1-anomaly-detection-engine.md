@@ -1,6 +1,6 @@
 # Story 3.1: Anomaly Detection Engine
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -36,65 +36,65 @@ So that suspicious conditions are identified for investigation.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create detection module with core types and EWMA detector (AC: #1, #2, #4)
-  - [ ] 1.1: Create `operator/src/detection/mod.rs` — public module exports and `DetectionConfig` struct with env var loading
-  - [ ] 1.2: Create `operator/src/detection/types.rs` — `AnomalyEvent` struct (source, condition, service, severity, timestamp, context fields), `AnomalyType` enum (MetricSpike, MetricDrop, ErrorRateSpike)
-  - [ ] 1.3: Create `operator/src/detection/ewma.rs` — `EwmaDetector` struct with `update(value: f64) -> Option<AnomalySignal>` method
-  - [ ] 1.4: EWMA implements exponentially weighted mean + variance tracking (inline math, NO external crates — standard library `f64::sqrt()` only)
-  - [ ] 1.5: Configurable `alpha` (smoothing factor, default 0.2), `threshold` (stddev multiplier, default 3.0), `min_samples` (warmup count, default 10)
-  - [ ] 1.6: Add `pub mod detection;` to `lib.rs`
+- [x] Task 1: Create detection module with core types and EWMA detector (AC: #1, #2, #4)
+  - [x] 1.1: Create `operator/src/detection/mod.rs` — public module exports and `DetectionConfig` struct with env var loading
+  - [x] 1.2: Create `operator/src/detection/types.rs` — `AnomalyEvent` struct (source, condition, service, severity, timestamp, context fields), `AnomalyType` enum (MetricSpike, MetricDrop, ErrorRateSpike)
+  - [x] 1.3: Create `operator/src/detection/ewma.rs` — `EwmaDetector` struct with `update(value: f64) -> Option<AnomalySignal>` method
+  - [x] 1.4: EWMA implements exponentially weighted mean + variance tracking (inline math, NO external crates — standard library `f64::sqrt()` only)
+  - [x] 1.5: Configurable `alpha` (smoothing factor, default 0.2), `threshold` (stddev multiplier, default 3.0), `min_samples` (warmup count, default 10)
+  - [x] 1.6: Add `pub mod detection;` to `lib.rs`
 
-- [ ] Task 2: Implement metric anomaly detection (AC: #2, #4)
-  - [ ] 2.1: Create `operator/src/detection/metrics.rs` — `MetricDetector` struct
-  - [ ] 2.2: Maintain per-metric `EwmaDetector` state in bounded `HashMap<MetricKey, (EwmaDetector, Instant)>`
-  - [ ] 2.3: `MetricKey` = metric name + sorted subset of discriminating labels (`service`, `instance`, `job`)
-  - [ ] 2.4: `process(&mut self, sample: &MetricSample) -> Option<AnomalyEvent>` — update EWMA, return event if anomaly
-  - [ ] 2.5: Include in AnomalyEvent: metric name, labels, observed value, expected value (EWMA mean), deviation (in stddevs)
-  - [ ] 2.6: Evict least-recently-updated entries when map exceeds `max_tracked_metrics` (default 10000)
+- [x] Task 2: Implement metric anomaly detection (AC: #2, #4)
+  - [x] 2.1: Create `operator/src/detection/metrics.rs` — `MetricDetector` struct
+  - [x] 2.2: Maintain per-metric `EwmaDetector` state in bounded `HashMap<MetricKey, (EwmaDetector, Instant)>`
+  - [x] 2.3: `MetricKey` = metric name + sorted subset of discriminating labels (`service`, `instance`, `job`)
+  - [x] 2.4: `process(&mut self, sample: &MetricSample) -> Option<AnomalyEvent>` — update EWMA, return event if anomaly
+  - [x] 2.5: Include in AnomalyEvent: metric name, labels, observed value, expected value (EWMA mean), deviation (in stddevs)
+  - [x] 2.6: Evict least-recently-updated entries when map exceeds `max_tracked_metrics` (default 10000)
 
-- [ ] Task 3: Implement log anomaly detection (AC: #3, #4)
-  - [ ] 3.1: Create `operator/src/detection/logs.rs` — `LogDetector` struct
-  - [ ] 3.2: Track error-level log count per service using sliding time window (`VecDeque` of timestamp+count buckets, 1-minute granularity)
-  - [ ] 3.3: Apply `EwmaDetector` to per-service error rates (errors per window)
-  - [ ] 3.4: Extract service name from log labels — check `service` → `app` → `job` → `namespace` in order, fall back to `"unknown"`
-  - [ ] 3.5: Detect error-level logs by checking `level` label — match (case-insensitive): `error`, `err`, `fatal`, `critical`, `panic`
-  - [ ] 3.6: Capture last N error log lines (default 5) per service as context in `AnomalyEvent` via bounded `VecDeque<String>`
-  - [ ] 3.7: Bound tracked services (configurable `max_tracked_services`, default 1000)
+- [x] Task 3: Implement log anomaly detection (AC: #3, #4)
+  - [x] 3.1: Create `operator/src/detection/logs.rs` — `LogDetector` struct
+  - [x] 3.2: Track error-level log count per service using sliding time window (`VecDeque` of timestamp+count buckets, 1-minute granularity)
+  - [x] 3.3: Apply `EwmaDetector` to per-service error rates (errors per window)
+  - [x] 3.4: Extract service name from log labels — check `service` → `app` → `job` → `namespace` in order, fall back to `"unknown"`
+  - [x] 3.5: Detect error-level logs by checking `level` label — match (case-insensitive): `error`, `err`, `fatal`, `critical`, `panic`
+  - [x] 3.6: Capture last N error log lines (default 5) per service as context in `AnomalyEvent` via bounded `VecDeque<String>`
+  - [x] 3.7: Bound tracked services (configurable `max_tracked_services`, default 1000)
 
-- [ ] Task 4: Implement detection consumer and Investigation bridge (AC: #1, #2, #3)
-  - [ ] 4.1: Create `operator/src/detection/consumer.rs` — `DetectionConsumer` struct
-  - [ ] 4.2: `pub async fn run(self, buffer: Arc<IngestionBuffer>, client: Client, namespace: String)` — main detection loop
-  - [ ] 4.3: Read from buffer via `buffer.recv().await`, route `IngestionData::Metric` to `MetricDetector` and `IngestionData::Log` to `LogDetector`
-  - [ ] 4.4: On anomaly detected: create Investigation CRD via `kube::Api<Investigation>::create()`
-  - [ ] 4.5: Build `InvestigationSpec` from `AnomalyEvent` — condition (descriptive string), service, severity, triggered_at
-  - [ ] 4.6: Map severity from deviation magnitude: Low (2-3σ), Medium (3-4σ), High (4-6σ), Critical (>6σ)
-  - [ ] 4.7: Implement cooldown tracking — `HashMap<String, Instant>` keyed by anomaly fingerprint, skip if within `cooldown_secs` (default 600s)
-  - [ ] 4.8: Structured JSON logging via `tracing` for all anomaly events and investigation creations
+- [x] Task 4: Implement detection consumer and Investigation bridge (AC: #1, #2, #3)
+  - [x] 4.1: Create `operator/src/detection/consumer.rs` — `DetectionConsumer` struct
+  - [x] 4.2: `pub async fn run(self, buffer: Arc<IngestionBuffer>, client: Client, namespace: String)` — main detection loop
+  - [x] 4.3: Read from buffer via `buffer.recv().await`, route `IngestionData::Metric` to `MetricDetector` and `IngestionData::Log` to `LogDetector`
+  - [x] 4.4: On anomaly detected: create Investigation CRD via `kube::Api<Investigation>::create()`
+  - [x] 4.5: Build `InvestigationSpec` from `AnomalyEvent` — condition (descriptive string), service, severity, triggered_at
+  - [x] 4.6: Map severity from deviation magnitude: Low (2-3σ), Medium (3-4σ), High (4-6σ), Critical (>6σ)
+  - [x] 4.7: Implement cooldown tracking — `HashMap<String, Instant>` keyed by anomaly fingerprint, skip if within `cooldown_secs` (default 600s)
+  - [x] 4.8: Structured JSON logging via `tracing` for all anomaly events and investigation creations
 
-- [ ] Task 5: Wire detection into operator and add API (AC: #1)
-  - [ ] 5.1: Add `DetectionConfig` loading from environment variables in `main.rs`
-  - [ ] 5.2: Spawn `DetectionConsumer::run()` as 5th background task via `tokio::spawn`
-  - [ ] 5.3: Pass `Arc<IngestionBuffer>` (shared with ingestion server) and `Client::clone()`
-  - [ ] 5.4: Add `GET /api/v1/detection/stats` endpoint to API router — returns metrics_tracked, services_tracked, anomalies_detected, cooldown_entries
-  - [ ] 5.5: Share detection stats via `Arc<DetectionStats>` (atomic counters) added to `ApiState`
+- [x] Task 5: Wire detection into operator and add API (AC: #1)
+  - [x] 5.1: Add `DetectionConfig` loading from environment variables in `main.rs`
+  - [x] 5.2: Spawn `DetectionConsumer::run()` as 5th background task via `tokio::spawn`
+  - [x] 5.3: Pass `Arc<IngestionBuffer>` (shared with ingestion server) and `Client::clone()`
+  - [x] 5.4: Add `GET /api/v1/detection/stats` endpoint to API router — returns metrics_tracked, services_tracked, anomalies_detected, cooldown_entries
+  - [x] 5.5: Share detection stats via `Arc<DetectionStats>` (atomic counters) added to `ApiState`
 
-- [ ] Task 6: Add tests (AC: all)
-  - [ ] 6.1: Unit test `EwmaDetector`: spike (large positive deviation) → anomaly signal returned
-  - [ ] 6.2: Unit test `EwmaDetector`: drop (large negative deviation) → anomaly signal returned
-  - [ ] 6.3: Unit test `EwmaDetector`: steady state values → no false positives (returns None)
-  - [ ] 6.4: Unit test `EwmaDetector`: warmup period (< min_samples) → no premature firing
-  - [ ] 6.5: Unit test `EwmaDetector`: baseline adapts after sustained shift → stops firing
-  - [ ] 6.6: Unit test `MetricDetector`: processes multiple metrics independently
-  - [ ] 6.7: Unit test `MetricDetector`: bounded HashMap eviction works at capacity
-  - [ ] 6.8: Unit test `MetricDetector`: anomaly event contains correct fields (metric, labels, value, expected, deviation)
-  - [ ] 6.9: Unit test `LogDetector`: error rate spike detected after warmup
-  - [ ] 6.10: Unit test `LogDetector`: service extraction from labels (service → app → job fallback)
-  - [ ] 6.11: Unit test `LogDetector`: context capture includes error log lines
-  - [ ] 6.12: Unit test: severity mapping from deviation magnitude (Low/Medium/High/Critical boundaries)
-  - [ ] 6.13: Unit test: cooldown prevents duplicate anomaly events within window
-  - [ ] 6.14: Integration test: metric samples through buffer → anomaly event produced
-  - [ ] 6.15: Integration test: log entries through buffer → anomaly event produced
-  - [ ] 6.16: Integration test: steady-state data through buffer → no anomalies
+- [x] Task 6: Add tests (AC: all)
+  - [x] 6.1: Unit test `EwmaDetector`: spike (large positive deviation) → anomaly signal returned
+  - [x] 6.2: Unit test `EwmaDetector`: drop (large negative deviation) → anomaly signal returned
+  - [x] 6.3: Unit test `EwmaDetector`: steady state values → no false positives (returns None)
+  - [x] 6.4: Unit test `EwmaDetector`: warmup period (< min_samples) → no premature firing
+  - [x] 6.5: Unit test `EwmaDetector`: baseline adapts after sustained shift → stops firing
+  - [x] 6.6: Unit test `MetricDetector`: processes multiple metrics independently
+  - [x] 6.7: Unit test `MetricDetector`: bounded HashMap eviction works at capacity
+  - [x] 6.8: Unit test `MetricDetector`: anomaly event contains correct fields (metric, labels, value, expected, deviation)
+  - [x] 6.9: Unit test `LogDetector`: error rate spike detected after warmup
+  - [x] 6.10: Unit test `LogDetector`: service extraction from labels (service → app → job fallback)
+  - [x] 6.11: Unit test `LogDetector`: context capture includes error log lines
+  - [x] 6.12: Unit test: severity mapping from deviation magnitude (Low/Medium/High/Critical boundaries)
+  - [x] 6.13: Unit test: cooldown prevents duplicate anomaly events within window
+  - [x] 6.14: Integration test: metric samples through buffer → anomaly event produced
+  - [x] 6.15: Integration test: log entries through buffer → anomaly event produced
+  - [x] 6.16: Integration test: steady-state data through buffer → no anomalies
 
 ## Dev Notes
 
@@ -438,10 +438,62 @@ cd operator && cargo clippy -- -D warnings   # Must pass with zero warnings
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (claude-opus-4-6)
 
 ### Debug Log References
 
+- EWMA algorithm required check-before-update pattern: anomaly detection must compare against OLD mean/variance before incorporating the new value. The story's reference algorithm showed update-then-check, but this causes the spike to inflate the variance it's measured against. Fixed by separating anomaly check and statistics update.
+- Zero-variance edge case: when EWMA receives constant input (variance=0, stddev=0), any non-zero deviation is treated as a very-high-deviation anomaly (1e6σ). Originally used f64::INFINITY but this breaks JSON structured logging (serde_json cannot serialize infinity). Changed to 1e6 which is finite, still maps to Critical severity, and serializes correctly.
+- Log detector error rate test required extended warmup (50 samples vs 20) because each `process()` call feeds the cumulative window count to the EWMA. With only 20 samples, residual variance from the initial growth phase (1,2,3,4,5,6) hadn't decayed enough for small increments to exceed the 3-sigma threshold.
+
 ### Completion Notes List
 
+- **Task 1**: Created complete detection module structure under `operator/src/detection/` with `mod.rs` (DetectionConfig, DetectionStats, env var loading), `types.rs` (AnomalyEvent, AnomalyType, AnomalySignal), `ewma.rs` (EwmaDetector with check-before-update EWMA). Added `pub mod detection;` to lib.rs.
+- **Task 2**: Implemented `MetricDetector` in `metrics.rs` with per-metric EWMA tracking via bounded HashMap, MetricKey using discriminating labels only (service, instance, job, namespace, endpoint), LRU eviction at capacity.
+- **Task 3**: Implemented `LogDetector` in `logs.rs` with per-service error rate tracking using sliding 1-minute bucket windows, EWMA on error counts, service label extraction priority chain, context line capture (bounded VecDeque).
+- **Task 4**: Implemented `DetectionConsumer` in `consumer.rs` with main detection loop reading from IngestionBuffer, routing to MetricDetector/LogDetector, cooldown tracking via fingerprint HashMap, Investigation CRD creation, severity mapping, structured JSON logging.
+- **Task 5**: Wired detection into operator — `main.rs` spawns DetectionConsumer as 5th background task (conditional on BEEPER_DETECTION_ENABLED), added `api_router_with_detection()` and `GET /api/v1/detection/stats` endpoint returning metrics_tracked, services_tracked, anomalies_detected, cooldown_entries via shared `Arc<DetectionStats>`.
+- **Task 6**: 29 unit tests + 3 integration tests covering all specified scenarios: EWMA spike/drop/steady-state/warmup/adaptation, MetricDetector multi-metric/eviction/fields, LogDetector error-rate/service-extraction/context/levels, severity mapping, cooldown, fingerprinting, and full buffer-through-detector pipelines.
+- All 157 tests pass (0 regressions), clippy clean with `-D warnings`.
+
+### Senior Developer Review (AI)
+
+**Reviewer:** Claude Opus 4.6 (adversarial code review)
+**Date:** 2026-02-19
+**Outcome:** All HIGH and MEDIUM issues fixed
+
+**Issues Found and Fixed (6/6):**
+- [H1] Investigation name collision: Two anomalies in same second produced same CRD name. Fixed by adding sequence counter to name format (`anomaly-{ts}-{seq}`).
+- [H2] NaN input poisoned EWMA permanently: Single NaN metric sample broke detector for entire time series. Fixed with `is_finite()` guard at EWMA input.
+- [H3] f64::INFINITY broke JSON structured logging: Zero-variance EWMA path returned INFINITY which serde_json cannot serialize. Changed to 1e6 (finite, still maps to Critical).
+- [M1] Out-of-order log timestamps corrupted sliding window: Appending out-of-order buckets broke sorted invariant and cleanup logic. Fixed with sorted-insert via `partition_point()`.
+- [M2] No backoff on K8s API failures: Cooldown only recorded on success, causing alert storm on persistent K8s errors. Fixed by recording cooldown before API call.
+- [M3] Metric service extraction missing `app` label: MetricDetector lacked `app` in service chain (inconsistent with LogDetector). Added `app` after `service` in extraction priority.
+
+**Issues Not Fixed (2 LOW):**
+- [L1] O(n) eviction scan in bounded HashMaps — acceptable for 10k limit, optimize later if cardinality increases
+- [L2] Detection stats endpoint doesn't indicate disabled state — cosmetic, can address in a future UI story
+
+**Tests added:** 4 new tests (NaN guard, infinity guard, out-of-order timestamps, app label extraction). Total: 157 passing.
+
+### Change Log
+
+- 2026-02-19: Implemented Story 3.1 - Anomaly Detection Engine. Created detection module with EWMA-based anomaly detection for metrics and logs, Investigation CRD bridge, cooldown tracking, and detection stats API endpoint.
+- 2026-02-19: Code review fixes — NaN/infinity input guards, investigation name collision fix, out-of-order log timestamp handling, K8s failure backoff, metric app label extraction.
+
 ### File List
+
+**New files:**
+- operator/src/detection/mod.rs
+- operator/src/detection/types.rs
+- operator/src/detection/ewma.rs
+- operator/src/detection/metrics.rs
+- operator/src/detection/logs.rs
+- operator/src/detection/consumer.rs
+
+**Modified files:**
+- operator/src/lib.rs
+- operator/src/main.rs
+- operator/src/api.rs
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- _bmad-output/implementation-artifacts/3-1-anomaly-detection-engine.md

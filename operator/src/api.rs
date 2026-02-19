@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use crate::crds::Source;
+use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
 use crate::llm::LlmManager;
 
@@ -19,11 +20,12 @@ pub struct ApiState {
     pub client: Arc<Client>,
     pub buffer: Arc<IngestionBuffer>,
     pub llm_manager: Option<Arc<LlmManager>>,
+    pub detection_stats: Option<Arc<DetectionStats>>,
 }
 
 /// Create the API router
 pub fn api_router(client: Arc<Client>, buffer: Arc<IngestionBuffer>) -> Router {
-    api_router_with_llm(client, buffer, None)
+    api_router_with_detection(client, buffer, None, None)
 }
 
 /// Create the API router with optional LLM manager
@@ -32,16 +34,28 @@ pub fn api_router_with_llm(
     buffer: Arc<IngestionBuffer>,
     llm_manager: Option<Arc<LlmManager>>,
 ) -> Router {
+    api_router_with_detection(client, buffer, llm_manager, None)
+}
+
+/// Create the API router with optional LLM manager and detection stats
+pub fn api_router_with_detection(
+    client: Arc<Client>,
+    buffer: Arc<IngestionBuffer>,
+    llm_manager: Option<Arc<LlmManager>>,
+    detection_stats: Option<Arc<DetectionStats>>,
+) -> Router {
     let state = ApiState {
         client,
         buffer,
         llm_manager,
+        detection_stats,
     };
 
     Router::new()
         .route("/api/v1/sources", get(list_sources))
         .route("/api/v1/health/components", get(health_components))
         .route("/api/v1/ingestion/stats", get(ingestion_stats))
+        .route("/api/v1/detection/stats", get(detection_stats_handler))
         .with_state(state)
 }
 
@@ -278,6 +292,51 @@ async fn ingestion_stats(State(state): State<ApiState>) -> impl IntoResponse {
     (StatusCode::OK, Json(stats))
 }
 
+// ----- Detection Stats API -----
+
+/// Response for detection statistics
+#[derive(Debug, Serialize)]
+pub struct DetectionStatsResponse {
+    pub metrics_tracked: u64,
+    pub services_tracked: u64,
+    pub anomalies_detected: u64,
+    pub cooldown_entries: u64,
+}
+
+/// Get detection engine statistics
+async fn detection_stats_handler(State(state): State<ApiState>) -> impl IntoResponse {
+    match &state.detection_stats {
+        Some(stats) => {
+            use std::sync::atomic::Ordering;
+            let response = DetectionStatsResponse {
+                metrics_tracked: stats.metrics_tracked.load(Ordering::Relaxed),
+                services_tracked: stats.services_tracked.load(Ordering::Relaxed),
+                anomalies_detected: stats.anomalies_detected.load(Ordering::Relaxed),
+                cooldown_entries: stats.cooldown_entries.load(Ordering::Relaxed),
+            };
+
+            debug!(
+                metrics_tracked = response.metrics_tracked,
+                services_tracked = response.services_tracked,
+                anomalies_detected = response.anomalies_detected,
+                "Detection stats requested"
+            );
+
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        None => (
+            StatusCode::OK,
+            Json(DetectionStatsResponse {
+                metrics_tracked: 0,
+                services_tracked: 0,
+                anomalies_detected: 0,
+                cooldown_entries: 0,
+            }),
+        )
+            .into_response(),
+    }
+}
+
 // ----- RFC 7807 Problem Details -----
 
 /// RFC 7807 Problem Details response
@@ -447,6 +506,22 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"status\":\"unconfigured\""));
         assert!(json.contains("\"LLM provider not configured\""));
+    }
+
+    #[test]
+    fn test_detection_stats_serialization() {
+        let stats = DetectionStatsResponse {
+            metrics_tracked: 500,
+            services_tracked: 50,
+            anomalies_detected: 12,
+            cooldown_entries: 3,
+        };
+
+        let json = serde_json::to_string(&stats).unwrap();
+        assert!(json.contains("\"metrics_tracked\":500"));
+        assert!(json.contains("\"services_tracked\":50"));
+        assert!(json.contains("\"anomalies_detected\":12"));
+        assert!(json.contains("\"cooldown_entries\":3"));
     }
 
     #[test]
