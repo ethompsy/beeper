@@ -33,7 +33,9 @@ pub mod sources;
 
 /// Re-export commonly used types
 pub use api::{api_router, api_router_with_llm};
-pub use controllers::{run_investigation_controller, run_source_controller};
+pub use controllers::{
+    run_investigation_controller, run_investigation_controller_with_config, run_source_controller,
+};
 pub use crds::{
     Investigation, InvestigationSpec, InvestigationStatus, Source, SourceSpec, SourceStatus,
 };

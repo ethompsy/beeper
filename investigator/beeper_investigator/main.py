@@ -10,8 +10,13 @@ import os
 import sys
 from typing import Any
 
+from beeper_investigator.agent import InvestigatorAgent, SourceClients
+from beeper_investigator.context import InvestigationContext
+from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.kb.client import KBClient
 from beeper_investigator.llm.client import LlmClient, LlmClientError
+from beeper_investigator.sources.loki import LokiClient
+from beeper_investigator.sources.prometheus import PrometheusClient
 
 
 class JsonFormatter(logging.Formatter):
@@ -111,60 +116,90 @@ def main() -> None:
     - BEEPER_LLM_API_KEY: LLM API key (required for cloud providers)
     - QDRANT_HOST: Qdrant server host (optional, defaults to localhost)
     - QDRANT_PORT: Qdrant server port (optional, defaults to 6333)
+    - PROMETHEUS_URL: Prometheus server URL (optional)
+    - LOKI_URL: Loki server URL (optional)
 
     Exit codes:
     - 0: Investigation completed successfully
     - 1: Investigation failed
     """
-    # Get required environment variables
-    investigation_id = get_required_env("INVESTIGATION_ID")
-    investigation_namespace = get_required_env("INVESTIGATION_NAMESPACE")
+    # Build investigation context from environment
+    context = InvestigationContext.from_env()
 
     # Configure structured logging with investigation context
-    logger = configure_logging(investigation_id)
+    logger = configure_logging(context.investigation_id)
 
     logger.info(
-        "Starting investigation in namespace %s",
-        investigation_namespace,
+        "Starting investigation %s in namespace %s",
+        context.investigation_id,
+        context.namespace,
     )
+
+    kb_client: KBClient | None = None
+    sources = SourceClients()
 
     try:
         # Initialize LLM client from environment
         logger.info("Initializing LLM client")
         llm_client = LlmClient.from_env()
         logger.info(
-            f"LLM client initialized: provider={llm_client.provider}, model={llm_client.model}"
+            "LLM client initialized: provider=%s, model=%s",
+            llm_client.provider,
+            llm_client.model,
         )
 
         # Initialize Qdrant KB client from environment
         logger.info("Initializing Qdrant KB client")
         kb_client = KBClient()
 
-        # Verify Qdrant connectivity
-        if not kb_client.health_check():
-            logger.error("Failed to connect to Qdrant")
+        # Initialize optional source clients
+        prom_url = os.environ.get("PROMETHEUS_URL", "")
+        if prom_url:
+            sources.prometheus = PrometheusClient(base_url=prom_url)
+            logger.info("Prometheus source configured: %s", prom_url)
+
+        loki_url = os.environ.get("LOKI_URL", "")
+        if loki_url:
+            sources.loki = LokiClient(base_url=loki_url)
+            logger.info("Loki source configured: %s", loki_url)
+
+        # Initialize K8s status updater
+        status_updater = InvestigationStatusUpdater(
+            context.investigation_id, context.namespace
+        )
+
+        # Build and run agent
+        agent = InvestigatorAgent(
+            context=context,
+            kb_client=kb_client,
+            llm_client=llm_client,
+            sources=sources,
+            status_updater=status_updater,
+        )
+
+        result = agent.run()
+
+        if result.success:
+            logger.info("Investigation completed successfully: %s", result.summary)
+            sys.exit(0)
+        else:
+            logger.error("Investigation failed: %s", result.error or result.summary)
             sys.exit(1)
-        logger.info(f"Connected to Qdrant at {kb_client.host}:{kb_client.port}")
-
-        # TODO: Implement investigation logic in future stories
-        # - Fetch alert details
-        # - Query knowledge base
-        # - Generate analysis with LLM
-        # - Store findings
-
-        logger.info("Investigation completed successfully")
-        sys.exit(0)
 
     except LlmClientError as e:
-        logger.error(f"LLM client error: {e}")
+        logger.error("LLM client error: %s", e)
         sys.exit(1)
     except Exception as e:
-        logger.exception(f"Investigation failed with unexpected error: {e}")
+        logger.exception("Investigation failed with unexpected error: %s", e)
         sys.exit(1)
     finally:
         # Cleanup
-        if "kb_client" in locals():
+        if kb_client is not None:
             kb_client.close()
+        if sources.prometheus is not None:
+            sources.prometheus.close()
+        if sources.loki is not None:
+            sources.loki.close()
 
 
 if __name__ == "__main__":

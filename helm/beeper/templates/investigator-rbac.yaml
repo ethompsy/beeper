@@ -30,6 +30,13 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list"]
+  # Allow reading and updating Investigation CR status
+  - apiGroups: ["beeper.dev"]
+    resources: ["investigations"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["beeper.dev"]
+    resources: ["investigations/status"]
+    verbs: ["get", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

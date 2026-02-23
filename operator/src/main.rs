@@ -14,10 +14,11 @@ use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use beeper_operator::{
-    controllers::{run_investigation_controller, run_source_controller},
+    controllers::{run_investigation_controller_with_config, run_source_controller},
     detection::{DetectionConfig, DetectionConsumer, DetectionStats},
     health::health_router,
     ingestion::{ingestion_router, IngestionBuffer},
+    InvestigatorConfig,
 };
 
 /// Default health server port
@@ -119,9 +120,12 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Start Investigation controller in background
+    let investigator_config = InvestigatorConfig::from_env();
     let investigation_client = (*client).clone();
     let investigation_handle = tokio::spawn(async move {
-        if let Err(e) = run_investigation_controller(investigation_client).await {
+        if let Err(e) =
+            run_investigation_controller_with_config(investigation_client, investigator_config).await
+        {
             error!(error = %e, "Investigation controller failed");
         }
     });

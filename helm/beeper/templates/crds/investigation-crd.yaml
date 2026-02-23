@@ -74,6 +74,9 @@ spec:
                 error:
                   type: string
                   description: Error message if investigation failed
+                message:
+                  type: string
+                  description: Progress message from the investigator pod
       subresources:
         status: {}
       additionalPrinterColumns:

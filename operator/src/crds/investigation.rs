@@ -69,6 +69,10 @@ pub struct InvestigationStatus {
     /// Error message if investigation failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+
+    /// Progress message from the investigator pod
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 /// Phase of an investigation lifecycle
@@ -109,6 +113,7 @@ mod tests {
             completed_at: None,
             job_name: Some("inv-abc123".to_string()),
             error: None,
+            message: None,
         };
 
         let json = serde_json::to_string(&status).unwrap();
@@ -117,6 +122,22 @@ mod tests {
         assert!(json.contains("\"job_name\":\"inv-abc123\""));
         assert!(!json.contains("completed_at")); // None should be skipped
         assert!(!json.contains("error")); // None should be skipped
+        assert!(!json.contains("message")); // None should be skipped
+    }
+
+    #[test]
+    fn test_investigation_status_message_serialization() {
+        let status = InvestigationStatus {
+            phase: Some(InvestigationPhase::Running),
+            started_at: None,
+            completed_at: None,
+            job_name: None,
+            error: None,
+            message: Some("Correlating signals...".to_string()),
+        };
+
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("\"message\":\"Correlating signals...\""));
     }
 
     #[test]

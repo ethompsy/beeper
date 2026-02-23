@@ -130,6 +130,9 @@ class TestMain:
         return {
             "INVESTIGATION_ID": "inv-test-123",
             "INVESTIGATION_NAMESPACE": "default",
+            "INVESTIGATION_CONDITION": "High error rate",
+            "INVESTIGATION_SERVICE": "payments",
+            "INVESTIGATION_SEVERITY": "high",
             "BEEPER_LLM_PROVIDER": "anthropic",
             "BEEPER_LLM_MODEL": "claude-sonnet-4",
             "BEEPER_LLM_API_KEY": "test-api-key",
@@ -162,81 +165,68 @@ class TestMain:
                 main()
             assert exc_info.value.code == 1
 
-    @patch("beeper_investigator.main.KBClient")
-    @patch("beeper_investigator.main.LlmClient")
-    def test_exits_on_qdrant_health_check_failure(
-        self,
-        mock_llm_client: MagicMock,
-        mock_kb_client: MagicMock,
-        env_vars: dict[str, str],
-    ) -> None:
-        """Test that main exits when Qdrant health check fails."""
-        # Mock LLM client
-        mock_llm_instance = MagicMock()
-        mock_llm_instance.provider = "anthropic"
-        mock_llm_instance.model = "claude-sonnet-4"
-        mock_llm_client.from_env.return_value = mock_llm_instance
-
-        # Mock KB client with failing health check
-        mock_kb_instance = MagicMock()
-        mock_kb_instance.health_check.return_value = False
-        mock_kb_client.return_value = mock_kb_instance
-
-        with patch.dict(os.environ, env_vars, clear=True):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            assert exc_info.value.code == 1
-
+    @patch("beeper_investigator.main.InvestigationStatusUpdater")
     @patch("beeper_investigator.main.KBClient")
     @patch("beeper_investigator.main.LlmClient")
     def test_successful_execution(
         self,
-        mock_llm_client: MagicMock,
-        mock_kb_client: MagicMock,
+        mock_llm_cls: MagicMock,
+        mock_kb_cls: MagicMock,
+        mock_status_cls: MagicMock,
         env_vars: dict[str, str],
     ) -> None:
-        """Test successful investigation execution."""
+        """Test successful investigation execution exits with code 0."""
         # Mock LLM client
-        mock_llm_instance = MagicMock()
-        mock_llm_instance.provider = "anthropic"
-        mock_llm_instance.model = "claude-sonnet-4"
-        mock_llm_client.from_env.return_value = mock_llm_instance
+        mock_llm = MagicMock()
+        mock_llm.provider = "anthropic"
+        mock_llm.model = "claude-sonnet-4"
+        mock_llm.test_connection.return_value = True
+        mock_llm_cls.from_env.return_value = mock_llm
 
-        # Mock KB client with successful health check
-        mock_kb_instance = MagicMock()
-        mock_kb_instance.health_check.return_value = True
-        mock_kb_instance.host = "localhost"
-        mock_kb_instance.port = 6333
-        mock_kb_client.return_value = mock_kb_instance
+        # Mock KB client
+        mock_kb = MagicMock()
+        mock_kb.health_check.return_value = True
+        mock_kb.host = "localhost"
+        mock_kb.port = 6333
+        mock_kb_cls.return_value = mock_kb
+
+        # Mock status updater
+        mock_status = MagicMock()
+        mock_status_cls.return_value = mock_status
 
         with patch.dict(os.environ, env_vars, clear=True):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            # Successful exit
             assert exc_info.value.code == 0
 
         # Verify cleanup was called
-        mock_kb_instance.close.assert_called_once()
+        mock_kb.close.assert_called_once()
 
+    @patch("beeper_investigator.main.InvestigationStatusUpdater")
     @patch("beeper_investigator.main.KBClient")
     @patch("beeper_investigator.main.LlmClient")
     def test_cleanup_on_exception(
         self,
-        mock_llm_client: MagicMock,
-        mock_kb_client: MagicMock,
+        mock_llm_cls: MagicMock,
+        mock_kb_cls: MagicMock,
+        mock_status_cls: MagicMock,
         env_vars: dict[str, str],
     ) -> None:
         """Test that KB client is closed even on exception."""
         # Mock LLM client
-        mock_llm_instance = MagicMock()
-        mock_llm_instance.provider = "anthropic"
-        mock_llm_instance.model = "claude-sonnet-4"
-        mock_llm_client.from_env.return_value = mock_llm_instance
+        mock_llm = MagicMock()
+        mock_llm.provider = "anthropic"
+        mock_llm.model = "claude-sonnet-4"
+        mock_llm_cls.from_env.return_value = mock_llm
 
         # Mock KB client that raises exception on health check
-        mock_kb_instance = MagicMock()
-        mock_kb_instance.health_check.side_effect = RuntimeError("Connection failed")
-        mock_kb_client.return_value = mock_kb_instance
+        mock_kb = MagicMock()
+        mock_kb.health_check.side_effect = RuntimeError("Connection failed")
+        mock_kb_cls.return_value = mock_kb
+
+        # Mock status updater
+        mock_status = MagicMock()
+        mock_status_cls.return_value = mock_status
 
         with patch.dict(os.environ, env_vars, clear=True):
             with pytest.raises(SystemExit) as exc_info:
@@ -244,4 +234,33 @@ class TestMain:
             assert exc_info.value.code == 1
 
         # Verify cleanup was still called
-        mock_kb_instance.close.assert_called_once()
+        mock_kb.close.assert_called_once()
+
+    @patch("beeper_investigator.main.InvestigationStatusUpdater")
+    @patch("beeper_investigator.main.KBClient")
+    @patch("beeper_investigator.main.LlmClient")
+    def test_exits_on_agent_failure(
+        self,
+        mock_llm_cls: MagicMock,
+        mock_kb_cls: MagicMock,
+        mock_status_cls: MagicMock,
+        env_vars: dict[str, str],
+    ) -> None:
+        """Test that main exits with code 1 when agent fails."""
+        mock_llm = MagicMock()
+        mock_llm.provider = "anthropic"
+        mock_llm.model = "claude-sonnet-4"
+        mock_llm.test_connection.return_value = False  # fail LLM check
+        mock_llm_cls.from_env.return_value = mock_llm
+
+        mock_kb = MagicMock()
+        mock_kb.health_check.return_value = True
+        mock_kb_cls.return_value = mock_kb
+
+        mock_status = MagicMock()
+        mock_status_cls.return_value = mock_status
+
+        with patch.dict(os.environ, env_vars, clear=True):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 1

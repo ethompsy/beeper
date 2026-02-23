@@ -55,6 +55,25 @@ pub struct InvestigatorConfig {
     pub llm_api_key_secret_key: String,
     /// ServiceAccount name for investigator pods
     pub service_account_name: String,
+    /// Prometheus URL for source queries (empty = not configured)
+    pub prometheus_url: String,
+    /// Loki URL for source queries (empty = not configured)
+    pub loki_url: String,
+}
+
+impl InvestigatorConfig {
+    /// Build config from environment variables, falling back to defaults.
+    ///
+    /// Reads:
+    /// - `BEEPER_PROMETHEUS_URL` → `prometheus_url` (default: empty)
+    /// - `BEEPER_LOKI_URL` → `loki_url` (default: empty)
+    pub fn from_env() -> Self {
+        Self {
+            prometheus_url: std::env::var("BEEPER_PROMETHEUS_URL").unwrap_or_default(),
+            loki_url: std::env::var("BEEPER_LOKI_URL").unwrap_or_default(),
+            ..Default::default()
+        }
+    }
 }
 
 impl Default for InvestigatorConfig {
@@ -76,6 +95,8 @@ impl Default for InvestigatorConfig {
             llm_api_key_secret: "llm-credentials".to_string(),
             llm_api_key_secret_key: "api-key".to_string(),
             service_account_name: "beeper-investigator".to_string(),
+            prometheus_url: String::new(),
+            loki_url: String::new(),
         }
     }
 }
@@ -176,6 +197,16 @@ pub fn build_investigator_job(
         EnvVar {
             name: "INVESTIGATION_SEVERITY".to_string(),
             value: Some(format!("{:?}", investigation.spec.severity).to_lowercase()),
+            value_from: None,
+        },
+        EnvVar {
+            name: "PROMETHEUS_URL".to_string(),
+            value: Some(config.prometheus_url.clone()),
+            value_from: None,
+        },
+        EnvVar {
+            name: "LOKI_URL".to_string(),
+            value: Some(config.loki_url.clone()),
             value_from: None,
         },
     ];
@@ -308,6 +339,7 @@ pub async fn set_phase_pending(
         completed_at: None,
         job_name: None,
         error: None,
+        message: None,
     };
 
     update_investigation_status(client, investigation, status).await
@@ -327,6 +359,7 @@ pub async fn set_phase_running(
         completed_at: None,
         job_name: Some(job_name.to_string()),
         error: None,
+        message: None,
     };
 
     update_investigation_status(client, investigation, status).await
@@ -348,6 +381,7 @@ pub async fn set_phase_completed(
         completed_at: Some(now),
         job_name: current_status.job_name,
         error: None,
+        message: None,
     };
 
     update_investigation_status(client, investigation, status).await
@@ -370,6 +404,7 @@ pub async fn set_phase_failed(
         completed_at: Some(now),
         job_name: current_status.job_name,
         error: Some(error_message.to_string()),
+        message: None,
     };
 
     update_investigation_status(client, investigation, status).await
@@ -692,6 +727,36 @@ mod tests {
     }
 
     #[test]
+    fn test_investigator_config_from_env() {
+        // Set env vars before calling from_env
+        std::env::set_var("BEEPER_PROMETHEUS_URL", "http://prometheus:9090");
+        std::env::set_var("BEEPER_LOKI_URL", "http://loki:3100");
+
+        let config = InvestigatorConfig::from_env();
+
+        assert_eq!(config.prometheus_url, "http://prometheus:9090");
+        assert_eq!(config.loki_url, "http://loki:3100");
+        // Other fields should be defaults
+        assert_eq!(config.image, "beeper/investigator:latest");
+
+        // Clean up env
+        std::env::remove_var("BEEPER_PROMETHEUS_URL");
+        std::env::remove_var("BEEPER_LOKI_URL");
+    }
+
+    #[test]
+    fn test_investigator_config_from_env_defaults_when_unset() {
+        // Ensure vars are unset
+        std::env::remove_var("BEEPER_PROMETHEUS_URL");
+        std::env::remove_var("BEEPER_LOKI_URL");
+
+        let config = InvestigatorConfig::from_env();
+
+        assert_eq!(config.prometheus_url, "");
+        assert_eq!(config.loki_url, "");
+    }
+
+    #[test]
     fn test_investigator_config_default() {
         let config = InvestigatorConfig::default();
 
@@ -704,6 +769,74 @@ mod tests {
         assert_eq!(config.qdrant_host, "qdrant");
         assert_eq!(config.qdrant_port, "6333");
         assert_eq!(config.service_account_name, "beeper-investigator");
+        assert_eq!(config.prometheus_url, "");
+        assert_eq!(config.loki_url, "");
+    }
+
+    #[test]
+    fn test_build_investigator_job_source_url_env_vars() {
+        let investigation = create_test_investigation("test-inv", "default");
+        let config = InvestigatorConfig {
+            prometheus_url: "http://prometheus:9090".to_string(),
+            loki_url: "http://loki:3100".to_string(),
+            ..Default::default()
+        };
+
+        let job = build_investigator_job(&investigation, &config).unwrap();
+
+        let container = &job
+            .spec
+            .as_ref()
+            .unwrap()
+            .template
+            .spec
+            .as_ref()
+            .unwrap()
+            .containers[0];
+        let env_vars = container.env.as_ref().unwrap();
+
+        let prom_url = env_vars
+            .iter()
+            .find(|e| e.name == "PROMETHEUS_URL")
+            .unwrap();
+        assert_eq!(prom_url.value, Some("http://prometheus:9090".to_string()));
+
+        let loki_url = env_vars
+            .iter()
+            .find(|e| e.name == "LOKI_URL")
+            .unwrap();
+        assert_eq!(loki_url.value, Some("http://loki:3100".to_string()));
+    }
+
+    #[test]
+    fn test_build_investigator_job_source_urls_empty_by_default() {
+        let investigation = create_test_investigation("test-inv", "default");
+        let config = InvestigatorConfig::default();
+
+        let job = build_investigator_job(&investigation, &config).unwrap();
+
+        let container = &job
+            .spec
+            .as_ref()
+            .unwrap()
+            .template
+            .spec
+            .as_ref()
+            .unwrap()
+            .containers[0];
+        let env_vars = container.env.as_ref().unwrap();
+
+        let prom_url = env_vars
+            .iter()
+            .find(|e| e.name == "PROMETHEUS_URL")
+            .unwrap();
+        assert_eq!(prom_url.value, Some(String::new()));
+
+        let loki_url = env_vars
+            .iter()
+            .find(|e| e.name == "LOKI_URL")
+            .unwrap();
+        assert_eq!(loki_url.value, Some(String::new()));
     }
 
     #[test]
