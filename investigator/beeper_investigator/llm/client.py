@@ -23,6 +23,7 @@ class LlmConfig:
     model: str
     api_key: str | None = None
     endpoint: str | None = None
+    screening_model: str | None = None
 
     def validate_model(self) -> None:
         """Validate the model name format for the configured provider.
@@ -67,6 +68,7 @@ class LlmConfig:
         model = os.environ.get("BEEPER_LLM_MODEL", "")
         api_key = os.environ.get("BEEPER_LLM_API_KEY")
         endpoint = os.environ.get("BEEPER_LLM_ENDPOINT")
+        screening_model = os.environ.get("BEEPER_LLM_SCREENING_MODEL") or None
 
         if not provider:
             raise LlmClientError("BEEPER_LLM_PROVIDER environment variable is required")
@@ -96,6 +98,7 @@ class LlmConfig:
             model=model,
             api_key=api_key,
             endpoint=endpoint,
+            screening_model=screening_model,
         )
         config.validate_model()
         return config
@@ -194,6 +197,8 @@ class LlmClient:
         messages: list[dict[str, str]],
         max_tokens: int = 4096,
         temperature: float = 0.0,
+        *,
+        model: str | None = None,
         **kwargs: Any,
     ) -> str:
         """Send a completion request to the LLM.
@@ -202,6 +207,7 @@ class LlmClient:
             messages: List of message dicts with 'role' and 'content' keys.
             max_tokens: Maximum tokens in response.
             temperature: Sampling temperature (0.0 = deterministic).
+            model: Optional model override (e.g. for screening tier).
             **kwargs: Additional arguments passed to LiteLLM.
 
         Returns:
@@ -210,9 +216,10 @@ class LlmClient:
         Raises:
             LlmClientError: If the request fails.
         """
+        effective_model = model or self.config.get_litellm_model()
         try:
             response = await litellm.acompletion(
-                model=self.config.get_litellm_model(),
+                model=effective_model,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
@@ -231,6 +238,8 @@ class LlmClient:
         messages: list[dict[str, str]],
         max_tokens: int = 4096,
         temperature: float = 0.0,
+        *,
+        model: str | None = None,
         **kwargs: Any,
     ) -> str:
         """Send a synchronous completion request to the LLM.
@@ -239,6 +248,7 @@ class LlmClient:
             messages: List of message dicts with 'role' and 'content' keys.
             max_tokens: Maximum tokens in response.
             temperature: Sampling temperature (0.0 = deterministic).
+            model: Optional model override (e.g. for screening tier).
             **kwargs: Additional arguments passed to LiteLLM.
 
         Returns:
@@ -247,9 +257,10 @@ class LlmClient:
         Raises:
             LlmClientError: If the request fails.
         """
+        effective_model = model or self.config.get_litellm_model()
         try:
             response = litellm.completion(
-                model=self.config.get_litellm_model(),
+                model=effective_model,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
@@ -290,3 +301,12 @@ class LlmClient:
     def model(self) -> str:
         """Get the configured model name."""
         return self.config.model
+
+    @property
+    def screening_model(self) -> str:
+        """Get the screening model, falling back to the default model.
+
+        Falls back to ``get_litellm_model()`` so that provider prefixes
+        (e.g. ``azure/``, ``ollama/``) are applied correctly.
+        """
+        return self.config.screening_model or self.config.get_litellm_model()

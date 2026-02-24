@@ -68,7 +68,7 @@ development_status:
   epic-3: in-progress
   3-1-anomaly-detection-engine: done
   3-2-investigator-agent-scaffold: done
-  3-3-customer-impact-assessment: backlog
+  3-3-customer-impact-assessment: done
   3-4-kb-query-prior-research: backlog
   3-5-cross-layer-signal-correlation: backlog
   3-6-rca-hypothesis-generation: backlog

@@ -44,6 +44,7 @@ def _make_agent(
         sources=sources,
         status_updater=mock_status,
     )
+    agent.steps = []  # Isolate lifecycle tests from step implementations
 
     return agent, mock_kb, mock_llm, mock_status
 

@@ -7,7 +7,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from qdrant_client.models import PointStruct
 
@@ -17,6 +17,7 @@ from beeper_investigator.kb.client import KBClient, INVESTIGATIONS_COLLECTION
 from beeper_investigator.llm.client import LlmClient
 from beeper_investigator.sources.loki import LokiClient
 from beeper_investigator.sources.prometheus import PrometheusClient
+from beeper_investigator.steps import InvestigationStep, StepResult
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class InvestigationResult:
     summary: str
     findings: list[str] = field(default_factory=list)
     error: Optional[str] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class InvestigatorAgent:
@@ -63,6 +65,7 @@ class InvestigatorAgent:
         self.llm_client = llm_client
         self.sources = sources
         self.status_updater = status_updater
+        self.steps: list[InvestigationStep] | None = None
 
     def run(self) -> InvestigationResult:
         """Execute the full investigation lifecycle.
@@ -72,6 +75,8 @@ class InvestigatorAgent:
         """
         try:
             self._initialize()
+            if self.steps is None:
+                self.steps = self._build_steps()
             result = self._run_steps()
             self._finalize(result)
             return result
@@ -116,17 +121,66 @@ class InvestigatorAgent:
         else:
             logger.info("Loki source not configured")
 
-    def _run_steps(self) -> InvestigationResult:
-        """Run investigation steps.
+    def _build_steps(self) -> list[InvestigationStep]:
+        """Build the ordered list of investigation steps.
 
-        This is a placeholder. Stories 3.3-3.8 will add concrete
-        investigation steps here.
+        Uses lazy imports to keep the agent framework decoupled from
+        specific step implementations.
+        """
+        from beeper_investigator.steps.impact_assessment import CustomerImpactStep
+
+        steps: list[InvestigationStep] = [
+            CustomerImpactStep(
+                llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+            ),
+        ]
+        return steps
+
+    def _run_steps(self) -> InvestigationResult:
+        """Run registered investigation steps sequentially.
+
+        Each step is non-fatal: failures are logged but do not abort
+        the pipeline. Step data is merged into the result metadata.
         """
         self.status_updater.update_message("Running investigation steps")
-        logger.info("No investigation steps configured (placeholder)")
+
+        if not self.steps:
+            logger.info("No investigation steps configured")
+            return InvestigationResult(
+                success=True,
+                summary="No investigation steps configured",
+            )
+
+        all_findings: list[str] = []
+        metadata: dict[str, Any] = {}
+
+        for step in self.steps:
+            self.status_updater.update_message(f"Running: {step.name}")
+            logger.info("Executing step: %s", step.name)
+            try:
+                result = step.execute()
+            except Exception as exc:
+                logger.exception("Step %s raised an exception", step.name)
+                result = StepResult(
+                    success=False,
+                    summary=f"Step {step.name} failed unexpectedly",
+                    error=str(exc),
+                )
+
+            if result.summary:
+                all_findings.append(result.summary)
+            metadata.update(result.data)
+
+            if not result.success:
+                logger.warning("Step %s failed: %s", step.name, result.error)
+
         return InvestigationResult(
             success=True,
-            summary="No investigation steps configured",
+            summary="; ".join(all_findings) if all_findings else "Investigation complete",
+            findings=all_findings,
+            metadata=metadata,
         )
 
     def _finalize(self, result: InvestigationResult) -> None:
@@ -155,19 +209,35 @@ class InvestigatorAgent:
         Returns:
             True if persistence succeeded, False otherwise.
         """
+        _RESERVED_KEYS = {
+            "investigation_id", "service", "condition", "severity",
+            "status", "summary", "findings", "created_at",
+        }
+        safe_metadata = {}
+        for key, value in result.metadata.items():
+            if key in _RESERVED_KEYS:
+                logger.warning(
+                    "Step metadata key '%s' collides with reserved payload field; skipping",
+                    key,
+                )
+            else:
+                safe_metadata[key] = value
+
+        payload = {
+            "investigation_id": self.context.investigation_id,
+            "service": self.context.service,
+            "condition": self.context.condition,
+            "severity": self.context.severity,
+            "status": "resolved" if result.success else "failed",
+            "summary": result.summary,
+            "findings": result.findings,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            **safe_metadata,
+        }
         point = PointStruct(
             id=str(uuid.uuid4()),
             vector=[0.0] * 1536,  # placeholder; embedding added in future stories
-            payload={
-                "investigation_id": self.context.investigation_id,
-                "service": self.context.service,
-                "condition": self.context.condition,
-                "severity": self.context.severity,
-                "status": "resolved" if result.success else "failed",
-                "summary": result.summary,
-                "findings": result.findings,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            },
+            payload=payload,
         )
         try:
             self.kb_client.client.upsert(INVESTIGATIONS_COLLECTION, [point])
