@@ -24,6 +24,7 @@ class LlmConfig:
     api_key: str | None = None
     endpoint: str | None = None
     screening_model: str | None = None
+    embedding_model: str | None = None
 
     def validate_model(self) -> None:
         """Validate the model name format for the configured provider.
@@ -69,6 +70,7 @@ class LlmConfig:
         api_key = os.environ.get("BEEPER_LLM_API_KEY")
         endpoint = os.environ.get("BEEPER_LLM_ENDPOINT")
         screening_model = os.environ.get("BEEPER_LLM_SCREENING_MODEL") or None
+        embedding_model = os.environ.get("BEEPER_LLM_EMBEDDING_MODEL") or None
 
         if not provider:
             raise LlmClientError("BEEPER_LLM_PROVIDER environment variable is required")
@@ -99,6 +101,7 @@ class LlmConfig:
             api_key=api_key,
             endpoint=endpoint,
             screening_model=screening_model,
+            embedding_model=embedding_model,
         )
         config.validate_model()
         return config
@@ -301,6 +304,34 @@ class LlmClient:
     def model(self) -> str:
         """Get the configured model name."""
         return self.config.model
+
+    def embed_sync(self, text: str) -> list[float]:
+        """Generate an embedding vector for the given text.
+
+        Args:
+            text: The text to embed.
+
+        Returns:
+            Embedding vector as a list of floats.
+
+        Raises:
+            LlmClientError: If embedding model is not configured or the call fails.
+        """
+        if not self.config.embedding_model:
+            raise LlmClientError(
+                "Embedding model not configured (set BEEPER_LLM_EMBEDDING_MODEL)"
+            )
+
+        try:
+            response = litellm.embedding(
+                model=self.config.embedding_model,
+                input=[text],
+            )
+            return response.data[0]["embedding"]
+        except LlmClientError:
+            raise
+        except Exception as e:
+            raise _handle_litellm_error(e) from e
 
     @property
     def screening_model(self) -> str:

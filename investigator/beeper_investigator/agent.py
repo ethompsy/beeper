@@ -128,9 +128,16 @@ class InvestigatorAgent:
         specific step implementations.
         """
         from beeper_investigator.steps.impact_assessment import CustomerImpactStep
+        from beeper_investigator.steps.kb_query import KBQueryStep
 
         steps: list[InvestigationStep] = [
             CustomerImpactStep(
+                llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+            ),
+            KBQueryStep(
+                kb_client=self.kb_client,
                 llm_client=self.llm_client,
                 context=self.context,
                 status_updater=self.status_updater,
