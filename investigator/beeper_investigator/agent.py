@@ -129,6 +129,7 @@ class InvestigatorAgent:
         """
         from beeper_investigator.steps.impact_assessment import CustomerImpactStep
         from beeper_investigator.steps.kb_query import KBQueryStep
+        from beeper_investigator.steps.signal_correlation import SignalCorrelationStep
 
         steps: list[InvestigationStep] = [
             CustomerImpactStep(
@@ -138,6 +139,12 @@ class InvestigatorAgent:
             ),
             KBQueryStep(
                 kb_client=self.kb_client,
+                llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+            ),
+            SignalCorrelationStep(
+                sources=self.sources,
                 llm_client=self.llm_client,
                 context=self.context,
                 status_updater=self.status_updater,
