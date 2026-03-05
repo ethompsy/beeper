@@ -1,0 +1,515 @@
+"""RCA hypothesis generation investigation step.
+
+Synthesizes findings from all prior investigation steps — customer impact,
+KB prior research, and signal correlation — into a definitive root cause
+hypothesis with confidence level (FR7, FR44).
+"""
+
+import json
+import logging
+import re
+from typing import Any
+
+from beeper_investigator.context import InvestigationContext
+from beeper_investigator.k8s.status import InvestigationStatusUpdater
+from beeper_investigator.llm.client import LlmClient
+from beeper_investigator.steps import StepResult
+
+logger = logging.getLogger(__name__)
+
+_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
+
+_RCA_SYSTEM_PROMPT = """\
+You are a senior SRE performing deep root-cause analysis. Synthesize ALL \
+available evidence — customer impact, prior incidents from the knowledge base, \
+and correlated signals — into a definitive root cause hypothesis.
+
+Respond with ONLY a JSON object:
+{"root_cause_hypothesis": "clear description of the root cause", \
+"confidence_level": "high"|"medium"|"low", \
+"confidence_percentage": 85, \
+"supporting_evidence": ["evidence item 1", "evidence item 2"], \
+"alternative_hypotheses": [{"description": "alt hypothesis", "confidence_percentage": 30}], \
+"additional_data_needs": ["what else would help if uncertain"], \
+"kb_citation": "prior incident ID if applicable or null"}
+
+Rules:
+- high confidence (>80%): Strong correlation + clear causal chain
+- high confidence may also be confirmed by KB
+- medium confidence (50-80%): Partial correlation, plausible but not confirmed
+- low confidence (<50%): Weak/conflicting signals, speculative hypothesis
+- ALWAYS provide alternative_hypotheses when confidence < high
+- ALWAYS provide additional_data_needs when confidence is low
+- If a known KB match exists, cite it and boost confidence appropriately
+- confidence_percentage must be an integer 0-100"""
+
+_RCA_USER_TEMPLATE = """\
+Investigation context:
+Condition: {condition}
+Service: {service}
+Severity: {severity}
+
+Customer impact: {impact_summary}
+
+Prior KB research:
+{kb_summary}
+
+Signal correlation findings:
+{signal_summary}
+
+Signal correlation hypotheses:
+{correlation_hypotheses}"""
+
+
+def _parse_response(raw: str) -> dict:
+    """Parse LLM response, stripping markdown fences if present."""
+    match = _CODE_FENCE_RE.search(raw)
+    text = match.group(1) if match else raw
+    return json.loads(text.strip())
+
+
+def _validate_confidence(
+    level: str, percentage: int | None
+) -> tuple[str, int | None]:
+    """Validate and correct confidence level/percentage alignment.
+
+    If percentage is provided, the level is overridden to match the band:
+    - >80%: high
+    - 50-80%: medium
+    - <50%: low
+    """
+    if percentage is not None:
+        if percentage > 80:
+            level = "high"
+        elif percentage >= 50:
+            level = "medium"
+        else:
+            level = "low"
+    return level, percentage
+
+
+class RCAHypothesisStep:
+    """Generate a root cause hypothesis from all prior investigation evidence.
+
+    Synthesizes customer impact, KB prior research, and signal correlation
+    findings into a single hypothesis with confidence level.
+    """
+
+    name: str = "RCA Hypothesis Generation"
+
+    def __init__(
+        self,
+        llm_client: LlmClient,
+        context: InvestigationContext,
+        status_updater: InvestigationStatusUpdater,
+        pipeline_metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.llm_client = llm_client
+        self.context = context
+        self.status_updater = status_updater
+        self.pipeline_metadata = pipeline_metadata or {}
+
+    def execute(self) -> StepResult:
+        """Run the RCA hypothesis generation step."""
+        self.status_updater.update_message("Generating root cause hypothesis")
+        logger.info(
+            "Generating RCA hypothesis for service=%s condition=%s",
+            self.context.service,
+            self.context.condition,
+        )
+
+        # Extract prior step data from pipeline metadata
+        impact_data = self._extract_impact_data()
+        kb_data = self._extract_kb_data()
+        signal_data = self._extract_signal_data()
+
+        # Check if we have any useful data at all
+        has_impact = impact_data.get("customer_impacting") is not None
+        has_kb = bool(kb_data.get("prior_research_summary"))
+        has_signals = (
+            bool(signal_data.get("signal_summary"))
+            or bool(signal_data.get("hypotheses"))
+        )
+
+        if not has_impact and not has_kb and not has_signals:
+            logger.info("No pipeline metadata available; returning insufficient data")
+            return self._insufficient_data_result()
+
+        # Build and call LLM
+        impact_summary = self._format_impact(impact_data)
+        kb_summary = self._format_kb(kb_data)
+        signal_summary = signal_data.get("signal_summary", "No signal data available")
+        correlation_hypotheses = self._format_hypotheses(
+            signal_data.get("hypotheses", [])
+        )
+
+        messages = [
+            {"role": "system", "content": _RCA_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": _RCA_USER_TEMPLATE.format(
+                    condition=self.context.condition,
+                    service=self.context.service,
+                    severity=self.context.severity,
+                    impact_summary=impact_summary,
+                    kb_summary=kb_summary,
+                    signal_summary=signal_summary,
+                    correlation_hypotheses=correlation_hypotheses,
+                ),
+            },
+        ]
+
+        try:
+            raw = self.llm_client.complete_sync(
+                messages,
+                max_tokens=1024,
+                temperature=0.0,
+            )
+        except Exception as exc:
+            logger.warning("LLM RCA synthesis failed: %s", exc)
+            return self._fallback_result(signal_data, kb_data)
+
+        return self._parse_result(raw, signal_data, kb_data)
+
+    # ── Pipeline metadata extraction ─────────────────────────
+
+    def _extract_impact_data(self) -> dict[str, Any]:
+        """Extract customer impact data from pipeline metadata."""
+        return {
+            "customer_impacting": self.pipeline_metadata.get("customer_impacting"),
+            "reasoning": self.pipeline_metadata.get("reasoning", ""),
+        }
+
+    def _extract_kb_data(self) -> dict[str, Any]:
+        """Extract KB query data from pipeline metadata."""
+        return {
+            "prior_research_summary": self.pipeline_metadata.get(
+                "prior_research_summary", ""
+            ),
+            "relevant_matches": self.pipeline_metadata.get("relevant_matches", []),
+            "recommended_resolution": self.pipeline_metadata.get(
+                "recommended_resolution"
+            ),
+            "confidence_boost": self.pipeline_metadata.get("confidence_boost"),
+            "exact_match_found": self.pipeline_metadata.get(
+                "exact_match_found", False
+            ),
+            "exact_match_id": self.pipeline_metadata.get("exact_match_id"),
+        }
+
+    def _extract_signal_data(self) -> dict[str, Any]:
+        """Extract signal correlation data from pipeline metadata."""
+        return {
+            "hypotheses": self.pipeline_metadata.get("hypotheses", []),
+            "signal_summary": self.pipeline_metadata.get("signal_summary", ""),
+            "service_dependency_chain": self.pipeline_metadata.get(
+                "service_dependency_chain"
+            ),
+            "layers_queried": self.pipeline_metadata.get("layers_queried", []),
+            "signals_gathered": self.pipeline_metadata.get("signals_gathered", 0),
+        }
+
+    # ── Prompt formatting ────────────────────────────────────
+
+    def _format_impact(self, impact_data: dict[str, Any]) -> str:
+        """Format customer impact data for the LLM prompt."""
+        impact = impact_data.get("customer_impacting")
+        reasoning = impact_data.get("reasoning", "")
+        if impact is None:
+            return "Customer impact assessment not available"
+        return f"Customer impacting: {impact}. {reasoning}".strip()
+
+    def _format_kb(self, kb_data: dict[str, Any]) -> str:
+        """Format KB data for the LLM prompt."""
+        summary = kb_data.get("prior_research_summary", "")
+        if not summary:
+            return "No prior KB research available"
+
+        parts = [summary]
+        if kb_data.get("exact_match_found"):
+            match_id = kb_data.get("exact_match_id", "unknown")
+            parts.append(f"Exact match found: {match_id}")
+        if kb_data.get("recommended_resolution"):
+            parts.append(
+                f"Recommended resolution: {kb_data['recommended_resolution']}"
+            )
+        if kb_data.get("confidence_boost"):
+            parts.append(f"KB confidence boost: {kb_data['confidence_boost']}")
+
+        return "\n".join(parts)
+
+    def _format_hypotheses(self, hypotheses: list[dict[str, Any]]) -> str:
+        """Format signal correlation hypotheses for the LLM prompt."""
+        if not hypotheses:
+            return "No signal correlation hypotheses available"
+
+        lines: list[str] = []
+        for i, h in enumerate(hypotheses, 1):
+            desc = h.get("description", "")
+            chain = h.get("causal_chain", "")
+            conf = h.get("confidence", "unknown")
+            signals = h.get("supporting_signals", [])
+            layer = h.get("originating_layer", "unknown")
+            lines.append(
+                f"{i}. {desc} (confidence: {conf}, layer: {layer})\n"
+                f"   Causal chain: {chain}\n"
+                f"   Supporting signals: {', '.join(signals) if signals else 'none'}"
+            )
+        return "\n".join(lines)
+
+    # ── Response parsing ─────────────────────────────────────
+
+    def _parse_result(
+        self,
+        raw: str,
+        signal_data: dict[str, Any],
+        kb_data: dict[str, Any],
+    ) -> StepResult:
+        """Parse LLM response into a StepResult."""
+        try:
+            parsed = _parse_response(raw)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("Failed to parse LLM RCA response")
+            return self._fallback_result(signal_data, kb_data)
+
+        # Extract and normalize fields
+        hypothesis = parsed.get("root_cause_hypothesis", "")
+        if not isinstance(hypothesis, str) or not hypothesis:
+            logger.warning("LLM returned empty or invalid hypothesis")
+            return self._fallback_result(signal_data, kb_data)
+
+        level = parsed.get("confidence_level", "low")
+        if isinstance(level, str):
+            level = level.lower()
+        if level not in ("high", "medium", "low"):
+            level = "low"
+
+        percentage = parsed.get("confidence_percentage")
+        percentage = self._normalize_percentage(percentage)
+
+        level, percentage = _validate_confidence(level, percentage)
+
+        supporting = parsed.get("supporting_evidence", [])
+        if not isinstance(supporting, list):
+            supporting = []
+
+        alternatives = self._normalize_alternatives(
+            parsed.get("alternative_hypotheses", [])
+        )
+        additional_needs = parsed.get("additional_data_needs", [])
+        if not isinstance(additional_needs, list):
+            additional_needs = []
+
+        kb_citation = parsed.get("kb_citation")
+        if not isinstance(kb_citation, str) or kb_citation == "null":
+            kb_citation = None
+
+        # Apply KB boost if applicable
+        if (
+            kb_data.get("confidence_boost") == "high"
+            and kb_data.get("exact_match_found")
+        ):
+            match_id = kb_data.get("exact_match_id", "unknown")
+            evidence_note = f"KB exact match ({match_id}) confirms this pattern"
+            if evidence_note not in supporting:
+                supporting.append(evidence_note)
+            if kb_citation is None:
+                kb_citation = match_id
+
+        # Enforce alternatives when confidence < high
+        if level != "high" and not alternatives:
+            alternatives = self._fallback_alternatives(signal_data)
+
+        # Enforce additional_data_needs when confidence is low
+        if level == "low" and not additional_needs:
+            additional_needs = [
+                "Additional monitoring data or logs may clarify"
+                " the root cause"
+            ]
+
+        if len(hypothesis) > 100:
+            summary = (
+                f"RCA hypothesis: {hypothesis[:100]}..."
+                f" (confidence: {level})"
+            )
+        else:
+            summary = (
+                f"RCA hypothesis: {hypothesis}"
+                f" (confidence: {level})"
+            )
+
+        return StepResult(
+            success=True,
+            summary=summary,
+            data={
+                "root_cause_hypothesis": hypothesis,
+                "confidence_level": level,
+                "confidence_percentage": percentage,
+                "supporting_evidence": supporting,
+                "alternative_hypotheses": alternatives,
+                "additional_data_needs": additional_needs,
+                "kb_citation": kb_citation,
+                "synthesis_source": "llm",
+            },
+        )
+
+    def _normalize_percentage(self, value: Any) -> int | None:
+        """Normalize confidence percentage to int 0-100 or None."""
+        if value is None:
+            return None
+        try:
+            pct = int(value)
+            return max(0, min(100, pct))
+        except (TypeError, ValueError):
+            return None
+
+    def _normalize_alternatives(
+        self, raw: Any
+    ) -> list[dict[str, Any]]:
+        """Normalize alternative hypotheses list."""
+        if not isinstance(raw, list):
+            return []
+        result: list[dict[str, Any]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            desc = item.get("description", "")
+            if not desc:
+                continue
+            pct = self._normalize_percentage(item.get("confidence_percentage"))
+            result.append({"description": desc, "confidence_percentage": pct})
+        return result
+
+    # ── Fallback and degradation paths ───────────────────────
+
+    def _fallback_result(
+        self,
+        signal_data: dict[str, Any],
+        kb_data: dict[str, Any],
+    ) -> StepResult:
+        """Build result from signal correlation hypotheses when LLM fails."""
+        hypotheses = signal_data.get("hypotheses", [])
+
+        # Promote best signal correlation hypothesis
+        if hypotheses:
+            best = hypotheses[0]
+            hypothesis = best.get("description", "Unable to determine root cause")
+            supporting = best.get("supporting_signals", [])
+            level = best.get("confidence", "low")
+            if isinstance(level, str):
+                level = level.lower()
+            if level not in ("high", "medium", "low"):
+                level = "low"
+
+            # Build alternatives from remaining hypotheses
+            alternatives = []
+            for h in hypotheses[1:]:
+                desc = h.get("description", "")
+                if desc:
+                    alternatives.append({
+                        "description": desc,
+                        "confidence_percentage": None,
+                    })
+
+            additional_needs = []
+            if level == "low":
+                additional_needs = [
+                    "LLM synthesis failed; additional analysis needed"
+                ]
+        else:
+            hypothesis = "Unable to determine root cause — insufficient data"
+            supporting = []
+            level = "low"
+            alternatives = []
+            additional_needs = [
+                "No signal correlation data available for analysis"
+            ]
+
+        # Check for KB citation
+        kb_citation = None
+        if kb_data.get("exact_match_found"):
+            kb_citation = kb_data.get("exact_match_id")
+
+        # Enforce alternatives when confidence < high
+        if level != "high" and not alternatives:
+            alternatives = [
+                {
+                    "description": "Insufficient data for alternatives",
+                    "confidence_percentage": None,
+                }
+            ]
+
+        fallback_summary = (
+            f"RCA hypothesis (fallback): {hypothesis[:80]}"
+            f" (confidence: {level})"
+        )
+        return StepResult(
+            success=True,
+            summary=fallback_summary,
+            data={
+                "root_cause_hypothesis": hypothesis,
+                "confidence_level": level,
+                "confidence_percentage": None,
+                "supporting_evidence": supporting,
+                "alternative_hypotheses": alternatives,
+                "additional_data_needs": additional_needs,
+                "kb_citation": kb_citation,
+                "synthesis_source": "fallback",
+            },
+        )
+
+    def _insufficient_data_result(self) -> StepResult:
+        """Return result when no pipeline metadata is available."""
+        no_data_msg = (
+            "Unable to determine root cause"
+            " — no prior step data available"
+        )
+        return StepResult(
+            success=True,
+            summary=f"RCA hypothesis: {no_data_msg} (confidence: low)",
+            data={
+                "root_cause_hypothesis": no_data_msg,
+                "confidence_level": "low",
+                "confidence_percentage": None,
+                "supporting_evidence": [],
+                "alternative_hypotheses": [
+                    {
+                        "description": "Insufficient data for alternatives",
+                        "confidence_percentage": None,
+                    }
+                ],
+                "additional_data_needs": [
+                    "Customer impact assessment data",
+                    "Knowledge base prior research",
+                    "Signal correlation data",
+                ],
+                "kb_citation": None,
+                "synthesis_source": "fallback",
+            },
+        )
+
+    def _fallback_alternatives(
+        self, signal_data: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Build alternative hypotheses from signal correlation.
+
+        Used when the LLM produced a main hypothesis but omitted
+        alternatives.  All signal hypotheses are included because
+        the main hypothesis came from the LLM, not from this list.
+        """
+        hypotheses = signal_data.get("hypotheses", [])
+        alternatives: list[dict[str, Any]] = []
+        for h in hypotheses:
+            desc = h.get("description", "")
+            if desc:
+                alternatives.append(
+                    {"description": desc, "confidence_percentage": None}
+                )
+        if not alternatives:
+            alternatives = [
+                {
+                    "description": "Insufficient data for alternatives",
+                    "confidence_percentage": None,
+                }
+            ]
+        return alternatives

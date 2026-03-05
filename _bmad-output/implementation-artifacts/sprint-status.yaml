@@ -71,8 +71,8 @@ development_status:
   3-3-customer-impact-assessment: done
   3-4-kb-query-prior-research: done
   3-5-cross-layer-signal-correlation: done
-  3-6-rca-hypothesis-generation: ready-for-dev
-  3-7-resolution-recommendations: backlog
+  3-6-rca-hypothesis-generation: done
+  3-7-resolution-recommendations: ready-for-dev
   3-8-investigation-documentation: backlog
   3-9-tiered-llm-model-selection: backlog
   3-10-llm-response-caching: backlog

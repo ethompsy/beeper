@@ -66,6 +66,9 @@ class InvestigatorAgent:
         self.sources = sources
         self.status_updater = status_updater
         self.steps: list[InvestigationStep] | None = None
+        # Shared by reference with RCAHypothesisStep; updated after each
+        # step in _run_steps() so later steps see prior step results.
+        self._pipeline_metadata: dict[str, Any] = {}
 
     def run(self) -> InvestigationResult:
         """Execute the full investigation lifecycle.
@@ -129,6 +132,7 @@ class InvestigatorAgent:
         """
         from beeper_investigator.steps.impact_assessment import CustomerImpactStep
         from beeper_investigator.steps.kb_query import KBQueryStep
+        from beeper_investigator.steps.rca_hypothesis import RCAHypothesisStep
         from beeper_investigator.steps.signal_correlation import SignalCorrelationStep
 
         steps: list[InvestigationStep] = [
@@ -148,6 +152,12 @@ class InvestigatorAgent:
                 llm_client=self.llm_client,
                 context=self.context,
                 status_updater=self.status_updater,
+            ),
+            RCAHypothesisStep(
+                llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+                pipeline_metadata=self._pipeline_metadata,
             ),
         ]
         return steps
@@ -186,6 +196,7 @@ class InvestigatorAgent:
             if result.summary:
                 all_findings.append(result.summary)
             metadata.update(result.data)
+            self._pipeline_metadata.update(result.data)
 
             if not result.success:
                 logger.warning("Step %s failed: %s", step.name, result.error)

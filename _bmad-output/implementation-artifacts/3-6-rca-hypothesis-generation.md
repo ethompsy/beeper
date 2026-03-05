@@ -1,6 +1,6 @@
 # Story 3.6: RCA Hypothesis Generation
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -20,57 +20,57 @@ so that SREs understand the certainty of my findings.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create RCAHypothesisStep scaffold (AC: 1, 2)
-  - [ ] 1.1 Create `steps/rca_hypothesis.py` with `RCAHypothesisStep` implementing `InvestigationStep`
-  - [ ] 1.2 Accept `llm_client`, `context`, `status_updater` via constructor (same pattern as `CustomerImpactStep`)
-  - [ ] 1.3 Define `name = "RCA Hypothesis Generation"`
-  - [ ] 1.4 In `execute()`: extract prior step data from `context` pipeline metadata (see Dev Notes)
+- [x] Task 1: Create RCAHypothesisStep scaffold (AC: 1, 2)
+  - [x] 1.1 Create `steps/rca_hypothesis.py` with `RCAHypothesisStep` implementing `InvestigationStep`
+  - [x] 1.2 Accept `llm_client`, `context`, `status_updater` via constructor (same pattern as `CustomerImpactStep`)
+  - [x] 1.3 Define `name = "RCA Hypothesis Generation"`
+  - [x] 1.4 In `execute()`: extract prior step data from `context` pipeline metadata (see Dev Notes)
 
-- [ ] Task 2: Pipeline metadata extraction (AC: 1, 4)
-  - [ ] 2.1 Extract impact assessment data: `customer_impacting`, `reasoning`
-  - [ ] 2.2 Extract KB query data: `prior_research_summary`, `relevant_matches`, `recommended_resolution`, `confidence_boost`, `exact_match_found`
-  - [ ] 2.3 Extract signal correlation data: `hypotheses`, `signal_summary`, `service_dependency_chain`, `layers_queried`, `signals_gathered`
-  - [ ] 2.4 Handle missing metadata gracefully — any prior step may have failed or been skipped
+- [x] Task 2: Pipeline metadata extraction (AC: 1, 4)
+  - [x] 2.1 Extract impact assessment data: `customer_impacting`, `reasoning`
+  - [x] 2.2 Extract KB query data: `prior_research_summary`, `relevant_matches`, `recommended_resolution`, `confidence_boost`, `exact_match_found`
+  - [x] 2.3 Extract signal correlation data: `hypotheses`, `signal_summary`, `service_dependency_chain`, `layers_queried`, `signals_gathered`
+  - [x] 2.4 Handle missing metadata gracefully — any prior step may have failed or been skipped
 
-- [ ] Task 3: LLM RCA synthesis (AC: 1, 2, 3, 4)
-  - [ ] 3.1 Build system prompt for deep root-cause analysis synthesis
-  - [ ] 3.2 Build user prompt with all extracted evidence: impact, KB findings, correlated signals, prior hypotheses
-  - [ ] 3.3 Call `complete_sync()` with **no explicit model** (use default, which is the investigation-tier model; FR44 tiered model selection is Story 3.9)
-  - [ ] 3.4 Parse LLM response: `root_cause_hypothesis`, `confidence_level`, `confidence_percentage`, `supporting_evidence`, `alternative_hypotheses`, `additional_data_needs`
-  - [ ] 3.5 On LLM failure → fallback: promote best signal correlation hypothesis or return "insufficient data"
+- [x] Task 3: LLM RCA synthesis (AC: 1, 2, 3, 4)
+  - [x] 3.1 Build system prompt for deep root-cause analysis synthesis
+  - [x] 3.2 Build user prompt with all extracted evidence: impact, KB findings, correlated signals, prior hypotheses
+  - [x] 3.3 Call `complete_sync()` with **no explicit model** (use default, which is the investigation-tier model; FR44 tiered model selection is Story 3.9)
+  - [x] 3.4 Parse LLM response: `root_cause_hypothesis`, `confidence_level`, `confidence_percentage`, `supporting_evidence`, `alternative_hypotheses`, `additional_data_needs`
+  - [x] 3.5 On LLM failure → fallback: promote best signal correlation hypothesis or return "insufficient data"
 
-- [ ] Task 4: Confidence quantification (AC: 1, 3, 4)
-  - [ ] 4.1 Normalize `confidence_level`: "high"/"medium"/"low" (case-insensitive, default to "low")
-  - [ ] 4.2 Normalize `confidence_percentage`: clamp to 0-100 integer range, default to `None` if not parseable
-  - [ ] 4.3 Validate band alignment: high >80%, medium 50-80%, low <50% — override level if percentage contradicts
-  - [ ] 4.4 KB match boost: if `confidence_boost` from KB step is "high" and `exact_match_found`, note in supporting evidence
+- [x] Task 4: Confidence quantification (AC: 1, 3, 4)
+  - [x] 4.1 Normalize `confidence_level`: "high"/"medium"/"low" (case-insensitive, default to "low")
+  - [x] 4.2 Normalize `confidence_percentage`: clamp to 0-100 integer range, default to `None` if not parseable
+  - [x] 4.3 Validate band alignment: high >80%, medium 50-80%, low <50% — override level if percentage contradicts
+  - [x] 4.4 KB match boost: if `confidence_boost` from KB step is "high" and `exact_match_found`, note in supporting evidence
 
-- [ ] Task 5: Alternative hypotheses and uncertainty (AC: 3)
-  - [ ] 5.1 When `confidence_level` < "high": require `alternative_hypotheses` list (at least one)
-  - [ ] 5.2 When `confidence_level` == "low": require `additional_data_needs` list (what else to investigate)
-  - [ ] 5.3 On LLM returning empty alternatives when confidence < high: populate from signal correlation hypotheses as fallback
+- [x] Task 5: Alternative hypotheses and uncertainty (AC: 3)
+  - [x] 5.1 When `confidence_level` < "high": require `alternative_hypotheses` list (at least one)
+  - [x] 5.2 When `confidence_level` == "low": require `additional_data_needs` list (what else to investigate)
+  - [x] 5.3 On LLM returning empty alternatives when confidence < high: populate from signal correlation hypotheses as fallback
 
-- [ ] Task 6: Register step in agent pipeline (AC: all)
-  - [ ] 6.1 Add `RCAHypothesisStep` to `_build_steps()` in `agent.py` after `SignalCorrelationStep` (lazy import)
-  - [ ] 6.2 Pass `llm_client`, `context`, `status_updater`
-  - [ ] 6.3 Status updater reports "Generating root cause hypothesis"
+- [x] Task 6: Register step in agent pipeline (AC: all)
+  - [x] 6.1 Add `RCAHypothesisStep` to `_build_steps()` in `agent.py` after `SignalCorrelationStep` (lazy import)
+  - [x] 6.2 Pass `llm_client`, `context`, `status_updater`
+  - [x] 6.3 Status updater reports "Generating root cause hypothesis"
 
-- [ ] Task 7: Tests (AC: all)
-  - [ ] 7.1 Create `tests/test_rca_hypothesis.py` with `_make_step()` helper
-  - [ ] 7.2 Test hypothesis generated with confidence level and percentage (AC1)
-  - [ ] 7.3 Test strong evidence → high confidence with percentage >80% (AC2)
-  - [ ] 7.4 Test weak/conflicting signals → low confidence with uncertainty statement and additional data needs (AC3)
-  - [ ] 7.5 Test KB exact match boosts confidence and cites prior incident (AC4)
-  - [ ] 7.6 Test KB confidence_boost "medium" with relevant matches
-  - [ ] 7.7 Test all prior step data missing → graceful handling with "insufficient data" summary
-  - [ ] 7.8 Test partial prior step data (e.g., impact available, KB unavailable, signals available)
-  - [ ] 7.9 Test LLM failure → fallback promotes signal correlation hypothesis
-  - [ ] 7.10 Test LLM malformed JSON → graceful fallback
-  - [ ] 7.11 Test confidence band validation (percentage 90 but level "low" → corrected to "high")
-  - [ ] 7.12 Test alternative hypotheses present when confidence < high
-  - [ ] 7.13 Test additional_data_needs present when confidence is low
-  - [ ] 7.14 Test StepResult data includes all expected schema keys (consistent shape)
-  - [ ] 7.15 Test step name and status update message
+- [x] Task 7: Tests (AC: all)
+  - [x] 7.1 Create `tests/test_rca_hypothesis.py` with `_make_step()` helper
+  - [x] 7.2 Test hypothesis generated with confidence level and percentage (AC1)
+  - [x] 7.3 Test strong evidence → high confidence with percentage >80% (AC2)
+  - [x] 7.4 Test weak/conflicting signals → low confidence with uncertainty statement and additional data needs (AC3)
+  - [x] 7.5 Test KB exact match boosts confidence and cites prior incident (AC4)
+  - [x] 7.6 Test KB confidence_boost "medium" with relevant matches
+  - [x] 7.7 Test all prior step data missing → graceful handling with "insufficient data" summary
+  - [x] 7.8 Test partial prior step data (e.g., impact available, KB unavailable, signals available)
+  - [x] 7.9 Test LLM failure → fallback promotes signal correlation hypothesis
+  - [x] 7.10 Test LLM malformed JSON → graceful fallback
+  - [x] 7.11 Test confidence band validation (percentage 90 but level "low" → corrected to "high")
+  - [x] 7.12 Test alternative hypotheses present when confidence < high
+  - [x] 7.13 Test additional_data_needs present when confidence is low
+  - [x] 7.14 Test StepResult data includes all expected schema keys (consistent shape)
+  - [x] 7.15 Test step name and status update message
 
 ## Dev Notes
 
@@ -354,16 +354,64 @@ investigator/tests/
 - [Source: investigator/beeper_investigator/context.py] — `InvestigationContext` fields (frozen dataclass)
 - [Source: investigator/beeper_investigator/llm/client.py] — `complete_sync()` with optional `model` parameter, `screening_model` property
 
+## Senior Developer Review (AI)
+
+**Review Date:** 2026-03-02
+**Review Outcome:** Approve (after fixes applied)
+**Reviewer:** Claude Opus 4.6
+
+### Action Items
+
+- [x] **[HIGH]** Fix `_fallback_alternatives` bug: incorrectly skipped first signal hypothesis in LLM success path (rca_hypothesis.py:466)
+- [x] **[MEDIUM]** Fix 17 ruff E501 lint violations across rca_hypothesis.py and test_rca_hypothesis.py
+- [x] **[MEDIUM]** Fix `has_signals` check to also consider `hypotheses` list presence (rca_hypothesis.py:128)
+- [x] **[MEDIUM]** Handle LLM returning string `"null"` for `kb_citation` (rca_hypothesis.py:299)
+- [x] **[LOW]** Add documentation comment for shared mutable `_pipeline_metadata` dict (agent.py:69)
+- **[LOW]** `_CODE_FENCE_RE` and `_parse_response` duplicated with signal_correlation.py — defer to future cleanup
+- **[LOW]** Pre-existing I001 import sort in agent.py module-level imports — not introduced by this story
+
+### Review Notes
+
+- All 4 ACs verified as fully implemented
+- All 33 subtasks verified against actual code — legitimately complete
+- Git File List matches story File List exactly (0 discrepancies)
+- Graceful degradation paths comprehensively tested
+- 3 new regression tests added for the fixed bugs
+- Final state: 38 tests passing, ruff clean, 0 regressions
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6
 
 ### Debug Log References
 
+- All 38 RCA hypothesis tests pass (0 failures) — 35 original + 3 review-fix tests
+- Full regression suite: 211 passed, 8 failed (pre-existing), 3 skipped — no regressions introduced
+- Pre-existing failures: 6 in test_llm_client.py (missing pytest-asyncio), 2 in test_kb_client.py (qdrant-client API changes)
+- Ruff lint: 0 violations on all changed files
+
 ### Completion Notes List
+
+- Created `RCAHypothesisStep` in `steps/rca_hypothesis.py` implementing full RCA synthesis pipeline
+- Step extracts pipeline metadata from prior steps (CustomerImpact, KBQuery, SignalCorrelation) via shared `_pipeline_metadata` dict
+- LLM synthesis uses system+user prompts with formatted evidence; parses JSON response with code fence stripping
+- Confidence band validation corrects mismatches between level and percentage (e.g., 90% + "low" → "high")
+- KB exact match boost adds supporting evidence and sets kb_citation
+- Alternative hypotheses enforced when confidence < high; additional_data_needs enforced when low
+- Graceful degradation: LLM failure promotes best signal hypothesis; malformed JSON falls back; no data returns "insufficient data"
+- All code paths return consistent StepResult data schema with 8 keys
+- Agent pipeline modified: `_pipeline_metadata` dict shared with RCAHypothesisStep; updated in `_run_steps()` after each step
+- Registered in `_build_steps()` after `SignalCorrelationStep` with lazy import
 
 ### Change Log
 
+- 2026-03-02: Implemented RCA Hypothesis Generation step (Story 3.6) — all 7 tasks complete, 35 tests passing
+- 2026-03-02: Code review fixes — 4 HIGH/MEDIUM issues fixed, 3 new tests added, all ruff violations resolved
+
 ### File List
+
+- investigator/beeper_investigator/steps/rca_hypothesis.py (NEW)
+- investigator/beeper_investigator/agent.py (MODIFIED — added RCAHypothesisStep to _build_steps(), pipeline_metadata passing in _run_steps())
+- investigator/tests/test_rca_hypothesis.py (NEW)

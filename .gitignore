@@ -81,6 +81,9 @@ secrets/
 *.whl
 *.tar.gz
 
+# Node
+node_modules/
+
 # Temporary files
 tmp/
 temp/
