@@ -133,6 +133,9 @@ class InvestigatorAgent:
         from beeper_investigator.steps.impact_assessment import CustomerImpactStep
         from beeper_investigator.steps.kb_query import KBQueryStep
         from beeper_investigator.steps.rca_hypothesis import RCAHypothesisStep
+        from beeper_investigator.steps.resolution_recommendations import (
+            ResolutionRecommendationStep,
+        )
         from beeper_investigator.steps.signal_correlation import SignalCorrelationStep
 
         steps: list[InvestigationStep] = [
@@ -154,6 +157,12 @@ class InvestigatorAgent:
                 status_updater=self.status_updater,
             ),
             RCAHypothesisStep(
+                llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+                pipeline_metadata=self._pipeline_metadata,
+            ),
+            ResolutionRecommendationStep(
                 llm_client=self.llm_client,
                 context=self.context,
                 status_updater=self.status_updater,
