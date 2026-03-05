@@ -4,9 +4,9 @@ Bundles all investigation-specific configuration read from environment
 variables injected by the operator's K8s Job spec.
 """
 
+import json
 import os
 import sys
-import json
 from dataclasses import dataclass
 
 
@@ -29,7 +29,8 @@ class InvestigationContext:
         """Build context from environment variables.
 
         Required: INVESTIGATION_ID, INVESTIGATION_NAMESPACE
-        Optional (with defaults): INVESTIGATION_CONDITION, INVESTIGATION_SERVICE, INVESTIGATION_SEVERITY
+        Optional (with defaults): INVESTIGATION_CONDITION,
+        INVESTIGATION_SERVICE, INVESTIGATION_SEVERITY
 
         Returns:
             Populated InvestigationContext.

@@ -60,7 +60,7 @@ class TestInvestigationStatusUpdater:
         self, mock_client: MagicMock, mock_config: MagicMock
     ) -> None:
         """ApiException from K8s is logged but does not raise."""
-        from kubernetes.client.rest import ApiException
+        from kubernetes.client.rest import ApiException  # type: ignore[import-untyped]
 
         mock_api = MagicMock()
         mock_api.patch_namespaced_custom_object_status.side_effect = ApiException(

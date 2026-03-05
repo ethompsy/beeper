@@ -65,8 +65,9 @@ class LokiClient:
 
         resp = self._client.get("/loki/api/v1/query", params=params)
         resp.raise_for_status()
-        body = resp.json()
-        return body.get("data", {})
+        body: dict[str, Any] = resp.json()
+        data: dict[str, Any] = body.get("data", {})
+        return data
 
     def query_range(
         self,
@@ -89,8 +90,9 @@ class LokiClient:
         params = {"query": logql, "start": start, "end": end, "limit": str(limit)}
         resp = self._client.get("/loki/api/v1/query_range", params=params)
         resp.raise_for_status()
-        body = resp.json()
-        return body.get("data", {})
+        body: dict[str, Any] = resp.json()
+        data: dict[str, Any] = body.get("data", {})
+        return data
 
     def close(self) -> None:
         """Close the underlying HTTP client."""

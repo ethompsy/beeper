@@ -1,13 +1,13 @@
 """Tests for SignalCorrelationStep."""
 
 import json
+from typing import Any
 from unittest.mock import MagicMock
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.steps.signal_correlation import (
-    DEFAULT_LOOKBACK_MINUTES,
-    _LAYERS,
     _MAX_QUERIES_PER_LAYER,
+    DEFAULT_LOOKBACK_MINUTES,
     SignalCorrelationStep,
 )
 
@@ -32,8 +32,8 @@ def _make_sources(
     *,
     prometheus: bool = True,
     loki: bool = True,
-    prom_return: dict | None = None,
-    loki_return: dict | None = None,
+    prom_return: dict[str, Any] | None = None,
+    loki_return: dict[str, Any] | None = None,
     prom_error: Exception | None = None,
     loki_error: Exception | None = None,
 ) -> MagicMock:
@@ -60,7 +60,12 @@ def _make_sources(
         else:
             mock_loki.query_range.return_value = loki_return or {
                 "resultType": "streams",
-                "result": [{"stream": {"app": "payments"}, "values": [["1706454600000000000", "error occurred"]]}],
+                "result": [
+                    {
+                        "stream": {"app": "payments"},
+                        "values": [["1706454600000000000", "error occurred"]],
+                    }
+                ],
             }
         sources.loki = mock_loki
     else:
@@ -73,8 +78,8 @@ def _make_step(
     *,
     prometheus: bool = True,
     loki: bool = True,
-    prom_return: dict | None = None,
-    loki_return: dict | None = None,
+    prom_return: dict[str, Any] | None = None,
+    loki_return: dict[str, Any] | None = None,
     prom_error: Exception | None = None,
     loki_error: Exception | None = None,
     llm_query_response: str | None = None,
@@ -107,18 +112,31 @@ def _make_step(
     # Default LLM responses: first call = query generation, second call = analysis
     default_query_response = json.dumps({
         "layers": {
-            "infrastructure": {"promql": ["node_cpu_seconds_total{mode!='idle'}"]},
-            "platform": {"promql": ["kube_pod_container_status_restarts_total{namespace='default'}"]},
+            "infrastructure": {
+                "promql": ["node_cpu_seconds_total{mode!='idle'}"],
+            },
+            "platform": {
+                "promql": [
+                    "kube_pod_container_status_restarts_total"
+                    "{namespace='default'}"
+                ],
+            },
             "application": {
                 "logql": ['{namespace="default"} |= "error"'],
-                "promql": ["rate(http_requests_total{service='payments',code=~'5..'}[5m])"],
+                "promql": [
+                    "rate(http_requests_total"
+                    "{service='payments',code=~'5..'}[5m])"
+                ],
             },
             "data": {"promql": ["pg_stat_activity{datname='payments'}"]},
         }
     })
 
     default_analysis_response = json.dumps({
-        "signal_summary": "4 signals gathered across infrastructure, platform, application, and data layers",
+        "signal_summary": (
+            "4 signals gathered across infrastructure,"
+            " platform, application, and data layers"
+        ),
         "hypotheses": [
             {
                 "description": "Database connection pool exhaustion causing application timeouts",
@@ -298,7 +316,7 @@ class TestQueryGeneration:
             llm_analysis_response=analysis_resp,
         )
         # Override to make both calls work (first is bad JSON string, second is analysis)
-        step.llm_client.complete_sync.side_effect = [
+        step.llm_client.complete_sync.side_effect = [  # type: ignore[attr-defined]
             "Not valid JSON at all",
             analysis_resp,
         ]
@@ -579,12 +597,17 @@ class TestSchemaConsistency:
     def test_markdown_wrapped_llm_response(self) -> None:
         """LLM response wrapped in markdown fences is parsed correctly."""
         query_resp = '```json\n{"layers": {"infrastructure": {"promql": ["up"]}}}\n```'
-        analysis_resp = '```json\n{"signal_summary": "wrapped", "hypotheses": [], "service_dependency_chain": null, "temporal_summary": ""}\n```'
+        analysis_resp = (
+            '```json\n{"signal_summary": "wrapped",'
+            ' "hypotheses": [],'
+            ' "service_dependency_chain": null,'
+            ' "temporal_summary": ""}\n```'
+        )
         step, *_ = _make_step(
             llm_query_response=query_resp,
             llm_analysis_response=analysis_resp,
         )
-        step.llm_client.complete_sync.side_effect = [query_resp, analysis_resp]
+        step.llm_client.complete_sync.side_effect = [query_resp, analysis_resp]  # type: ignore[attr-defined]
 
         result = step.execute()
 

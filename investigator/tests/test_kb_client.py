@@ -197,7 +197,7 @@ class TestKBClientMocked:
         client = KBClient()
         mock_qdrant = MagicMock()
         mock_info = MagicMock()
-        mock_info.vectors_count = 42
+        mock_info.indexed_vectors_count = 42
         mock_info.points_count = 42
         mock_qdrant.get_collection.return_value = mock_info
         client._client = mock_qdrant
@@ -210,11 +210,13 @@ class TestKBClientMocked:
         """Test searching knowledge with filters."""
         client = KBClient()
         mock_qdrant = MagicMock()
-        mock_result = MagicMock()
-        mock_result.id = "point-1"
-        mock_result.score = 0.9
-        mock_result.payload = {"title": "Test"}
-        mock_qdrant.search.return_value = [mock_result]
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.score = 0.9
+        mock_point.payload = {"title": "Test"}
+        mock_response = MagicMock()
+        mock_response.points = [mock_point]
+        mock_qdrant.query_points.return_value = mock_response
         client._client = mock_qdrant
 
         results = client.search_knowledge(
@@ -225,7 +227,7 @@ class TestKBClientMocked:
 
         assert len(results) == 1
         assert results[0].score == 0.9
-        mock_qdrant.search.assert_called_once()
+        mock_qdrant.query_points.assert_called_once()
 
     def test_close_client(self) -> None:
         """Test closing the client."""

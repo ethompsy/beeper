@@ -3,9 +3,9 @@
 import os
 from unittest.mock import MagicMock, patch
 
-from beeper_investigator.llm.client import LlmClient, LlmClientError, LlmConfig
-
 import pytest
+
+from beeper_investigator.llm.client import LlmClient, LlmClientError, LlmConfig
 
 
 class TestLlmConfigEmbeddingModel:

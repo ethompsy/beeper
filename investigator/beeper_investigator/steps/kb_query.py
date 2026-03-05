@@ -48,11 +48,12 @@ KB search results:
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
 
 
-def _parse_response(raw: str) -> dict:
+def _parse_response(raw: str) -> dict[str, Any]:
     """Parse LLM response, stripping markdown fences if present."""
     match = _CODE_FENCE_RE.search(raw)
     text = match.group(1) if match else raw
-    return json.loads(text.strip())
+    result: dict[str, Any] = json.loads(text.strip())
+    return result
 
 
 def _check_exact_match(results: list[SearchResult]) -> SearchResult | None:

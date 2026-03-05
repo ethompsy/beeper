@@ -10,7 +10,7 @@ import threading
 from typing import Optional
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from qdrant_client.models import Condition, FieldCondition, Filter, MatchValue
 
 from beeper_investigator.kb.schemas import (
     CollectionInfo,
@@ -69,7 +69,7 @@ class KBClient:
             self._client = QdrantClient(
                 host=self.host,
                 port=self.port,
-                grpc_port=self.grpc_port if self.prefer_grpc else None,
+                grpc_port=self.grpc_port if self.prefer_grpc else 0,
                 prefer_grpc=self.prefer_grpc,
             )
         return self._client
@@ -126,7 +126,7 @@ class KBClient:
             List of search results sorted by similarity score.
         """
         # Build filter conditions
-        conditions = []
+        conditions: list[Condition] = []
         if entry_type:
             conditions.append(
                 FieldCondition(key="entry_type", match=MatchValue(value=entry_type))
@@ -172,7 +172,7 @@ class KBClient:
         Returns:
             List of search results sorted by similarity score.
         """
-        conditions = []
+        conditions: list[Condition] = []
         if status:
             conditions.append(
                 FieldCondition(key="status", match=MatchValue(value=status))

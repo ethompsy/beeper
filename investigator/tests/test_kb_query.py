@@ -21,7 +21,10 @@ def _make_step(
     investigation_results: list[SearchResult] | None = None,
     knowledge_results: list[SearchResult] | None = None,
     kb_search_error: Exception | None = None,
-    llm_response: str = '{"prior_research_summary": "test", "relevant_matches": [], "recommended_resolution": null, "confidence_boost": null}',
+    llm_response: str = (
+        '{"prior_research_summary": "test", "relevant_matches": [],'
+        ' "recommended_resolution": null, "confidence_boost": null}'
+    ),
     llm_error: Exception | None = None,
     condition: str = "High error rate on /checkout endpoint",
     service: str = "payments",
@@ -372,7 +375,12 @@ class TestKBQueryStep:
         results = [_make_result(score=0.85)]
         step, *_ = _make_step(
             investigation_results=results,
-            llm_response='```json\n{"prior_research_summary": "wrapped", "relevant_matches": [], "recommended_resolution": null, "confidence_boost": null}\n```',
+            llm_response=(
+                '```json\n{"prior_research_summary": "wrapped",'
+                ' "relevant_matches": [],'
+                ' "recommended_resolution": null,'
+                ' "confidence_boost": null}\n```'
+            ),
         )
 
         result = step.execute()

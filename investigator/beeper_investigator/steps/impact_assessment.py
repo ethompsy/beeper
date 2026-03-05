@@ -7,6 +7,7 @@ lightweight LLM screening call (FR3, FR43).
 import json
 import logging
 import re
+from typing import Any
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
@@ -36,13 +37,14 @@ Severity: {severity}"""
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
 
 
-def _parse_response(raw: str) -> dict:
+def _parse_response(raw: str) -> dict[str, Any]:
     """Parse LLM response, stripping markdown fences if present."""
     # Try stripping code fences first
     match = _CODE_FENCE_RE.search(raw)
     text = match.group(1) if match else raw
 
-    return json.loads(text.strip())
+    result: dict[str, Any] = json.loads(text.strip())
+    return result
 
 
 class CustomerImpactStep:
@@ -111,7 +113,10 @@ class CustomerImpactStep:
             return StepResult(
                 success=True,
                 summary="Customer impact: unknown (parse failure)",
-                data={"customer_impacting": "unknown", "reasoning": "LLM response could not be parsed"},
+                data={
+                    "customer_impacting": "unknown",
+                    "reasoning": "LLM response could not be parsed",
+                },
             )
 
         impact = parsed.get("customer_impacting", "unknown")

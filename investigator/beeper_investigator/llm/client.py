@@ -229,7 +229,7 @@ class LlmClient:
                 **kwargs,
             )
             # Extract the response text
-            content = response.choices[0].message.content
+            content: str | None = response.choices[0].message.content
             if content is None:
                 return ""
             return content
@@ -270,7 +270,7 @@ class LlmClient:
                 **kwargs,
             )
             # Extract the response text
-            content = response.choices[0].message.content
+            content: str | None = response.choices[0].message.content
             if content is None:
                 return ""
             return content
@@ -327,7 +327,8 @@ class LlmClient:
                 model=self.config.embedding_model,
                 input=[text],
             )
-            return response.data[0]["embedding"]
+            embedding: list[float] = response.data[0]["embedding"]
+            return embedding
         except LlmClientError:
             raise
         except Exception as e:

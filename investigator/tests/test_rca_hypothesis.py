@@ -1,6 +1,7 @@
 """Tests for RCAHypothesisStep."""
 
 import json
+from typing import Any
 from unittest.mock import MagicMock
 
 from beeper_investigator.context import InvestigationContext
@@ -26,7 +27,7 @@ def _make_context(
     )
 
 
-def _full_pipeline_metadata() -> dict:
+def _full_pipeline_metadata() -> dict[str, Any]:
     """Return pipeline metadata simulating all prior steps succeeded."""
     return {
         # From CustomerImpactStep
@@ -79,7 +80,7 @@ def _full_pipeline_metadata() -> dict:
 
 def _make_step(
     *,
-    pipeline_metadata: dict | None = None,
+    pipeline_metadata: dict[str, Any] | None = None,
     llm_response: str | None = None,
     llm_error: Exception | None = None,
     condition: str = "High error rate on /checkout endpoint",

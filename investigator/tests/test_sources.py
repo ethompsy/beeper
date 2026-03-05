@@ -2,14 +2,14 @@
 
 import base64
 import os
+from typing import Any
 from unittest.mock import patch
 
 import httpx
 import pytest
 
-from beeper_investigator.sources.prometheus import PrometheusClient
 from beeper_investigator.sources.loki import LokiClient
-
+from beeper_investigator.sources.prometheus import PrometheusClient
 
 # ── Prometheus ──────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ class TestPrometheusClient:
 
     def test_query_range_sends_parameters(self) -> None:
         """query_range() sends start, end, step parameters."""
-        captured: dict = {}
+        captured: dict[str, Any] = {}
 
         def handler(req: httpx.Request) -> httpx.Response:
             captured["url"] = str(req.url)
@@ -86,7 +86,7 @@ class TestPrometheusClient:
     def test_basic_auth_sets_header(self) -> None:
         """Basic auth env var sets Authorization header on requests."""
         auth_b64 = base64.b64encode(b"admin:secret").decode()
-        captured_headers: dict = {}
+        captured_headers: dict[str, Any] = {}
 
         def handler(req: httpx.Request) -> httpx.Response:
             captured_headers.update(req.headers)
@@ -138,7 +138,7 @@ class TestLokiClient:
             "status": "success",
             "data": {"resultType": "streams", "result": [{"stream": {}, "values": []}]},
         }
-        captured: dict = {}
+        captured: dict[str, Any] = {}
 
         def handler(req: httpx.Request) -> httpx.Response:
             captured["url"] = str(req.url)
@@ -158,7 +158,7 @@ class TestLokiClient:
 
     def test_query_range_sends_parameters(self) -> None:
         """query_range() sends start, end, limit parameters."""
-        captured: dict = {}
+        captured: dict[str, Any] = {}
 
         def handler(req: httpx.Request) -> httpx.Response:
             captured["url"] = str(req.url)
@@ -205,7 +205,7 @@ class TestLokiClient:
     def test_basic_auth_sets_header(self) -> None:
         """Basic auth env var sets Authorization header on requests."""
         auth_b64 = base64.b64encode(b"user:pass123").decode()
-        captured_headers: dict = {}
+        captured_headers: dict[str, Any] = {}
 
         def handler(req: httpx.Request) -> httpx.Response:
             captured_headers.update(req.headers)

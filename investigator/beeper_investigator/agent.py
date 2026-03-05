@@ -13,7 +13,7 @@ from qdrant_client.models import PointStruct
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
-from beeper_investigator.kb.client import KBClient, INVESTIGATIONS_COLLECTION
+from beeper_investigator.kb.client import INVESTIGATIONS_COLLECTION, KBClient
 from beeper_investigator.llm.client import LlmClient
 from beeper_investigator.sources.loki import LokiClient
 from beeper_investigator.sources.prometheus import PrometheusClient

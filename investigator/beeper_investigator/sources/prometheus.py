@@ -62,8 +62,9 @@ class PrometheusClient:
 
         resp = self._client.get("/api/v1/query", params=params)
         resp.raise_for_status()
-        body = resp.json()
-        return body.get("data", {})
+        body: dict[str, Any] = resp.json()
+        data: dict[str, Any] = body.get("data", {})
+        return data
 
     def query_range(
         self, promql: str, start: str, end: str, step: str = "60s"
@@ -82,8 +83,9 @@ class PrometheusClient:
         params = {"query": promql, "start": start, "end": end, "step": step}
         resp = self._client.get("/api/v1/query_range", params=params)
         resp.raise_for_status()
-        body = resp.json()
-        return body.get("data", {})
+        body: dict[str, Any] = resp.json()
+        data: dict[str, Any] = body.get("data", {})
+        return data
 
     def close(self) -> None:
         """Close the underlying HTTP client."""

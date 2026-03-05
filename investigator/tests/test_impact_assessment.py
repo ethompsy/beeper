@@ -1,6 +1,5 @@
 """Tests for CustomerImpactStep."""
 
-import json
 from unittest.mock import MagicMock
 
 from beeper_investigator.context import InvestigationContext

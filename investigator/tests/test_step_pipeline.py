@@ -8,7 +8,7 @@ from beeper_investigator.agent import (
     SourceClients,
 )
 from beeper_investigator.context import InvestigationContext
-from beeper_investigator.steps import InvestigationStep, StepResult
+from beeper_investigator.steps import StepResult
 
 
 def _make_agent() -> tuple[InvestigatorAgent, MagicMock, MagicMock, MagicMock]:

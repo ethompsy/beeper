@@ -1,9 +1,8 @@
 """Tests for InvestigatorAgent lifecycle."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from beeper_investigator.agent import (
-    InvestigationResult,
     InvestigatorAgent,
     SourceClients,
 )

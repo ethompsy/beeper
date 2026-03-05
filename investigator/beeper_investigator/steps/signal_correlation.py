@@ -121,11 +121,12 @@ Gathered signals:
 {prior_research}"""
 
 
-def _parse_response(raw: str) -> dict:
+def _parse_response(raw: str) -> dict[str, Any]:
     """Parse LLM response, stripping markdown fences if present."""
     match = _CODE_FENCE_RE.search(raw)
     text = match.group(1) if match else raw
-    return json.loads(text.strip())
+    result: dict[str, Any] = json.loads(text.strip())
+    return result
 
 
 def _resolve_default_queries(namespace: str) -> dict[str, dict[str, list[str]]]:
@@ -393,6 +394,7 @@ class SignalCorrelationStep:
         end: str,
     ) -> dict[str, Any]:
         """Execute a single PromQL query, returning a signal dict."""
+        assert self.sources.prometheus is not None
         try:
             data = self.sources.prometheus.query_range(
                 promql=query, start=start, end=end
@@ -422,6 +424,7 @@ class SignalCorrelationStep:
         end: str,
     ) -> dict[str, Any]:
         """Execute a single LogQL query, returning a signal dict."""
+        assert self.sources.loki is not None
         try:
             data = self.sources.loki.query_range(
                 logql=query, start=start, end=end

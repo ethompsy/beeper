@@ -6,7 +6,7 @@ Field names use snake_case per architecture standards.
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -67,7 +67,7 @@ class SearchResult(BaseModel):
 
     id: str = Field(..., description="Point ID in Qdrant")
     score: float = Field(..., description="Similarity score (0-1 for cosine)")
-    payload: dict = Field(..., description="Point payload data")
+    payload: dict[str, Any] = Field(..., description="Point payload data")
 
 
 class CollectionInfo(BaseModel):
