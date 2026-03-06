@@ -131,6 +131,9 @@ class InvestigatorAgent:
         specific step implementations.
         """
         from beeper_investigator.steps.impact_assessment import CustomerImpactStep
+        from beeper_investigator.steps.investigation_documentation import (
+            InvestigationDocumentationStep,
+        )
         from beeper_investigator.steps.kb_query import KBQueryStep
         from beeper_investigator.steps.rca_hypothesis import RCAHypothesisStep
         from beeper_investigator.steps.resolution_recommendations import (
@@ -164,6 +167,13 @@ class InvestigatorAgent:
             ),
             ResolutionRecommendationStep(
                 llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+                pipeline_metadata=self._pipeline_metadata,
+            ),
+            InvestigationDocumentationStep(
+                llm_client=self.llm_client,
+                kb_client=self.kb_client,
                 context=self.context,
                 status_updater=self.status_updater,
                 pipeline_metadata=self._pipeline_metadata,
