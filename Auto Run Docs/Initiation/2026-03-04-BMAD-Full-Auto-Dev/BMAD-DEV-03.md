@@ -119,10 +119,11 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Commit all changes as `4-6 done`
   <!-- Completed 2026-03-07: Adversarial code review found 6 issues (1 HIGH, 3 MEDIUM, 2 LOW). Fixed: (1) duplicate resolution_notes textarea names — added disabled attribute to hidden field inputs via JS toggle to prevent stale form data submission, (2) MTTR display in already-resolved banners replaced raw `// 60` math with `format_mttr` Jinja2 template filter for correct <1m/hours/days formatting, (3) registered format_mttr as Jinja2 template filter and ACCURACY_LABELS/NOT_AN_ISSUE_LABELS/OUTCOME_LABELS as template globals in app.py, (4) already-resolved banners now use label dict lookups instead of raw `|replace|title` for consistent human-readable labels, (5) added test for invalid not_an_issue_reason validation, (6) added SSE resolution-update independence test (value-only change fires event). Tests: 164 investigation tests (up from 162), 418 total pass, zero regressions. Ruff + mypy clean on investigation files. Sprint status + story → done. -->
 
-- [ ] Run Epic 4 retrospective and mark epic complete:
+- [x] Run Epic 4 retrospective and mark epic complete:
   - Use the `/bmad-bmm-retrospective` skill to conduct the Epic 4 retrospective
   - Reference previous retrospectives for format: `_bmad-output/implementation-artifacts/epic-1-retro-2026-02-12.md` and the Epic 3 retro
   - Create retrospective file at `_bmad-output/implementation-artifacts/epic-4-retro-YYYY-MM-DD.md`
   - Include: all 6 stories delivered (4-1 through 4-6), test counts, code review issues fixed, UI/UX patterns established, lessons learned
   - Update sprint-status.yaml: `epic-4: done`, `epic-4-retrospective: done`
   - Commit as `epic-4 retrospective done`
+  <!-- Completed 2026-03-07: Epic 4 retrospective created at _bmad-output/implementation-artifacts/epic-4-retro-2026-03-07.md. Epic delivered 6/6 stories, 418 total tests (164 investigation-specific), 40 code review issues fixed (7 HIGH, 21 MEDIUM, 12 LOW). Key patterns established: SSE polling-backed streaming, HTMX partial rendering (zero custom JS), template-only enhancement pattern, consistent service layer with close(). Previous retro follow-through tracked: Epic 3 graceful degradation and connection pooling applied successfully. Lessons for Epic 5: independent SSE event detection, resource cleanup templates, proactive WCAG compliance, url_for() consistency. Sprint status: epic-4 → done, epic-4-retrospective → done. -->
