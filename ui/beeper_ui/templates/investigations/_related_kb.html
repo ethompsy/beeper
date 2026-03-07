@@ -1,0 +1,34 @@
+{% if exact_match_found and exact_match_entry %}
+<div class="prior-research-banner" role="status">
+    <strong>Building on prior research:</strong>
+    <a href="{{ url_for('knowledge.kb_entry', entry_id=exact_match_entry.entry_id) }}"
+       target="_blank"
+       class="kb-entry-link">{{ exact_match_entry.title }}</a>
+</div>
+{% endif %}
+
+{% if related_entries %}
+<div class="related-kb-list">
+    {% for entry in related_entries %}
+    <div class="kb-entry-card">
+        <div class="kb-entry-card-header">
+            <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}"
+               target="_blank"
+               class="kb-entry-link">{{ entry.title }}</a>
+            <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+        </div>
+        {% if entry.service %}
+        <span class="service-badge">{{ entry.service }}</span>
+        {% endif %}
+        {% if entry.created_at %}
+        <span class="entry-date">{{ entry.created_at.strftime('%Y-%m-%d') }}</span>
+        {% endif %}
+        {% if entry.content %}
+        <p class="content-preview">{{ entry.content[:150] }}{% if entry.content|length > 150 %}...{% endif %}</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state-text">No related KB entries found for this service.</p>
+{% endif %}

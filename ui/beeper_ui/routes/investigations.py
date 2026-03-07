@@ -22,6 +22,7 @@ from beeper_ui.services.investigation_service import (
     InvestigationService,
     InvestigationServiceError,
 )
+from beeper_ui.services.kb_service import KBEntry, KBService, KBServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -328,6 +329,65 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
     )
 
 
+@investigations_bp.route("/<investigation_id>/related-kb")
+def investigation_related_kb(investigation_id: str) -> str:
+    """Fetch related KB entries for an investigation.
+
+    Uses the investigation's service name to find KB entries
+    and highlights exact matches from the investigation findings.
+    Returns a partial HTML template for HTMX lazy-loading.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    svc = get_investigation_service()
+    related_entries: list[KBEntry] = []
+    exact_match_entry: KBEntry | None = None
+    exact_match_found = False
+    exact_match_id: str | None = None
+
+    try:
+        investigation = svc.get_investigation(investigation_id)
+        if investigation is None:
+            return render_template(
+                "investigations/_related_kb.html",
+                related_entries=[],
+                exact_match_entry=None,
+                exact_match_found=False,
+            )
+
+        findings = svc.get_investigation_findings(investigation_id)
+        exact_match_found = bool(findings.get("exact_match_found"))
+        exact_match_id = str(findings.get("exact_match_id", "")) or None
+
+        # Fetch related KB entries by service
+        kb_svc = KBService()
+        try:
+            related_entries = kb_svc.list_entries_by_service(
+                investigation.service, limit=10
+            )
+            # Fetch exact match entry if available
+            if exact_match_id:
+                exact_match_entry = kb_svc.get_entry(exact_match_id)
+        except KBServiceError:
+            logger.warning(
+                "Failed to fetch KB entries for investigation %s",
+                investigation_id,
+            )
+    except InvestigationServiceError:
+        logger.warning(
+            "Failed to fetch investigation %s for related KB",
+            investigation_id,
+        )
+
+    return render_template(
+        "investigations/_related_kb.html",
+        related_entries=related_entries,
+        exact_match_entry=exact_match_entry,
+        exact_match_found=exact_match_found,
+    )
+
+
 def _generate_detail_sse_events(
     operator_url: str,
     operator_timeout: float,
@@ -345,6 +405,7 @@ def _generate_detail_sse_events(
     last_message: str | None = None
     last_phase: str | None = None
     last_findings_keys: set[str] = set()
+    kb_update_sent = False
 
     while True:
         try:
@@ -394,6 +455,45 @@ def _generate_detail_sse_events(
                     f"data: {line}" for line in evidence_html.split("\n")
                 )
                 yield f"event: evidence-update\n{evidence_lines}\n\n"
+
+                # Send kb-update when KB query data first appears
+                if (
+                    not kb_update_sent
+                    and "prior_research_summary" in current_keys
+                ):
+                    kb_svc = KBService()
+                    try:
+                        related_entries = kb_svc.list_entries_by_service(
+                            detail.service, limit=10
+                        )
+                        exact_match_id = (
+                            str(findings.get("exact_match_id", "")) or None
+                        )
+                        exact_match_entry = None
+                        if exact_match_id:
+                            exact_match_entry = kb_svc.get_entry(
+                                exact_match_id
+                            )
+                        kb_html = render_template(
+                            "investigations/_related_kb.html",
+                            related_entries=related_entries,
+                            exact_match_entry=exact_match_entry,
+                            exact_match_found=bool(
+                                findings.get("exact_match_found")
+                            ),
+                        )
+                        kb_lines = "\n".join(
+                            f"data: {line}"
+                            for line in kb_html.split("\n")
+                        )
+                        yield f"event: kb-update\n{kb_lines}\n\n"
+                    except KBServiceError:
+                        logger.warning(
+                            "SSE: Failed to fetch KB entries for %s",
+                            investigation_id,
+                        )
+                    kb_update_sent = True
+
                 last_findings_keys = current_keys
 
             # Send completion event

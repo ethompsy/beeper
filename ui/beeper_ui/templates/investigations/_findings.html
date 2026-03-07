@@ -21,12 +21,37 @@
         <h4>Knowledge Base Matches</h4>
         <div class="findings-content">
             <p>{{ findings.get('prior_research_summary') }}</p>
-            {% if findings.get('exact_match_found') %}
+            {% if findings.get('exact_match_found') and findings.get('exact_match_id') %}
+            <a href="/knowledge/{{ findings.get('exact_match_id')|urlencode }}"
+               target="_blank"
+               class="match-badge match-exact kb-entry-link">Exact Match Found</a>
+            {% elif findings.get('exact_match_found') %}
             <span class="match-badge match-exact">Exact Match Found</span>
             {% endif %}
             {% if findings.get('confidence_boost') %}
             <span class="confidence-boost">Confidence boost: {{ findings.get('confidence_boost') }}</span>
             {% endif %}
+            {% if findings.get('relevant_matches') is iterable and findings.get('relevant_matches') is not string %}
+            <div class="relevant-matches">
+                <h5>Related Matches</h5>
+                <ul class="relevant-matches-list">
+                    {% for match in findings.get('relevant_matches', []) %}
+                    {% if match is string and ':' in match %}
+                    <li>
+                        {% set match_id = match.split(':')[0].strip() %}
+                        <a href="/knowledge/{{ match_id|urlencode }}"
+                           target="_blank"
+                           class="kb-entry-link">{{ match_id }}</a>:
+                        {{ match.split(':', 1)[1].strip() }}
+                    </li>
+                    {% elif match is string %}
+                    <li>{{ match }}</li>
+                    {% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            <a href="#related-kb" class="view-all-related-link">View all related entries &darr;</a>
         </div>
     </div>
     {% endif %}

@@ -64,6 +64,18 @@
         </div>
     </div>
 
+    {# Related Knowledge Base Entries #}
+    <div class="card">
+        <h3>Related Knowledge Base Entries</h3>
+        <div id="related-kb"
+             hx-get="/investigations/{{ investigation.id }}/related-kb"
+             hx-trigger="load"
+             hx-swap="innerHTML"
+             sse-swap="kb-update">
+            <span class="htmx-indicator">Loading related KB entries...</span>
+        </div>
+    </div>
+
     {# Evidence Panels #}
     <div id="evidence" sse-swap="evidence-update" hx-swap="innerHTML">
     {% if findings %}

@@ -1236,3 +1236,268 @@ class TestRecommendationsDisplay:
             assert b"See alternative hypotheses" in response.data
             # The collapsible detail (old duplicate) should not exist
             assert b"alternative-hypotheses-detail" not in response.data
+
+
+class TestRelatedKBNavigation:
+    """Tests for KB entry navigation from investigations (Story 4-4)."""
+
+    @respx.mock
+    def test_related_kb_returns_entries_by_service(
+        self, client: FlaskClient
+    ) -> None:
+        """Test related-kb route returns KB entries matching investigation service."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_kb_entries = [
+            _make_mock_kb_entry("kb-001", "Payments Runbook", "payments"),
+            _make_mock_kb_entry("kb-002", "Payment Error Guide", "payments"),
+        ]
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ), patch(
+            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
+            return_value=mock_kb_entries,
+        ):
+            response = client.get("/investigations/inv-detail-001/related-kb")
+            assert response.status_code == 200
+            assert b"Payments Runbook" in response.data
+            assert b"Payment Error Guide" in response.data
+
+    @respx.mock
+    def test_related_kb_empty_state(self, client: FlaskClient) -> None:
+        """Test related-kb returns empty state when no entries found."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ), patch(
+            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
+            return_value=[],
+        ):
+            response = client.get("/investigations/inv-detail-001/related-kb")
+            assert response.status_code == 200
+            assert b"No related KB entries found" in response.data
+
+    @respx.mock
+    def test_related_kb_exact_match_banner(self, client: FlaskClient) -> None:
+        """Test prior research banner appears with exact match."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        exact_entry = _make_mock_kb_entry(
+            "kb-exact-001", "Exact Prior Incident", "payments"
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={
+                "exact_match_found": True,
+                "exact_match_id": "kb-exact-001",
+            },
+        ), patch(
+            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
+            return_value=[],
+        ), patch(
+            "beeper_ui.routes.investigations.KBService.get_entry",
+            return_value=exact_entry,
+        ):
+            response = client.get("/investigations/inv-detail-001/related-kb")
+            assert response.status_code == 200
+            assert b"Building on prior research" in response.data
+            assert b"Exact Prior Incident" in response.data
+            assert b"prior-research-banner" in response.data
+
+    @respx.mock
+    def test_related_kb_operator_failure_returns_empty(
+        self, client: FlaskClient
+    ) -> None:
+        """Test related-kb handles operator failure gracefully."""
+        import httpx
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(side_effect=httpx.ConnectError("Connection refused"))
+
+        response = client.get("/investigations/inv-detail-001/related-kb")
+        assert response.status_code == 200
+        assert b"No related KB entries found" in response.data
+
+    @respx.mock
+    def test_detail_includes_related_kb_lazy_load(
+        self, client: FlaskClient
+    ) -> None:
+        """Test detail page includes HTMX lazy-load div for related KB."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b'id="related-kb"' in response.data
+            assert b"hx-trigger=\"load\"" in response.data
+            assert b"Related Knowledge Base Entries" in response.data
+
+    @respx.mock
+    def test_findings_exact_match_clickable_link(
+        self, client: FlaskClient
+    ) -> None:
+        """Test exact match in findings is rendered as clickable link."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={
+                "prior_research_summary": "Found similar incident",
+                "exact_match_found": True,
+                "exact_match_id": "kb-match-123",
+            },
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"kb-match-123" in response.data
+            assert b'href="/knowledge/kb-match-123"' in response.data
+            assert b'class="match-badge match-exact kb-entry-link"' in response.data
+
+    @respx.mock
+    def test_findings_relevant_matches_list(
+        self, client: FlaskClient
+    ) -> None:
+        """Test relevant_matches rendered as list with clickable IDs."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={
+                "prior_research_summary": "Found prior incidents",
+                "relevant_matches": [
+                    "kb-abc123: Payment timeout issue",
+                    "inv-xyz789: Similar latency spike",
+                ],
+            },
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"Related Matches" in response.data
+            assert b'href="/knowledge/kb-abc123"' in response.data
+            assert b"Payment timeout issue" in response.data
+            assert b'href="/knowledge/inv-xyz789"' in response.data
+
+    @respx.mock
+    def test_kb_entry_links_open_new_tab(
+        self, client: FlaskClient
+    ) -> None:
+        """Test KB entry links have target=_blank for new tab."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_kb_entries = [
+            _make_mock_kb_entry("kb-001", "Test Entry", "payments"),
+        ]
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ), patch(
+            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
+            return_value=mock_kb_entries,
+        ):
+            response = client.get("/investigations/inv-detail-001/related-kb")
+            assert response.status_code == 200
+            assert b'target="_blank"' in response.data
+
+    @respx.mock
+    def test_empty_findings_no_kb_errors(
+        self, client: FlaskClient
+    ) -> None:
+        """Test empty findings dict shows no KB-related links without errors."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            # No KB matches section should be present
+            assert b"Knowledge Base Matches" not in response.data
+            # But related KB section should still have the lazy-load div
+            assert b'id="related-kb"' in response.data
+
+    @respx.mock
+    def test_related_kb_not_found_investigation(
+        self, client: FlaskClient
+    ) -> None:
+        """Test related-kb returns empty when investigation not found."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-nonexistent"
+        ).mock(return_value=Response(404, json={"error": "not found"}))
+
+        response = client.get("/investigations/inv-nonexistent/related-kb")
+        assert response.status_code == 200
+        assert b"No related KB entries found" in response.data
+
+    @respx.mock
+    def test_findings_view_all_related_link(
+        self, client: FlaskClient
+    ) -> None:
+        """Test 'View all related entries' anchor link appears."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={
+                "prior_research_summary": "Found prior incidents",
+            },
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b'href="#related-kb"' in response.data
+            assert b"View all related entries" in response.data
+
+    def test_related_kb_invalid_id_rejected(self, client: FlaskClient) -> None:
+        """Test that invalid investigation IDs are rejected."""
+        response = client.get("/investigations/../../etc/passwd/related-kb")
+        assert response.status_code == 404
+
+
+def _make_mock_kb_entry(
+    entry_id: str, title: str, service: str
+) -> object:
+    """Create a mock KBEntry-like object for testing."""
+    from unittest.mock import MagicMock
+
+    entry = MagicMock()
+    entry.id = entry_id
+    entry.entry_id = entry_id
+    entry.title = title
+    entry.service = service
+    entry.entry_type = "investigation"
+    entry.content = "Sample content for testing purposes."
+    entry.created_at = None
+    entry.updated_at = None
+    entry.author = "beeper"
+    entry.version = 1
+    entry.tags = []
+    entry.relevance_score = None
+    return entry
