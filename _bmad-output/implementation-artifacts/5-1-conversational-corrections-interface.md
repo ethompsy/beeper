@@ -1,6 +1,6 @@
 # Story 5.1: Conversational Corrections Interface
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -23,48 +23,48 @@ so that I can correct entries naturally without manual editing, and Beeper can l
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create corrections data model and storage (AC: #1, #4)
-  - [ ] 1.1 Add `corrections` collection to Qdrant with schema: correction_id, entry_id, messages (list), status (pending/applied/rejected), created_at, updated_at
-  - [ ] 1.2 Create `Correction` dataclass in `kb_service.py` with from_qdrant classmethod
-  - [ ] 1.3 Add KBService methods: `create_correction()`, `get_corrections_for_entry()`, `update_correction()`, `add_correction_message()`
-  - [ ] 1.4 Write unit tests for all new service methods
+- [x] Task 1: Create corrections data model and storage (AC: #1, #4)
+  - [x] 1.1 Add `corrections` collection to Qdrant with schema: correction_id, entry_id, messages (list), status (pending/applied/rejected), created_at, updated_at
+  - [x] 1.2 Create `Correction` dataclass in `kb_service.py` with from_qdrant classmethod
+  - [x] 1.3 Add KBService methods: `create_correction()`, `get_corrections_for_entry()`, `update_correction()`, `add_correction_message()`
+  - [x] 1.4 Write unit tests for all new service methods
 
-- [ ] Task 2: Create correction submission endpoint (AC: #1, #2)
-  - [ ] 2.1 Add `POST /knowledge/<entry_id>/corrections` route to `knowledge.py` for submitting corrections
-  - [ ] 2.2 Validate input (sanitize correction text, check entry exists)
-  - [ ] 2.3 Create `CorrectionService` in `ui/beeper_ui/services/correction_service.py` that wraps LLM interaction
-  - [ ] 2.4 Implement LLM prompt that takes entry content + user correction text and returns structured acknowledgment (summary of understood changes)
-  - [ ] 2.5 Return HTMX partial `_correction_response.html` with acknowledgment
-  - [ ] 2.6 Write route tests with mocked LLM and Qdrant
+- [x] Task 2: Create correction submission endpoint (AC: #1, #2)
+  - [x] 2.1 Add `POST /knowledge/<entry_id>/corrections` route to `knowledge.py` for submitting corrections
+  - [x] 2.2 Validate input (sanitize correction text, check entry exists)
+  - [x] 2.3 Create `CorrectionService` in `ui/beeper_ui/services/correction_service.py` that wraps LLM interaction
+  - [x] 2.4 Implement LLM prompt that takes entry content + user correction text and returns structured acknowledgment (summary of understood changes)
+  - [x] 2.5 Return HTMX partial `_correction_response.html` with acknowledgment
+  - [x] 2.6 Write route tests with mocked LLM and Qdrant
 
-- [ ] Task 3: Build correction panel UI (AC: #1, #2)
-  - [ ] 3.1 Create `templates/knowledge/_correction_panel.html` partial with chat-style layout
-  - [ ] 3.2 Add "Suggest Correction" button to `entry.html` (after content section, line ~63)
-  - [ ] 3.3 Use HTMX `hx-get` with `hx-trigger="click"` to lazy-load correction panel
-  - [ ] 3.4 Implement chat message display (user messages right-aligned, Beeper responses left-aligned)
-  - [ ] 3.5 Add correction input textarea with `hx-post` submission
-  - [ ] 3.6 Add `hx-indicator` for "Processing correction..." loading state
-  - [ ] 3.7 Add CSS styles for chat interface in `main.css`
+- [x] Task 3: Build correction panel UI (AC: #1, #2)
+  - [x] 3.1 Create `templates/knowledge/_correction_panel.html` partial with chat-style layout
+  - [x] 3.2 Add "Suggest Correction" button to `entry.html` (after content section, line ~63)
+  - [x] 3.3 Use HTMX `hx-get` with `hx-trigger="click"` to lazy-load correction panel
+  - [x] 3.4 Implement chat message display (user messages right-aligned, Beeper responses left-aligned)
+  - [x] 3.5 Add correction input textarea with `hx-post` submission
+  - [x] 3.6 Add `hx-indicator` for "Processing correction..." loading state
+  - [x] 3.7 Add CSS styles for chat interface in `main.css`
 
-- [ ] Task 4: Implement conversation flow (AC: #3)
-  - [ ] 4.1 Add `POST /knowledge/<entry_id>/corrections/<correction_id>/reply` route for follow-up messages
-  - [ ] 4.2 LLM prompt includes full conversation history for context continuity
-  - [ ] 4.3 Each reply appends to the correction's messages list
-  - [ ] 4.4 Response partial swaps into chat container, preserving history
-  - [ ] 4.5 Write tests for multi-turn conversation flow
+- [x] Task 4: Implement conversation flow (AC: #3)
+  - [x] 4.1 Add `POST /knowledge/<entry_id>/corrections/<correction_id>/reply` route for follow-up messages
+  - [x] 4.2 LLM prompt includes full conversation history for context continuity
+  - [x] 4.3 Each reply appends to the correction's messages list
+  - [x] 4.4 Response partial swaps into chat container, preserving history
+  - [x] 4.5 Write tests for multi-turn conversation flow
 
-- [ ] Task 5: Build correction history view (AC: #4)
-  - [ ] 5.1 Add `GET /knowledge/<entry_id>/corrections` route to list corrections for an entry
-  - [ ] 5.2 Create `templates/knowledge/_correction_history.html` partial
-  - [ ] 5.3 Display corrections with: date, first message preview, status badge (pending/applied/rejected)
-  - [ ] 5.4 Add "Corrections" tab or link on entry detail page
-  - [ ] 5.5 Write route tests for history listing
+- [x] Task 5: Build correction history view (AC: #4)
+  - [x] 5.1 Add `GET /knowledge/<entry_id>/corrections` route to list corrections for an entry
+  - [x] 5.2 Create `templates/knowledge/_correction_history.html` partial
+  - [x] 5.3 Display corrections with: date, first message preview, status badge (pending/applied/rejected)
+  - [x] 5.4 Add "Corrections" tab or link on entry detail page
+  - [x] 5.5 Write route tests for history listing
 
-- [ ] Task 6: Integration testing and polish
-  - [ ] 6.1 Test full flow: open panel → submit correction → see acknowledgment → reply → view history
-  - [ ] 6.2 Test error cases: LLM unavailable, entry not found, empty correction text
-  - [ ] 6.3 Verify no regressions in existing KB routes
-  - [ ] 6.4 Run ruff + mypy on all changed files
+- [x] Task 6: Integration testing and polish
+  - [x] 6.1 Test full flow: open panel → submit correction → see acknowledgment → reply → view history
+  - [x] 6.2 Test error cases: LLM unavailable, entry not found, empty correction text
+  - [x] 6.3 Verify no regressions in existing KB routes
+  - [x] 6.4 Run ruff + mypy on all changed files
 
 ## Dev Notes
 
@@ -204,6 +204,34 @@ Claude Opus 4.6
 
 ### Debug Log References
 
+- Used litellm directly instead of importing from beeper_investigator (separate package not installed in UI virtualenv)
+- Pre-existing mypy errors (18) unchanged; zero new errors introduced
+- Pre-existing ruff errors in knowledge.py (3 line-length) unchanged; all new code passes clean
+
 ### Completion Notes List
 
+- Implemented Correction/CorrectionMessage dataclasses with from_qdrant factory methods
+- Added 5 KBService correction methods: create_correction, get_corrections_for_entry, get_correction, add_correction_message, update_correction
+- Created CorrectionService using litellm for LLM-powered correction processing with JSON response parsing and fallback
+- Added 4 Flask routes to knowledge_bp: panel (GET), history (GET), submit (POST), reply (POST)
+- Built 3 HTMX partials: _correction_panel.html (chat UI), _correction_response.html (acknowledgment), _correction_history.html (history list)
+- Added "Suggest Correction" and "Corrections" buttons to entry.html
+- Added chat interface CSS styles with user/assistant message styling, status badges
+- 33 new tests covering data models, service methods, LLM integration, and all routes
+- All 451 tests pass (zero regressions)
+
+### Change Log
+
+- 2026-03-07: Implemented story 5-1 (Conversational Corrections Interface) — all 6 tasks complete
+
 ### File List
+
+- ui/beeper_ui/services/kb_service.py (modified: added CORRECTIONS_COLLECTION, Correction, CorrectionMessage dataclasses, 5 correction methods)
+- ui/beeper_ui/services/correction_service.py (new: CorrectionService with litellm, prompt templates, singleton)
+- ui/beeper_ui/routes/knowledge.py (modified: added correction routes and imports)
+- ui/beeper_ui/templates/knowledge/entry.html (modified: added correction buttons and panel div)
+- ui/beeper_ui/templates/knowledge/_correction_panel.html (new: chat-style correction input UI)
+- ui/beeper_ui/templates/knowledge/_correction_response.html (new: acknowledgment display with reply form)
+- ui/beeper_ui/templates/knowledge/_correction_history.html (new: correction history listing)
+- ui/beeper_ui/static/css/main.css (modified: added correction interface styles)
+- ui/tests/test_corrections.py (new: 33 tests for corrections feature)

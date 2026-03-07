@@ -1,0 +1,46 @@
+{% if error_message %}
+<div class="correction-message correction-error-msg">
+    <div class="message-content">
+        <strong>Error:</strong> {{ error_message }}
+    </div>
+</div>
+{% else %}
+<!-- User message -->
+<div class="correction-message correction-user">
+    <div class="message-content">
+        {{ correction.messages[-2].content if correction.messages|length >= 2 else '' }}
+    </div>
+</div>
+
+<!-- Beeper response -->
+<div class="correction-message correction-assistant">
+    <div class="message-label">Beeper</div>
+    <div class="message-content">
+        <strong>{{ result.summary }}</strong>
+        {% if result.understood_changes %}
+        <ul class="understood-changes">
+            {% for change in result.understood_changes %}
+            <li>{{ change }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Reply form (for follow-up clarification) -->
+<div class="correction-reply-form">
+    <form hx-post="{{ url_for('knowledge.kb_correction_reply', entry_id=entry.entry_id, correction_id=correction.correction_id) }}"
+          hx-target="#correction-chat"
+          hx-swap="beforeend"
+          hx-indicator="#correction-loading"
+          hx-on::after-request="this.reset()">
+        <div class="correction-input-row">
+            <textarea name="reply_text"
+                      placeholder="Clarify or provide more details..."
+                      rows="2"
+                      class="correction-textarea"></textarea>
+            <button type="submit" class="btn btn-secondary correction-submit">Reply</button>
+        </div>
+    </form>
+</div>
+{% endif %}

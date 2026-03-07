@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 # Collection names (must match init-collections.py)
 KNOWLEDGE_COLLECTION = "knowledge"
 VERSIONS_COLLECTION = "knowledge_versions"
+CORRECTIONS_COLLECTION = "corrections"
 
 # Maximum entries to scan for filter metadata (services, types)
 # Note: If KB grows beyond this, filter dropdowns may be incomplete
@@ -118,6 +119,49 @@ class KBEntry:
             author=payload.get("author"),
             version=payload.get("version", 1),
             tags=payload.get("tags", []),
+        )
+
+
+@dataclass
+class CorrectionMessage:
+    """A single message in a correction conversation."""
+
+    role: str  # "user" or "assistant"
+    content: str
+    timestamp: str  # ISO 8601
+
+
+@dataclass
+class Correction:
+    """Represents a correction conversation for a KB entry."""
+
+    correction_id: str
+    entry_id: str
+    messages: list[CorrectionMessage]
+    status: str  # "pending", "applied", "rejected"
+    summary: Optional[str]
+    created_at: str  # ISO 8601
+    updated_at: str  # ISO 8601
+
+    @classmethod
+    def from_qdrant(cls, payload: dict[str, Any]) -> "Correction":
+        """Create Correction from Qdrant point payload."""
+        messages = [
+            CorrectionMessage(
+                role=m.get("role", "user"),
+                content=m.get("content", ""),
+                timestamp=m.get("timestamp", ""),
+            )
+            for m in payload.get("messages", [])
+        ]
+        return cls(
+            correction_id=payload.get("correction_id", ""),
+            entry_id=payload.get("entry_id", ""),
+            messages=messages,
+            status=payload.get("status", "pending"),
+            summary=payload.get("summary"),
+            created_at=payload.get("created_at", ""),
+            updated_at=payload.get("updated_at", ""),
         )
 
 
@@ -1011,3 +1055,260 @@ class KBService:
         except Exception as e:
             logger.error(f"KB service error: {e}")
             raise KBServiceError(f"Failed to update KB entry: {e}") from e
+
+    def create_correction(
+        self,
+        entry_id: str,
+        user_message: str,
+        assistant_response: str,
+        summary: Optional[str] = None,
+    ) -> Correction:
+        """Create a new correction conversation for a KB entry.
+
+        Args:
+            entry_id: The KB entry being corrected
+            user_message: The user's correction text
+            assistant_response: Beeper's acknowledgment
+            summary: Optional summary of understood changes
+
+        Returns:
+            The created Correction.
+
+        Raises:
+            KBServiceError: If creation fails.
+        """
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            correction_id = f"corr-{uuid.uuid4().hex[:12]}"
+            point_id = str(uuid.uuid4())
+
+            messages = [
+                {"role": "user", "content": user_message, "timestamp": now},
+                {"role": "assistant", "content": assistant_response, "timestamp": now},
+            ]
+
+            payload = {
+                "correction_id": correction_id,
+                "entry_id": entry_id,
+                "messages": messages,
+                "status": "pending",
+                "summary": summary,
+                "created_at": now,
+                "updated_at": now,
+            }
+
+            self.client.upsert(
+                collection_name=CORRECTIONS_COLLECTION,
+                points=[PointStruct(id=point_id, vector=[0.0], payload=payload)],
+            )
+
+            logger.info(f"Created correction {correction_id} for entry {entry_id}")
+            return Correction.from_qdrant(payload)
+
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant upsert failed: {e}")
+            raise KBServiceError(f"Failed to create correction: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to create correction: {e}") from e
+
+    def get_corrections_for_entry(self, entry_id: str) -> list[Correction]:
+        """Get all corrections for a KB entry, ordered by created_at descending.
+
+        Args:
+            entry_id: The KB entry to get corrections for
+
+        Returns:
+            List of Correction objects.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=CORRECTIONS_COLLECTION,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="entry_id", match=MatchValue(value=entry_id))]
+                ),
+                limit=100,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            corrections = [
+                Correction.from_qdrant(point.payload or {}) for point in results
+            ]
+            # Sort by created_at descending
+            corrections.sort(key=lambda c: c.created_at, reverse=True)
+            return corrections
+
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant query failed: {e}")
+            raise KBServiceError(f"Failed to get corrections: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to get corrections: {e}") from e
+
+    def get_correction(self, correction_id: str) -> Optional[Correction]:
+        """Get a single correction by its correction_id.
+
+        Args:
+            correction_id: The unique identifier of the correction
+
+        Returns:
+            Correction if found, None otherwise.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=CORRECTIONS_COLLECTION,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="correction_id", match=MatchValue(value=correction_id)
+                        )
+                    ]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            if not results:
+                return None
+
+            return Correction.from_qdrant(results[0].payload or {})
+
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant query failed: {e}")
+            raise KBServiceError(f"Failed to get correction: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to get correction: {e}") from e
+
+    def add_correction_message(
+        self,
+        correction_id: str,
+        role: str,
+        content: str,
+    ) -> Correction:
+        """Add a message to an existing correction conversation.
+
+        Args:
+            correction_id: The correction to add the message to
+            role: Message role ('user' or 'assistant')
+            content: Message content
+
+        Returns:
+            Updated Correction.
+
+        Raises:
+            KBServiceError: If the correction is not found or update fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=CORRECTIONS_COLLECTION,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="correction_id", match=MatchValue(value=correction_id)
+                        )
+                    ]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            if not results:
+                raise KBServiceError(f"Correction not found: {correction_id}")
+
+            point = results[0]
+            payload = dict(point.payload or {})
+            now = datetime.now(timezone.utc).isoformat()
+
+            messages = list(payload.get("messages", []))
+            messages.append({"role": role, "content": content, "timestamp": now})
+            payload["messages"] = messages
+            payload["updated_at"] = now
+
+            self.client.upsert(
+                collection_name=CORRECTIONS_COLLECTION,
+                points=[PointStruct(id=str(point.id), vector=[0.0], payload=payload)],
+            )
+
+            return Correction.from_qdrant(payload)
+
+        except KBServiceError:
+            raise
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant upsert failed: {e}")
+            raise KBServiceError(f"Failed to add correction message: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to add correction message: {e}") from e
+
+    def update_correction(
+        self,
+        correction_id: str,
+        status: Optional[str] = None,
+        summary: Optional[str] = None,
+    ) -> Correction:
+        """Update a correction's status or summary.
+
+        Args:
+            correction_id: The correction to update
+            status: New status (pending/applied/rejected)
+            summary: Updated summary
+
+        Returns:
+            Updated Correction.
+
+        Raises:
+            KBServiceError: If the correction is not found or update fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=CORRECTIONS_COLLECTION,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="correction_id", match=MatchValue(value=correction_id)
+                        )
+                    ]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            if not results:
+                raise KBServiceError(f"Correction not found: {correction_id}")
+
+            point = results[0]
+            payload = dict(point.payload or {})
+            now = datetime.now(timezone.utc).isoformat()
+
+            if status is not None:
+                payload["status"] = status
+            if summary is not None:
+                payload["summary"] = summary
+            payload["updated_at"] = now
+
+            self.client.upsert(
+                collection_name=CORRECTIONS_COLLECTION,
+                points=[PointStruct(id=str(point.id), vector=[0.0], payload=payload)],
+            )
+
+            return Correction.from_qdrant(payload)
+
+        except KBServiceError:
+            raise
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant upsert failed: {e}")
+            raise KBServiceError(f"Failed to update correction: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to update correction: {e}") from e

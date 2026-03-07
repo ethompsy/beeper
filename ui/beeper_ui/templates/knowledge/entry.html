@@ -61,6 +61,21 @@
     <div class="entry-content card">
         {{ entry.content|markdown }}
     </div>
+
+    <div class="correction-actions">
+        <button hx-get="{{ url_for('knowledge.kb_corrections_panel', entry_id=entry.entry_id) }}"
+                hx-target="#correction-panel"
+                hx-swap="innerHTML"
+                class="btn btn-secondary">Suggest Correction</button>
+        <button hx-get="{{ url_for('knowledge.kb_corrections_history', entry_id=entry.entry_id) }}"
+                hx-target="#correction-panel"
+                hx-swap="innerHTML"
+                class="btn btn-secondary">Corrections</button>
+    </div>
+
+    <div id="correction-panel" class="card">
+        <!-- Correction panel loaded via HTMX -->
+    </div>
 </article>
 
 <aside class="related-entries"

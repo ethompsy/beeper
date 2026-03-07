@@ -6,6 +6,10 @@ import re
 from flask import Blueprint, render_template, request
 from werkzeug.utils import secure_filename
 
+from beeper_ui.services.correction_service import (
+    CorrectionServiceError,
+    get_correction_service,
+)
 from beeper_ui.services.embedding_service import get_embedding_service
 from beeper_ui.services.import_service import (
     ImportResult,
@@ -971,6 +975,236 @@ def kb_preview() -> str:
 
     content = request.form.get("content", "")
     return render_markdown(content)
+
+
+# ── Correction routes (must be before /<entry_id> catch-all) ──
+
+
+@knowledge_bp.route("/<entry_id>/corrections/panel")
+def kb_corrections_panel(entry_id: str) -> tuple[str, int] | str:
+    """Load the correction panel for a KB entry.
+
+    Args:
+        entry_id: The KB entry to show corrections for
+
+    Returns:
+        Rendered correction panel partial or 404.
+    """
+    service_client = get_kb_service()
+
+    try:
+        entry = service_client.get_entry(entry_id)
+    except KBServiceError as e:
+        return render_template("knowledge/_correction_panel.html", error_message=str(e)), 500
+
+    if not entry:
+        return render_template(
+            "knowledge/_correction_panel.html",
+            error_message=f"Entry '{entry_id}' not found",
+        ), 404
+
+    return render_template(
+        "knowledge/_correction_panel.html",
+        entry=entry,
+    )
+
+
+@knowledge_bp.route("/<entry_id>/corrections", methods=["GET"])
+def kb_corrections_history(entry_id: str) -> tuple[str, int] | str:
+    """List corrections for a KB entry.
+
+    Args:
+        entry_id: The KB entry to list corrections for
+
+    Returns:
+        Rendered correction history partial or 404.
+    """
+    service_client = get_kb_service()
+
+    try:
+        entry = service_client.get_entry(entry_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_correction_history.html", error_message=str(e)
+        ), 500
+
+    if not entry:
+        return render_template(
+            "knowledge/_correction_history.html",
+            error_message=f"Entry '{entry_id}' not found",
+        ), 404
+
+    try:
+        corrections = service_client.get_corrections_for_entry(entry_id)
+    except KBServiceError:
+        corrections = []
+
+    return render_template(
+        "knowledge/_correction_history.html",
+        entry=entry,
+        corrections=corrections,
+    )
+
+
+@knowledge_bp.route("/<entry_id>/corrections", methods=["POST"])
+def kb_submit_correction(entry_id: str) -> tuple[str, int] | str:
+    """Submit a new correction for a KB entry.
+
+    Args:
+        entry_id: The KB entry to correct
+
+    Returns:
+        Rendered correction response partial or error.
+    """
+    service_client = get_kb_service()
+
+    try:
+        entry = service_client.get_entry(entry_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_correction_response.html", error_message=str(e)
+        ), 500
+
+    if not entry:
+        return render_template(
+            "knowledge/_correction_response.html",
+            error_message=f"Entry '{entry_id}' not found",
+        ), 404
+
+    correction_text = sanitize_query(request.form.get("correction_text", ""))
+    if not correction_text:
+        return render_template(
+            "knowledge/_correction_response.html",
+            error_message="Correction text cannot be empty.",
+        ), 400
+
+    # Process correction via LLM
+    try:
+        corr_service = get_correction_service()
+        result = corr_service.process_correction(
+            entry_content=entry.content,
+            entry_title=entry.title,
+            correction_text=correction_text,
+        )
+    except CorrectionServiceError as e:
+        return render_template(
+            "knowledge/_correction_response.html",
+            error_message=f"Unable to process correction: {e}",
+        ), 503
+
+    # Store correction in Qdrant
+    try:
+        correction = service_client.create_correction(
+            entry_id=entry_id,
+            user_message=correction_text,
+            assistant_response=result["summary"],
+            summary=result["summary"],
+        )
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_correction_response.html",
+            error_message=f"Failed to save correction: {e}",
+        ), 500
+
+    return render_template(
+        "knowledge/_correction_response.html",
+        correction=correction,
+        result=result,
+        entry=entry,
+    )
+
+
+@knowledge_bp.route("/<entry_id>/corrections/<correction_id>/reply", methods=["POST"])
+def kb_correction_reply(entry_id: str, correction_id: str) -> tuple[str, int] | str:
+    """Submit a follow-up reply to a correction conversation.
+
+    Args:
+        entry_id: The KB entry being corrected
+        correction_id: The correction conversation to reply to
+
+    Returns:
+        Rendered correction response partial or error.
+    """
+    service_client = get_kb_service()
+
+    try:
+        entry = service_client.get_entry(entry_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_correction_response.html", error_message=str(e)
+        ), 500
+
+    if not entry:
+        return render_template(
+            "knowledge/_correction_response.html",
+            error_message=f"Entry '{entry_id}' not found",
+        ), 404
+
+    try:
+        correction = service_client.get_correction(correction_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_correction_response.html", error_message=str(e)
+        ), 500
+
+    if not correction:
+        return render_template(
+            "knowledge/_correction_response.html",
+            error_message=f"Correction '{correction_id}' not found",
+        ), 404
+
+    reply_text = sanitize_query(request.form.get("reply_text", ""))
+    if not reply_text:
+        return render_template(
+            "knowledge/_correction_response.html",
+            error_message="Reply text cannot be empty.",
+        ), 400
+
+    # Build conversation history from correction messages
+    conversation_history = [
+        {"role": msg.role, "content": msg.content}
+        for msg in correction.messages
+    ]
+
+    # Process reply via LLM
+    try:
+        corr_service = get_correction_service()
+        result = corr_service.process_reply(
+            entry_content=entry.content,
+            entry_title=entry.title,
+            conversation_history=conversation_history,
+            reply_text=reply_text,
+        )
+    except CorrectionServiceError as e:
+        return render_template(
+            "knowledge/_correction_response.html",
+            error_message=f"Unable to process reply: {e}",
+        ), 503
+
+    # Add user message and assistant response to the correction
+    try:
+        service_client.add_correction_message(
+            correction_id=correction_id,
+            role="user",
+            content=reply_text,
+        )
+        updated_correction = service_client.add_correction_message(
+            correction_id=correction_id,
+            role="assistant",
+            content=result["summary"],
+        )
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_correction_response.html",
+            error_message=f"Failed to save reply: {e}",
+        ), 500
+
+    return render_template(
+        "knowledge/_correction_response.html",
+        correction=updated_correction,
+        result=result,
+        entry=entry,
+    )
 
 
 @knowledge_bp.route("/<entry_id>")

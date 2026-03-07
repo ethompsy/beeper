@@ -3030,3 +3030,186 @@ a.match-badge.kb-entry-link::after {
     background-color: #ef4444;
     color: white;
 }
+
+/* ── Correction Interface ── */
+
+.correction-actions {
+    display: flex;
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.correction-panel {
+    padding: 16px;
+}
+
+.correction-panel h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+}
+
+.correction-hint {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+}
+
+.correction-examples {
+    color: #6b7280;
+    font-size: 0.85rem;
+    font-style: italic;
+    margin-bottom: 16px;
+    padding-left: 20px;
+}
+
+.correction-examples li {
+    margin-bottom: 4px;
+}
+
+.correction-chat {
+    max-height: 400px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+}
+
+.correction-message {
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    max-width: 85%;
+}
+
+.correction-user {
+    background-color: #e0e7ff;
+    margin-left: auto;
+    text-align: right;
+}
+
+.correction-assistant {
+    background-color: #f3f4f6;
+    margin-right: auto;
+}
+
+.correction-error-msg {
+    background-color: #fee2e2;
+    color: #991b1b;
+    max-width: 100%;
+}
+
+.message-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 4px;
+}
+
+.message-content {
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.understood-changes {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    font-size: 0.85rem;
+}
+
+.correction-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.correction-textarea {
+    flex: 1;
+    resize: vertical;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.correction-textarea:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.correction-submit {
+    flex-shrink: 0;
+    align-self: flex-end;
+}
+
+.correction-error {
+    padding: 12px;
+    color: #991b1b;
+    background-color: #fee2e2;
+    border-radius: 6px;
+}
+
+.correction-reply-form {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #e5e7eb;
+}
+
+/* Correction History */
+
+.correction-history h3 {
+    margin-top: 0;
+}
+
+.correction-history-empty {
+    padding: 16px;
+    color: #6b7280;
+    text-align: center;
+}
+
+.correction-history-item {
+    padding: 12px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.correction-history-item:last-child {
+    border-bottom: none;
+}
+
+.correction-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.correction-date {
+    font-size: 0.8rem;
+    color: #6b7280;
+}
+
+.correction-history-preview {
+    font-size: 0.9rem;
+    color: #374151;
+}
+
+.correction-history-summary {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin-top: 4px;
+}
+
+/* Correction status badges */
+.badge-pending {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.badge-applied {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.badge-rejected {
+    background-color: #fee2e2;
+    color: #991b1b;
+}

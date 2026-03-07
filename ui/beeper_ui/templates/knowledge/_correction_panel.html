@@ -1,0 +1,34 @@
+{% if error_message %}
+<div class="correction-error">
+    <p>{{ error_message }}</p>
+</div>
+{% else %}
+<div class="correction-panel" id="correction-panel-inner">
+    <h3>Suggest Correction</h3>
+    <p class="correction-hint">Describe what should be changed in natural language. For example:</p>
+    <ul class="correction-examples">
+        <li>"The root cause wasn't the load balancer - it was a deployment issue"</li>
+        <li>"Add that this only happens during peak traffic hours"</li>
+    </ul>
+
+    <div id="correction-chat" class="correction-chat">
+        <!-- Chat messages will be appended here -->
+    </div>
+
+    <form hx-post="{{ url_for('knowledge.kb_submit_correction', entry_id=entry.entry_id) }}"
+          hx-target="#correction-chat"
+          hx-swap="beforeend"
+          hx-indicator="#correction-loading"
+          hx-on::after-request="this.reset()">
+        <div class="correction-input-row">
+            <textarea name="correction_text"
+                      placeholder="Describe what should be changed..."
+                      required
+                      rows="3"
+                      class="correction-textarea"></textarea>
+            <button type="submit" class="btn btn-primary correction-submit">Send</button>
+        </div>
+        <span id="correction-loading" class="htmx-indicator">Processing correction...</span>
+    </form>
+</div>
+{% endif %}

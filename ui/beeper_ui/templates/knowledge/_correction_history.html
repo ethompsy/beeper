@@ -1,0 +1,29 @@
+{% if error_message %}
+<div class="correction-error">
+    <p>{{ error_message }}</p>
+</div>
+{% elif not corrections %}
+<div class="correction-history-empty">
+    <p>No corrections have been submitted for this entry yet.</p>
+</div>
+{% else %}
+<div class="correction-history">
+    <h3>Correction History</h3>
+    {% for correction in corrections %}
+    <div class="correction-history-item">
+        <div class="correction-history-header">
+            <span class="correction-date">{{ correction.created_at[:10] }}</span>
+            <span class="entry-type-badge badge-{{ correction.status }}">{{ correction.status }}</span>
+        </div>
+        <div class="correction-history-preview">
+            {{ correction.messages[0].content[:120] }}{% if correction.messages[0].content|length > 120 %}...{% endif %}
+        </div>
+        {% if correction.summary %}
+        <div class="correction-history-summary">
+            <em>{{ correction.summary }}</em>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

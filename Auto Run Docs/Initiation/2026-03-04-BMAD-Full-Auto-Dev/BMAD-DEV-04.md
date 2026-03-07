@@ -12,12 +12,13 @@ This phase implements the Living Knowledge epic, enabling Beeper to learn and im
   - Make all decisions autonomously
   - *Completed: Story file created at `_bmad-output/implementation-artifacts/5-1-conversational-corrections-interface.md` with comprehensive dev notes covering Qdrant corrections collection, CorrectionService with LLM integration, HTMX chat-style UI, conversation flow, and correction history. Sprint status updated.*
 
-- [ ] Implement story 5-1 (Conversational Corrections Interface) using the `/bmad-bmm-dev-story` skill:
+- [x] Implement story 5-1 (Conversational Corrections Interface) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
   - Before writing new code, explore the `ui/` directory for existing KB entry views, editing patterns (from stories 2-5 KB Entry Editing), and HTMX interaction patterns
   - Search for existing LLM integration patterns in the UI (if any) for processing natural language corrections
   - Implement: correction panel UI, chat-style interface, correction submission endpoint, correction history storage
   - Make all decisions autonomously
+  - *Completed: All 6 tasks implemented with 33 new tests (451 total pass). CorrectionService uses litellm directly (beeper_investigator not available in UI venv). Correction data model, panel UI, submission endpoint, conversation flow, and history view all working. Story status set to "review".*
 
 - [ ] Review and finalize story 5-1:
   - Use the `/bmad-bmm-code-review` skill to review story 5-1 — auto-fix all issues found
