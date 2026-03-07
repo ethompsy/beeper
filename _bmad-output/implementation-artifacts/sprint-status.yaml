@@ -65,7 +65,7 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Investigation Engine
-  epic-3: in-progress
+  epic-3: done
   3-1-anomaly-detection-engine: done
   3-2-investigator-agent-scaffold: done
   3-3-customer-impact-assessment: done
@@ -76,7 +76,7 @@ development_status:
   3-8-investigation-documentation: done
   3-9-tiered-llm-model-selection: done
   3-10-llm-response-caching: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # Epic 4: Investigation Experience
   epic-4: backlog

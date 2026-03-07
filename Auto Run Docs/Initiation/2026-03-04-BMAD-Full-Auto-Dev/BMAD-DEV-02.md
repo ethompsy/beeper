@@ -77,10 +77,11 @@ This phase completes the Investigation Engine epic by implementing the remaining
   - Commit all changes as `3-10 done`
   - *(Completed: Adversarial code review found 4 MEDIUM issues, all fixed: (1) moved lazy import to module level in client.py, (2) replaced weak test 8.1 with end-to-end agent.run() propagation test, (3) fixed ValueError crash on max_entries=0, (4) fixed unnecessary eviction on key update at capacity. Added 2 new tests. 375 passed, ruff clean, mypy only pre-existing story 3-8 issues.)*
 
-- [ ] Run Epic 3 retrospective and mark epic complete:
+- [x] Run Epic 3 retrospective and mark epic complete:
   - Use the `/bmad-bmm-retrospective` skill to conduct the Epic 3 retrospective
   - Reference `_bmad-output/implementation-artifacts/epic-1-retro-2026-02-12.md` for format: epic summary table, stories delivered table, what went well, what could be improved, action items
   - Create retrospective file at `_bmad-output/implementation-artifacts/epic-3-retro-YYYY-MM-DD.md` (use today's date)
   - Include: all 10 stories delivered (3-1 through 3-10), test counts, code review issues fixed, duration, key patterns and lessons
   - Update sprint-status.yaml: `epic-3: done`, `epic-3-retrospective: done`
   - Commit as `epic-3 retrospective done`
+  - *(Completed: Created retrospective at epic-3-retro-2026-03-06.md covering all 10 stories, 537 total tests (162 Rust + 375 Python), 52 code review issues fixed, 4 deferred LOW items. Duration: 2026-02-23 to 2026-03-06. Key patterns: step pipeline architecture, graceful degradation, two-phase LLM, adversarial reviews. Epic 1 retro action items all completed. Sprint-status updated: epic-3→done, epic-3-retrospective→done.)*
