@@ -1,0 +1,11 @@
+{% if error_message %}
+<p class="error-text">{{ error_message }}</p>
+{% elif adjustments %}
+<ul class="adjustments-list">
+    {% for adjustment in adjustments %}
+    <li class="adjustment-item">{{ adjustment }}</li>
+    {% endfor %}
+</ul>
+{% else %}
+<p>No adjustments generated. More correction patterns may be needed.</p>
+{% endif %}

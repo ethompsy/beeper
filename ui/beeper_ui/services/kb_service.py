@@ -34,6 +34,16 @@ logger = logging.getLogger(__name__)
 KNOWLEDGE_COLLECTION = "knowledge"
 VERSIONS_COLLECTION = "knowledge_versions"
 CORRECTIONS_COLLECTION = "corrections"
+LEARNING_PATTERNS_COLLECTION = "learning_patterns"
+
+# Valid learning pattern categories
+LEARNING_CATEGORIES = {
+    "missing_context",
+    "incorrect_correlation",
+    "wrong_conclusion",
+    "unnecessary_info",
+    "other",
+}
 
 # Maximum entries to scan for filter metadata (services, types)
 # Note: If KB grows beyond this, filter dropdowns may be incomplete
@@ -162,6 +172,36 @@ class Correction:
             summary=payload.get("summary"),
             created_at=payload.get("created_at", ""),
             updated_at=payload.get("updated_at", ""),
+        )
+
+
+@dataclass
+class LearningPattern:
+    """Represents a learned pattern from a correction diff."""
+
+    pattern_id: str
+    entry_id: str
+    correction_id: str
+    service_name: str
+    category: str  # missing_context, incorrect_correlation, etc.
+    description: str
+    original_snippet: str
+    corrected_snippet: str
+    created_at: str  # ISO 8601
+
+    @classmethod
+    def from_qdrant(cls, payload: dict[str, Any]) -> "LearningPattern":
+        """Create LearningPattern from Qdrant point payload."""
+        return cls(
+            pattern_id=payload.get("pattern_id", ""),
+            entry_id=payload.get("entry_id", ""),
+            correction_id=payload.get("correction_id", ""),
+            service_name=payload.get("service_name", "general"),
+            category=payload.get("category", "other"),
+            description=payload.get("description", ""),
+            original_snippet=payload.get("original_snippet", ""),
+            corrected_snippet=payload.get("corrected_snippet", ""),
+            created_at=payload.get("created_at", ""),
         )
 
 
@@ -1312,3 +1352,151 @@ class KBService:
         except Exception as e:
             logger.error(f"KB service error: {e}")
             raise KBServiceError(f"Failed to update correction: {e}") from e
+
+    def create_learning_pattern(
+        self,
+        entry_id: str,
+        correction_id: str,
+        service_name: str,
+        category: str,
+        description: str,
+        original_snippet: str = "",
+        corrected_snippet: str = "",
+    ) -> LearningPattern:
+        """Store a learned pattern from a correction diff.
+
+        Args:
+            entry_id: The KB entry that was corrected
+            correction_id: The correction that triggered learning
+            service_name: Service scope for the pattern
+            category: Pattern category (missing_context, etc.)
+            description: Human-readable description of what was learned
+            original_snippet: Relevant original text
+            corrected_snippet: Relevant corrected text
+
+        Returns:
+            The created LearningPattern.
+
+        Raises:
+            KBServiceError: If creation fails.
+        """
+        if category not in LEARNING_CATEGORIES:
+            category = "other"
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            pattern_id = f"lrn-{uuid.uuid4().hex[:12]}"
+            point_id = str(uuid.uuid4())
+
+            payload = {
+                "pattern_id": pattern_id,
+                "entry_id": entry_id,
+                "correction_id": correction_id,
+                "service_name": service_name,
+                "category": category,
+                "description": description,
+                "original_snippet": original_snippet,
+                "corrected_snippet": corrected_snippet,
+                "created_at": now,
+            }
+
+            self.client.upsert(
+                collection_name=LEARNING_PATTERNS_COLLECTION,
+                points=[PointStruct(id=point_id, vector=[0.0], payload=payload)],
+            )
+
+            logger.info(
+                f"Created learning pattern {pattern_id} "
+                f"({category}) for entry {entry_id}"
+            )
+            return LearningPattern.from_qdrant(payload)
+
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant upsert failed: {e}")
+            raise KBServiceError(f"Failed to create learning pattern: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to create learning pattern: {e}") from e
+
+    def get_learning_patterns(
+        self,
+        service_name: Optional[str] = None,
+        category: Optional[str] = None,
+        limit: int = 200,
+    ) -> list[LearningPattern]:
+        """Get learning patterns, optionally filtered by service and/or category.
+
+        Args:
+            service_name: Filter by service name (None = all services)
+            category: Filter by category (None = all categories)
+            limit: Maximum number of patterns to return
+
+        Returns:
+            List of LearningPattern objects sorted by created_at descending.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            conditions = []
+            if service_name:
+                conditions.append(
+                    FieldCondition(
+                        key="service_name", match=MatchValue(value=service_name)
+                    )
+                )
+            if category and category in LEARNING_CATEGORIES:
+                conditions.append(
+                    FieldCondition(
+                        key="category", match=MatchValue(value=category)
+                    )
+                )
+
+            scroll_filter: Filter | None = None
+            if conditions:
+                scroll_filter = Filter(must=conditions)  # type: ignore[arg-type]
+
+            results, _ = self.client.scroll(
+                collection_name=LEARNING_PATTERNS_COLLECTION,
+                scroll_filter=scroll_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            patterns = [
+                LearningPattern.from_qdrant(point.payload or {}) for point in results
+            ]
+            patterns.sort(key=lambda p: p.created_at, reverse=True)
+            return patterns
+
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant query failed: {e}")
+            raise KBServiceError(f"Failed to get learning patterns: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to get learning patterns: {e}") from e
+
+    def get_learning_summary(self) -> dict[str, Any]:
+        """Get aggregated learning summary with category counts and per-service breakdown.
+
+        Returns:
+            Dict with 'total', 'by_category', 'by_service', and 'patterns' keys.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        patterns = self.get_learning_patterns()
+
+        by_category: dict[str, int] = {}
+        by_service: dict[str, int] = {}
+        for p in patterns:
+            by_category[p.category] = by_category.get(p.category, 0) + 1
+            by_service[p.service_name] = by_service.get(p.service_name, 0) + 1
+
+        return {
+            "total": len(patterns),
+            "by_category": by_category,
+            "by_service": by_service,
+            "patterns": patterns,
+        }

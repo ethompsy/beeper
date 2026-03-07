@@ -44,10 +44,11 @@ This phase implements the Living Knowledge epic, enabling Beeper to learn and im
   - Commit all changes as `5-2 done`
   - *Completed: Adversarial code review found 5 issues (1 HIGH, 3 MEDIUM, 1 LOW). Fixed 4: added entry_id mismatch validation to apply route, added correction status check to refine route, fixed stale conversation messages in refine route, replaced sanitize_query with proper feedback truncation (2000 char limit). Added 2 new tests (apply_revision_wrong_entry, refine_revision_already_applied). All 472 tests pass (54 correction/revision tests). Ruff/mypy clean (no new errors). Sprint status and story status updated to done.*
 
-- [ ] Create and implement story 5-3 (Learning from Diffs). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 5, Story 5-3 (FR20: learn from diff between AI documentation and human corrections). Then use the `/bmad-bmm-dev-story` skill to implement it:
+- [x] Create and implement story 5-3 (Learning from Diffs). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 5, Story 5-3 (FR20: learn from diff between AI documentation and human corrections). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: revision processing (5-2) for diff data, KB client for storing learning data, LLM client for pattern analysis
   - Implement: diff analysis, correction pattern categorization, service-scoped learning, prompt adjustment mechanism, improvement metrics
   - Make all decisions autonomously
+  - *Completed: Created story spec and implemented all 6 tasks. Added LearningPattern dataclass + KBService storage methods, LearningService with LLM diff analysis (analyze_correction, generate_prompt_adjustments, get_prompt_context), non-blocking learning hook in apply route, Learning Insights UI page with category bars and service breakdown, prompt context API endpoint. 36 new tests, all 508 pass. Ruff/mypy clean (no new errors).*
 
 - [ ] Review and finalize story 5-3:
   - Use the `/bmad-bmm-code-review` skill to review story 5-3 — auto-fix all issues found

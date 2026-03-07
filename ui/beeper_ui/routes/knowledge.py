@@ -1,7 +1,9 @@
 """Knowledge Base routes for Beeper UI."""
 
+import logging
 import os
 import re
+from typing import Any
 
 from flask import Blueprint, render_template, request
 from werkzeug.utils import secure_filename
@@ -24,6 +26,12 @@ from beeper_ui.services.kb_service import (
     generate_diff,
     parse_date_range,
 )
+from beeper_ui.services.learning_service import (
+    LearningServiceError,
+    get_learning_service,
+)
+
+logger = logging.getLogger(__name__)
 
 knowledge_bp = Blueprint("knowledge", __name__, url_prefix="/knowledge")
 
@@ -1380,6 +1388,38 @@ def kb_apply_revision(
     except KBServiceError:
         pass  # Non-critical; entry is already updated
 
+    # Trigger learning analysis (non-blocking — failure doesn't affect apply)
+    try:
+        correction = service_client.get_correction(correction_id)
+        if correction:
+            learn_service = get_learning_service()
+            conversation_messages = [
+                {"role": msg.role, "content": msg.content}
+                for msg in correction.messages
+            ]
+            service_name = entry.service or "general"
+            learned_patterns = learn_service.analyze_correction(
+                entry_content=entry.content,
+                revised_content=revised_content,
+                entry_title=entry.title,
+                service_name=service_name,
+                correction_messages=conversation_messages,
+            )
+            for pattern in learned_patterns:
+                service_client.create_learning_pattern(
+                    entry_id=entry_id,
+                    correction_id=correction_id,
+                    service_name=service_name,
+                    category=pattern.get("category", "other"),
+                    description=pattern.get("description", ""),
+                    original_snippet=pattern.get("original_snippet", ""),
+                    corrected_snippet=pattern.get("corrected_snippet", ""),
+                )
+    except (LearningServiceError, KBServiceError) as e:
+        logger.warning(f"Learning analysis failed (non-blocking): {e}")
+    except Exception as e:
+        logger.warning(f"Unexpected learning error (non-blocking): {e}")
+
     return render_template(
         "knowledge/_revision_result.html",
         entry=entry,
@@ -1496,6 +1536,130 @@ def kb_refine_revision(
         revised_content=revised_content,
         diff_data=diff_data,
     )
+
+
+@knowledge_bp.route("/learning")
+def kb_learning() -> tuple[str, int] | str:
+    """Display learning insights page with correction patterns and metrics.
+
+    Returns:
+        Rendered learning insights page.
+    """
+    service_client = get_kb_service()
+
+    try:
+        summary = service_client.get_learning_summary()
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/learning.html",
+            summary={"total": 0, "by_category": {}, "by_service": {}, "patterns": []},
+            error_message=str(e),
+        )
+
+    return render_template(
+        "knowledge/learning.html",
+        summary=summary,
+        error_message=None,
+    )
+
+
+@knowledge_bp.route("/learning/adjustments")
+def kb_learning_adjustments() -> tuple[str, int] | str:
+    """Generate and return prompt adjustments based on accumulated patterns.
+
+    Returns:
+        Rendered adjustments partial.
+    """
+    service_client = get_kb_service()
+
+    try:
+        patterns = service_client.get_learning_patterns()
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_learning_adjustments.html",
+            adjustments=[],
+            error_message=str(e),
+        )
+
+    if not patterns:
+        return render_template(
+            "knowledge/_learning_adjustments.html",
+            adjustments=[],
+            error_message=None,
+        )
+
+    pattern_dicts = [
+        {
+            "category": p.category,
+            "description": p.description,
+            "service_name": p.service_name,
+        }
+        for p in patterns
+    ]
+
+    try:
+        learn_service = get_learning_service()
+        adjustments = learn_service.generate_prompt_adjustments(pattern_dicts)
+    except LearningServiceError as e:
+        return render_template(
+            "knowledge/_learning_adjustments.html",
+            adjustments=[],
+            error_message=f"Unable to generate adjustments: {e}",
+        ), 503
+
+    return render_template(
+        "knowledge/_learning_adjustments.html",
+        adjustments=adjustments,
+        error_message=None,
+    )
+
+
+@knowledge_bp.route("/api/learning/prompt-context/<service_name>")
+def kb_learning_prompt_context(service_name: str) -> tuple[dict[str, Any], int]:
+    """Get prompt context for a service based on accumulated learning.
+
+    This endpoint is designed for investigator integration — it returns
+    a JSON object with prompt adjustments derived from past corrections.
+
+    Args:
+        service_name: Service to get prompt context for
+
+    Returns:
+        JSON response with prompt_context and adjustments.
+    """
+    service_client = get_kb_service()
+
+    try:
+        patterns = service_client.get_learning_patterns(service_name=service_name)
+    except KBServiceError as e:
+        return {"error": str(e), "prompt_context": "", "adjustments": []}, 500
+
+    if not patterns:
+        return {"prompt_context": "", "adjustments": [], "pattern_count": 0}, 200
+
+    pattern_dicts = [
+        {
+            "category": p.category,
+            "description": p.description,
+            "service_name": p.service_name,
+        }
+        for p in patterns
+    ]
+
+    try:
+        learn_service = get_learning_service()
+        prompt_context = learn_service.get_prompt_context(pattern_dicts, service_name)
+        adjustments = learn_service.generate_prompt_adjustments(
+            pattern_dicts, service_name
+        )
+    except LearningServiceError as e:
+        return {"error": str(e), "prompt_context": "", "adjustments": []}, 503
+
+    return {
+        "prompt_context": prompt_context,
+        "adjustments": adjustments,
+        "pattern_count": len(patterns),
+    }, 200
 
 
 @knowledge_bp.route("/<entry_id>")

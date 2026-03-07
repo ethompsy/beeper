@@ -9,7 +9,10 @@
             <h2>Knowledge Base</h2>
             <p class="kb-description">Browse investigations, runbooks, and corrections</p>
         </div>
-        <a href="{{ url_for('knowledge.kb_import') }}" class="btn btn-primary">Import Runbook</a>
+        <div>
+            <a href="{{ url_for('knowledge.kb_learning') }}" class="btn btn-secondary">Learning Insights</a>
+            <a href="{{ url_for('knowledge.kb_import') }}" class="btn btn-primary">Import Runbook</a>
+        </div>
     </div>
 </div>
 

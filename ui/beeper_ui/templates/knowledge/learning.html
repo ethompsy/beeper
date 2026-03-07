@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Learning Insights - Beeper{% endblock %}
+
+{% block content %}
+<div class="kb-header">
+    <div class="kb-header-content">
+        <div>
+            <h2>Learning Insights</h2>
+            <p class="kb-description">Correction patterns and improvement metrics</p>
+        </div>
+        <a href="{{ url_for('knowledge.kb_index') }}" class="btn btn-secondary">Back to KB</a>
+    </div>
+</div>
+
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to load learning data</h3>
+    <p>{{ error_message }}</p>
+</div>
+{% else %}
+
+<div class="learning-overview">
+    <div class="card">
+        <h3>Overview</h3>
+        <p class="learning-total">{{ summary.total }} patterns learned from corrections</p>
+    </div>
+</div>
+
+{% if summary.total > 0 %}
+<div class="learning-grid">
+    <div class="card">
+        <h3>By Category</h3>
+        <div class="category-bars">
+            {% for category, count in summary.by_category.items() %}
+            <div class="category-bar-row">
+                <span class="category-label">{{ category | replace('_', ' ') | title }}</span>
+                <div class="category-bar-track">
+                    <div class="category-bar-fill category-{{ category }}"
+                         style="width: {{ (count / summary.total * 100) | round(1) }}%"></div>
+                </div>
+                <span class="category-count">{{ count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>By Service</h3>
+        <div class="category-bars">
+            {% for service, count in summary.by_service.items() %}
+            <div class="category-bar-row">
+                <span class="category-label">{{ service }}</span>
+                <div class="category-bar-track">
+                    <div class="category-bar-fill service-bar"
+                         style="width: {{ (count / summary.total * 100) | round(1) }}%"></div>
+                </div>
+                <span class="category-count">{{ count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Recent Patterns</h3>
+    <div class="learning-patterns-list">
+        {% for pattern in summary.patterns[:20] %}
+        <div class="learning-pattern-item">
+            <div class="pattern-header">
+                <span class="entry-type-badge badge-{{ pattern.category }}">{{ pattern.category | replace('_', ' ') }}</span>
+                <span class="pattern-service">{{ pattern.service_name }}</span>
+                <span class="pattern-date">{{ pattern.created_at[:10] if pattern.created_at else '' }}</span>
+            </div>
+            <p class="pattern-description">{{ pattern.description }}</p>
+            {% if pattern.original_snippet or pattern.corrected_snippet %}
+            <div class="pattern-snippets">
+                {% if pattern.original_snippet %}
+                <div class="snippet snippet-original">
+                    <span class="snippet-label">Original:</span> {{ pattern.original_snippet[:150] }}
+                </div>
+                {% endif %}
+                {% if pattern.corrected_snippet %}
+                <div class="snippet snippet-corrected">
+                    <span class="snippet-label">Corrected:</span> {{ pattern.corrected_snippet[:150] }}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div id="adjustments-panel">
+    <div class="card">
+        <h3>Prompt Adjustments</h3>
+        <button hx-get="{{ url_for('knowledge.kb_learning_adjustments') }}"
+                hx-target="#adjustments-content"
+                hx-swap="innerHTML"
+                hx-indicator="#adj-loading"
+                class="btn btn-primary btn-sm">Generate Adjustments</button>
+        <span id="adj-loading" class="htmx-indicator">Analyzing patterns...</span>
+        <div id="adjustments-content"></div>
+    </div>
+</div>
+
+{% else %}
+<div class="card">
+    <p>No learning patterns yet. Patterns are created when corrections are applied to KB entries.</p>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
