@@ -1,6 +1,6 @@
 # Story 5.1: Conversational Corrections Interface
 
-Status: review
+Status: done
 
 ## Story
 
@@ -223,6 +223,7 @@ Claude Opus 4.6
 ### Change Log
 
 - 2026-03-07: Implemented story 5-1 (Conversational Corrections Interface) — all 6 tasks complete
+- 2026-03-07: Code review completed — 5 issues found (1 HIGH, 3 MEDIUM, 1 LOW), 4 fixed: added empty-messages guard in history template, added `required` attribute to reply textarea, added missing empty-reply-text test, improved date display guard. 452 tests pass (34 correction tests). Status → done
 
 ### File List
 

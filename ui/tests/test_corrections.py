@@ -570,6 +570,25 @@ class TestCorrectionRoutes:
         assert response.status_code == 200
 
     @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_correction_reply_empty_text(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload()
+        )
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/reply",
+            data={"reply_text": ""},
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 400
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
     def test_correction_reply_not_found(
         self, mock_get_service: MagicMock, client: FlaskClient
     ) -> None:

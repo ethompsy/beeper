@@ -12,11 +12,15 @@
     {% for correction in corrections %}
     <div class="correction-history-item">
         <div class="correction-history-header">
-            <span class="correction-date">{{ correction.created_at[:10] }}</span>
+            <span class="correction-date">{{ correction.created_at[:10] if correction.created_at else 'Unknown' }}</span>
             <span class="entry-type-badge badge-{{ correction.status }}">{{ correction.status }}</span>
         </div>
         <div class="correction-history-preview">
+            {% if correction.messages %}
             {{ correction.messages[0].content[:120] }}{% if correction.messages[0].content|length > 120 %}...{% endif %}
+            {% else %}
+            <em>No messages</em>
+            {% endif %}
         </div>
         {% if correction.summary %}
         <div class="correction-history-summary">
