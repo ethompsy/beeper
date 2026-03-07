@@ -29,10 +29,11 @@ This phase implements the Living Knowledge epic, enabling Beeper to learn and im
   - Commit all changes as `5-1 done`
   - *Completed: Adversarial code review found 5 issues (1 HIGH, 3 MEDIUM, 1 LOW). Fixed 4: guarded empty-messages access in history template, added `required` to reply textarea, added missing empty-reply-text test, improved date guard. All 452 tests pass (34 correction tests). Ruff/mypy clean (no new errors). Sprint status and story status updated to done.*
 
-- [ ] Create and implement story 5-2 (Beeper Revision Processing). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 5, Story 5-2 (FR19: revise KB entries based on conversational corrections). Then use the `/bmad-bmm-dev-story` skill to implement it:
+- [x] Create and implement story 5-2 (Beeper Revision Processing). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 5, Story 5-2 (FR19: revise KB entries based on conversational corrections). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: corrections interface (5-1), KB entry editing (story 2-5), version history (story 2-6), version diff (story 2-7), LLM client patterns
   - Implement: LLM-powered revision generation from corrections, diff display, approval workflow, version creation with attribution
   - Make all decisions autonomously
+  - *Completed: All 6 tasks implemented with 18 new tests (470 total pass). Added generate_revision/refine_revision to CorrectionService, 3 new routes (generate, apply, refine), revision panel with diff display, approval workflow with version creation via update_entry(), and revision result template. Story status set to "review".*
 
 - [ ] Review and finalize story 5-2:
   - Use the `/bmad-bmm-code-review` skill to review story 5-2 — auto-fix all issues found

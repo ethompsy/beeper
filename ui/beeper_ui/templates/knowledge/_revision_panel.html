@@ -1,0 +1,71 @@
+{% if error_message %}
+<div class="correction-message correction-error-msg">
+    <div class="message-content">
+        <strong>Error:</strong> {{ error_message }}
+    </div>
+</div>
+{% else %}
+<div class="revision-panel">
+    <h3>Proposed Revision</h3>
+
+    <div class="diff-container">
+        <div class="diff-header">
+            <span class="diff-summary">{{ diff_data.summary }}</span>
+        </div>
+
+        {% if not diff_data.has_changes %}
+        <div class="empty-state">
+            <p>No content changes detected.</p>
+        </div>
+        {% else %}
+        <div class="diff-hunks">
+            {% for hunk in diff_data.hunks %}
+            <div class="diff-hunk" id="revision-hunk-{{ loop.index }}">
+                <div class="diff-hunk-header">{{ hunk.header }}</div>
+                <div class="diff-lines">
+                    {% for line in hunk.lines %}
+                    <div class="diff-line diff-line-{{ line.type }}">
+                        <span class="diff-line-num diff-line-num-old">{{ line.old_num if line.old_num is not none else '' }}</span>
+                        <span class="diff-line-num diff-line-num-new">{{ line.new_num if line.new_num is not none else '' }}</span>
+                        <span class="diff-line-marker">{% if line.type == 'add' %}+{% elif line.type == 'remove' %}-{% else %} {% endif %}</span>
+                        <span class="diff-line-content">{{ line.content }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="revision-actions">
+        <!-- Apply Revision -->
+        <form hx-post="{{ url_for('knowledge.kb_apply_revision', entry_id=entry.entry_id, correction_id=correction_id) }}"
+              hx-target="#revision-panel"
+              hx-swap="innerHTML"
+              hx-confirm="Apply this revision to the KB entry?"
+              style="display: inline;">
+            <input type="hidden" name="revised_content" value="{{ revised_content }}">
+            <button type="submit" class="btn btn-primary">Apply Revision</button>
+        </form>
+
+        <!-- Revise Further -->
+        <form hx-post="{{ url_for('knowledge.kb_refine_revision', entry_id=entry.entry_id, correction_id=correction_id) }}"
+              hx-target="#revision-panel"
+              hx-swap="innerHTML"
+              hx-indicator="#refine-loading"
+              class="revision-refine-form">
+            <input type="hidden" name="revised_content" value="{{ revised_content }}">
+            <div class="correction-input-row">
+                <textarea name="feedback"
+                          placeholder="Describe what needs to change..."
+                          required
+                          rows="2"
+                          class="correction-textarea"></textarea>
+                <button type="submit" class="btn btn-secondary correction-submit">Refine</button>
+            </div>
+            <span id="refine-loading" class="htmx-indicator">Refining revision...</span>
+        </form>
+    </div>
+</div>
+{% endif %}

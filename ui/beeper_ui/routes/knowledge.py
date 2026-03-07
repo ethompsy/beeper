@@ -1207,6 +1207,282 @@ def kb_correction_reply(entry_id: str, correction_id: str) -> tuple[str, int] | 
     )
 
 
+@knowledge_bp.route(
+    "/<entry_id>/corrections/<correction_id>/revision", methods=["POST"]
+)
+def kb_generate_revision(
+    entry_id: str, correction_id: str
+) -> tuple[str, int] | str:
+    """Generate a revision of a KB entry based on a correction conversation.
+
+    Args:
+        entry_id: The KB entry to revise
+        correction_id: The correction conversation to base revision on
+
+    Returns:
+        Rendered revision panel partial with diff, or error.
+    """
+    service_client = get_kb_service()
+
+    try:
+        entry = service_client.get_entry(entry_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_revision_panel.html", error_message=str(e)
+        ), 500
+
+    if not entry:
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message=f"Entry '{entry_id}' not found",
+        ), 404
+
+    try:
+        correction = service_client.get_correction(correction_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_revision_panel.html", error_message=str(e)
+        ), 500
+
+    if not correction:
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message=f"Correction '{correction_id}' not found",
+        ), 404
+
+    if correction.entry_id != entry_id:
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message="Correction does not belong to this entry.",
+        ), 400
+
+    if correction.status != "pending":
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message=f"Correction is already '{correction.status}'.",
+        ), 400
+
+    # Build conversation messages
+    conversation_messages = [
+        {"role": msg.role, "content": msg.content}
+        for msg in correction.messages
+    ]
+
+    # Generate revision via LLM
+    try:
+        corr_service = get_correction_service()
+        revised_content = corr_service.generate_revision(
+            entry_content=entry.content,
+            entry_title=entry.title,
+            correction_messages=conversation_messages,
+        )
+    except CorrectionServiceError as e:
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message=f"Unable to generate revision: {e}",
+        ), 503
+
+    # Generate diff
+    diff_data = generate_diff(entry.content, revised_content)
+
+    return render_template(
+        "knowledge/_revision_panel.html",
+        entry=entry,
+        correction_id=correction_id,
+        revised_content=revised_content,
+        diff_data=diff_data,
+    )
+
+
+@knowledge_bp.route(
+    "/<entry_id>/corrections/<correction_id>/apply", methods=["POST"]
+)
+def kb_apply_revision(
+    entry_id: str, correction_id: str
+) -> tuple[str, int] | str:
+    """Apply a revision to a KB entry and mark correction as applied.
+
+    Args:
+        entry_id: The KB entry to update
+        correction_id: The correction to mark as applied
+
+    Returns:
+        Rendered revision result partial, or error.
+    """
+    service_client = get_kb_service()
+
+    try:
+        entry = service_client.get_entry(entry_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_revision_result.html", error_message=str(e)
+        ), 500
+
+    if not entry:
+        return render_template(
+            "knowledge/_revision_result.html",
+            error_message=f"Entry '{entry_id}' not found",
+        ), 404
+
+    try:
+        correction = service_client.get_correction(correction_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_revision_result.html", error_message=str(e)
+        ), 500
+
+    if not correction:
+        return render_template(
+            "knowledge/_revision_result.html",
+            error_message=f"Correction '{correction_id}' not found",
+        ), 404
+
+    if correction.status != "pending":
+        return render_template(
+            "knowledge/_revision_result.html",
+            error_message=f"Correction is already '{correction.status}'.",
+        ), 400
+
+    revised_content = request.form.get("revised_content", "")
+    if not revised_content:
+        return render_template(
+            "knowledge/_revision_result.html",
+            error_message="No revised content provided.",
+        ), 400
+
+    # Apply the revision
+    try:
+        embedding_service = get_embedding_service()
+        new_version = service_client.update_entry(
+            entry_id=entry_id,
+            content=revised_content,
+            author="correction",
+            embedding_service=embedding_service,
+        )
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_revision_result.html",
+            error_message=f"Failed to apply revision: {e}",
+        ), 500
+
+    # Mark correction as applied
+    try:
+        service_client.update_correction(
+            correction_id=correction_id,
+            status="applied",
+        )
+    except KBServiceError:
+        pass  # Non-critical; entry is already updated
+
+    return render_template(
+        "knowledge/_revision_result.html",
+        entry=entry,
+        new_version=new_version,
+        correction_id=correction_id,
+    )
+
+
+@knowledge_bp.route(
+    "/<entry_id>/corrections/<correction_id>/revision/refine", methods=["POST"]
+)
+def kb_refine_revision(
+    entry_id: str, correction_id: str
+) -> tuple[str, int] | str:
+    """Refine a previously generated revision based on user feedback.
+
+    Args:
+        entry_id: The KB entry being revised
+        correction_id: The correction conversation
+
+    Returns:
+        Rendered revision panel partial with updated diff, or error.
+    """
+    service_client = get_kb_service()
+
+    try:
+        entry = service_client.get_entry(entry_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_revision_panel.html", error_message=str(e)
+        ), 500
+
+    if not entry:
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message=f"Entry '{entry_id}' not found",
+        ), 404
+
+    try:
+        correction = service_client.get_correction(correction_id)
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_revision_panel.html", error_message=str(e)
+        ), 500
+
+    if not correction:
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message=f"Correction '{correction_id}' not found",
+        ), 404
+
+    feedback = sanitize_query(request.form.get("feedback", ""))
+    if not feedback:
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message="Feedback text cannot be empty.",
+        ), 400
+
+    previous_revision = request.form.get("revised_content", "")
+    if not previous_revision:
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message="No previous revision provided.",
+        ), 400
+
+    # Store feedback as correction message
+    try:
+        service_client.add_correction_message(
+            correction_id=correction_id,
+            role="user",
+            content=f"[Revision feedback] {feedback}",
+        )
+    except KBServiceError:
+        pass  # Non-critical
+
+    # Build conversation messages
+    conversation_messages = [
+        {"role": msg.role, "content": msg.content}
+        for msg in correction.messages
+    ]
+
+    # Refine revision via LLM
+    try:
+        corr_service = get_correction_service()
+        revised_content = corr_service.refine_revision(
+            entry_content=entry.content,
+            entry_title=entry.title,
+            correction_messages=conversation_messages,
+            previous_revision=previous_revision,
+            feedback=feedback,
+        )
+    except CorrectionServiceError as e:
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message=f"Unable to refine revision: {e}",
+        ), 503
+
+    # Generate diff
+    diff_data = generate_diff(entry.content, revised_content)
+
+    return render_template(
+        "knowledge/_revision_panel.html",
+        entry=entry,
+        correction_id=correction_id,
+        revised_content=revised_content,
+        diff_data=diff_data,
+    )
+
+
 @knowledge_bp.route("/<entry_id>")
 def kb_entry(entry_id: str) -> tuple[str, int] | str:
     """Display a single KB entry.

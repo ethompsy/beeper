@@ -1,0 +1,21 @@
+{% if error_message %}
+<div class="correction-message correction-error-msg">
+    <div class="message-content">
+        <strong>Error:</strong> {{ error_message }}
+    </div>
+</div>
+{% else %}
+<div class="revision-result">
+    <div class="correction-message correction-assistant">
+        <div class="message-label">Beeper</div>
+        <div class="message-content">
+            <strong>Revision applied successfully!</strong>
+            <p>The KB entry has been updated to version {{ new_version }}.</p>
+            <div class="revision-result-actions">
+                <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}" class="btn btn-secondary btn-sm">View Updated Entry</a>
+                <a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}" class="btn btn-secondary btn-sm">View History</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}

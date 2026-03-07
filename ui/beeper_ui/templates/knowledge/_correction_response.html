@@ -27,6 +27,16 @@
     </div>
 </div>
 
+<!-- Generate Revision button -->
+<div class="revision-trigger">
+    <button hx-post="{{ url_for('knowledge.kb_generate_revision', entry_id=entry.entry_id, correction_id=correction.correction_id) }}"
+            hx-target="#revision-panel"
+            hx-swap="innerHTML"
+            hx-indicator="#revision-loading"
+            class="btn btn-primary">Generate Revision</button>
+    <span id="revision-loading" class="htmx-indicator">Generating revision...</span>
+</div>
+
 <!-- Reply form (for follow-up clarification) -->
 <div class="correction-reply-form">
     <form hx-post="{{ url_for('knowledge.kb_correction_reply', entry_id=entry.entry_id, correction_id=correction.correction_id) }}"

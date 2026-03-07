@@ -44,6 +44,35 @@ REPLY_SYSTEM_PROMPT_TEMPLATE = (
     '"understood_changes": ["Change 1", "Change 2"]}}'
 )
 
+REVISION_SYSTEM_PROMPT_TEMPLATE = (
+    "You are Beeper, an AI SRE assistant. "
+    "You are revising a Knowledge Base entry based on corrections "
+    "from an SRE.\n\n"
+    "**KB Entry Title:** {title}\n"
+    "**Original KB Entry Content:**\n{content}\n\n"
+    "Apply the corrections described in the conversation below to produce "
+    "an updated version of the entry content. "
+    "Return ONLY the revised content as plain text. "
+    "Do NOT wrap it in JSON or markdown code fences. "
+    "Preserve the original structure, formatting, and any sections "
+    "not affected by the corrections."
+)
+
+REFINE_SYSTEM_PROMPT_TEMPLATE = (
+    "You are Beeper, an AI SRE assistant. "
+    "You previously generated a revision of a Knowledge Base entry, "
+    "but the SRE wants further adjustments.\n\n"
+    "**KB Entry Title:** {title}\n"
+    "**Original KB Entry Content:**\n{content}\n\n"
+    "**Your Previous Revision:**\n{previous_revision}\n\n"
+    "The SRE will provide feedback on what needs to change. "
+    "Generate an improved revision incorporating their feedback. "
+    "Return ONLY the revised content as plain text. "
+    "Do NOT wrap it in JSON or markdown code fences. "
+    "Preserve the original structure, formatting, and any sections "
+    "not affected by the corrections."
+)
+
 
 class CorrectionServiceError(Exception):
     """Exception raised by correction service operations."""
@@ -193,6 +222,92 @@ class CorrectionService:
             raise
         except Exception as e:
             raise CorrectionServiceError(f"Failed to process reply: {e}") from e
+
+    def generate_revision(
+        self,
+        entry_content: str,
+        entry_title: str,
+        correction_messages: list[dict[str, str]],
+    ) -> str:
+        """Generate a revised version of a KB entry based on correction conversation.
+
+        Args:
+            entry_content: The original KB entry content
+            entry_title: The KB entry title
+            correction_messages: List of correction conversation messages
+
+        Returns:
+            The revised entry content as plain text.
+
+        Raises:
+            CorrectionServiceError: If LLM processing fails.
+        """
+        system_prompt = REVISION_SYSTEM_PROMPT_TEMPLATE.format(
+            title=entry_title,
+            content=entry_content,
+        )
+
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": system_prompt},
+        ]
+        for msg in correction_messages:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"],
+            })
+
+        try:
+            return self._complete_sync(messages=messages, max_tokens=4096)
+        except CorrectionServiceError:
+            raise
+        except Exception as e:
+            raise CorrectionServiceError(f"Failed to generate revision: {e}") from e
+
+    def refine_revision(
+        self,
+        entry_content: str,
+        entry_title: str,
+        correction_messages: list[dict[str, str]],
+        previous_revision: str,
+        feedback: str,
+    ) -> str:
+        """Refine a previously generated revision based on user feedback.
+
+        Args:
+            entry_content: The original KB entry content
+            entry_title: The KB entry title
+            correction_messages: List of correction conversation messages
+            previous_revision: The previously generated revision
+            feedback: The user's feedback on the previous revision
+
+        Returns:
+            The refined entry content as plain text.
+
+        Raises:
+            CorrectionServiceError: If LLM processing fails.
+        """
+        system_prompt = REFINE_SYSTEM_PROMPT_TEMPLATE.format(
+            title=entry_title,
+            content=entry_content,
+            previous_revision=previous_revision,
+        )
+
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": system_prompt},
+        ]
+        for msg in correction_messages:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"],
+            })
+        messages.append({"role": "user", "content": feedback})
+
+        try:
+            return self._complete_sync(messages=messages, max_tokens=4096)
+        except CorrectionServiceError:
+            raise
+        except Exception as e:
+            raise CorrectionServiceError(f"Failed to refine revision: {e}") from e
 
     @staticmethod
     def _parse_response(response: str) -> dict[str, Any]:

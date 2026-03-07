@@ -91,7 +91,7 @@ development_status:
   # Epic 5: Living Knowledge
   epic-5: in-progress
   5-1-conversational-corrections-interface: done
-  5-2-beeper-revision-processing: backlog
+  5-2-beeper-revision-processing: review
   5-3-learning-from-diffs: backlog
   5-4-graduated-authoring-trust: backlog
   epic-5-retrospective: optional

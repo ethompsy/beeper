@@ -1,10 +1,11 @@
-"""Tests for the Conversational Corrections Interface (Story 5-1)."""
+"""Tests for Corrections and Revision Processing (Stories 5-1, 5-2)."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 from flask.testing import FlaskClient
 
+from beeper_ui.services.correction_service import CorrectionServiceError
 from beeper_ui.services.kb_service import (
     Correction,
     CorrectionMessage,
@@ -682,3 +683,421 @@ class TestCorrectionRoutes:
 
         response = client.get("/knowledge/")
         assert response.status_code == 200
+
+
+# ── Revision Service Tests (Story 5-2) ──
+
+
+class TestCorrectionServiceRevision:
+    """Tests for CorrectionService revision methods."""
+
+    @patch("beeper_ui.services.correction_service.litellm")
+    def test_generate_revision(self, mock_litellm: MagicMock) -> None:
+        from beeper_ui.services.correction_service import CorrectionService
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = (
+            "Root cause: DNS TTL misconfiguration causing stale records."
+        )
+        mock_litellm.completion.return_value = mock_response
+
+        svc = CorrectionService.__new__(CorrectionService)
+        svc._model = "claude-3-5-sonnet-20241022"
+
+        result = svc.generate_revision(
+            entry_content="Root cause: load balancer failure",
+            entry_title="API Outage 2026-03-01",
+            correction_messages=[
+                {"role": "user", "content": "Root cause was DNS"},
+                {"role": "assistant", "content": "Understood: DNS issue."},
+            ],
+        )
+
+        assert result == "Root cause: DNS TTL misconfiguration causing stale records."
+        mock_litellm.completion.assert_called_once()
+        call_kwargs = mock_litellm.completion.call_args
+        assert call_kwargs.kwargs["max_tokens"] == 4096
+
+    @patch("beeper_ui.services.correction_service.litellm")
+    def test_generate_revision_llm_error(self, mock_litellm: MagicMock) -> None:
+        from beeper_ui.services.correction_service import (
+            CorrectionService,
+            CorrectionServiceError,
+        )
+
+        mock_litellm.completion.side_effect = Exception("LLM unavailable")
+
+        svc = CorrectionService.__new__(CorrectionService)
+        svc._model = "claude-3-5-sonnet-20241022"
+
+        with pytest.raises(CorrectionServiceError, match="LLM request failed"):
+            svc.generate_revision(
+                entry_content="content",
+                entry_title="title",
+                correction_messages=[{"role": "user", "content": "fix it"}],
+            )
+
+    @patch("beeper_ui.services.correction_service.litellm")
+    def test_refine_revision(self, mock_litellm: MagicMock) -> None:
+        from beeper_ui.services.correction_service import CorrectionService
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = (
+            "Root cause: DNS TTL set to 24h instead of 60s."
+        )
+        mock_litellm.completion.return_value = mock_response
+
+        svc = CorrectionService.__new__(CorrectionService)
+        svc._model = "claude-3-5-sonnet-20241022"
+
+        result = svc.refine_revision(
+            entry_content="Root cause: load balancer failure",
+            entry_title="API Outage",
+            correction_messages=[
+                {"role": "user", "content": "Root cause was DNS"},
+                {"role": "assistant", "content": "Understood: DNS issue."},
+            ],
+            previous_revision="Root cause: DNS misconfiguration.",
+            feedback="Be more specific about the TTL",
+        )
+
+        assert "TTL" in result
+        mock_litellm.completion.assert_called_once()
+
+    @patch("beeper_ui.services.correction_service.litellm")
+    def test_refine_revision_llm_error(self, mock_litellm: MagicMock) -> None:
+        from beeper_ui.services.correction_service import (
+            CorrectionService,
+            CorrectionServiceError,
+        )
+
+        mock_litellm.completion.side_effect = Exception("LLM unavailable")
+
+        svc = CorrectionService.__new__(CorrectionService)
+        svc._model = "claude-3-5-sonnet-20241022"
+
+        with pytest.raises(CorrectionServiceError, match="LLM request failed"):
+            svc.refine_revision(
+                entry_content="content",
+                entry_title="title",
+                correction_messages=[{"role": "user", "content": "fix"}],
+                previous_revision="prev",
+                feedback="more detail",
+            )
+
+
+# ── Revision Route Tests (Story 5-2) ──
+
+
+class TestRevisionRoutes:
+    """Tests for revision-related routes (Story 5-2)."""
+
+    @patch("beeper_ui.routes.knowledge.get_correction_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_generate_revision_success(
+        self,
+        mock_get_service: MagicMock,
+        mock_get_corr_service: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload()
+        )
+
+        mock_corr_svc = MagicMock()
+        mock_get_corr_service.return_value = mock_corr_svc
+        mock_corr_svc.generate_revision.return_value = "Revised content here"
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/revision",
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 200
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_generate_revision_entry_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = None
+
+        response = client.post(
+            "/knowledge/kb-missing/corrections/corr-abc123/revision",
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 404
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_generate_revision_correction_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = None
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-missing/revision",
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 404
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_generate_revision_correction_already_applied(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload(status="applied")
+        )
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/revision",
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 400
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_generate_revision_wrong_entry(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload(entry_id="kb-other")
+        )
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/revision",
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 400
+
+    @patch("beeper_ui.routes.knowledge.get_correction_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_generate_revision_llm_error(
+        self,
+        mock_get_service: MagicMock,
+        mock_get_corr_service: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload()
+        )
+
+        mock_corr_svc = MagicMock()
+        mock_get_corr_service.return_value = mock_corr_svc
+        mock_corr_svc.generate_revision.side_effect = CorrectionServiceError("LLM unavailable")
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/revision",
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 503
+
+    # ── Apply Revision Tests ──
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_apply_revision_success(
+        self,
+        mock_get_service: MagicMock,
+        mock_get_embed: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload()
+        )
+        mock_svc.update_entry.return_value = 2
+
+        mock_embed = MagicMock()
+        mock_get_embed.return_value = mock_embed
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/apply",
+            data={"revised_content": "Updated content"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 200
+        assert b"version 2" in response.data or b"Revision applied" in response.data
+        mock_svc.update_entry.assert_called_once()
+        mock_svc.update_correction.assert_called_once_with(
+            correction_id="corr-abc123", status="applied"
+        )
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_apply_revision_entry_not_found(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = None
+
+        response = client.post(
+            "/knowledge/kb-missing/corrections/corr-abc123/apply",
+            data={"revised_content": "Updated"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 404
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_apply_revision_no_content(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload()
+        )
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/apply",
+            data={},
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 400
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_apply_revision_already_applied(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload(status="applied")
+        )
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/apply",
+            data={"revised_content": "Updated"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 400
+
+    # ── Refine Revision Tests ──
+
+    @patch("beeper_ui.routes.knowledge.get_correction_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_refine_revision_success(
+        self,
+        mock_get_service: MagicMock,
+        mock_get_corr_service: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload()
+        )
+
+        mock_corr_svc = MagicMock()
+        mock_get_corr_service.return_value = mock_corr_svc
+        mock_corr_svc.refine_revision.return_value = "Further refined content"
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/revision/refine",
+            data={
+                "feedback": "Be more specific about the DNS TTL",
+                "revised_content": "Previous revision content",
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 200
+        mock_corr_svc.refine_revision.assert_called_once()
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_refine_revision_empty_feedback(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload()
+        )
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/revision/refine",
+            data={"feedback": "", "revised_content": "prev"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 400
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_refine_revision_no_previous(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload()
+        )
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/revision/refine",
+            data={"feedback": "Fix it"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 400
+
+    @patch("beeper_ui.routes.knowledge.get_correction_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_refine_revision_llm_error(
+        self,
+        mock_get_service: MagicMock,
+        mock_get_corr_service: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_service.return_value = mock_svc
+        mock_svc.get_entry.return_value = _make_entry()
+        mock_svc.get_correction.return_value = Correction.from_qdrant(
+            _make_correction_payload()
+        )
+
+        mock_corr_svc = MagicMock()
+        mock_get_corr_service.return_value = mock_corr_svc
+        mock_corr_svc.refine_revision.side_effect = CorrectionServiceError("LLM error")
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/revision/refine",
+            data={
+                "feedback": "Be more specific",
+                "revised_content": "Previous revision",
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        assert response.status_code == 503
