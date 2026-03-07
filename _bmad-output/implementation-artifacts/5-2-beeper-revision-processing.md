@@ -1,6 +1,6 @@
 # Story 5.2: Beeper Revision Processing
 
-Status: review
+Status: done
 
 ## Story
 
@@ -217,6 +217,7 @@ Claude Opus 4.6
 ### Change Log
 
 - 2026-03-07: Implemented story 5-2 (Beeper Revision Processing) — all 6 tasks complete, 18 new tests
+- 2026-03-07: Code review fixes — 5 issues found (1 HIGH, 3 MEDIUM, 1 LOW), 4 fixed: added entry_id mismatch validation to apply route, added status check to refine route, fixed stale messages in refine route, replaced sanitize_query with proper feedback truncation. Added 2 new tests (apply_revision_wrong_entry, refine_revision_already_applied). Total: 472 tests pass.
 
 ### File List
 

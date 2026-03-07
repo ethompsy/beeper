@@ -35,13 +35,14 @@ This phase implements the Living Knowledge epic, enabling Beeper to learn and im
   - Make all decisions autonomously
   - *Completed: All 6 tasks implemented with 18 new tests (470 total pass). Added generate_revision/refine_revision to CorrectionService, 3 new routes (generate, apply, refine), revision panel with diff display, approval workflow with version creation via update_entry(), and revision result template. Story status set to "review".*
 
-- [ ] Review and finalize story 5-2:
+- [x] Review and finalize story 5-2:
   - Use the `/bmad-bmm-code-review` skill to review story 5-2 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `5-2-beeper-revision-processing: done`
   - Update story file status to `done`
   - Commit all changes as `5-2 done`
+  - *Completed: Adversarial code review found 5 issues (1 HIGH, 3 MEDIUM, 1 LOW). Fixed 4: added entry_id mismatch validation to apply route, added correction status check to refine route, fixed stale conversation messages in refine route, replaced sanitize_query with proper feedback truncation (2000 char limit). Added 2 new tests (apply_revision_wrong_entry, refine_revision_already_applied). All 472 tests pass (54 correction/revision tests). Ruff/mypy clean (no new errors). Sprint status and story status updated to done.*
 
 - [ ] Create and implement story 5-3 (Learning from Diffs). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 5, Story 5-3 (FR20: learn from diff between AI documentation and human corrections). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: revision processing (5-2) for diff data, KB client for storing learning data, LLM client for pattern analysis

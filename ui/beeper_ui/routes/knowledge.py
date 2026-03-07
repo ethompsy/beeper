@@ -1337,6 +1337,12 @@ def kb_apply_revision(
             error_message=f"Correction '{correction_id}' not found",
         ), 404
 
+    if correction.entry_id != entry_id:
+        return render_template(
+            "knowledge/_revision_result.html",
+            error_message="Correction does not belong to this entry.",
+        ), 400
+
     if correction.status != "pending":
         return render_template(
             "knowledge/_revision_result.html",
@@ -1425,7 +1431,13 @@ def kb_refine_revision(
             error_message=f"Correction '{correction_id}' not found",
         ), 404
 
-    feedback = sanitize_query(request.form.get("feedback", ""))
+    if correction.status != "pending":
+        return render_template(
+            "knowledge/_revision_panel.html",
+            error_message=f"Correction is already '{correction.status}'.",
+        ), 400
+
+    feedback = request.form.get("feedback", "").strip()[:2000]
     if not feedback:
         return render_template(
             "knowledge/_revision_panel.html",
@@ -1439,20 +1451,23 @@ def kb_refine_revision(
             error_message="No previous revision provided.",
         ), 400
 
-    # Store feedback as correction message
+    # Store feedback as correction message and reload for fresh messages
     try:
-        service_client.add_correction_message(
+        updated_correction = service_client.add_correction_message(
             correction_id=correction_id,
             role="user",
             content=f"[Revision feedback] {feedback}",
         )
     except KBServiceError:
-        pass  # Non-critical
+        updated_correction = None
 
-    # Build conversation messages
+    # Build conversation messages from updated correction (includes feedback history)
+    source_messages = (
+        updated_correction.messages if updated_correction else correction.messages
+    )
     conversation_messages = [
         {"role": msg.role, "content": msg.content}
-        for msg in correction.messages
+        for msg in source_messages
     ]
 
     # Refine revision via LLM
