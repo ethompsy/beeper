@@ -4,12 +4,13 @@ This phase implements the Living Knowledge epic, enabling Beeper to learn and im
 
 ## Tasks
 
-- [ ] Create story 5-1 spec (Conversational Corrections Interface) using the `/bmad-bmm-create-story` skill. This story covers FR18: SRE Leads can provide conversational corrections to Beeper. The story should:
+- [x] Create story 5-1 spec (Conversational Corrections Interface) using the `/bmad-bmm-create-story` skill. This story covers FR18: SRE Leads can provide conversational corrections to Beeper. The story should:
   - Be created from `_bmad-output/planning-artifacts/epics.md` Epic 5, Story 5-1
   - Include Dev Notes referencing existing UI code: KB wiki interface (Epic 2 stories), HTMX patterns, Flask routes
   - Consider: chat-style UI for corrections, correction history tracking, acknowledgment flow
   - Update sprint-status.yaml: `epic-5: in-progress`, `5-1-conversational-corrections-interface: ready-for-dev`
   - Make all decisions autonomously
+  - *Completed: Story file created at `_bmad-output/implementation-artifacts/5-1-conversational-corrections-interface.md` with comprehensive dev notes covering Qdrant corrections collection, CorrectionService with LLM integration, HTMX chat-style UI, conversation flow, and correction history. Sprint status updated.*
 
 - [ ] Implement story 5-1 (Conversational Corrections Interface) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
