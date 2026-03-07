@@ -81,6 +81,8 @@ pub struct InvestigationStatus {
 pub enum InvestigationPhase {
     Pending,
     Running,
+    #[serde(rename = "awaiting_confirmation")]
+    AwaitingConfirmation,
     Completed,
     Failed,
 }
@@ -154,10 +156,30 @@ mod tests {
         let running: InvestigationPhase = serde_json::from_str("\"running\"").unwrap();
         assert_eq!(running, InvestigationPhase::Running);
 
+        let awaiting: InvestigationPhase =
+            serde_json::from_str("\"awaiting_confirmation\"").unwrap();
+        assert_eq!(awaiting, InvestigationPhase::AwaitingConfirmation);
+
         let completed: InvestigationPhase = serde_json::from_str("\"completed\"").unwrap();
         assert_eq!(completed, InvestigationPhase::Completed);
 
         let failed: InvestigationPhase = serde_json::from_str("\"failed\"").unwrap();
         assert_eq!(failed, InvestigationPhase::Failed);
+    }
+
+    #[test]
+    fn test_awaiting_confirmation_phase_serialization() {
+        let status = InvestigationStatus {
+            phase: Some(InvestigationPhase::AwaitingConfirmation),
+            started_at: Some("2026-03-07T10:00:00Z".to_string()),
+            completed_at: None,
+            job_name: None,
+            error: None,
+            message: Some("Awaiting SRE confirmation".to_string()),
+        };
+
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("\"phase\":\"awaiting_confirmation\""));
+        assert!(json.contains("\"message\":\"Awaiting SRE confirmation\""));
     }
 }

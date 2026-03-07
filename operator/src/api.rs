@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use kube::{api::ListParams, Api, Client};
@@ -61,6 +61,14 @@ pub fn api_router_with_detection(
         .route("/api/v1/sources", get(list_sources))
         .route("/api/v1/investigations", get(list_investigations))
         .route("/api/v1/investigations/:id", get(get_investigation))
+        .route(
+            "/api/v1/investigations/:id/confirm",
+            post(confirm_investigation),
+        )
+        .route(
+            "/api/v1/investigations/:id/reject",
+            post(reject_investigation),
+        )
         .route("/api/v1/health/components", get(health_components))
         .route("/api/v1/ingestion/stats", get(ingestion_stats))
         .route("/api/v1/detection/stats", get(detection_stats_handler))
@@ -204,6 +212,7 @@ fn phase_to_status(phase: &Option<InvestigationPhase>) -> String {
         Some(InvestigationPhase::Pending) | Some(InvestigationPhase::Running) => {
             "investigating".to_string()
         }
+        Some(InvestigationPhase::AwaitingConfirmation) => "awaiting_confirmation".to_string(),
         Some(InvestigationPhase::Completed) => "completed".to_string(),
         Some(InvestigationPhase::Failed) => "failed".to_string(),
         None => "investigating".to_string(),
@@ -360,6 +369,205 @@ async fn get_investigation(
                 Json(ProblemDetails {
                     error_type: "https://beeper.io/errors/investigation-get-failed".to_string(),
                     title: "Failed to get investigation".to_string(),
+                    status: 500,
+                    detail: format!("Could not retrieve investigation: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ----- Resolution Confirmation API -----
+
+/// Request body for confirming an investigation's resolution
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ResolutionConfirmRequest {
+    pub comment: Option<String>,
+}
+
+/// Request body for rejecting an investigation's resolution
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ResolutionRejectRequest {
+    pub reason: String,
+    pub reason_details: Option<String>,
+    pub correction: Option<String>,
+}
+
+/// Response for confirm/reject actions
+#[derive(Debug, Serialize)]
+pub struct ResolutionActionResponse {
+    pub status: String,
+    pub message: String,
+}
+
+/// Confirm an investigation's resolution recommendation
+async fn confirm_investigation(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+    Json(body): Json<ResolutionConfirmRequest>,
+) -> impl IntoResponse {
+    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+
+    match investigations_api.get(&id).await {
+        Ok(_inv) => {
+            // Patch the CRD status to mark as confirmed
+            let patch = serde_json::json!({
+                "status": {
+                    "phase": "completed",
+                    "message": "Resolution confirmed by SRE"
+                }
+            });
+
+            match investigations_api
+                .patch_status(
+                    &id,
+                    &kube::api::PatchParams::apply("beeper-ui"),
+                    &kube::api::Patch::Merge(patch),
+                )
+                .await
+            {
+                Ok(_) => {
+                    let comment_msg = body
+                        .comment
+                        .as_deref()
+                        .unwrap_or("No comment provided");
+                    debug!(
+                        investigation_id = %id,
+                        comment = %comment_msg,
+                        "Investigation resolution confirmed"
+                    );
+                    (
+                        StatusCode::OK,
+                        Json(ResolutionActionResponse {
+                            status: "confirmed".to_string(),
+                            message: format!("Investigation {} resolution confirmed", id),
+                        }),
+                    )
+                        .into_response()
+                }
+                Err(e) => {
+                    warn!(error = %e, investigation_id = %id, "Failed to patch investigation status");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ProblemDetails {
+                            error_type: "https://beeper.io/errors/investigation-confirm-failed"
+                                .to_string(),
+                            title: "Failed to confirm investigation".to_string(),
+                            status: 500,
+                            detail: format!("Could not update investigation status: {}", e),
+                        }),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        Err(kube::Error::Api(err)) if err.code == 404 => {
+            warn!(investigation_id = %id, "Investigation not found for confirmation");
+            (
+                StatusCode::NOT_FOUND,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-not-found".to_string(),
+                    title: "Investigation not found".to_string(),
+                    status: 404,
+                    detail: format!("No investigation found with ID: {}", id),
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, investigation_id = %id, "Failed to get investigation for confirmation");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-confirm-failed".to_string(),
+                    title: "Failed to confirm investigation".to_string(),
+                    status: 500,
+                    detail: format!("Could not retrieve investigation: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Reject an investigation's resolution recommendation
+async fn reject_investigation(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+    Json(body): Json<ResolutionRejectRequest>,
+) -> impl IntoResponse {
+    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+
+    match investigations_api.get(&id).await {
+        Ok(_inv) => {
+            // Patch the CRD status — keep phase as awaiting_confirmation, update message
+            let reject_message = format!("Resolution rejected: {}", body.reason);
+            let patch = serde_json::json!({
+                "status": {
+                    "message": reject_message
+                }
+            });
+
+            match investigations_api
+                .patch_status(
+                    &id,
+                    &kube::api::PatchParams::apply("beeper-ui"),
+                    &kube::api::Patch::Merge(patch),
+                )
+                .await
+            {
+                Ok(_) => {
+                    debug!(
+                        investigation_id = %id,
+                        reason = %body.reason,
+                        "Investigation resolution rejected"
+                    );
+                    (
+                        StatusCode::OK,
+                        Json(ResolutionActionResponse {
+                            status: "rejected".to_string(),
+                            message: format!("Investigation {} resolution rejected", id),
+                        }),
+                    )
+                        .into_response()
+                }
+                Err(e) => {
+                    warn!(error = %e, investigation_id = %id, "Failed to patch investigation status for rejection");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ProblemDetails {
+                            error_type: "https://beeper.io/errors/investigation-reject-failed"
+                                .to_string(),
+                            title: "Failed to reject investigation".to_string(),
+                            status: 500,
+                            detail: format!("Could not update investigation status: {}", e),
+                        }),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        Err(kube::Error::Api(err)) if err.code == 404 => {
+            warn!(investigation_id = %id, "Investigation not found for rejection");
+            (
+                StatusCode::NOT_FOUND,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-not-found".to_string(),
+                    title: "Investigation not found".to_string(),
+                    status: 404,
+                    detail: format!("No investigation found with ID: {}", id),
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, investigation_id = %id, "Failed to get investigation for rejection");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-reject-failed".to_string(),
+                    title: "Failed to reject investigation".to_string(),
                     status: 500,
                     detail: format!("Could not retrieve investigation: {}", e),
                 }),
@@ -957,6 +1165,90 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"sources\":["));
         assert!(json.contains("\"name\":\"prometheus-main\""));
+    }
+
+    #[test]
+    fn test_resolution_confirm_request_with_comment() {
+        let req = ResolutionConfirmRequest {
+            comment: Some("Restarted service successfully".to_string()),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"comment\":\"Restarted service successfully\""));
+    }
+
+    #[test]
+    fn test_resolution_confirm_request_without_comment() {
+        let req = ResolutionConfirmRequest { comment: None };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"comment\":null"));
+    }
+
+    #[test]
+    fn test_resolution_reject_request_full() {
+        let req = ResolutionRejectRequest {
+            reason: "hypothesis_incorrect".to_string(),
+            reason_details: Some("Root cause was in the cache layer".to_string()),
+            correction: Some("Clear Redis cache and restart".to_string()),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"reason\":\"hypothesis_incorrect\""));
+        assert!(json.contains("\"reason_details\":\"Root cause was in the cache layer\""));
+        assert!(json.contains("\"correction\":\"Clear Redis cache and restart\""));
+    }
+
+    #[test]
+    fn test_resolution_reject_request_minimal() {
+        let req = ResolutionRejectRequest {
+            reason: "insufficient_evidence".to_string(),
+            reason_details: None,
+            correction: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"reason\":\"insufficient_evidence\""));
+        assert!(json.contains("\"reason_details\":null"));
+        assert!(json.contains("\"correction\":null"));
+    }
+
+    #[test]
+    fn test_phase_to_status_awaiting_confirmation() {
+        assert_eq!(
+            phase_to_status(&Some(InvestigationPhase::AwaitingConfirmation)),
+            "awaiting_confirmation"
+        );
+    }
+
+    #[test]
+    fn test_resolution_action_response_serialization() {
+        let resp = ResolutionActionResponse {
+            status: "confirmed".to_string(),
+            message: "Investigation inv-123 resolution confirmed".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"status\":\"confirmed\""));
+        assert!(json.contains("inv-123"));
+    }
+
+    #[test]
+    fn test_resolution_confirm_request_deserialization() {
+        let json = r#"{"comment":"Looks good"}"#;
+        let req: ResolutionConfirmRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.comment.as_deref(), Some("Looks good"));
+
+        let json_empty = r#"{}"#;
+        let req2: ResolutionConfirmRequest = serde_json::from_str(json_empty).unwrap();
+        assert!(req2.comment.is_none());
+    }
+
+    #[test]
+    fn test_resolution_reject_request_deserialization() {
+        let json = r#"{"reason":"better_alternative","reason_details":"Use a different approach","correction":"Restart the pod"}"#;
+        let req: ResolutionRejectRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.reason, "better_alternative");
+        assert_eq!(
+            req.reason_details.as_deref(),
+            Some("Use a different approach")
+        );
+        assert_eq!(req.correction.as_deref(), Some("Restart the pod"));
     }
 }
 

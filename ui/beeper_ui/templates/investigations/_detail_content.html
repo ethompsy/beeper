@@ -64,6 +64,16 @@
         </div>
     </div>
 
+    {# Resolution Confirmation #}
+    {% if findings and findings.get('recommendations') and investigation.status not in ('investigating', 'failed') %}
+    <div class="card">
+        <h3>Resolution Confirmation</h3>
+        <div id="confirmation-result" sse-swap="confirmation-update" hx-swap="innerHTML">
+            {% include "investigations/_confirmation_form.html" %}
+        </div>
+    </div>
+    {% endif %}
+
     {# Related Knowledge Base Entries #}
     <div class="card">
         <h3>Related Knowledge Base Entries</h3>

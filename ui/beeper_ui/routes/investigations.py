@@ -36,6 +36,24 @@ VALID_DATE_RANGES = {"today", "7d", "30d", "90d"}
 # Service name validation: alphanumeric, hyphens, underscores, dots (max 128 chars)
 SERVICE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9._-]{1,128}$")
 
+# Valid rejection reason categories
+VALID_REJECTION_REASONS = {
+    "hypothesis_incorrect",
+    "insufficient_evidence",
+    "better_alternative",
+    "not_applicable",
+    "other",
+}
+
+# Human-readable rejection reason labels
+REJECTION_REASON_LABELS = {
+    "hypothesis_incorrect": "Hypothesis incorrect",
+    "insufficient_evidence": "Insufficient evidence",
+    "better_alternative": "Better alternative exists",
+    "not_applicable": "Not applicable",
+    "other": "Other",
+}
+
 # SSE polling interval in seconds
 SSE_POLL_INTERVAL = 3
 
@@ -390,6 +408,127 @@ def investigation_related_kb(investigation_id: str) -> str:
     )
 
 
+@investigations_bp.route("/<investigation_id>/confirm", methods=["POST"])
+def confirm_resolution(investigation_id: str) -> str | tuple[str, int]:
+    """Confirm an investigation's resolution recommendation.
+
+    Accepts HTMX POST with optional comment, calls operator to update
+    status, saves feedback to Qdrant for future learning.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    comment = (request.form.get("comment") or "").strip() or None
+
+    svc = get_investigation_service()
+    try:
+        success = svc.confirm_resolution(investigation_id, comment=comment)
+        if not success:
+            return render_template(
+                "investigations/_confirmation_result.html",
+                action="error",
+                error_message="Investigation not found.",
+            ), 404
+
+        # Save feedback to Qdrant for learning
+        now = datetime.now(timezone.utc).isoformat()
+        svc.save_resolution_feedback(investigation_id, {
+            "resolution_action": "confirmed",
+            "resolution_comment": comment,
+            "resolution_confirmed_at": now,
+            "resolution_confirmed_by": "sre",
+        })
+
+        return render_template(
+            "investigations/_confirmation_result.html",
+            action="confirmed",
+            comment=comment,
+            confirmed_at=now,
+        )
+    except InvestigationServiceError:
+        return render_template(
+            "investigations/_confirmation_result.html",
+            action="error",
+            error_message="Unable to connect to the Beeper operator.",
+        ), 503
+    finally:
+        svc.close()
+
+
+@investigations_bp.route("/<investigation_id>/reject", methods=["POST"])
+def reject_resolution(investigation_id: str) -> str | tuple[str, int]:
+    """Reject an investigation's resolution recommendation.
+
+    Accepts HTMX POST with rejection reason (required), details (required),
+    and optional correction. Calls operator and saves feedback.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    rejection_reason = (request.form.get("rejection_reason") or "").strip()
+    reason_details = (request.form.get("reason_details") or "").strip()
+    correction = (request.form.get("correction") or "").strip() or None
+
+    # Validate rejection reason
+    if rejection_reason not in VALID_REJECTION_REASONS:
+        return render_template(
+            "investigations/_confirmation_result.html",
+            action="error",
+            error_message="Invalid rejection reason. Please select a valid reason.",
+        ), 400
+
+    # Validate reason details required
+    if not reason_details:
+        return render_template(
+            "investigations/_confirmation_result.html",
+            action="error",
+            error_message="Please provide details about why the recommendation is being rejected.",
+        ), 400
+
+    svc = get_investigation_service()
+    try:
+        success = svc.reject_resolution(
+            investigation_id,
+            reason=rejection_reason,
+            reason_details=reason_details,
+            correction=correction,
+        )
+        if not success:
+            return render_template(
+                "investigations/_confirmation_result.html",
+                action="error",
+                error_message="Investigation not found.",
+            ), 404
+
+        # Save feedback to Qdrant for learning
+        now = datetime.now(timezone.utc).isoformat()
+        svc.save_resolution_feedback(investigation_id, {
+            "resolution_action": "rejected",
+            "rejection_reason": rejection_reason,
+            "rejection_reason_details": reason_details,
+            "rejection_correction": correction,
+            "resolution_rejected_at": now,
+        })
+
+        reason_label = REJECTION_REASON_LABELS.get(rejection_reason, rejection_reason)
+        return render_template(
+            "investigations/_confirmation_result.html",
+            action="rejected",
+            rejection_reason=reason_label,
+            reason_details=reason_details,
+            correction=correction,
+            rejected_at=now,
+        )
+    except InvestigationServiceError:
+        return render_template(
+            "investigations/_confirmation_result.html",
+            action="error",
+            error_message="Unable to connect to the Beeper operator.",
+        ), 503
+    finally:
+        svc.close()
+
+
 def _generate_detail_sse_events(
     operator_url: str,
     operator_timeout: float,
@@ -408,6 +547,7 @@ def _generate_detail_sse_events(
     last_phase: str | None = None
     last_findings_keys: set[str] = set()
     kb_update_sent = False
+    last_resolution_action: str | None = None
 
     while True:
         try:
@@ -497,6 +637,23 @@ def _generate_detail_sse_events(
                     finally:
                         kb_svc.close()
                     kb_update_sent = True
+
+                # Check for resolution action changes (confirm/reject)
+                current_resolution = str(
+                    findings.get("resolution_action", "")
+                ) or None
+                if current_resolution != last_resolution_action:
+                    confirm_html = render_template(
+                        "investigations/_confirmation_form.html",
+                        investigation=detail,
+                        findings=findings,
+                    )
+                    confirm_lines = "\n".join(
+                        f"data: {line}"
+                        for line in confirm_html.split("\n")
+                    )
+                    yield f"event: confirmation-update\n{confirm_lines}\n\n"
+                    last_resolution_action = current_resolution
 
                 last_findings_keys = current_keys
 

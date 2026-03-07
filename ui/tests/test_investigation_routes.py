@@ -1611,6 +1611,361 @@ class TestRelatedKBNavigation:
                 gen.close()
 
 
+MOCK_COMPLETED_DETAIL = {
+    "id": "inv-completed-001",
+    "status": "completed",
+    "service": "payments",
+    "severity": "high",
+    "condition": "High error rate detected",
+    "started_at": "2026-03-06T10:00:00Z",
+    "completed_at": "2026-03-06T10:30:00Z",
+    "triggered_at": "2026-03-06T09:55:00Z",
+    "message": "Investigation complete",
+    "error": None,
+    "job_name": "inv-completed-001-job",
+}
+
+
+class TestResolutionConfirmation:
+    """Tests for resolution confirmation workflow (Story 4-5)."""
+
+    @respx.mock
+    def test_confirm_resolution_success(self, client: FlaskClient) -> None:
+        """Test POST confirm returns success result."""
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-completed-001/confirm"
+        ).mock(
+            return_value=Response(
+                200, json={"status": "ok", "message": "Resolution confirmed"}
+            )
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.save_resolution_feedback"
+        ) as mock_save:
+            response = client.post(
+                "/investigations/inv-completed-001/confirm",
+                data={"comment": "Confirmed by SRE"},
+            )
+            assert response.status_code == 200
+            assert b"Resolution Confirmed" in response.data
+            assert b"confirmation-success" in response.data
+            assert b"Confirmed by SRE" in response.data
+            # Verify feedback saved
+            mock_save.assert_called_once()
+            call_args = mock_save.call_args
+            assert call_args[0][0] == "inv-completed-001"
+            assert call_args[0][1]["resolution_action"] == "confirmed"
+            assert call_args[0][1]["resolution_comment"] == "Confirmed by SRE"
+
+    @respx.mock
+    def test_confirm_resolution_no_comment(self, client: FlaskClient) -> None:
+        """Test confirm works without optional comment."""
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-completed-001/confirm"
+        ).mock(
+            return_value=Response(
+                200, json={"status": "ok", "message": "Resolution confirmed"}
+            )
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.save_resolution_feedback"
+        ):
+            response = client.post(
+                "/investigations/inv-completed-001/confirm",
+                data={},
+            )
+            assert response.status_code == 200
+            assert b"Resolution Confirmed" in response.data
+
+    @respx.mock
+    def test_confirm_resolution_not_found(self, client: FlaskClient) -> None:
+        """Test confirm returns 404 when investigation not found."""
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-gone/confirm"
+        ).mock(return_value=Response(404, json={"error": "not found"}))
+
+        response = client.post("/investigations/inv-gone/confirm", data={})
+        assert response.status_code == 404
+        assert b"Investigation not found" in response.data
+
+    @respx.mock
+    def test_confirm_resolution_operator_error(self, client: FlaskClient) -> None:
+        """Test confirm returns 503 when operator unavailable."""
+        import httpx
+
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-001/confirm"
+        ).mock(side_effect=httpx.ConnectError("Connection refused"))
+
+        response = client.post("/investigations/inv-001/confirm", data={})
+        assert response.status_code == 503
+        assert b"Unable to connect" in response.data
+
+    @respx.mock
+    def test_reject_resolution_success(self, client: FlaskClient) -> None:
+        """Test POST reject returns success result with reason."""
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-completed-001/reject"
+        ).mock(
+            return_value=Response(
+                200, json={"status": "ok", "message": "Resolution rejected"}
+            )
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.save_resolution_feedback"
+        ) as mock_save:
+            response = client.post(
+                "/investigations/inv-completed-001/reject",
+                data={
+                    "rejection_reason": "hypothesis_incorrect",
+                    "reason_details": "Root cause is network, not DB",
+                    "correction": "Check network connectivity",
+                },
+            )
+            assert response.status_code == 200
+            assert b"Resolution Rejected" in response.data
+            assert b"confirmation-rejected" in response.data
+            assert b"Hypothesis incorrect" in response.data
+            assert b"Root cause is network, not DB" in response.data
+            assert b"Check network connectivity" in response.data
+            # Verify feedback saved
+            mock_save.assert_called_once()
+            call_args = mock_save.call_args
+            assert call_args[0][1]["resolution_action"] == "rejected"
+            assert call_args[0][1]["rejection_reason"] == "hypothesis_incorrect"
+
+    @respx.mock
+    def test_reject_resolution_not_found(self, client: FlaskClient) -> None:
+        """Test reject returns 404 when investigation not found."""
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-gone/reject"
+        ).mock(return_value=Response(404, json={"error": "not found"}))
+
+        response = client.post(
+            "/investigations/inv-gone/reject",
+            data={
+                "rejection_reason": "other",
+                "reason_details": "Test rejection",
+            },
+        )
+        assert response.status_code == 404
+        assert b"Investigation not found" in response.data
+
+    def test_reject_invalid_reason(self, client: FlaskClient) -> None:
+        """Test reject returns 400 for invalid rejection reason."""
+        response = client.post(
+            "/investigations/inv-001/reject",
+            data={
+                "rejection_reason": "invalid_reason",
+                "reason_details": "Test",
+            },
+        )
+        assert response.status_code == 400
+        assert b"Invalid rejection reason" in response.data
+
+    def test_reject_missing_details(self, client: FlaskClient) -> None:
+        """Test reject returns 400 when reason_details is missing."""
+        response = client.post(
+            "/investigations/inv-001/reject",
+            data={
+                "rejection_reason": "hypothesis_incorrect",
+                "reason_details": "",
+            },
+        )
+        assert response.status_code == 400
+        assert b"provide details" in response.data
+
+    def test_reject_missing_reason(self, client: FlaskClient) -> None:
+        """Test reject returns 400 when rejection_reason is empty."""
+        response = client.post(
+            "/investigations/inv-001/reject",
+            data={
+                "rejection_reason": "",
+                "reason_details": "Some details",
+            },
+        )
+        assert response.status_code == 400
+        assert b"Invalid rejection reason" in response.data
+
+    @respx.mock
+    def test_reject_operator_error(self, client: FlaskClient) -> None:
+        """Test reject returns 503 when operator unavailable."""
+        import httpx
+
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-001/reject"
+        ).mock(side_effect=httpx.ConnectError("Connection refused"))
+
+        response = client.post(
+            "/investigations/inv-001/reject",
+            data={
+                "rejection_reason": "other",
+                "reason_details": "Test",
+            },
+        )
+        assert response.status_code == 503
+        assert b"Unable to connect" in response.data
+
+    def test_confirm_invalid_id_rejected(self, client: FlaskClient) -> None:
+        """Test confirm rejects invalid investigation IDs."""
+        response = client.post(
+            "/investigations/../../etc/passwd/confirm",
+            data={},
+        )
+        assert response.status_code == 404
+
+    def test_reject_invalid_id_rejected(self, client: FlaskClient) -> None:
+        """Test reject rejects invalid investigation IDs."""
+        response = client.post(
+            "/investigations/../../etc/passwd/reject",
+            data={
+                "rejection_reason": "other",
+                "reason_details": "Test",
+            },
+        )
+        assert response.status_code == 404
+
+    @respx.mock
+    def test_detail_page_shows_confirmation_form(
+        self, client: FlaskClient
+    ) -> None:
+        """Test detail page includes confirmation form for completed investigation."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-completed-001"
+        ).mock(return_value=Response(200, json=MOCK_COMPLETED_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-completed-001")
+            assert response.status_code == 200
+            assert b"Resolution Confirmation" in response.data
+            assert b"confirmation-form" in response.data
+            assert b"Confirm Resolution" in response.data
+            assert b"Reject Resolution" in response.data
+
+    @respx.mock
+    def test_detail_page_hides_confirmation_for_investigating(
+        self, client: FlaskClient
+    ) -> None:
+        """Test confirmation form hidden when investigation is still investigating."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"confirmation-form" not in response.data
+
+    @respx.mock
+    def test_detail_page_shows_confirmed_banner(
+        self, client: FlaskClient
+    ) -> None:
+        """Test detail page shows confirmed banner when already confirmed."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-completed-001"
+        ).mock(return_value=Response(200, json=MOCK_COMPLETED_DETAIL))
+
+        confirmed_findings = dict(MOCK_FINDINGS_WITH_RECOMMENDATIONS)
+        confirmed_findings["resolution_action"] = "confirmed"
+        confirmed_findings["resolution_comment"] = "Verified by SRE"
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=confirmed_findings,
+        ):
+            response = client.get("/investigations/inv-completed-001")
+            assert response.status_code == 200
+            assert b"confirmation-confirmed" in response.data
+            assert b"Resolution Confirmed" in response.data
+            assert b"Verified by SRE" in response.data
+
+    @respx.mock
+    def test_detail_page_shows_rejected_banner(
+        self, client: FlaskClient
+    ) -> None:
+        """Test detail page shows rejected banner when already rejected."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-completed-001"
+        ).mock(return_value=Response(200, json=MOCK_COMPLETED_DETAIL))
+
+        rejected_findings = dict(MOCK_FINDINGS_WITH_RECOMMENDATIONS)
+        rejected_findings["resolution_action"] = "rejected"
+        rejected_findings["rejection_reason"] = "hypothesis_incorrect"
+        rejected_findings["rejection_reason_details"] = "Network issue"
+        rejected_findings["rejection_correction"] = "Check network"
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=rejected_findings,
+        ):
+            response = client.get("/investigations/inv-completed-001")
+            assert response.status_code == 200
+            assert b"confirmation-rejected" in response.data
+            assert b"Resolution Rejected" in response.data
+            assert b"hypothesis_incorrect" in response.data
+
+    @respx.mock
+    def test_sse_confirmation_update_event(
+        self, client: FlaskClient
+    ) -> None:
+        """Test SSE sends confirmation-update event when resolution_action changes."""
+        # Use awaiting_confirmation so the generator doesn't exit on first iteration
+        detail = MOCK_COMPLETED_DETAIL.copy()
+        detail["status"] = "awaiting_confirmation"
+        detail["id"] = "inv-awaiting-001"
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-awaiting-001"
+        ).mock(return_value=Response(200, json=detail))
+
+        findings_v1: dict[str, object] = {
+            "customer_impacting": True,
+            "recommendations": [{"action": "test", "confidence": "high"}],
+        }
+        findings_v2 = dict(findings_v1)
+        findings_v2["resolution_action"] = "confirmed"
+        findings_v2["new_key"] = "trigger_update"
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            side_effect=[findings_v1, findings_v2, findings_v2],
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            from beeper_ui.routes.investigations import (
+                _generate_detail_sse_events,
+            )
+
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-awaiting-001"
+                )
+                # Iteration 1 yields: step-update, findings-update, evidence-update
+                # Iteration 2 yields: findings-update, evidence-update, confirmation-update
+                # Total: 6 events
+                events = []
+                for _ in range(6):
+                    events.append(next(gen))
+
+                all_text = "\n".join(events)
+                assert "event: step-update" in all_text
+                assert "event: findings-update" in all_text
+                # confirmation-update fires when resolution_action changes from None to "confirmed"
+                assert "event: confirmation-update" in all_text
+
+                gen.close()
+
+
 def _make_mock_kb_entry(
     entry_id: str, title: str, service: str
 ) -> object:

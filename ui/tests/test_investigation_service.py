@@ -1,6 +1,6 @@
 """Tests for Investigation service."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import respx
@@ -384,3 +384,176 @@ class TestInvestigationService:
         service.close()
         assert service._client is None
         assert service._qdrant_client is None
+
+
+class TestConfirmResolution:
+    """Tests for InvestigationService.confirm_resolution()."""
+
+    @respx.mock
+    def test_confirm_resolution_success(self) -> None:
+        """Test successful confirmation returns True."""
+        respx.post(
+            "http://localhost:8080/api/v1/investigations/inv-001/confirm"
+        ).mock(
+            return_value=Response(
+                200, json={"status": "ok", "message": "Resolution confirmed"}
+            )
+        )
+
+        service = InvestigationService("http://localhost:8080")
+        result = service.confirm_resolution("inv-001", comment="Looks good")
+
+        assert result is True
+        request = respx.calls.last.request
+        assert b'"comment"' in request.content
+
+    @respx.mock
+    def test_confirm_resolution_not_found(self) -> None:
+        """Test confirmation returns False for 404."""
+        respx.post(
+            "http://localhost:8080/api/v1/investigations/inv-gone/confirm"
+        ).mock(return_value=Response(404, json={"error": "not found"}))
+
+        service = InvestigationService("http://localhost:8080")
+        result = service.confirm_resolution("inv-gone")
+
+        assert result is False
+
+    @respx.mock
+    def test_confirm_resolution_connection_error(self) -> None:
+        """Test confirmation raises on connection error."""
+        import httpx
+
+        respx.post(
+            "http://localhost:8080/api/v1/investigations/inv-001/confirm"
+        ).mock(side_effect=httpx.ConnectError("Connection refused"))
+
+        service = InvestigationService("http://localhost:8080")
+
+        with pytest.raises(InvestigationServiceError) as exc_info:
+            service.confirm_resolution("inv-001")
+
+        assert "Failed to connect" in str(exc_info.value)
+
+    @respx.mock
+    def test_confirm_resolution_timeout(self) -> None:
+        """Test confirmation raises on timeout."""
+        import httpx
+
+        respx.post(
+            "http://localhost:8080/api/v1/investigations/inv-001/confirm"
+        ).mock(side_effect=httpx.TimeoutException("Timeout"))
+
+        service = InvestigationService("http://localhost:8080")
+
+        with pytest.raises(InvestigationServiceError) as exc_info:
+            service.confirm_resolution("inv-001")
+
+        assert "Timeout" in str(exc_info.value)
+
+
+class TestRejectResolution:
+    """Tests for InvestigationService.reject_resolution()."""
+
+    @respx.mock
+    def test_reject_resolution_success(self) -> None:
+        """Test successful rejection returns True."""
+        respx.post(
+            "http://localhost:8080/api/v1/investigations/inv-001/reject"
+        ).mock(
+            return_value=Response(
+                200, json={"status": "ok", "message": "Resolution rejected"}
+            )
+        )
+
+        service = InvestigationService("http://localhost:8080")
+        result = service.reject_resolution(
+            "inv-001",
+            reason="hypothesis_incorrect",
+            reason_details="The root cause is actually a network issue",
+            correction="Check network connectivity",
+        )
+
+        assert result is True
+        request = respx.calls.last.request
+        assert b'"reason"' in request.content
+        assert b'"reason_details"' in request.content
+        assert b'"correction"' in request.content
+
+    @respx.mock
+    def test_reject_resolution_not_found(self) -> None:
+        """Test rejection returns False for 404."""
+        respx.post(
+            "http://localhost:8080/api/v1/investigations/inv-gone/reject"
+        ).mock(return_value=Response(404, json={"error": "not found"}))
+
+        service = InvestigationService("http://localhost:8080")
+        result = service.reject_resolution("inv-gone", reason="other")
+
+        assert result is False
+
+    @respx.mock
+    def test_reject_resolution_connection_error(self) -> None:
+        """Test rejection raises on connection error."""
+        import httpx
+
+        respx.post(
+            "http://localhost:8080/api/v1/investigations/inv-001/reject"
+        ).mock(side_effect=httpx.ConnectError("Connection refused"))
+
+        service = InvestigationService("http://localhost:8080")
+
+        with pytest.raises(InvestigationServiceError) as exc_info:
+            service.reject_resolution("inv-001", reason="other")
+
+        assert "Failed to connect" in str(exc_info.value)
+
+
+class TestSaveResolutionFeedback:
+    """Tests for InvestigationService.save_resolution_feedback()."""
+
+    def test_save_feedback_success(self) -> None:
+        """Test feedback saved via Qdrant set_payload."""
+        mock_point = MagicMock()
+        mock_point.id = "point-123"
+
+        mock_qdrant = MagicMock()
+        mock_qdrant.scroll.return_value = ([mock_point], None)
+
+        service = InvestigationService("http://localhost:8080")
+        service._qdrant_client = mock_qdrant
+
+        feedback = {
+            "resolution_action": "confirmed",
+            "resolution_comment": "Looks correct",
+        }
+        service.save_resolution_feedback("inv-001", feedback)
+
+        mock_qdrant.set_payload.assert_called_once_with(
+            collection_name="investigations",
+            payload=feedback,
+            points=["point-123"],
+        )
+
+    def test_save_feedback_no_qdrant_record(self) -> None:
+        """Test feedback silently skipped when no Qdrant record found."""
+        mock_qdrant = MagicMock()
+        mock_qdrant.scroll.return_value = ([], None)
+
+        service = InvestigationService("http://localhost:8080")
+        service._qdrant_client = mock_qdrant
+
+        service.save_resolution_feedback("inv-missing", {"action": "confirmed"})
+
+        mock_qdrant.set_payload.assert_not_called()
+
+    def test_save_feedback_qdrant_error_swallowed(self) -> None:
+        """Test Qdrant errors are swallowed (logged, not raised)."""
+        mock_qdrant = MagicMock()
+        mock_qdrant.scroll.side_effect = Exception("Qdrant unavailable")
+
+        service = InvestigationService("http://localhost:8080")
+        service._qdrant_client = mock_qdrant
+
+        # Should not raise
+        service.save_resolution_feedback("inv-001", {"action": "confirmed"})

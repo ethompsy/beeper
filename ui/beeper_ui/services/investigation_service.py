@@ -256,6 +256,160 @@ class InvestigationService:
             return {}
 
 
+    def confirm_resolution(
+        self, investigation_id: str, comment: str | None = None
+    ) -> bool:
+        """Confirm an investigation's resolution recommendation.
+
+        Args:
+            investigation_id: The investigation CRD name.
+            comment: Optional comment from the SRE.
+
+        Returns:
+            True if confirmation succeeded, False if investigation not found.
+
+        Raises:
+            InvestigationServiceError: If the operator cannot be reached.
+        """
+        try:
+            response = self.client.post(
+                f"{self.operator_url}/api/v1/investigations/{investigation_id}/confirm",
+                json={"comment": comment},
+            )
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return True
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "Timeout confirming investigation %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Timeout connecting to operator: {e}"
+            ) from e
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "Operator returned error confirming investigation %s: %s",
+                investigation_id, e.response.status_code,
+            )
+            raise InvestigationServiceError(
+                f"Operator returned error: {e.response.status_code}"
+            ) from e
+        except httpx.RequestError as e:
+            logger.warning(
+                "Failed to connect to operator for confirmation %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Failed to connect to operator: {e}"
+            ) from e
+
+    def reject_resolution(
+        self,
+        investigation_id: str,
+        reason: str,
+        reason_details: str | None = None,
+        correction: str | None = None,
+    ) -> bool:
+        """Reject an investigation's resolution recommendation.
+
+        Args:
+            investigation_id: The investigation CRD name.
+            reason: Rejection reason category.
+            reason_details: Detailed explanation of rejection.
+            correction: Optional corrective action suggested by SRE.
+
+        Returns:
+            True if rejection succeeded, False if investigation not found.
+
+        Raises:
+            InvestigationServiceError: If the operator cannot be reached.
+        """
+        try:
+            response = self.client.post(
+                f"{self.operator_url}/api/v1/investigations/{investigation_id}/reject",
+                json={
+                    "reason": reason,
+                    "reason_details": reason_details,
+                    "correction": correction,
+                },
+            )
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return True
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "Timeout rejecting investigation %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Timeout connecting to operator: {e}"
+            ) from e
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "Operator returned error rejecting investigation %s: %s",
+                investigation_id, e.response.status_code,
+            )
+            raise InvestigationServiceError(
+                f"Operator returned error: {e.response.status_code}"
+            ) from e
+        except httpx.RequestError as e:
+            logger.warning(
+                "Failed to connect to operator for rejection %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Failed to connect to operator: {e}"
+            ) from e
+
+    def save_resolution_feedback(
+        self, investigation_id: str, feedback: dict[str, Any]
+    ) -> None:
+        """Save resolution feedback to Qdrant investigation metadata.
+
+        Upserts feedback keys into the investigation's Qdrant payload
+        alongside existing pipeline metadata.
+
+        Args:
+            investigation_id: The investigation ID.
+            feedback: Dict of feedback data to merge into payload.
+        """
+        try:
+            results, _ = self.qdrant_client.scroll(
+                collection_name=INVESTIGATIONS_COLLECTION,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="investigation_id",
+                            match=MatchValue(value=investigation_id),
+                        )
+                    ]
+                ),
+                limit=1,
+                with_payload=False,
+                with_vectors=False,
+            )
+            if not results:
+                logger.warning(
+                    "No Qdrant record for investigation %s, skipping feedback",
+                    investigation_id,
+                )
+                return
+            point_id = results[0].id
+            self.qdrant_client.set_payload(
+                collection_name=INVESTIGATIONS_COLLECTION,
+                payload=feedback,
+                points=[point_id],
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to save resolution feedback for %s: %s",
+                investigation_id, e,
+            )
+
+
 class InvestigationServiceError(Exception):
     """Error communicating with the investigation service."""
 

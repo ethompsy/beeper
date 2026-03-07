@@ -2628,3 +2628,228 @@ a.match-badge.kb-entry-link::after {
 .view-all-related-link:hover {
     text-decoration: underline;
 }
+
+/* ========== Resolution Confirmation ========== */
+
+.confirmation-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.confirmation-section {
+    padding: 16px 0;
+}
+
+.confirmation-section h4 {
+    margin: 0 0 12px 0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.confirmation-divider {
+    border-top: 1px solid #e5e7eb;
+    margin: 0;
+}
+
+.confirmation-form .form-group {
+    margin-bottom: 12px;
+}
+
+.confirmation-form label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 4px;
+}
+
+.confirmation-form .required {
+    color: #ef4444;
+}
+
+.confirmation-form textarea,
+.confirmation-form select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: #fff;
+    transition: border-color 0.15s;
+}
+
+.confirmation-form textarea:focus,
+.confirmation-form select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.btn {
+    display: inline-block;
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.btn-confirm {
+    background: #22c55e;
+    color: #fff;
+}
+
+.btn-confirm:hover {
+    background: #16a34a;
+}
+
+.btn-reject {
+    background: #ef4444;
+    color: #fff;
+}
+
+.btn-reject:hover {
+    background: #dc2626;
+}
+
+/* Confirmation result states */
+
+.confirmation-result {
+    display: flex;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 8px;
+    align-items: flex-start;
+}
+
+.confirmation-result h4 {
+    margin: 0 0 4px 0;
+    font-size: 1rem;
+}
+
+.confirmation-result p {
+    margin: 0 0 4px 0;
+    font-size: 0.9rem;
+}
+
+.confirmation-success {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+}
+
+.confirmation-rejected {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+}
+
+.confirmation-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+}
+
+.confirmation-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.confirmation-success .confirmation-icon {
+    color: #22c55e;
+}
+
+.confirmation-rejected .confirmation-icon {
+    color: #f59e0b;
+}
+
+.confirmation-error .confirmation-icon {
+    color: #ef4444;
+}
+
+.confirmation-detail {
+    font-size: 0.85rem;
+    color: #4b5563;
+    margin-top: 4px;
+}
+
+.confirmation-timestamp {
+    font-size: 0.8rem;
+    color: #9ca3af;
+}
+
+/* Status banners for already confirmed/rejected */
+
+.confirmation-status-banner {
+    display: flex;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 8px;
+    align-items: flex-start;
+}
+
+.confirmation-status-banner strong {
+    display: block;
+    margin-bottom: 2px;
+}
+
+.confirmation-confirmed {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+}
+
+.confirmation-confirmed .confirmation-icon {
+    color: #22c55e;
+    font-size: 1.5rem;
+}
+
+.confirmation-rejected .confirmation-icon {
+    color: #f59e0b;
+    font-size: 1.5rem;
+}
+
+/* Rejection reason display */
+
+.rejection-reason-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.rejection-reason-display {
+    margin: 4px 0;
+}
+
+.correction-display {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #f3f4f6;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.correction-display strong {
+    display: block;
+    margin-bottom: 2px;
+    color: #374151;
+}
+
+.correction-display p {
+    margin: 0;
+    color: #4b5563;
+}
+
+/* Loading indicator */
+
+.confirmation-loading {
+    text-align: center;
+    padding: 12px;
+    color: #6b7280;
+    font-size: 0.9rem;
+}

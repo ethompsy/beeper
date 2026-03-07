@@ -1,0 +1,57 @@
+{# Resolution Confirmation Result partial — replaces #confirmation-result after form submission #}
+
+<div id="confirmation-result">
+{% if action == 'confirmed' %}
+<div class="confirmation-result confirmation-success">
+    <span class="confirmation-icon">&#10003;</span>
+    <div>
+        <h4>Resolution Confirmed</h4>
+        <p>The investigation resolution has been confirmed and recorded.</p>
+        {% if comment %}
+        <div class="confirmation-detail">
+            <strong>Comment:</strong> {{ comment }}
+        </div>
+        {% endif %}
+        {% if confirmed_at %}
+        <span class="confirmation-timestamp">{{ confirmed_at }}</span>
+        {% endif %}
+    </div>
+</div>
+
+{% elif action == 'rejected' %}
+<div class="confirmation-result confirmation-rejected">
+    <span class="confirmation-icon">&#10007;</span>
+    <div>
+        <h4>Resolution Rejected</h4>
+        <p>The rejection has been recorded for Beeper's learning.</p>
+        {% if rejection_reason %}
+        <div class="rejection-reason-display">
+            <span class="rejection-reason-badge">{{ rejection_reason }}</span>
+        </div>
+        {% endif %}
+        {% if reason_details %}
+        <div class="confirmation-detail">
+            <strong>Details:</strong> {{ reason_details }}
+        </div>
+        {% endif %}
+        {% if correction %}
+        <div class="correction-display">
+            <strong>Suggested correction:</strong> {{ correction }}
+        </div>
+        {% endif %}
+        {% if rejected_at %}
+        <span class="confirmation-timestamp">{{ rejected_at }}</span>
+        {% endif %}
+    </div>
+</div>
+
+{% elif action == 'error' %}
+<div class="confirmation-result confirmation-error">
+    <span class="confirmation-icon">&#9888;</span>
+    <div>
+        <h4>Action Failed</h4>
+        <p>{{ error_message }}</p>
+    </div>
+</div>
+{% endif %}
+</div>

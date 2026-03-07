@@ -1,0 +1,113 @@
+{# Resolution Confirmation Form partial #}
+{# Shows confirm/reject forms or status banner based on resolution state #}
+
+{% set resolution_action = findings.get('resolution_action', '') if findings else '' %}
+{% set has_recommendations = findings.get('recommendations') if findings else false %}
+
+{% if resolution_action == 'confirmed' %}
+{# Already confirmed — show green status banner #}
+<div class="confirmation-status-banner confirmation-confirmed">
+    <span class="confirmation-icon">&#10003;</span>
+    <div>
+        <strong>Resolution Confirmed</strong>
+        {% if findings.get('resolution_comment') %}
+        <p class="confirmation-detail">{{ findings.get('resolution_comment') }}</p>
+        {% endif %}
+        {% if findings.get('resolution_confirmed_at') %}
+        <span class="confirmation-timestamp">{{ findings.get('resolution_confirmed_at') }}</span>
+        {% endif %}
+    </div>
+</div>
+
+{% elif resolution_action == 'rejected' %}
+{# Already rejected — show amber status banner #}
+<div class="confirmation-status-banner confirmation-rejected">
+    <span class="confirmation-icon">&#10007;</span>
+    <div>
+        <strong>Resolution Rejected</strong>
+        {% if findings.get('rejection_reason') %}
+        <span class="rejection-reason-badge">{{ findings.get('rejection_reason') }}</span>
+        {% endif %}
+        {% if findings.get('rejection_reason_details') %}
+        <p class="confirmation-detail">{{ findings.get('rejection_reason_details') }}</p>
+        {% endif %}
+        {% if findings.get('rejection_correction') %}
+        <div class="correction-display">
+            <strong>Suggested correction:</strong>
+            <p>{{ findings.get('rejection_correction') }}</p>
+        </div>
+        {% endif %}
+        {% if findings.get('resolution_rejected_at') %}
+        <span class="confirmation-timestamp">{{ findings.get('resolution_rejected_at') }}</span>
+        {% endif %}
+    </div>
+</div>
+
+{% elif investigation and investigation.status in ('awaiting_confirmation', 'completed') and has_recommendations %}
+{# Show confirm/reject forms #}
+<div class="confirmation-form">
+    <div class="confirmation-loading htmx-indicator" id="confirmation-loading">
+        Processing...
+    </div>
+
+    {# Confirm section #}
+    <div class="confirmation-section confirm-section">
+        <h4>Confirm Resolution</h4>
+        <form hx-post="{{ url_for('investigations.confirm_resolution', investigation_id=investigation.id) }}"
+              hx-target="#confirmation-result"
+              hx-swap="outerHTML"
+              hx-indicator="#confirmation-loading">
+            <div class="form-group">
+                <label for="confirm-comment">Comment (optional)</label>
+                <textarea id="confirm-comment"
+                          name="comment"
+                          rows="2"
+                          placeholder="Optional: Add a note about the confirmation..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-confirm">Confirm Resolution</button>
+        </form>
+    </div>
+
+    <div class="confirmation-divider"></div>
+
+    {# Reject section #}
+    <div class="confirmation-section reject-section">
+        <h4>Reject Resolution</h4>
+        <form hx-post="{{ url_for('investigations.reject_resolution', investigation_id=investigation.id) }}"
+              hx-target="#confirmation-result"
+              hx-swap="outerHTML"
+              hx-indicator="#confirmation-loading">
+            <div class="form-group">
+                <label for="rejection-reason">Reason <span class="required">*</span></label>
+                <select id="rejection-reason" name="rejection_reason" required>
+                    <option value="">Select a reason...</option>
+                    <option value="hypothesis_incorrect">Hypothesis incorrect</option>
+                    <option value="insufficient_evidence">Insufficient evidence</option>
+                    <option value="better_alternative">Better alternative exists</option>
+                    <option value="not_applicable">Not applicable</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="reason-details">Details <span class="required">*</span></label>
+                <textarea id="reason-details"
+                          name="reason_details"
+                          rows="3"
+                          required
+                          placeholder="Explain why this recommendation should be rejected..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="correction">Suggested Correction (optional)</label>
+                <textarea id="correction"
+                          name="correction"
+                          rows="2"
+                          placeholder="Optional: Suggest the correct resolution action..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-reject">Reject Resolution</button>
+        </form>
+    </div>
+</div>
+
+{% else %}
+<p class="empty-state-text">Confirmation will be available when recommendations are generated.</p>
+{% endif %}
