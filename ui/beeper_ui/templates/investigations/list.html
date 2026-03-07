@@ -33,6 +33,16 @@
         <span class="chip-label">Severity:</span> {{ selected_severity|capitalize }}
     </span>
     {% endif %}
+    {% if selected_date_range %}
+    <span class="filter-chip">
+        <span class="chip-label">Date:</span>
+        {% if selected_date_range == 'today' %}Today
+        {% elif selected_date_range == '7d' %}Last 7 days
+        {% elif selected_date_range == '30d' %}Last 30 days
+        {% elif selected_date_range == '90d' %}Last 90 days
+        {% endif %}
+    </span>
+    {% endif %}
 </div>
 {% endif %}
 

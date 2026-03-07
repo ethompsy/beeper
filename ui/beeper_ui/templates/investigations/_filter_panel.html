@@ -60,6 +60,24 @@
                     <option value="critical" {% if selected_severity == 'critical' %}selected{% endif %}>Critical</option>
                 </select>
             </div>
+
+            {# Date Range Filter #}
+            <div class="filter-group">
+                <label for="inv-filter-date-range">Date Range</label>
+                <select name="date_range"
+                        id="inv-filter-date-range"
+                        hx-get="{{ url_for('investigations.list_investigations') }}"
+                        hx-trigger="change"
+                        hx-target="#investigation-list"
+                        hx-include="#investigation-filter-panel select"
+                        hx-push-url="true">
+                    <option value="">All time</option>
+                    <option value="today" {% if selected_date_range == 'today' %}selected{% endif %}>Today</option>
+                    <option value="7d" {% if selected_date_range == '7d' %}selected{% endif %}>Last 7 days</option>
+                    <option value="30d" {% if selected_date_range == '30d' %}selected{% endif %}>Last 30 days</option>
+                    <option value="90d" {% if selected_date_range == '90d' %}selected{% endif %}>Last 90 days</option>
+                </select>
+            </div>
         </div>
     </div>
 </div>

@@ -1,6 +1,6 @@
 # Story 4.1: Investigation List View
 
-Status: review
+Status: done
 
 ## Story
 

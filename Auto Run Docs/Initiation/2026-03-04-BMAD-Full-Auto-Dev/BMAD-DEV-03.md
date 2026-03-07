@@ -20,13 +20,14 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Make all decisions autonomously
   <!-- Completed 2026-03-06: Full implementation of story 4-1 across 8 tasks. Operator: GET /api/v1/investigations endpoint with filtering/sorting (Rust). UI: InvestigationService (httpx), investigation routes with HTMX, filter panel, SSE polling-backed streaming, severity/status CSS. Tests: 20 new tests (9 service + 11 route), 135 total pass. Ruff + mypy --strict clean. Sprint status → review. -->
 
-- [ ] Review and finalize story 4-1:
+- [x] Review and finalize story 4-1:
   - Use the `/bmad-bmm-code-review` skill to review story 4-1 — auto-fix all issues found
   - After review fixes, run all relevant tests (Python tests for UI routes, ruff, mypy)
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `4-1-investigation-list-view: done`
   - Update story file status to `done`
   - Commit all changes as `4-1 done`
+  <!-- Completed 2026-03-06: Adversarial code review found 7 issues (2 HIGH, 3 MEDIUM, 2 LOW). Fixed: (1) SSE sends HTML partials instead of JSON for HTMX swap compatibility, (2) date range filter added to route/template (AC4 complete), (3) service filter sanitized with regex validation, (4) error messages no longer expose internal operator URLs, (5) stream_with_context for SSE generator robustness. Tests: 42 investigation tests (up from 20), 296 total pass, zero regressions. Ruff + mypy clean on all investigation files. Sprint status + story → done. -->
 
 - [ ] Create story 4-2 spec (Real-Time Investigation Pane) using the `/bmad-bmm-create-story` skill. This story covers FR32/FR10: SREs can observe Beeper's reasoning process in real-time. The story should:
   - Be created from `_bmad-output/planning-artifacts/epics.md` Epic 4, Story 4-2
