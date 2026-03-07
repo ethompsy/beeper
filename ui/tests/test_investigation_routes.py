@@ -1911,7 +1911,88 @@ class TestResolutionConfirmation:
             assert response.status_code == 200
             assert b"confirmation-rejected" in response.data
             assert b"Resolution Rejected" in response.data
-            assert b"hypothesis_incorrect" in response.data
+            # Banner shows human-readable label, not raw key
+            assert b"Hypothesis incorrect" in response.data
+            assert b'role="status"' in response.data
+
+    @respx.mock
+    def test_confirmed_banner_has_aria_role(
+        self, client: FlaskClient
+    ) -> None:
+        """Test confirmed status banner has role=status for accessibility."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-completed-001"
+        ).mock(return_value=Response(200, json=MOCK_COMPLETED_DETAIL))
+
+        confirmed_findings = dict(MOCK_FINDINGS_WITH_RECOMMENDATIONS)
+        confirmed_findings["resolution_action"] = "confirmed"
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=confirmed_findings,
+        ):
+            response = client.get("/investigations/inv-completed-001")
+            assert response.status_code == 200
+            assert b"confirmation-confirmed" in response.data
+            assert b'role="status"' in response.data
+
+    @respx.mock
+    def test_sse_confirmation_update_independent_of_key_changes(
+        self, client: FlaskClient
+    ) -> None:
+        """Test SSE confirmation-update fires even when findings keys don't change.
+
+        When resolution_action value changes but no new keys are added,
+        the confirmation-update event should still fire.
+        """
+        detail = MOCK_COMPLETED_DETAIL.copy()
+        detail["status"] = "awaiting_confirmation"
+        detail["id"] = "inv-awaiting-002"
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-awaiting-002"
+        ).mock(return_value=Response(200, json=detail))
+
+        # Same keys, but resolution_action value changes
+        findings_v1: dict[str, object] = {
+            "customer_impacting": True,
+            "recommendations": [{"action": "test", "confidence": "high"}],
+            "resolution_action": "rejected",
+            "rejection_reason": "hypothesis_incorrect",
+        }
+        findings_v2: dict[str, object] = {
+            "customer_impacting": True,
+            "recommendations": [{"action": "test", "confidence": "high"}],
+            "resolution_action": "confirmed",
+            "rejection_reason": "hypothesis_incorrect",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            side_effect=[findings_v1, findings_v2],
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            from beeper_ui.routes.investigations import (
+                _generate_detail_sse_events,
+            )
+
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-awaiting-002"
+                )
+                # Iteration 1: step-update, findings-update, evidence-update, confirmation-update
+                # Iteration 2: no key change, but resolution_action changed → confirmation-update
+                events = []
+                for _ in range(5):
+                    events.append(next(gen))
+
+                all_text = "\n".join(events)
+                # confirmation-update should fire twice (once per value change)
+                assert all_text.count("event: confirmation-update") == 2
+
+                gen.close()
 
     @respx.mock
     def test_sse_confirmation_update_event(

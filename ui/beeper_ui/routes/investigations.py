@@ -638,7 +638,11 @@ def _generate_detail_sse_events(
                         kb_svc.close()
                     kb_update_sent = True
 
-                # Check for resolution action changes (confirm/reject)
+                last_findings_keys = current_keys
+
+            # Check for resolution action changes (confirm/reject)
+            # Independent of findings key changes to catch value-only updates
+            if findings:
                 current_resolution = str(
                     findings.get("resolution_action", "")
                 ) or None
@@ -654,8 +658,6 @@ def _generate_detail_sse_events(
                     )
                     yield f"event: confirmation-update\n{confirm_lines}\n\n"
                     last_resolution_action = current_resolution
-
-                last_findings_keys = current_keys
 
             # Send completion event
             if current_phase == "completed":

@@ -1,6 +1,6 @@
 # Story 4.5: Resolution Confirmation
 
-Status: review
+Status: done
 
 ## Story
 

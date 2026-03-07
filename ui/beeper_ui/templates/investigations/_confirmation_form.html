@@ -3,10 +3,17 @@
 
 {% set resolution_action = findings.get('resolution_action', '') if findings else '' %}
 {% set has_recommendations = findings.get('recommendations') if findings else false %}
+{% set rejection_labels = {
+    'hypothesis_incorrect': 'Hypothesis incorrect',
+    'insufficient_evidence': 'Insufficient evidence',
+    'better_alternative': 'Better alternative exists',
+    'not_applicable': 'Not applicable',
+    'other': 'Other'
+} %}
 
 {% if resolution_action == 'confirmed' %}
 {# Already confirmed — show green status banner #}
-<div class="confirmation-status-banner confirmation-confirmed">
+<div class="confirmation-status-banner confirmation-confirmed" role="status">
     <span class="confirmation-icon">&#10003;</span>
     <div>
         <strong>Resolution Confirmed</strong>
@@ -21,12 +28,12 @@
 
 {% elif resolution_action == 'rejected' %}
 {# Already rejected — show amber status banner #}
-<div class="confirmation-status-banner confirmation-rejected">
+<div class="confirmation-status-banner confirmation-rejected" role="status">
     <span class="confirmation-icon">&#10007;</span>
     <div>
         <strong>Resolution Rejected</strong>
         {% if findings.get('rejection_reason') %}
-        <span class="rejection-reason-badge">{{ findings.get('rejection_reason') }}</span>
+        <span class="rejection-reason-badge">{{ rejection_labels.get(findings.get('rejection_reason'), findings.get('rejection_reason')) }}</span>
         {% endif %}
         {% if findings.get('rejection_reason_details') %}
         <p class="confirmation-detail">{{ findings.get('rejection_reason_details') }}</p>

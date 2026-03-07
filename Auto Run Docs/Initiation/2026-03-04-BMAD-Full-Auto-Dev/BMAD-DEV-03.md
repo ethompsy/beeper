@@ -95,13 +95,14 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Make all decisions autonomously
   <!-- Completed 2026-03-07: Full implementation of story 4-5 across 11 tasks. Operator: AwaitingConfirmation CRD phase, POST /confirm and /reject endpoints with Axum handlers, 10 Rust tests. UI Service: confirm_resolution(), reject_resolution(), save_resolution_feedback() methods. Routes: POST confirm/reject with form validation, Qdrant feedback persistence, SSE confirmation-update event. Templates: _confirmation_form.html (HTMX forms + status banners), _confirmation_result.html (success/rejected/error states), _detail_content.html (Resolution Confirmation card). CSS: ~180 lines (form, buttons, result states, banners). Tests: 10 service + 19 route tests (TestConfirmResolution, TestRejectResolution, TestSaveResolutionFeedback, TestResolutionConfirmation), 385 total pass, zero regressions. Ruff + mypy clean on investigation files. Sprint status → review. -->
 
-- [ ] Review and finalize story 4-5:
+- [x] Review and finalize story 4-5:
   - Use the `/bmad-bmm-code-review` skill to review story 4-5 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `4-5-resolution-confirmation: done`
   - Update story file status to `done`
   - Commit all changes as `4-5 done`
+  <!-- Completed 2026-03-07: Adversarial code review found 6 issues (3 MEDIUM, 3 LOW). Fixed: (1) SSE confirmation-update check moved outside findings key-change block for independent value-change detection, (2) already-rejected banner now shows human-readable rejection reason label via template mapping instead of raw key, (3) confirmed/rejected status banners given role="status" for WCAG accessibility. Added 2 new tests: ARIA role on confirmed banner, SSE confirmation-update independence from key changes. Tests: 85 investigation tests (up from 83), 387 total pass, zero regressions. Ruff + mypy clean on investigation files. Sprint status + story → done. -->
 
 - [ ] Create and implement story 4-6 (Investigation Resolution). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 4, Story 4-6 (FR12: mark investigation as resolved with outcome confirmation). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: resolution confirmation (4-5), investigation list (4-1), KB documentation (3-8) for writing resolution to KB, existing MTTR patterns
