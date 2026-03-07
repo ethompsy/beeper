@@ -31,6 +31,9 @@ class LlmConfig:
     screening_model: str | None = None
     deep_rca_model: str | None = None
     embedding_model: str | None = None
+    cache_ttl_seconds: int = 3600
+    cache_max_entries: int = 256
+    cache_enabled: bool = True
 
     def validate_model(self) -> None:
         """Validate the model name format for the configured provider.
@@ -78,6 +81,9 @@ class LlmConfig:
         screening_model = os.environ.get("BEEPER_LLM_SCREENING_MODEL") or None
         deep_rca_model = os.environ.get("BEEPER_LLM_DEEP_RCA_MODEL") or None
         embedding_model = os.environ.get("BEEPER_LLM_EMBEDDING_MODEL") or None
+        cache_enabled = os.environ.get("BEEPER_LLM_CACHE_ENABLED", "true").lower() != "false"
+        cache_ttl_seconds = int(os.environ.get("BEEPER_LLM_CACHE_TTL_SECONDS", "3600"))
+        cache_max_entries = int(os.environ.get("BEEPER_LLM_CACHE_MAX_ENTRIES", "256"))
 
         if not provider:
             raise LlmClientError("BEEPER_LLM_PROVIDER environment variable is required")
@@ -110,6 +116,9 @@ class LlmConfig:
             screening_model=screening_model,
             deep_rca_model=deep_rca_model,
             embedding_model=embedding_model,
+            cache_ttl_seconds=cache_ttl_seconds,
+            cache_max_entries=cache_max_entries,
+            cache_enabled=cache_enabled,
         )
         config.validate_model()
         return config
@@ -164,8 +173,14 @@ class LlmClient:
         Args:
             config: LLM configuration.
         """
+        from beeper_investigator.llm.cache import LlmResponseCache
+
         self.config = config
         self._model_usage: dict[str, int] = {}
+        self._cache = LlmResponseCache(
+            ttl_seconds=config.cache_ttl_seconds,
+            max_entries=config.cache_max_entries,
+        )
         self._configure_litellm()
 
     def _configure_litellm(self) -> None:
@@ -229,6 +244,17 @@ class LlmClient:
             LlmClientError: If the request fails.
         """
         effective_model = model or self.config.get_litellm_model()
+
+        # Cache check (skip for non-deterministic temperature)
+        if self.config.cache_enabled and temperature == 0.0:
+            cached = self._cache.get(messages, effective_model, max_tokens, temperature)
+            if cached is not None:
+                logger.info("Cache hit for model %s", effective_model)
+                self._model_usage[f"{effective_model}(cached)"] = (
+                    self._model_usage.get(f"{effective_model}(cached)", 0) + 1
+                )
+                return cached
+
         try:
             response = await litellm.acompletion(
                 model=effective_model,
@@ -242,6 +268,11 @@ class LlmClient:
             self._model_usage[effective_model] = (
                 self._model_usage.get(effective_model, 0) + 1
             )
+
+            # Cache store (only non-empty, deterministic responses)
+            if self.config.cache_enabled and temperature == 0.0 and content:
+                self._cache.put(messages, effective_model, max_tokens, temperature, content)
+
             if content is None:
                 return ""
             return content
@@ -273,6 +304,17 @@ class LlmClient:
             LlmClientError: If the request fails.
         """
         effective_model = model or self.config.get_litellm_model()
+
+        # Cache check (skip for non-deterministic temperature)
+        if self.config.cache_enabled and temperature == 0.0:
+            cached = self._cache.get(messages, effective_model, max_tokens, temperature)
+            if cached is not None:
+                logger.info("Cache hit for model %s", effective_model)
+                self._model_usage[f"{effective_model}(cached)"] = (
+                    self._model_usage.get(f"{effective_model}(cached)", 0) + 1
+                )
+                return cached
+
         try:
             response = litellm.completion(
                 model=effective_model,
@@ -286,6 +328,11 @@ class LlmClient:
             self._model_usage[effective_model] = (
                 self._model_usage.get(effective_model, 0) + 1
             )
+
+            # Cache store (only non-empty, deterministic responses)
+            if self.config.cache_enabled and temperature == 0.0 and content:
+                self._cache.put(messages, effective_model, max_tokens, temperature, content)
+
             if content is None:
                 return ""
             return content
@@ -397,3 +444,11 @@ class LlmClient:
     def reset_model_usage(self) -> None:
         """Clear model usage counters."""
         self._model_usage.clear()
+
+    def clear_cache(self) -> None:
+        """Clear all cached LLM responses."""
+        self._cache.clear()
+
+    def get_cache_stats(self) -> dict[str, Any]:
+        """Return cache performance statistics."""
+        return self._cache.get_cache_stats()

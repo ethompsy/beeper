@@ -60,12 +60,13 @@ This phase completes the Investigation Engine epic by implementing the remaining
   - Make all decisions autonomously
   - *(Story spec created at `_bmad-output/implementation-artifacts/3-10-llm-response-caching.md` with 9 tasks, 31 subtasks. Covers SHA-256 cache key generation, TTL-based invalidation, LRU eviction, cache hit/miss metrics, transparent LlmClient integration. Sprint-status updated to `ready-for-dev`.)*
 
-- [ ] Implement story 3-10 (LLM Response Caching) using the `/bmad-bmm-dev-story` skill:
+- [x] Implement story 3-10 (LLM Response Caching) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
   - Before writing new code, examine `llm/client.py` — caching should wrap the existing `complete_sync()` method transparently
   - Consider where cache state lives (in-memory dict, Redis, or file-based depending on story requirements)
   - Ensure cache does not break existing tests — all existing LLM mocks should still work
   - Make all decisions autonomously
+  - *(Completed: Created `llm/cache.py` with LlmResponseCache (SHA-256 keys, TTL, LRU eviction, metrics). Integrated transparently into LlmClient. 30 new tests, 373 total passing, 0 regressions.)*
 
 - [ ] Review and finalize story 3-10:
   - Use the `/bmad-bmm-code-review` skill to review story 3-10 — auto-fix all issues found

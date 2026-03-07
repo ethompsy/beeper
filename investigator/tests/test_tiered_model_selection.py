@@ -15,12 +15,11 @@ import pytest
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.llm.client import LlmClient, LlmConfig
 
-
 # ── Helpers ─────────────────────────────────────────────────
 
 
 def _make_config(**overrides: Any) -> LlmConfig:
-    defaults = {
+    defaults: dict[str, Any] = {
         "provider": "anthropic",
         "model": "claude-sonnet-4",
         "api_key": "test-key",

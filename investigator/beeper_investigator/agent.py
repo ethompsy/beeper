@@ -82,6 +82,7 @@ class InvestigatorAgent:
                 self.steps = self._build_steps()
             result = self._run_steps()
             result.metadata["model_usage"] = self.llm_client.get_model_usage()
+            result.metadata["cache_stats"] = self.llm_client.get_cache_stats()
             self._finalize(result)
             return result
         except Exception as exc:
