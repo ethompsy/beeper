@@ -1,5 +1,7 @@
 """Tests for Investigation routes."""
 
+from unittest.mock import MagicMock, patch
+
 import respx
 from flask.testing import FlaskClient
 from httpx import Response
@@ -456,3 +458,245 @@ class TestDateRangeFiltering:
         cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
         result = filter_by_date_range([inv], cutoff)
         assert len(result) == 0
+
+
+MOCK_INVESTIGATION_DETAIL = {
+    "id": "inv-detail-001",
+    "status": "investigating",
+    "service": "payments",
+    "severity": "high",
+    "condition": "High error rate detected",
+    "started_at": "2026-03-06T10:00:00Z",
+    "completed_at": None,
+    "triggered_at": "2026-03-06T09:55:00Z",
+    "message": "Correlating signals across architectural layers",
+    "error": None,
+    "job_name": "inv-detail-001-job",
+}
+
+
+class TestInvestigationDetailRoute:
+    """Tests for investigation detail route."""
+
+    @respx.mock
+    def test_detail_full_page(self, client: FlaskClient) -> None:
+        """Test investigation detail returns full page HTML."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.services.investigation_service.InvestigationService.get_investigation_findings",
+            return_value={},
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"<!DOCTYPE html>" in response.data
+            assert b"inv-detail-001" in response.data
+            assert b"High error rate detected" in response.data
+
+    @respx.mock
+    def test_detail_htmx_partial(self, client: FlaskClient) -> None:
+        """Test detail with HX-Request returns partial."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ):
+            response = client.get(
+                "/investigations/inv-detail-001",
+                headers={"HX-Request": "true"},
+            )
+            assert response.status_code == 200
+            assert b"<!DOCTYPE html>" not in response.data
+            assert b"inv-detail-001" in response.data
+
+    @respx.mock
+    def test_detail_not_found(self, client: FlaskClient) -> None:
+        """Test detail returns 404 for nonexistent investigation."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-nonexistent"
+        ).mock(return_value=Response(404, json={"error": "not found"}))
+
+        response = client.get("/investigations/inv-nonexistent")
+        assert response.status_code == 404
+        assert b"Investigation not found" in response.data
+
+    @respx.mock
+    def test_detail_not_found_htmx(self, client: FlaskClient) -> None:
+        """Test detail returns 404 partial for HTMX request."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-nonexistent"
+        ).mock(return_value=Response(404, json={"error": "not found"}))
+
+        response = client.get(
+            "/investigations/inv-nonexistent",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 404
+        assert b"<!DOCTYPE html>" not in response.data
+        assert b"Investigation not found" in response.data
+
+    @respx.mock
+    def test_detail_operator_unavailable(self, client: FlaskClient) -> None:
+        """Test detail handles operator connection error."""
+        import httpx
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-001"
+        ).mock(side_effect=httpx.ConnectError("Connection refused"))
+
+        response = client.get("/investigations/inv-001")
+        assert response.status_code == 200
+        assert b"Unable to connect" in response.data
+
+    def test_detail_invalid_id_rejected(self, client: FlaskClient) -> None:
+        """Test that invalid investigation IDs are rejected."""
+        response = client.get("/investigations/../../etc/passwd")
+        assert response.status_code == 404
+
+    @respx.mock
+    def test_detail_shows_step_progress(self, client: FlaskClient) -> None:
+        """Test detail page includes step progress timeline."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"Investigation Progress" in response.data
+            assert b"step-timeline" in response.data
+
+    @respx.mock
+    def test_detail_shows_findings(self, client: FlaskClient) -> None:
+        """Test detail page renders findings when available."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "customer_impacting": True,
+            "reasoning": "Users experiencing payment failures",
+            "root_cause_hypothesis": "Database pool exhausted",
+            "confidence_percentage": 85,
+            "confidence_level": "high",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"Customer Impact" in response.data
+            assert b"Customer Impacting" in response.data
+            assert b"Root Cause Hypothesis" in response.data
+
+    @respx.mock
+    def test_detail_shows_evidence_panels(self, client: FlaskClient) -> None:
+        """Test detail page renders expandable evidence sections."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "signals_gathered": 12,
+            "supporting_evidence": "Log correlation shows timeout pattern",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"evidence-panel" in response.data
+            assert b"Raw Signals" in response.data
+
+    @respx.mock
+    def test_detail_stream_content_type(self, client: FlaskClient) -> None:
+        """Test detail SSE endpoint returns correct content type."""
+        from beeper_ui.routes.investigations import investigation_detail_stream
+
+        app = client.application
+        with app.test_request_context("/investigations/inv-001/stream"):
+            response = investigation_detail_stream("inv-001")
+            assert "text/event-stream" in response.content_type
+            assert response.headers.get("Cache-Control") == "no-cache"
+            assert response.headers.get("Connection") == "keep-alive"
+            response.close()
+
+    def test_detail_stream_invalid_id(self, client: FlaskClient) -> None:
+        """Test detail SSE endpoint rejects invalid IDs."""
+        response = client.get("/investigations/../../etc/passwd/stream")
+        assert response.status_code == 404
+
+
+class TestStepStates:
+    """Tests for step progress state calculation."""
+
+    def test_step_states_all_completed(self) -> None:
+        """Test all steps completed when phase is completed."""
+        from beeper_ui.routes.investigations import _get_step_states
+
+        states = _get_step_states(None, "completed")
+        assert all(s["state"] == "completed" for s in states)
+        assert len(states) == 6
+
+    def test_step_states_active_step(self) -> None:
+        """Test active step identified from message."""
+        from beeper_ui.routes.investigations import _get_step_states
+
+        states = _get_step_states(
+            "Correlating signals across architectural layers", "investigating"
+        )
+        # Customer Impact and KB Query should be completed
+        assert states[0]["state"] == "completed"
+        assert states[1]["state"] == "completed"
+        # Signal Correlation should be active
+        assert states[2]["state"] == "active"
+        assert states[2]["key"] == "signal_correlation"
+        # Remaining should be pending
+        assert states[3]["state"] == "pending"
+        assert states[4]["state"] == "pending"
+        assert states[5]["state"] == "pending"
+
+    def test_step_states_first_step(self) -> None:
+        """Test first step as active."""
+        from beeper_ui.routes.investigations import _get_step_states
+
+        states = _get_step_states("Assessing customer impact", "investigating")
+        assert states[0]["state"] == "active"
+        assert states[1]["state"] == "pending"
+
+    def test_step_states_failed(self) -> None:
+        """Test error state on failed investigation."""
+        from beeper_ui.routes.investigations import _get_step_states
+
+        states = _get_step_states(
+            "Generating root cause hypothesis", "failed"
+        )
+        # Steps before RCA should be completed
+        assert states[0]["state"] == "completed"
+        assert states[1]["state"] == "completed"
+        assert states[2]["state"] == "completed"
+        # RCA step should be error
+        assert states[3]["state"] == "error"
+        assert states[3]["key"] == "rca_hypothesis"
+        # After should be pending
+        assert states[4]["state"] == "pending"
+        assert states[5]["state"] == "pending"
+
+    def test_step_states_no_message(self) -> None:
+        """Test step states with no message returns all pending."""
+        from beeper_ui.routes.investigations import _get_step_states
+
+        states = _get_step_states(None, "investigating")
+        assert all(s["state"] == "pending" for s in states)

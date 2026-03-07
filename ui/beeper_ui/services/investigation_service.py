@@ -1,12 +1,18 @@
 """Investigation service for fetching investigation status from the operator."""
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 logger = logging.getLogger(__name__)
+
+INVESTIGATIONS_COLLECTION = "investigations"
 
 
 @dataclass
@@ -37,6 +43,32 @@ class Investigation:
         )
 
 
+@dataclass
+class InvestigationDetail(Investigation):
+    """Extended investigation with detail fields."""
+
+    message: str | None = None
+    error: str | None = None
+    job_name: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "InvestigationDetail":
+        """Create InvestigationDetail from dictionary."""
+        return cls(
+            id=data["id"],
+            status=data["status"],
+            service=data["service"],
+            severity=data["severity"],
+            condition=data["condition"],
+            started_at=data.get("started_at"),
+            completed_at=data.get("completed_at"),
+            triggered_at=data.get("triggered_at"),
+            message=data.get("message"),
+            error=data.get("error"),
+            job_name=data.get("job_name"),
+        )
+
+
 class InvestigationService:
     """Service for fetching investigation status from the operator API."""
 
@@ -50,6 +82,7 @@ class InvestigationService:
         self.operator_url = operator_url.rstrip("/")
         self.timeout = timeout
         self._client: httpx.Client | None = None
+        self._qdrant_client: QdrantClient | None = None
 
     @property
     def client(self) -> httpx.Client:
@@ -57,6 +90,15 @@ class InvestigationService:
         if self._client is None or self._client.is_closed:
             self._client = httpx.Client(timeout=self.timeout)
         return self._client
+
+    @property
+    def qdrant_client(self) -> QdrantClient:
+        """Get or create the Qdrant client (lazy initialization)."""
+        if self._qdrant_client is None:
+            host = os.getenv("QDRANT_HOST", "localhost")
+            port = int(os.getenv("QDRANT_PORT", "6333"))
+            self._qdrant_client = QdrantClient(host=host, port=port)
+        return self._qdrant_client
 
     def close(self) -> None:
         """Close the HTTP client."""
@@ -117,6 +159,98 @@ class InvestigationService:
             raise InvestigationServiceError(
                 f"Failed to connect to operator: {e}"
             ) from e
+
+    def get_investigation(
+        self, investigation_id: str
+    ) -> InvestigationDetail | None:
+        """Fetch a single investigation by ID from the operator.
+
+        Args:
+            investigation_id: The investigation CRD name.
+
+        Returns:
+            InvestigationDetail if found, None if 404.
+
+        Raises:
+            InvestigationServiceError: If the operator cannot be reached.
+        """
+        try:
+            response = self.client.get(
+                f"{self.operator_url}/api/v1/investigations/{investigation_id}",
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return InvestigationDetail.from_dict(response.json())
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "Timeout connecting to operator for investigation %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Timeout connecting to operator: {e}"
+            ) from e
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "Operator returned error for investigation %s: %s",
+                investigation_id, e.response.status_code,
+            )
+            raise InvestigationServiceError(
+                f"Operator returned error: {e.response.status_code}"
+            ) from e
+        except httpx.RequestError as e:
+            logger.warning(
+                "Failed to connect to operator for investigation %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Failed to connect to operator: {e}"
+            ) from e
+
+    def get_investigation_findings(
+        self, investigation_id: str
+    ) -> dict[str, Any]:
+        """Fetch investigation findings from Qdrant.
+
+        Retrieves pipeline metadata (step results) accumulated during
+        the investigation from the Qdrant investigations collection.
+
+        Args:
+            investigation_id: The investigation ID to look up.
+
+        Returns:
+            Dict of pipeline metadata, or empty dict if not found.
+        """
+        try:
+            results, _ = self.qdrant_client.scroll(
+                collection_name=INVESTIGATIONS_COLLECTION,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="investigation_id",
+                            match=MatchValue(value=investigation_id),
+                        )
+                    ]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+            if not results:
+                return {}
+            return dict(results[0].payload or {})
+        except UnexpectedResponse as e:
+            logger.warning(
+                "Qdrant query failed for investigation findings %s: %s",
+                investigation_id, e,
+            )
+            return {}
+        except Exception as e:
+            logger.warning(
+                "Failed to fetch investigation findings %s: %s",
+                investigation_id, e,
+            )
+            return {}
 
 
 class InvestigationServiceError(Exception):

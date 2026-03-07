@@ -6,10 +6,19 @@ import time
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, Response, current_app, render_template, request, stream_with_context
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    current_app,
+    render_template,
+    request,
+    stream_with_context,
+)
 
 from beeper_ui.services.investigation_service import (
     Investigation,
+    InvestigationDetail,
     InvestigationService,
     InvestigationServiceError,
 )
@@ -170,6 +179,254 @@ def list_investigations() -> str:
         selected_severity=severity,
         selected_date_range=date_range,
         any_filter_active=any_filter_active,
+    )
+
+
+# Pipeline step definitions for timeline display
+PIPELINE_STEPS = [
+    {
+        "key": "customer_impact",
+        "label": "Customer Impact Assessment",
+        "message": "Assessing customer impact",
+    },
+    {
+        "key": "kb_query",
+        "label": "Knowledge Base Query",
+        "message": "Querying knowledge base",
+    },
+    {
+        "key": "signal_correlation",
+        "label": "Signal Correlation",
+        "message": "Correlating signals across architectural layers",
+    },
+    {
+        "key": "rca_hypothesis",
+        "label": "Root Cause Hypothesis",
+        "message": "Generating root cause hypothesis",
+    },
+    {
+        "key": "resolution_recommendation",
+        "label": "Resolution Recommendations",
+        "message": "Generating resolution recommendations",
+    },
+    {
+        "key": "documentation",
+        "label": "Documentation",
+        "message": "Documenting investigation findings",
+    },
+]
+
+
+def _get_step_states(
+    message: str | None, phase: str | None
+) -> list[dict[str, str]]:
+    """Map current status message/phase to step timeline states.
+
+    Returns list of step dicts with 'key', 'label', and 'state' fields.
+    State is one of: 'completed', 'active', 'pending', 'error'.
+    """
+    steps = []
+    active_found = False
+
+    if phase == "completed":
+        return [
+            {**step, "state": "completed"} for step in PIPELINE_STEPS
+        ]
+
+    if phase == "failed":
+        # Show all steps up to the failing one as completed, current as error
+        for step in PIPELINE_STEPS:
+            if not active_found and message and step["message"] in message:
+                steps.append({**step, "state": "error"})
+                active_found = True
+            elif active_found:
+                steps.append({**step, "state": "pending"})
+            else:
+                steps.append({**step, "state": "completed"})
+        if not active_found:
+            # No matching step — show all as pending
+            return [{**step, "state": "pending"} for step in PIPELINE_STEPS]
+        return steps
+
+    # Running / Pending — find active step from message
+    for step in PIPELINE_STEPS:
+        if not active_found:
+            if message and step["message"] in message:
+                steps.append({**step, "state": "active"})
+                active_found = True
+            else:
+                # Steps before active are completed (if active is later)
+                steps.append({**step, "state": "pending"})
+        else:
+            steps.append({**step, "state": "pending"})
+
+    if active_found:
+        # Mark all steps before the active step as completed
+        active_idx = next(
+            i for i, s in enumerate(steps) if s["state"] == "active"
+        )
+        for i in range(active_idx):
+            steps[i]["state"] = "completed"
+
+    return steps
+
+
+@investigations_bp.route("/<investigation_id>")
+def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
+    """Display investigation detail pane with real-time updates.
+
+    For HTMX requests, returns partial HTML.
+    For full page requests, returns the complete page.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    svc = get_investigation_service()
+    error_message: str | None = None
+    investigation: InvestigationDetail | None = None
+    findings: dict[str, object] = {}
+    step_states: list[dict[str, str]] = []
+
+    try:
+        investigation = svc.get_investigation(investigation_id)
+        if investigation is None:
+            if request.headers.get("HX-Request"):
+                return render_template(
+                    "investigations/_detail_not_found.html",
+                    investigation_id=investigation_id,
+                ), 404
+            return render_template(
+                "investigations/detail.html",
+                investigation=None,
+                investigation_id=investigation_id,
+                error_message="Investigation not found.",
+                findings={},
+                step_states=[],
+            ), 404
+
+        findings = svc.get_investigation_findings(investigation_id)
+        step_states = _get_step_states(investigation.message, investigation.status)
+    except InvestigationServiceError:
+        error_message = "Unable to connect to the Beeper operator."
+
+    if request.headers.get("HX-Request"):
+        return render_template(
+            "investigations/_detail_content.html",
+            investigation=investigation,
+            findings=findings,
+            step_states=step_states,
+            error_message=error_message,
+        )
+
+    return render_template(
+        "investigations/detail.html",
+        investigation=investigation,
+        investigation_id=investigation_id,
+        findings=findings,
+        step_states=step_states,
+        error_message=error_message,
+    )
+
+
+def _generate_detail_sse_events(
+    operator_url: str,
+    operator_timeout: float,
+    investigation_id: str,
+) -> Generator[str, None, None]:
+    """Generate SSE events for a single investigation's progress.
+
+    Polls operator for status changes and Qdrant for new findings.
+    Sends rendered HTML partials for HTMX swap.
+    """
+    svc = InvestigationService(
+        operator_url=operator_url,
+        timeout=operator_timeout,
+    )
+    last_message: str | None = None
+    last_phase: str | None = None
+    last_findings_keys: set[str] = set()
+
+    while True:
+        try:
+            detail = svc.get_investigation(investigation_id)
+            if detail is None:
+                yield "event: investigation-complete\ndata: not-found\n\n"
+                return
+
+            current_message = detail.message
+            current_phase = detail.status
+
+            # Check for step/phase changes
+            if current_message != last_message or current_phase != last_phase:
+                step_states = _get_step_states(current_message, current_phase)
+                html = render_template(
+                    "investigations/_step_progress.html",
+                    step_states=step_states,
+                    investigation=detail,
+                )
+                data_lines = "\n".join(
+                    f"data: {line}" for line in html.split("\n")
+                )
+                yield f"event: step-update\n{data_lines}\n\n"
+                last_message = current_message
+                last_phase = current_phase
+
+            # Check for new findings in Qdrant
+            findings = svc.get_investigation_findings(investigation_id)
+            current_keys = set(findings.keys())
+            if findings and current_keys != last_findings_keys:
+                html = render_template(
+                    "investigations/_findings.html",
+                    findings=findings,
+                )
+                data_lines = "\n".join(
+                    f"data: {line}" for line in html.split("\n")
+                )
+                yield f"event: findings-update\n{data_lines}\n\n"
+                last_findings_keys = current_keys
+
+            # Send completion event
+            if current_phase == "completed":
+                yield "event: investigation-complete\ndata: done\n\n"
+                svc.close()
+                return
+
+        except InvestigationServiceError:
+            logger.warning(
+                "SSE: Failed to poll operator for investigation %s",
+                investigation_id,
+            )
+        except GeneratorExit:
+            svc.close()
+            return
+
+        time.sleep(SSE_POLL_INTERVAL)
+
+
+@investigations_bp.route("/<investigation_id>/stream")
+def investigation_detail_stream(investigation_id: str) -> Response:
+    """SSE endpoint for real-time investigation detail updates.
+
+    Polls the operator API every 3 seconds for a single investigation,
+    sends events when status.message or phase changes.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    operator_url: str = current_app.config["OPERATOR_URL"]
+    operator_timeout: float = current_app.config["OPERATOR_TIMEOUT"]
+    return Response(
+        stream_with_context(
+            _generate_detail_sse_events(
+                operator_url, operator_timeout, investigation_id
+            )
+        ),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

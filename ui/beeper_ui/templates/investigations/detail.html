@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if investigation %}Investigation {{ investigation.id }} - Beeper{% else %}Investigation Not Found - Beeper{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/investigations/" hx-get="/investigations/" hx-target="#main-content" hx-push-url="true">&#8592; Back to Investigations</a>
+</div>
+
+{% if error_message and not investigation %}
+<div class="card error-card">
+    <h3>Unable to load investigation</h3>
+    <p>{{ error_message }}</p>
+</div>
+{% elif not investigation %}
+<div class="card error-card">
+    <h3>Investigation not found</h3>
+    <p>No investigation found with ID: <code>{{ investigation_id }}</code></p>
+</div>
+{% else %}
+<div id="main-content"
+     hx-ext="sse"
+     sse-connect="/investigations/{{ investigation.id }}/stream">
+    {% include "investigations/_detail_content.html" %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/htmx-ext-sse.js') }}"></script>
+{% endblock %}

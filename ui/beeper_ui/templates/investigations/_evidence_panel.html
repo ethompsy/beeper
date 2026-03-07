@@ -1,0 +1,57 @@
+<div class="card evidence-panels">
+    <h3>Evidence &amp; Raw Data</h3>
+
+    {# Raw Signals #}
+    {% if findings.get('signals_gathered') %}
+    <details class="evidence-panel">
+        <summary>Raw Signals ({{ findings.get('signals_gathered', 0) }} collected)</summary>
+        <div class="evidence-data-wrapper">
+            {% if findings.get('sources_available') %}
+            <h5>Sources</h5>
+            <pre class="evidence-data">{{ findings.get('sources_available') }}</pre>
+            {% endif %}
+            {% if findings.get('hypotheses') %}
+            <h5>Signal Hypotheses</h5>
+            <pre class="evidence-data">{{ findings.get('hypotheses') }}</pre>
+            {% endif %}
+        </div>
+    </details>
+    {% endif %}
+
+    {# KB Match Details #}
+    {% if findings.get('relevant_matches') %}
+    <details class="evidence-panel">
+        <summary>KB Match Details</summary>
+        <div class="evidence-data-wrapper">
+            <pre class="evidence-data">{{ findings.get('relevant_matches') }}</pre>
+        </div>
+    </details>
+    {% endif %}
+
+    {# Correlation Data #}
+    {% if findings.get('supporting_evidence') %}
+    <details class="evidence-panel">
+        <summary>Correlation &amp; Supporting Evidence</summary>
+        <div class="evidence-data-wrapper">
+            <pre class="evidence-data">{{ findings.get('supporting_evidence') }}</pre>
+            {% if findings.get('additional_data_needs') %}
+            <h5>Additional Data Needs</h5>
+            <pre class="evidence-data">{{ findings.get('additional_data_needs') }}</pre>
+            {% endif %}
+        </div>
+    </details>
+    {% endif %}
+
+    {# Documentation #}
+    {% if findings.get('documentation_written') %}
+    <details class="evidence-panel">
+        <summary>Investigation Documentation</summary>
+        <div class="evidence-data-wrapper">
+            <pre class="evidence-data">{{ findings.get('documentation_written') }}</pre>
+            {% if findings.get('kb_entry_id') %}
+            <p><a href="/knowledge/{{ findings.get('kb_entry_id') }}">View KB Entry</a></p>
+            {% endif %}
+        </div>
+    </details>
+    {% endif %}
+</div>

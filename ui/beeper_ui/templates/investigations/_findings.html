@@ -1,0 +1,101 @@
+{% if findings %}
+<div class="findings-sections">
+    {# Customer Impact #}
+    {% if findings.get('customer_impacting') is not none %}
+    <div class="findings-section">
+        <h4>Customer Impact</h4>
+        <div class="findings-content">
+            <span class="impact-badge impact-{{ 'yes' if findings.get('customer_impacting') else 'no' }}">
+                {% if findings.get('customer_impacting') %}Customer Impacting{% else %}No Customer Impact{% endif %}
+            </span>
+            {% if findings.get('reasoning') %}
+            <p>{{ findings.get('reasoning') }}</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# KB Matches #}
+    {% if findings.get('prior_research_summary') %}
+    <div class="findings-section">
+        <h4>Knowledge Base Matches</h4>
+        <div class="findings-content">
+            <p>{{ findings.get('prior_research_summary') }}</p>
+            {% if findings.get('exact_match_found') %}
+            <span class="match-badge match-exact">Exact Match Found</span>
+            {% endif %}
+            {% if findings.get('confidence_boost') %}
+            <span class="confidence-boost">Confidence boost: {{ findings.get('confidence_boost') }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# Signal Correlation #}
+    {% if findings.get('signal_summary') %}
+    <div class="findings-section">
+        <h4>Signal Correlation</h4>
+        <div class="findings-content">
+            <p>{{ findings.get('signal_summary') }}</p>
+            {% if findings.get('layers_queried') %}
+            <div class="signal-layers">
+                <span class="layer-label">Layers queried:</span>
+                {% for layer in findings.get('layers_queried', []) %}
+                <span class="layer-badge">{{ layer }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if findings.get('signals_gathered') %}
+            <span class="signals-count">{{ findings.get('signals_gathered') }} signals collected</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# RCA Hypothesis #}
+    {% if findings.get('root_cause_hypothesis') %}
+    <div class="findings-section">
+        <h4>Root Cause Hypothesis</h4>
+        <div class="findings-content">
+            {% if findings.get('confidence_percentage') %}
+            <div class="confidence-indicator confidence-{{ findings.get('confidence_level', 'low') }}">
+                <span class="confidence-bar" style="width: {{ findings.get('confidence_percentage', 0) }}%"></span>
+                <span class="confidence-text">{{ findings.get('confidence_percentage', 0) }}% confidence ({{ findings.get('confidence_level', 'unknown') }})</span>
+            </div>
+            {% endif %}
+            <div class="hypothesis-card">
+                <p>{{ findings.get('root_cause_hypothesis') }}</p>
+            </div>
+            {% if findings.get('alternative_hypotheses') %}
+            <div class="alternative-hypotheses">
+                <h5>Alternative Hypotheses</h5>
+                {% for alt in findings.get('alternative_hypotheses', []) %}
+                <div class="alternative-hypothesis">
+                    <p>{{ alt }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# Resolution Recommendations #}
+    {% if findings.get('resolution_recommendation') %}
+    <div class="findings-section">
+        <h4>Resolution Recommendation</h4>
+        <div class="findings-content">
+            <p>{{ findings.get('resolution_recommendation') }}</p>
+            {% if findings.get('estimated_mttr_minutes') %}
+            <span class="mttr-estimate">Estimated MTTR: {{ findings.get('estimated_mttr_minutes') }} min</span>
+            {% endif %}
+            {% if findings.get('escalation_recommended') %}
+            <span class="escalation-badge">Escalation Recommended</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<p class="empty-state-text">No findings yet. Waiting for investigation steps to complete...</p>
+{% endif %}

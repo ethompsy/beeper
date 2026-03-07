@@ -4,7 +4,7 @@
 //! health information, and ingestion statistics.
 
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
@@ -60,6 +60,7 @@ pub fn api_router_with_detection(
     Router::new()
         .route("/api/v1/sources", get(list_sources))
         .route("/api/v1/investigations", get(list_investigations))
+        .route("/api/v1/investigations/:id", get(get_investigation))
         .route("/api/v1/health/components", get(health_components))
         .route("/api/v1/ingestion/stats", get(ingestion_stats))
         .route("/api/v1/detection/stats", get(detection_stats_handler))
@@ -168,7 +169,7 @@ pub struct InvestigationQuery {
     pub severity: Option<String>,
 }
 
-/// Response for a single investigation
+/// Response for a single investigation (list view)
 #[derive(Debug, Serialize)]
 pub struct InvestigationResponse {
     pub id: String,
@@ -179,6 +180,22 @@ pub struct InvestigationResponse {
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
     pub triggered_at: Option<String>,
+}
+
+/// Response for a single investigation detail (extends list response)
+#[derive(Debug, Serialize)]
+pub struct InvestigationDetailResponse {
+    pub id: String,
+    pub status: String,
+    pub service: String,
+    pub severity: String,
+    pub condition: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub triggered_at: Option<String>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+    pub job_name: Option<String>,
 }
 
 /// Map InvestigationPhase to UI-friendly status string
@@ -284,6 +301,67 @@ async fn list_investigations(
                     title: "Failed to list investigations".to_string(),
                     status: 500,
                     detail: format!("Could not retrieve investigation list: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Get a single investigation by ID
+async fn get_investigation(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+
+    match investigations_api.get(&id).await {
+        Ok(inv) => {
+            let spec = inv.spec;
+            let status = inv.status.unwrap_or_default();
+
+            let ui_status = phase_to_status(&status.phase);
+            let severity = severity_to_string(&spec.severity);
+
+            let response = InvestigationDetailResponse {
+                id: inv.metadata.name.unwrap_or_default(),
+                status: ui_status,
+                service: spec.service,
+                severity,
+                condition: spec.condition,
+                started_at: status.started_at,
+                completed_at: status.completed_at,
+                triggered_at: spec.triggered_at,
+                message: status.message,
+                error: status.error,
+                job_name: status.job_name,
+            };
+
+            debug!(investigation_id = %response.id, "Got investigation detail");
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(kube::Error::Api(err)) if err.code == 404 => {
+            warn!(investigation_id = %id, "Investigation not found");
+            (
+                StatusCode::NOT_FOUND,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-not-found".to_string(),
+                    title: "Investigation not found".to_string(),
+                    status: 404,
+                    detail: format!("No investigation found with ID: {}", id),
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, investigation_id = %id, "Failed to get investigation");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-get-failed".to_string(),
+                    title: "Failed to get investigation".to_string(),
+                    status: 500,
+                    detail: format!("Could not retrieve investigation: {}", e),
                 }),
             )
                 .into_response()
@@ -773,6 +851,94 @@ mod tests {
         assert!(query.status.is_none());
         assert!(query.service.is_none());
         assert!(query.severity.is_none());
+    }
+
+    #[test]
+    fn test_investigation_detail_response_serialization() {
+        let response = InvestigationDetailResponse {
+            id: "inv-detail-001".to_string(),
+            status: "investigating".to_string(),
+            service: "payments".to_string(),
+            severity: "high".to_string(),
+            condition: "High error rate detected".to_string(),
+            started_at: Some("2026-03-06T10:00:00Z".to_string()),
+            completed_at: None,
+            triggered_at: Some("2026-03-06T09:55:00Z".to_string()),
+            message: Some("Correlating signals across architectural layers".to_string()),
+            error: None,
+            job_name: Some("inv-detail-001-job".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"id\":\"inv-detail-001\""));
+        assert!(json.contains("\"status\":\"investigating\""));
+        assert!(json.contains("\"message\":\"Correlating signals across architectural layers\""));
+        assert!(json.contains("\"job_name\":\"inv-detail-001-job\""));
+        assert!(json.contains("\"error\":null"));
+        // Should include all base fields too
+        assert!(json.contains("\"service\":\"payments\""));
+        assert!(json.contains("\"severity\":\"high\""));
+        assert!(json.contains("\"condition\":\"High error rate detected\""));
+    }
+
+    #[test]
+    fn test_investigation_detail_response_with_error() {
+        let response = InvestigationDetailResponse {
+            id: "inv-fail-001".to_string(),
+            status: "failed".to_string(),
+            service: "api-gateway".to_string(),
+            severity: "critical".to_string(),
+            condition: "Service unreachable".to_string(),
+            started_at: Some("2026-03-06T10:00:00Z".to_string()),
+            completed_at: None,
+            triggered_at: None,
+            message: Some("Generating root cause hypothesis".to_string()),
+            error: Some("LLM provider timeout".to_string()),
+            job_name: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"status\":\"failed\""));
+        assert!(json.contains("\"error\":\"LLM provider timeout\""));
+        assert!(json.contains("\"message\":\"Generating root cause hypothesis\""));
+        assert!(json.contains("\"job_name\":null"));
+    }
+
+    #[test]
+    fn test_investigation_detail_response_completed() {
+        let response = InvestigationDetailResponse {
+            id: "inv-done-001".to_string(),
+            status: "completed".to_string(),
+            service: "checkout".to_string(),
+            severity: "medium".to_string(),
+            condition: "Latency spike".to_string(),
+            started_at: Some("2026-03-06T10:00:00Z".to_string()),
+            completed_at: Some("2026-03-06T10:12:00Z".to_string()),
+            triggered_at: Some("2026-03-06T09:58:00Z".to_string()),
+            message: Some("Documenting investigation findings".to_string()),
+            error: None,
+            job_name: Some("inv-done-001-job".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"status\":\"completed\""));
+        assert!(json.contains("\"completed_at\":\"2026-03-06T10:12:00Z\""));
+        assert!(json.contains("\"message\":\"Documenting investigation findings\""));
+    }
+
+    #[test]
+    fn test_investigation_detail_404_problem_details() {
+        let problem = ProblemDetails {
+            error_type: "https://beeper.io/errors/investigation-not-found".to_string(),
+            title: "Investigation not found".to_string(),
+            status: 404,
+            detail: "No investigation found with ID: inv-nonexistent".to_string(),
+        };
+
+        let json = serde_json::to_string(&problem).unwrap();
+        assert!(json.contains("\"status\":404"));
+        assert!(json.contains("\"title\":\"Investigation not found\""));
+        assert!(json.contains("inv-nonexistent"));
     }
 
     #[test]

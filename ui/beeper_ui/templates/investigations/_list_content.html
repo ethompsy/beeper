@@ -18,7 +18,10 @@
     </thead>
     <tbody>
         {% for inv in investigations %}
-        <tr class="investigation-row">
+        <tr class="investigation-row investigation-row-link"
+            hx-get="/investigations/{{ inv.id }}"
+            hx-push-url="true"
+            hx-target="body">
             <td>
                 <span class="severity-indicator severity-{{ inv.severity }}"
                       role="img"

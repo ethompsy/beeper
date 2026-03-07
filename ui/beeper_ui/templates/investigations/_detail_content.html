@@ -1,0 +1,72 @@
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to fetch investigation</h3>
+    <p>{{ error_message }}</p>
+    <p>Make sure the Beeper operator is running and accessible.</p>
+</div>
+{% elif investigation %}
+<div class="investigation-detail">
+    {# Header #}
+    <div class="card investigation-detail-header">
+        <div class="detail-header-row">
+            <div>
+                <h2>
+                    <span class="severity-indicator severity-{{ investigation.severity }}"
+                          role="img"
+                          aria-label="{{ investigation.severity }} severity"></span>
+                    {{ investigation.condition }}
+                </h2>
+                <div class="detail-meta">
+                    <code>{{ investigation.id }}</code>
+                    <span class="service-badge">{{ investigation.service }}</span>
+                    <span class="status-badge investigation-status-{{ investigation.status }}">
+                        {% if investigation.status == 'investigating' %}In Progress
+                        {% elif investigation.status == 'awaiting_confirmation' %}Awaiting Confirmation
+                        {% elif investigation.status == 'completed' %}Completed
+                        {% elif investigation.status == 'failed' %}Failed
+                        {% else %}{{ investigation.status|replace('_', ' ')|title }}
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="detail-timestamps">
+                    {% if investigation.triggered_at %}
+                    <span>Triggered: {{ investigation.triggered_at }}</span>
+                    {% endif %}
+                    {% if investigation.started_at %}
+                    <span>Started: {{ investigation.started_at }}</span>
+                    {% endif %}
+                    {% if investigation.completed_at %}
+                    <span>Completed: {{ investigation.completed_at }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% if investigation.error %}
+        <div class="detail-error">
+            <strong>Error:</strong> {{ investigation.error }}
+        </div>
+        {% endif %}
+    </div>
+
+    {# Step Progress Timeline #}
+    <div class="card">
+        <h3>Investigation Progress</h3>
+        <div id="step-progress" sse-swap="step-update" hx-swap="innerHTML">
+            {% include "investigations/_step_progress.html" %}
+        </div>
+    </div>
+
+    {# Findings #}
+    <div class="card">
+        <h3>Findings</h3>
+        <div id="findings" sse-swap="findings-update" hx-swap="innerHTML">
+            {% include "investigations/_findings.html" %}
+        </div>
+    </div>
+
+    {# Evidence Panels #}
+    {% if findings %}
+    {% include "investigations/_evidence_panel.html" %}
+    {% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,26 @@
+<div class="step-timeline">
+    {% for step in step_states %}
+    <div class="step-item step-{{ step.state }}">
+        <div class="step-indicator">
+            {% if step.state == 'completed' %}
+            <span class="step-icon step-icon-completed">&#10003;</span>
+            {% elif step.state == 'active' %}
+            <span class="step-icon step-icon-active"></span>
+            {% elif step.state == 'error' %}
+            <span class="step-icon step-icon-error">&#10007;</span>
+            {% else %}
+            <span class="step-icon step-icon-pending"></span>
+            {% endif %}
+        </div>
+        <div class="step-content">
+            <span class="step-label">{{ step.label }}</span>
+            {% if step.state == 'active' and investigation and investigation.message %}
+            <span class="step-message">{{ investigation.message }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% if not step_states %}
+    <p class="empty-state-text">Waiting for investigation to start...</p>
+    {% endif %}
+</div>
