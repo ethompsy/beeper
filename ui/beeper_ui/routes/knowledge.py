@@ -1567,13 +1567,18 @@ def kb_learning() -> tuple[str, int] | str:
 def kb_learning_adjustments() -> tuple[str, int] | str:
     """Generate and return prompt adjustments based on accumulated patterns.
 
+    Accepts optional ?service= query parameter to scope adjustments.
+
     Returns:
         Rendered adjustments partial.
     """
+    service_name = request.args.get("service") or None
     service_client = get_kb_service()
 
     try:
-        patterns = service_client.get_learning_patterns()
+        patterns = service_client.get_learning_patterns(
+            service_name=service_name
+        )
     except KBServiceError as e:
         return render_template(
             "knowledge/_learning_adjustments.html",
@@ -1599,7 +1604,9 @@ def kb_learning_adjustments() -> tuple[str, int] | str:
 
     try:
         learn_service = get_learning_service()
-        adjustments = learn_service.generate_prompt_adjustments(pattern_dicts)
+        adjustments = learn_service.generate_prompt_adjustments(
+            pattern_dicts, service_name
+        )
     except LearningServiceError as e:
         return render_template(
             "knowledge/_learning_adjustments.html",
@@ -1632,7 +1639,12 @@ def kb_learning_prompt_context(service_name: str) -> tuple[dict[str, Any], int]:
     try:
         patterns = service_client.get_learning_patterns(service_name=service_name)
     except KBServiceError as e:
-        return {"error": str(e), "prompt_context": "", "adjustments": []}, 500
+        logger.warning("Prompt context query failed: %s", e)
+        return {
+            "error": "Failed to retrieve learning patterns",
+            "prompt_context": "",
+            "adjustments": [],
+        }, 500
 
     if not patterns:
         return {"prompt_context": "", "adjustments": [], "pattern_count": 0}, 200
@@ -1648,12 +1660,26 @@ def kb_learning_prompt_context(service_name: str) -> tuple[dict[str, Any], int]:
 
     try:
         learn_service = get_learning_service()
-        prompt_context = learn_service.get_prompt_context(pattern_dicts, service_name)
         adjustments = learn_service.generate_prompt_adjustments(
             pattern_dicts, service_name
         )
-    except LearningServiceError as e:
-        return {"error": str(e), "prompt_context": "", "adjustments": []}, 503
+        # Build context string from adjustments (avoids second LLM call)
+        if adjustments:
+            scope = f" for {service_name}" if service_name else ""
+            context_lines = [
+                f"Based on past corrections{scope}, keep these in mind:"
+            ]
+            for adj in adjustments:
+                context_lines.append(f"- {adj}")
+            prompt_context = "\n".join(context_lines)
+        else:
+            prompt_context = ""
+    except LearningServiceError:
+        return {
+            "error": "Unable to generate prompt context",
+            "prompt_context": "",
+            "adjustments": [],
+        }, 503
 
     return {
         "prompt_context": prompt_context,

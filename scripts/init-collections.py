@@ -55,6 +55,17 @@ COLLECTIONS = {
             ("version", PayloadSchemaType.INTEGER),
         ],
     },
+    "learning_patterns": {
+        "description": "Learning patterns from correction diffs",
+        "vector_dim": 1,  # No semantic search needed; payload-only points
+        "payload_indexes": [
+            ("pattern_id", PayloadSchemaType.KEYWORD),
+            ("entry_id", PayloadSchemaType.KEYWORD),
+            ("correction_id", PayloadSchemaType.KEYWORD),
+            ("service_name", PayloadSchemaType.KEYWORD),
+            ("category", PayloadSchemaType.KEYWORD),
+        ],
+    },
 }
 
 

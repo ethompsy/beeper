@@ -687,6 +687,41 @@ class TestLearningRoutes:
         assert response.status_code == 200
         assert b"deployment logs" in response.data
 
+    @patch("beeper_ui.routes.knowledge.get_learning_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_learning_adjustments_service_scoped(
+        self,
+        mock_get_kb: MagicMock,
+        mock_get_learn: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_kb.return_value = mock_svc
+        mock_svc.get_learning_patterns.return_value = [
+            LearningPattern.from_qdrant(
+                _make_learning_pattern_payload()
+            )
+        ]
+
+        mock_learn = MagicMock()
+        mock_get_learn.return_value = mock_learn
+        mock_learn.generate_prompt_adjustments.return_value = [
+            "Check gateway health checks",
+        ]
+
+        response = client.get(
+            "/knowledge/learning/adjustments?service=api-gateway"
+        )
+        assert response.status_code == 200
+        mock_svc.get_learning_patterns.assert_called_once_with(
+            service_name="api-gateway"
+        )
+        mock_learn.generate_prompt_adjustments.assert_called_once()
+        call_args = mock_learn.generate_prompt_adjustments.call_args
+        assert call_args[1].get("service_name") == "api-gateway" or (
+            len(call_args[0]) > 1 and call_args[0][1] == "api-gateway"
+        )
+
     @patch("beeper_ui.routes.knowledge.get_kb_service")
     def test_learning_adjustments_no_patterns(
         self, mock_get_kb: MagicMock, client: FlaskClient
@@ -738,16 +773,18 @@ class TestPromptContextAPI:
 
         mock_learn = MagicMock()
         mock_get_learn.return_value = mock_learn
-        mock_learn.get_prompt_context.return_value = (
-            "Based on past corrections: check deployment logs"
-        )
-        mock_learn.generate_prompt_adjustments.return_value = ["Check deployment logs"]
+        mock_learn.generate_prompt_adjustments.return_value = [
+            "Check deployment logs",
+        ]
 
-        response = client.get("/knowledge/api/learning/prompt-context/api-gateway")
+        response = client.get(
+            "/knowledge/api/learning/prompt-context/api-gateway"
+        )
         assert response.status_code == 200
         data = response.get_json()
         assert data["pattern_count"] == 1
         assert "deployment logs" in data["prompt_context"]
+        assert "past corrections" in data["prompt_context"]
         assert len(data["adjustments"]) == 1
 
     @patch("beeper_ui.routes.knowledge.get_kb_service")
@@ -778,9 +815,13 @@ class TestPromptContextAPI:
 
         mock_learn = MagicMock()
         mock_get_learn.return_value = mock_learn
-        mock_learn.get_prompt_context.side_effect = LearningServiceError("LLM down")
+        mock_learn.generate_prompt_adjustments.side_effect = (
+            LearningServiceError("LLM down")
+        )
 
-        response = client.get("/knowledge/api/learning/prompt-context/api-gateway")
+        response = client.get(
+            "/knowledge/api/learning/prompt-context/api-gateway"
+        )
         assert response.status_code == 503
         data = response.get_json()
         assert "error" in data

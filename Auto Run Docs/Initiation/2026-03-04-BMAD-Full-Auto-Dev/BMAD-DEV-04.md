@@ -50,13 +50,14 @@ This phase implements the Living Knowledge epic, enabling Beeper to learn and im
   - Make all decisions autonomously
   - *Completed: Created story spec and implemented all 6 tasks. Added LearningPattern dataclass + KBService storage methods, LearningService with LLM diff analysis (analyze_correction, generate_prompt_adjustments, get_prompt_context), non-blocking learning hook in apply route, Learning Insights UI page with category bars and service breakdown, prompt context API endpoint. 36 new tests, all 508 pass. Ruff/mypy clean (no new errors).*
 
-- [ ] Review and finalize story 5-3:
+- [x] Review and finalize story 5-3:
   - Use the `/bmad-bmm-code-review` skill to review story 5-3 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `5-3-learning-from-diffs: done`
   - Update story file status to `done`
   - Commit all changes as `5-3 done`
+  - *Completed: Adversarial code review found 4 issues (1 HIGH, 3 MEDIUM). Fixed all: eliminated double LLM call in prompt context API (was calling generate_prompt_adjustments twice), added learning_patterns collection to init-collections.py, added service scope query param to adjustments endpoint (AC#3), sanitized error messages in JSON API. Added 1 new test (adjustments_service_scoped). All 509 tests pass. Ruff/mypy clean (no new errors). Sprint status and story status already done.*
 
 - [ ] Create and implement story 5-4 (Graduated Authoring Trust). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 5, Story 5-4 (FR23: publish entries directly as trust is established). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: KB entry creation patterns, learning from diffs (5-3) for accuracy metrics, version history (2-6) for versioning, KB client for trust level storage

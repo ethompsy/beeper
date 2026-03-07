@@ -221,6 +221,7 @@ Claude Opus 4.6
 ### Change Log
 
 - 2026-03-07: Implemented story 5-3 (Learning from Diffs) — all 6 tasks complete, 36 new tests, 508 total pass
+- 2026-03-07: Code review fixes — 4 issues found (1 HIGH, 3 MEDIUM), all fixed: eliminated double LLM call in prompt context API, added learning_patterns collection to init-collections.py, added service scope query param to adjustments endpoint, sanitized error messages in JSON API. Added 1 new test (adjustments_service_scoped). Total: 509 tests pass.
 
 ### File List
 
@@ -231,4 +232,5 @@ Claude Opus 4.6
 - ui/beeper_ui/templates/knowledge/_learning_adjustments.html (new: adjustments HTMX partial)
 - ui/beeper_ui/templates/knowledge/index.html (modified: added Learning Insights button)
 - ui/beeper_ui/static/css/main.css (modified: added learning CSS)
-- ui/tests/test_learning.py (new: 36 tests for learning features)
+- ui/tests/test_learning.py (new: 37 tests for learning features)
+- scripts/init-collections.py (modified: added learning_patterns collection)
