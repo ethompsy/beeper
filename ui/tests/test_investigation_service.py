@@ -557,3 +557,147 @@ class TestSaveResolutionFeedback:
 
         # Should not raise
         service.save_resolution_feedback("inv-001", {"action": "confirmed"})
+
+
+class TestResolveInvestigation:
+    """Tests for InvestigationService.resolve_investigation()."""
+
+    @respx.mock
+    def test_resolve_investigation_success(self) -> None:
+        """Test successful resolution returns True."""
+        respx.post("http://localhost:8080/api/v1/investigations/inv-001/resolve").mock(
+            return_value=Response(200, json={"status": "resolved", "message": "OK"})
+        )
+        service = InvestigationService("http://localhost:8080")
+        result = service.resolve_investigation(
+            "inv-001",
+            outcome="resolved",
+            accuracy_rating="correct",
+            resolution_notes="Fixed",
+        )
+        assert result is True
+        req = respx.calls.last.request
+        assert b'"outcome"' in req.content
+        assert b'"resolved"' in req.content
+        assert b'"accuracy_rating"' in req.content
+
+    @respx.mock
+    def test_resolve_investigation_not_found(self) -> None:
+        """Test 404 returns False."""
+        respx.post("http://localhost:8080/api/v1/investigations/inv-missing/resolve").mock(
+            return_value=Response(404, json={"title": "Not found"})
+        )
+        service = InvestigationService("http://localhost:8080")
+        result = service.resolve_investigation("inv-missing", outcome="resolved")
+        assert result is False
+
+    @respx.mock
+    def test_resolve_investigation_connection_error(self) -> None:
+        """Test connection error raises InvestigationServiceError."""
+        import httpx
+
+        respx.post("http://localhost:8080/api/v1/investigations/inv-001/resolve").mock(
+            side_effect=httpx.ConnectError("Connection refused")
+        )
+        service = InvestigationService("http://localhost:8080")
+        with pytest.raises(InvestigationServiceError, match="Failed to connect"):
+            service.resolve_investigation("inv-001", outcome="resolved")
+
+    @respx.mock
+    def test_resolve_investigation_escalated(self) -> None:
+        """Test escalated outcome sends correct payload."""
+        respx.post("http://localhost:8080/api/v1/investigations/inv-001/resolve").mock(
+            return_value=Response(200, json={"status": "escalated", "message": "OK"})
+        )
+        service = InvestigationService("http://localhost:8080")
+        result = service.resolve_investigation(
+            "inv-001",
+            outcome="escalated",
+            escalation_target="platform-team",
+        )
+        assert result is True
+        req = respx.calls.last.request
+        assert b'"escalated"' in req.content
+        assert b'"platform-team"' in req.content
+
+
+class TestUpdateKBWithResolution:
+    """Tests for InvestigationService.update_kb_with_resolution()."""
+
+    def test_update_kb_success(self) -> None:
+        """Test KB entry found and updated."""
+        mock_point = MagicMock()
+        mock_point.id = "kb-point-456"
+
+        mock_qdrant = MagicMock()
+        mock_qdrant.scroll.return_value = ([mock_point], None)
+
+        service = InvestigationService("http://localhost:8080")
+        service._qdrant_client = mock_qdrant
+
+        resolution_data = {
+            "resolution_outcome": "resolved",
+            "accuracy_rating": "correct",
+            "mttr_seconds": 3420,
+        }
+        result = service.update_kb_with_resolution("inv-001", resolution_data)
+        assert result is True
+
+        mock_qdrant.set_payload.assert_called_once_with(
+            collection_name="knowledge",
+            payload=resolution_data,
+            points=["kb-point-456"],
+        )
+
+    def test_update_kb_no_entry(self) -> None:
+        """Test returns False when no KB entry for investigation."""
+        mock_qdrant = MagicMock()
+        mock_qdrant.scroll.return_value = ([], None)
+
+        service = InvestigationService("http://localhost:8080")
+        service._qdrant_client = mock_qdrant
+
+        result = service.update_kb_with_resolution("inv-missing", {"outcome": "resolved"})
+        assert result is False
+        mock_qdrant.set_payload.assert_not_called()
+
+    def test_update_kb_error_swallowed(self) -> None:
+        """Test Qdrant errors are swallowed."""
+        mock_qdrant = MagicMock()
+        mock_qdrant.scroll.side_effect = Exception("Qdrant down")
+
+        service = InvestigationService("http://localhost:8080")
+        service._qdrant_client = mock_qdrant
+
+        result = service.update_kb_with_resolution("inv-001", {"outcome": "resolved"})
+        assert result is False
+
+
+class TestCalculateMTTR:
+    """Tests for InvestigationService.calculate_mttr()."""
+
+    def test_calculate_mttr_valid(self) -> None:
+        """Test MTTR calculated from valid timestamps."""
+        result = InvestigationService.calculate_mttr(
+            "2026-03-07T10:00:00Z", "2026-03-07T10:57:00Z"
+        )
+        assert result == 3420  # 57 minutes = 3420 seconds
+
+    def test_calculate_mttr_none_started_at(self) -> None:
+        """Test returns None when started_at is None."""
+        result = InvestigationService.calculate_mttr(None, "2026-03-07T10:57:00Z")
+        assert result is None
+
+    def test_calculate_mttr_with_offset(self) -> None:
+        """Test MTTR with timezone-aware timestamps."""
+        result = InvestigationService.calculate_mttr(
+            "2026-03-07T10:00:00+00:00", "2026-03-07T11:00:00+00:00"
+        )
+        assert result == 3600  # 1 hour
+
+    def test_calculate_mttr_invalid_format(self) -> None:
+        """Test returns None for invalid timestamp format."""
+        result = InvestigationService.calculate_mttr(
+            "not-a-date", "2026-03-07T10:57:00Z"
+        )
+        assert result is None

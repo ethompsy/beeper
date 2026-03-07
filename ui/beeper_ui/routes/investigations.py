@@ -36,6 +36,38 @@ VALID_DATE_RANGES = {"today", "7d", "30d", "90d"}
 # Service name validation: alphanumeric, hyphens, underscores, dots (max 128 chars)
 SERVICE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9._-]{1,128}$")
 
+# Valid resolution outcomes
+VALID_OUTCOMES = {"resolved", "not_an_issue", "escalated", "unresolved"}
+
+# Valid Beeper accuracy ratings
+VALID_ACCURACY_RATINGS = {"correct", "partially_correct", "incorrect"}
+
+# Valid not-an-issue reasons
+VALID_NOT_AN_ISSUE_REASONS = {"false_positive", "expected_behavior", "transient", "other"}
+
+# Human-readable outcome labels
+OUTCOME_LABELS = {
+    "resolved": "Resolved",
+    "not_an_issue": "Not an Issue",
+    "escalated": "Escalated",
+    "unresolved": "Unresolved",
+}
+
+# Human-readable accuracy rating labels
+ACCURACY_LABELS = {
+    "correct": "Correct",
+    "partially_correct": "Partially correct",
+    "incorrect": "Incorrect",
+}
+
+# Human-readable not-an-issue reason labels
+NOT_AN_ISSUE_LABELS = {
+    "false_positive": "False positive",
+    "expected_behavior": "Expected behavior",
+    "transient": "Transient",
+    "other": "Other",
+}
+
 # Valid rejection reason categories
 VALID_REJECTION_REASONS = {
     "hypothesis_incorrect",
@@ -529,6 +561,167 @@ def reject_resolution(investigation_id: str) -> str | tuple[str, int]:
         svc.close()
 
 
+def format_mttr(seconds: int | None) -> str:
+    """Format MTTR seconds as human-readable duration.
+
+    Args:
+        seconds: MTTR in seconds, or None.
+
+    Returns:
+        Human-readable string like "5m", "2h 15m", "1d 3h", or "N/A".
+    """
+    if seconds is None:
+        return "N/A"
+    if seconds < 60:
+        return "<1m"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        hours = seconds // 3600
+        mins = (seconds % 3600) // 60
+        return f"{hours}h {mins}m" if mins else f"{hours}h"
+    days = seconds // 86400
+    hours = (seconds % 86400) // 3600
+    return f"{days}d {hours}h" if hours else f"{days}d"
+
+
+@investigations_bp.route("/<investigation_id>/resolve", methods=["POST"])
+def resolve_investigation_route(investigation_id: str) -> str | tuple[str, int]:
+    """Resolve an investigation with a final outcome.
+
+    Accepts HTMX POST with outcome, accuracy rating, notes, etc.
+    Calls operator, saves resolution data, updates KB, calculates MTTR.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    outcome = (request.form.get("outcome") or "").strip()
+    accuracy_rating = (request.form.get("accuracy_rating") or "").strip() or None
+    resolution_notes = (request.form.get("resolution_notes") or "").strip() or None
+    escalation_target = (request.form.get("escalation_target") or "").strip() or None
+    not_an_issue_reason = (request.form.get("not_an_issue_reason") or "").strip() or None
+
+    # Validate outcome
+    if outcome not in VALID_OUTCOMES:
+        return render_template(
+            "investigations/_resolution_result.html",
+            action="error",
+            error_message="Invalid resolution outcome.",
+        ), 400
+
+    # Conditional validation per outcome
+    if outcome == "resolved" and accuracy_rating and accuracy_rating not in VALID_ACCURACY_RATINGS:
+        return render_template(
+            "investigations/_resolution_result.html",
+            action="error",
+            error_message="Invalid accuracy rating.",
+        ), 400
+
+    if (
+        outcome == "not_an_issue"
+        and not_an_issue_reason
+        and not_an_issue_reason not in VALID_NOT_AN_ISSUE_REASONS
+    ):
+        return render_template(
+            "investigations/_resolution_result.html",
+            action="error",
+            error_message="Invalid reason for not-an-issue.",
+        ), 400
+
+    if outcome == "escalated" and not escalation_target:
+        return render_template(
+            "investigations/_resolution_result.html",
+            action="error",
+            error_message="Please provide an escalation target.",
+        ), 400
+
+    svc = get_investigation_service()
+    try:
+        # Get investigation details for MTTR calculation
+        investigation = svc.get_investigation(investigation_id)
+
+        success = svc.resolve_investigation(
+            investigation_id,
+            outcome=outcome,
+            accuracy_rating=accuracy_rating,
+            resolution_notes=resolution_notes,
+            escalation_target=escalation_target,
+            not_an_issue_reason=not_an_issue_reason,
+        )
+        if not success:
+            return render_template(
+                "investigations/_resolution_result.html",
+                action="error",
+                error_message="Investigation not found.",
+            ), 404
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Calculate MTTR for non-escalated outcomes
+        mttr_seconds: int | None = None
+        if outcome != "escalated" and investigation:
+            mttr_seconds = InvestigationService.calculate_mttr(
+                investigation.started_at, now
+            )
+
+        # Save resolution data to Qdrant investigations collection
+        resolution_feedback: dict[str, object] = {
+            "resolution_outcome": outcome,
+            "accuracy_rating": accuracy_rating,
+            "resolution_notes": resolution_notes,
+            "escalation_target": escalation_target,
+            "not_an_issue_reason": not_an_issue_reason,
+            "resolved_at": now,
+            "mttr_seconds": mttr_seconds,
+        }
+        svc.save_resolution_feedback(investigation_id, resolution_feedback)
+
+        # Update KB entry with resolution for non-escalated
+        kb_updated = False
+        if outcome != "escalated":
+            kb_resolution_data: dict[str, object] = {
+                "resolution_outcome": outcome,
+                "accuracy_rating": accuracy_rating,
+                "resolution_notes": resolution_notes,
+                "resolved_at": now,
+                "mttr_seconds": mttr_seconds,
+            }
+            kb_updated = svc.update_kb_with_resolution(
+                investigation_id, kb_resolution_data
+            )
+
+        outcome_label = OUTCOME_LABELS.get(outcome, outcome)
+        accuracy_label = ACCURACY_LABELS.get(accuracy_rating or "", accuracy_rating)
+        not_an_issue_label = NOT_AN_ISSUE_LABELS.get(
+            not_an_issue_reason or "", not_an_issue_reason
+        )
+        mttr_display = format_mttr(mttr_seconds)
+
+        return render_template(
+            "investigations/_resolution_result.html",
+            action=outcome,
+            outcome_label=outcome_label,
+            accuracy_rating=accuracy_rating,
+            accuracy_label=accuracy_label,
+            resolution_notes=resolution_notes,
+            escalation_target=escalation_target,
+            not_an_issue_reason=not_an_issue_reason,
+            not_an_issue_label=not_an_issue_label,
+            resolved_at=now,
+            mttr_seconds=mttr_seconds,
+            mttr_display=mttr_display,
+            kb_updated=kb_updated,
+        )
+    except InvestigationServiceError:
+        return render_template(
+            "investigations/_resolution_result.html",
+            action="error",
+            error_message="Unable to connect to the Beeper operator.",
+        ), 503
+    finally:
+        svc.close()
+
+
 def _generate_detail_sse_events(
     operator_url: str,
     operator_timeout: float,
@@ -548,6 +741,7 @@ def _generate_detail_sse_events(
     last_findings_keys: set[str] = set()
     kb_update_sent = False
     last_resolution_action: str | None = None
+    last_resolution_outcome: str | None = None
 
     while True:
         try:
@@ -658,6 +852,24 @@ def _generate_detail_sse_events(
                     )
                     yield f"event: confirmation-update\n{confirm_lines}\n\n"
                     last_resolution_action = current_resolution
+
+            # Check for resolution outcome changes (resolve investigation)
+            if findings:
+                current_outcome = str(
+                    findings.get("resolution_outcome", "")
+                ) or None
+                if current_outcome != last_resolution_outcome:
+                    resolve_html = render_template(
+                        "investigations/_resolution_form.html",
+                        investigation=detail,
+                        findings=findings,
+                    )
+                    resolve_lines = "\n".join(
+                        f"data: {line}"
+                        for line in resolve_html.split("\n")
+                    )
+                    yield f"event: resolution-update\n{resolve_lines}\n\n"
+                    last_resolution_outcome = current_outcome
 
             # Send completion event
             if current_phase == "completed":

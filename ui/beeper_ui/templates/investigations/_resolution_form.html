@@ -1,0 +1,181 @@
+{# Resolution form for marking investigation as resolved #}
+{% set resolution_outcome = findings.get('resolution_outcome', '') if findings else '' %}
+
+{% if resolution_outcome == 'resolved' %}
+<div class="resolution-status-banner resolution-resolved" role="status">
+    <span class="banner-icon">&#10004;</span>
+    <div class="banner-content">
+        <strong>Investigation Resolved</strong>
+        {% if findings.get('accuracy_rating') %}
+        <span class="accuracy-badge accuracy-{{ findings.get('accuracy_rating', '') }}">
+            {{ findings.get('accuracy_rating', '')|replace('_', ' ')|title }}
+        </span>
+        {% endif %}
+        {% if findings.get('resolution_notes') %}
+        <p class="confirmation-detail">{{ findings.get('resolution_notes') }}</p>
+        {% endif %}
+        {% if findings.get('mttr_seconds') is not none %}
+        <p class="mttr-display">MTTR: {{ findings.get('mttr_seconds', 0) // 60 }}m</p>
+        {% endif %}
+        {% if findings.get('resolved_at') %}
+        <p class="confirmation-timestamp">{{ findings.get('resolved_at') }}</p>
+        {% endif %}
+    </div>
+</div>
+
+{% elif resolution_outcome == 'not_an_issue' %}
+<div class="resolution-status-banner resolution-not-an-issue" role="status">
+    <span class="banner-icon">&#8856;</span>
+    <div class="banner-content">
+        <strong>Marked as Not an Issue</strong>
+        {% if findings.get('not_an_issue_reason') %}
+        <span class="rejection-reason-badge">{{ findings.get('not_an_issue_reason', '')|replace('_', ' ')|title }}</span>
+        {% endif %}
+        {% if findings.get('resolution_notes') %}
+        <p class="confirmation-detail">{{ findings.get('resolution_notes') }}</p>
+        {% endif %}
+        {% if findings.get('resolved_at') %}
+        <p class="confirmation-timestamp">{{ findings.get('resolved_at') }}</p>
+        {% endif %}
+    </div>
+</div>
+
+{% elif resolution_outcome == 'escalated' %}
+<div class="resolution-status-banner resolution-escalated" role="status">
+    <span class="banner-icon">&#8593;</span>
+    <div class="banner-content">
+        <strong>Investigation Escalated</strong>
+        {% if findings.get('escalation_target') %}
+        <p class="confirmation-detail">Escalated to: <strong>{{ findings.get('escalation_target') }}</strong></p>
+        {% endif %}
+        {% if findings.get('resolution_notes') %}
+        <p class="confirmation-detail">{{ findings.get('resolution_notes') }}</p>
+        {% endif %}
+        <p class="confirmation-detail" style="font-style: italic;">Investigation remains open.</p>
+        {% if findings.get('resolved_at') %}
+        <p class="confirmation-timestamp">{{ findings.get('resolved_at') }}</p>
+        {% endif %}
+    </div>
+</div>
+
+{% elif resolution_outcome == 'unresolved' %}
+<div class="resolution-status-banner resolution-unresolved" role="status">
+    <span class="banner-icon">&#8212;</span>
+    <div class="banner-content">
+        <strong>Investigation Closed (Unresolved)</strong>
+        {% if findings.get('resolution_notes') %}
+        <p class="confirmation-detail">{{ findings.get('resolution_notes') }}</p>
+        {% endif %}
+        {% if findings.get('mttr_seconds') is not none %}
+        <p class="mttr-display">MTTR: {{ findings.get('mttr_seconds', 0) // 60 }}m</p>
+        {% endif %}
+        {% if findings.get('resolved_at') %}
+        <p class="confirmation-timestamp">{{ findings.get('resolved_at') }}</p>
+        {% endif %}
+    </div>
+</div>
+
+{% elif investigation and investigation.status not in ('investigating', 'failed') %}
+<div class="resolution-form">
+    <form hx-post="{{ url_for('investigations.resolve_investigation_route', investigation_id=investigation.id) }}"
+          hx-target="#resolution-result"
+          hx-swap="outerHTML"
+          hx-indicator="#resolution-loading">
+
+        <div class="form-group">
+            <label for="outcome">Resolution Outcome</label>
+            <select name="outcome" id="outcome" required>
+                <option value="" disabled selected>Select outcome...</option>
+                <option value="resolved">Resolved</option>
+                <option value="not_an_issue">Not an Issue</option>
+                <option value="escalated">Escalated</option>
+                <option value="unresolved">Unresolved</option>
+            </select>
+        </div>
+
+        {# Conditional fields for 'resolved' #}
+        <div class="outcome-fields outcome-resolved">
+            <div class="form-group">
+                <label for="accuracy_rating">Beeper Accuracy Rating</label>
+                <select name="accuracy_rating" id="accuracy_rating">
+                    <option value="" selected>No rating</option>
+                    <option value="correct">Correct</option>
+                    <option value="partially_correct">Partially correct</option>
+                    <option value="incorrect">Incorrect</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="resolution_notes_resolved">Resolution Notes</label>
+                <textarea name="resolution_notes" id="resolution_notes_resolved" rows="3"
+                          placeholder="Describe the resolution action taken..."></textarea>
+            </div>
+        </div>
+
+        {# Conditional fields for 'not_an_issue' #}
+        <div class="outcome-fields outcome-not_an_issue">
+            <div class="form-group">
+                <label for="not_an_issue_reason">Reason</label>
+                <select name="not_an_issue_reason" id="not_an_issue_reason">
+                    <option value="" selected>Select reason...</option>
+                    <option value="false_positive">False positive</option>
+                    <option value="expected_behavior">Expected behavior</option>
+                    <option value="transient">Transient</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="resolution_notes_not_an_issue">Notes</label>
+                <textarea name="resolution_notes" id="resolution_notes_not_an_issue" rows="3"
+                          placeholder="Explain why this is not an issue..."></textarea>
+            </div>
+        </div>
+
+        {# Conditional fields for 'escalated' #}
+        <div class="outcome-fields outcome-escalated">
+            <div class="form-group">
+                <label for="escalation_target">Escalation Target</label>
+                <input type="text" name="escalation_target" id="escalation_target"
+                       placeholder="e.g., platform-team, security-team" />
+            </div>
+            <div class="form-group">
+                <label for="resolution_notes_escalated">Notes</label>
+                <textarea name="resolution_notes" id="resolution_notes_escalated" rows="3"
+                          placeholder="Explain why this needs escalation..."></textarea>
+            </div>
+        </div>
+
+        {# Conditional fields for 'unresolved' #}
+        <div class="outcome-fields outcome-unresolved">
+            <div class="form-group">
+                <label for="resolution_notes_unresolved">Notes</label>
+                <textarea name="resolution_notes" id="resolution_notes_unresolved" rows="3"
+                          placeholder="Explain why the investigation could not be resolved..."></textarea>
+            </div>
+        </div>
+
+        <div id="resolution-loading" class="confirmation-loading" style="display:none;">
+            Resolving investigation...
+        </div>
+
+        <button type="submit" class="btn btn-resolve">Resolve Investigation</button>
+    </form>
+</div>
+
+<script>
+(function() {
+    var sel = document.getElementById('outcome');
+    if (!sel) return;
+    function toggle() {
+        document.querySelectorAll('.outcome-fields').forEach(function(el) {
+            el.classList.remove('active');
+        });
+        var target = document.querySelector('.outcome-' + sel.value);
+        if (target) target.classList.add('active');
+    }
+    sel.addEventListener('change', toggle);
+})();
+</script>
+
+{% else %}
+<p class="empty-state-text">Resolution will be available when the investigation has progressed.</p>
+{% endif %}

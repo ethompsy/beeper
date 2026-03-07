@@ -2067,3 +2067,372 @@ def _make_mock_kb_entry(
     entry.tags = []
     entry.relevance_score = None
     return entry
+
+
+class TestInvestigationResolution:
+    """Tests for investigation resolution workflow (Story 4-6)."""
+
+    @respx.mock
+    def test_resolve_resolved_success(self, client: FlaskClient) -> None:
+        """Test POST resolve with outcome=resolved returns success."""
+        # Mock the get_investigation call (for MTTR calculation)
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-001"
+        ).mock(
+            return_value=Response(200, json={
+                "id": "inv-001", "status": "completed", "service": "payments",
+                "severity": "high", "condition": "Error rate", "started_at": "2026-03-07T10:00:00Z",
+            })
+        )
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-001/resolve"
+        ).mock(
+            return_value=Response(200, json={"status": "resolved", "message": "OK"})
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.save_resolution_feedback"
+        ) as mock_save, patch(
+            "beeper_ui.routes.investigations.InvestigationService.update_kb_with_resolution",
+            return_value=True,
+        ):
+            response = client.post(
+                "/investigations/inv-001/resolve",
+                data={
+                    "outcome": "resolved",
+                    "accuracy_rating": "correct",
+                    "resolution_notes": "Restarted service",
+                },
+            )
+            assert response.status_code == 200
+            assert b"Investigation Resolved" in response.data
+            assert b"resolution-resolved" in response.data
+            assert b"Correct" in response.data
+            # Verify feedback saved with MTTR
+            mock_save.assert_called_once()
+            feedback = mock_save.call_args[0][1]
+            assert feedback["resolution_outcome"] == "resolved"
+            assert feedback["accuracy_rating"] == "correct"
+            assert feedback["mttr_seconds"] is not None
+
+    @respx.mock
+    def test_resolve_not_an_issue(self, client: FlaskClient) -> None:
+        """Test resolve with outcome=not_an_issue."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-001"
+        ).mock(
+            return_value=Response(200, json={
+                "id": "inv-001", "status": "completed", "service": "payments",
+                "severity": "low", "condition": "Alert", "started_at": "2026-03-07T10:00:00Z",
+            })
+        )
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-001/resolve"
+        ).mock(
+            return_value=Response(200, json={"status": "not_an_issue", "message": "OK"})
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.save_resolution_feedback"
+        ), patch(
+            "beeper_ui.routes.investigations.InvestigationService.update_kb_with_resolution",
+            return_value=False,
+        ):
+            response = client.post(
+                "/investigations/inv-001/resolve",
+                data={
+                    "outcome": "not_an_issue",
+                    "not_an_issue_reason": "false_positive",
+                },
+            )
+            assert response.status_code == 200
+            assert b"Not an Issue" in response.data
+            assert b"resolution-not-an-issue" in response.data
+
+    @respx.mock
+    def test_resolve_escalated(self, client: FlaskClient) -> None:
+        """Test resolve with outcome=escalated."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-001"
+        ).mock(
+            return_value=Response(200, json={
+                "id": "inv-001", "status": "awaiting_confirmation", "service": "payments",
+                "severity": "high", "condition": "Error", "started_at": "2026-03-07T10:00:00Z",
+            })
+        )
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-001/resolve"
+        ).mock(
+            return_value=Response(200, json={"status": "escalated", "message": "OK"})
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.save_resolution_feedback"
+        ) as mock_save:
+            response = client.post(
+                "/investigations/inv-001/resolve",
+                data={
+                    "outcome": "escalated",
+                    "escalation_target": "platform-team",
+                    "resolution_notes": "Needs platform team",
+                },
+            )
+            assert response.status_code == 200
+            assert b"Escalated" in response.data
+            assert b"platform-team" in response.data
+            assert b"resolution-escalated" in response.data
+            # MTTR should not be calculated for escalated
+            feedback = mock_save.call_args[0][1]
+            assert feedback["mttr_seconds"] is None
+
+    @respx.mock
+    def test_resolve_unresolved(self, client: FlaskClient) -> None:
+        """Test resolve with outcome=unresolved."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-001"
+        ).mock(
+            return_value=Response(200, json={
+                "id": "inv-001", "status": "completed", "service": "payments",
+                "severity": "medium", "condition": "Spike", "started_at": "2026-03-07T10:00:00Z",
+            })
+        )
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-001/resolve"
+        ).mock(
+            return_value=Response(200, json={"status": "unresolved", "message": "OK"})
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.save_resolution_feedback"
+        ), patch(
+            "beeper_ui.routes.investigations.InvestigationService.update_kb_with_resolution",
+            return_value=True,
+        ):
+            response = client.post(
+                "/investigations/inv-001/resolve",
+                data={"outcome": "unresolved", "resolution_notes": "Cannot determine root cause"},
+            )
+            assert response.status_code == 200
+            assert b"Unresolved" in response.data
+            assert b"resolution-unresolved" in response.data
+
+    def test_resolve_invalid_outcome(self, client: FlaskClient) -> None:
+        """Test resolve with invalid outcome returns 400."""
+        response = client.post(
+            "/investigations/inv-001/resolve",
+            data={"outcome": "invalid_outcome"},
+        )
+        assert response.status_code == 400
+        assert b"Invalid resolution outcome" in response.data
+
+    def test_resolve_invalid_accuracy(self, client: FlaskClient) -> None:
+        """Test resolve with invalid accuracy rating returns 400."""
+        response = client.post(
+            "/investigations/inv-001/resolve",
+            data={"outcome": "resolved", "accuracy_rating": "wrong_value"},
+        )
+        assert response.status_code == 400
+        assert b"Invalid accuracy rating" in response.data
+
+    def test_resolve_escalated_no_target(self, client: FlaskClient) -> None:
+        """Test escalated without target returns 400."""
+        response = client.post(
+            "/investigations/inv-001/resolve",
+            data={"outcome": "escalated"},
+        )
+        assert response.status_code == 400
+        assert b"escalation target" in response.data
+
+    @respx.mock
+    def test_resolve_operator_error(self, client: FlaskClient) -> None:
+        """Test resolve returns 503 when operator unavailable."""
+        import httpx
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-001"
+        ).mock(side_effect=httpx.ConnectError("Connection refused"))
+
+        response = client.post(
+            "/investigations/inv-001/resolve",
+            data={"outcome": "resolved"},
+        )
+        assert response.status_code == 503
+        assert b"Unable to connect" in response.data
+
+    @respx.mock
+    def test_resolve_not_found(self, client: FlaskClient) -> None:
+        """Test resolve returns 404 when investigation not found."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-gone"
+        ).mock(
+            return_value=Response(200, json={
+                "id": "inv-gone", "status": "completed", "service": "test",
+                "severity": "low", "condition": "Test",
+            })
+        )
+        respx.post(
+            "http://mock-operator:8080/api/v1/investigations/inv-gone/resolve"
+        ).mock(return_value=Response(404, json={"error": "not found"}))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.save_resolution_feedback"
+        ):
+            response = client.post(
+                "/investigations/inv-gone/resolve",
+                data={"outcome": "resolved"},
+            )
+            assert response.status_code == 404
+            assert b"Investigation not found" in response.data
+
+    def test_resolve_invalid_id(self, client: FlaskClient) -> None:
+        """Test resolve with invalid investigation_id returns 404."""
+        response = client.post(
+            "/investigations/../evil/resolve",
+            data={"outcome": "resolved"},
+        )
+        assert response.status_code == 404
+
+    @respx.mock
+    def test_detail_page_shows_resolution_form(self, client: FlaskClient) -> None:
+        """Test detail page shows resolution form when status allows it."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-completed-001"
+        ).mock(
+            return_value=Response(200, json={
+                "id": "inv-completed-001", "status": "completed",
+                "service": "payments", "severity": "high",
+                "condition": "Error rate",
+                "started_at": "2026-03-07T10:00:00Z",
+            })
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={"recommendations": [{"action": "restart"}]},
+        ):
+            response = client.get("/investigations/inv-completed-001")
+            assert response.status_code == 200
+            assert b"Investigation Resolution" in response.data
+            assert b"Resolve Investigation" in response.data
+
+    @respx.mock
+    def test_detail_page_shows_resolution_banner(self, client: FlaskClient) -> None:
+        """Test detail page shows resolved banner when already resolved."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-resolved-001"
+        ).mock(
+            return_value=Response(200, json={
+                "id": "inv-resolved-001", "status": "completed",
+                "service": "payments", "severity": "high",
+                "condition": "Error rate",
+                "started_at": "2026-03-07T10:00:00Z",
+            })
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={
+                "resolution_outcome": "resolved",
+                "accuracy_rating": "correct",
+                "mttr_seconds": 3420,
+                "resolved_at": "2026-03-07T10:57:00Z",
+            },
+        ):
+            response = client.get("/investigations/inv-resolved-001")
+            assert response.status_code == 200
+            assert b"Investigation Resolved" in response.data
+            assert b"resolution-resolved" in response.data
+
+    @respx.mock
+    def test_sse_resolution_update_event(self, client: FlaskClient) -> None:
+        """Test SSE fires resolution-update when resolution_outcome appears."""
+        from beeper_ui.routes.investigations import _generate_detail_sse_events
+
+        # First poll: awaiting_confirmation, no resolution_outcome
+        findings_before: dict[str, object] = {"recommendations": [{"action": "restart"}]}
+        # Second poll: completed with resolution_outcome
+        findings_after: dict[str, object] = {
+            "recommendations": [{"action": "restart"}],
+            "resolution_outcome": "resolved",
+            "accuracy_rating": "correct",
+        }
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-001"
+        ).mock(
+            side_effect=[
+                Response(200, json={
+                    "id": "inv-001", "status": "awaiting_confirmation",
+                    "service": "test", "severity": "low", "condition": "Test",
+                    "started_at": "2026-03-07T10:00:00Z",
+                }),
+                Response(200, json={
+                    "id": "inv-001", "status": "completed", "service": "test",
+                    "severity": "low", "condition": "Test",
+                    "started_at": "2026-03-07T10:00:00Z",
+                }),
+            ]
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            side_effect=[findings_before, findings_after],
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-001"
+                )
+                events: list[str] = []
+                try:
+                    for _ in range(20):
+                        event = next(gen)
+                        events.append(event)
+                        if "investigation-complete" in event:
+                            break
+                except StopIteration:
+                    pass
+                gen.close()
+
+                all_events = "".join(events)
+                assert "resolution-update" in all_events
+
+
+class TestFormatMTTR:
+    """Tests for format_mttr() helper."""
+
+    def test_format_mttr_none(self) -> None:
+        """Test None returns N/A."""
+        from beeper_ui.routes.investigations import format_mttr
+
+        assert format_mttr(None) == "N/A"
+
+    def test_format_mttr_sub_minute(self) -> None:
+        """Test <60 seconds returns <1m."""
+        from beeper_ui.routes.investigations import format_mttr
+
+        assert format_mttr(30) == "<1m"
+        assert format_mttr(0) == "<1m"
+
+    def test_format_mttr_minutes(self) -> None:
+        """Test minutes formatting."""
+        from beeper_ui.routes.investigations import format_mttr
+
+        assert format_mttr(300) == "5m"
+        assert format_mttr(3420) == "57m"
+
+    def test_format_mttr_hours(self) -> None:
+        """Test hours formatting."""
+        from beeper_ui.routes.investigations import format_mttr
+
+        assert format_mttr(3600) == "1h"
+        assert format_mttr(7500) == "2h 5m"
+
+    def test_format_mttr_days(self) -> None:
+        """Test days formatting."""
+        from beeper_ui.routes.investigations import format_mttr
+
+        assert format_mttr(86400) == "1d"
+        assert format_mttr(97200) == "1d 3h"

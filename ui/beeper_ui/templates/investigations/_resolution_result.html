@@ -1,0 +1,86 @@
+<div id="resolution-result">
+{% if action == 'resolved' %}
+<div class="resolution-result resolution-resolved" role="status">
+    <span class="result-icon">&#10004;</span>
+    <div class="result-content">
+        <strong>Investigation Resolved</strong>
+        {% if accuracy_rating %}
+        <span class="accuracy-badge accuracy-{{ accuracy_rating }}">{{ accuracy_label }}</span>
+        {% endif %}
+        {% if resolution_notes %}
+        <p class="confirmation-detail">{{ resolution_notes }}</p>
+        {% endif %}
+        {% if mttr_display %}
+        <p class="mttr-display">MTTR: {{ mttr_display }}</p>
+        {% endif %}
+        {% if kb_updated %}
+        <p class="confirmation-detail" style="color: #16a34a;">KB entry updated with resolution.</p>
+        {% endif %}
+        {% if resolved_at %}
+        <p class="confirmation-timestamp">{{ resolved_at }}</p>
+        {% endif %}
+    </div>
+</div>
+
+{% elif action == 'not_an_issue' %}
+<div class="resolution-result resolution-not-an-issue" role="status">
+    <span class="result-icon">&#8856;</span>
+    <div class="result-content">
+        <strong>Marked as Not an Issue</strong>
+        {% if not_an_issue_label %}
+        <span class="rejection-reason-badge">{{ not_an_issue_label }}</span>
+        {% endif %}
+        {% if resolution_notes %}
+        <p class="confirmation-detail">{{ resolution_notes }}</p>
+        {% endif %}
+        {% if resolved_at %}
+        <p class="confirmation-timestamp">{{ resolved_at }}</p>
+        {% endif %}
+    </div>
+</div>
+
+{% elif action == 'escalated' %}
+<div class="resolution-result resolution-escalated" role="status">
+    <span class="result-icon">&#8593;</span>
+    <div class="result-content">
+        <strong>Investigation Escalated</strong>
+        {% if escalation_target %}
+        <p class="confirmation-detail">Escalated to: <strong>{{ escalation_target }}</strong></p>
+        {% endif %}
+        {% if resolution_notes %}
+        <p class="confirmation-detail">{{ resolution_notes }}</p>
+        {% endif %}
+        <p class="confirmation-detail" style="font-style: italic;">Investigation remains open.</p>
+        {% if resolved_at %}
+        <p class="confirmation-timestamp">{{ resolved_at }}</p>
+        {% endif %}
+    </div>
+</div>
+
+{% elif action == 'unresolved' %}
+<div class="resolution-result resolution-unresolved" role="status">
+    <span class="result-icon">&#8212;</span>
+    <div class="result-content">
+        <strong>Investigation Closed (Unresolved)</strong>
+        {% if resolution_notes %}
+        <p class="confirmation-detail">{{ resolution_notes }}</p>
+        {% endif %}
+        {% if mttr_display %}
+        <p class="mttr-display">MTTR: {{ mttr_display }}</p>
+        {% endif %}
+        {% if resolved_at %}
+        <p class="confirmation-timestamp">{{ resolved_at }}</p>
+        {% endif %}
+    </div>
+</div>
+
+{% elif action == 'error' %}
+<div class="resolution-result resolution-error" role="alert">
+    <span class="result-icon">&#9888;</span>
+    <div class="result-content">
+        <strong>Action Failed</strong>
+        <p class="confirmation-detail">{{ error_message }}</p>
+    </div>
+</div>
+{% endif %}
+</div>

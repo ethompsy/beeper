@@ -69,6 +69,10 @@ pub fn api_router_with_detection(
             "/api/v1/investigations/:id/reject",
             post(reject_investigation),
         )
+        .route(
+            "/api/v1/investigations/:id/resolve",
+            post(resolve_investigation),
+        )
         .route("/api/v1/health/components", get(health_components))
         .route("/api/v1/ingestion/stats", get(ingestion_stats))
         .route("/api/v1/detection/stats", get(detection_stats_handler))
@@ -568,6 +572,131 @@ async fn reject_investigation(
                 Json(ProblemDetails {
                     error_type: "https://beeper.io/errors/investigation-reject-failed".to_string(),
                     title: "Failed to reject investigation".to_string(),
+                    status: 500,
+                    detail: format!("Could not retrieve investigation: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Request body for resolving an investigation with outcome
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ResolutionResolveRequest {
+    pub outcome: String,
+    pub accuracy_rating: Option<String>,
+    pub resolution_notes: Option<String>,
+    pub escalation_target: Option<String>,
+    pub not_an_issue_reason: Option<String>,
+}
+
+/// Resolve an investigation with a final outcome
+async fn resolve_investigation(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+    Json(body): Json<ResolutionResolveRequest>,
+) -> impl IntoResponse {
+    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+
+    match investigations_api.get(&id).await {
+        Ok(_inv) => {
+            // Build patch based on outcome
+            let message = match body.outcome.as_str() {
+                "resolved" => {
+                    let notes = body.resolution_notes.as_deref().unwrap_or("No details provided");
+                    format!("Investigation resolved: {}", notes)
+                }
+                "not_an_issue" => {
+                    let reason = body.not_an_issue_reason.as_deref().unwrap_or("unspecified");
+                    format!("Not an issue: {}", reason)
+                }
+                "escalated" => {
+                    let target = body.escalation_target.as_deref().unwrap_or("unspecified");
+                    format!("Escalated to: {}", target)
+                }
+                "unresolved" => "Investigation closed as unresolved".to_string(),
+                _ => format!("Investigation resolved with outcome: {}", body.outcome),
+            };
+
+            // For escalated: don't change phase or set completed_at
+            // For all others: set phase to completed and completed_at
+            let patch = if body.outcome == "escalated" {
+                serde_json::json!({
+                    "status": {
+                        "message": message
+                    }
+                })
+            } else {
+                let completed_at = chrono::Utc::now().to_rfc3339();
+                serde_json::json!({
+                    "status": {
+                        "phase": "completed",
+                        "completed_at": completed_at,
+                        "message": message
+                    }
+                })
+            };
+
+            match investigations_api
+                .patch_status(
+                    &id,
+                    &kube::api::PatchParams::apply("beeper-ui"),
+                    &kube::api::Patch::Merge(patch),
+                )
+                .await
+            {
+                Ok(_) => {
+                    debug!(
+                        investigation_id = %id,
+                        outcome = %body.outcome,
+                        "Investigation resolved"
+                    );
+                    (
+                        StatusCode::OK,
+                        Json(ResolutionActionResponse {
+                            status: body.outcome.clone(),
+                            message: format!("Investigation {} resolved as {}", id, body.outcome),
+                        }),
+                    )
+                        .into_response()
+                }
+                Err(e) => {
+                    warn!(error = %e, investigation_id = %id, "Failed to patch investigation status for resolution");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ProblemDetails {
+                            error_type: "https://beeper.io/errors/investigation-resolve-failed"
+                                .to_string(),
+                            title: "Failed to resolve investigation".to_string(),
+                            status: 500,
+                            detail: format!("Could not update investigation status: {}", e),
+                        }),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        Err(kube::Error::Api(err)) if err.code == 404 => {
+            warn!(investigation_id = %id, "Investigation not found for resolution");
+            (
+                StatusCode::NOT_FOUND,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-not-found".to_string(),
+                    title: "Investigation not found".to_string(),
+                    status: 404,
+                    detail: format!("No investigation found with ID: {}", id),
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, investigation_id = %id, "Failed to get investigation for resolution");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-resolve-failed".to_string(),
+                    title: "Failed to resolve investigation".to_string(),
                     status: 500,
                     detail: format!("Could not retrieve investigation: {}", e),
                 }),
@@ -1249,6 +1378,82 @@ mod tests {
             Some("Use a different approach")
         );
         assert_eq!(req.correction.as_deref(), Some("Restart the pod"));
+    }
+
+    #[test]
+    fn test_resolution_resolve_request_all_fields() {
+        let req = ResolutionResolveRequest {
+            outcome: "resolved".to_string(),
+            accuracy_rating: Some("correct".to_string()),
+            resolution_notes: Some("Restarted payment service".to_string()),
+            escalation_target: None,
+            not_an_issue_reason: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"outcome\":\"resolved\""));
+        assert!(json.contains("\"accuracy_rating\":\"correct\""));
+        assert!(json.contains("\"resolution_notes\":\"Restarted payment service\""));
+    }
+
+    #[test]
+    fn test_resolution_resolve_request_minimal() {
+        let req = ResolutionResolveRequest {
+            outcome: "unresolved".to_string(),
+            accuracy_rating: None,
+            resolution_notes: None,
+            escalation_target: None,
+            not_an_issue_reason: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"outcome\":\"unresolved\""));
+        assert!(json.contains("\"accuracy_rating\":null"));
+    }
+
+    #[test]
+    fn test_resolution_resolve_request_escalated() {
+        let req = ResolutionResolveRequest {
+            outcome: "escalated".to_string(),
+            accuracy_rating: None,
+            resolution_notes: Some("Needs platform team".to_string()),
+            escalation_target: Some("platform-team".to_string()),
+            not_an_issue_reason: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"outcome\":\"escalated\""));
+        assert!(json.contains("\"escalation_target\":\"platform-team\""));
+    }
+
+    #[test]
+    fn test_resolution_resolve_request_not_an_issue() {
+        let req = ResolutionResolveRequest {
+            outcome: "not_an_issue".to_string(),
+            accuracy_rating: None,
+            resolution_notes: None,
+            escalation_target: None,
+            not_an_issue_reason: Some("false_positive".to_string()),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"outcome\":\"not_an_issue\""));
+        assert!(json.contains("\"not_an_issue_reason\":\"false_positive\""));
+    }
+
+    #[test]
+    fn test_resolution_resolve_request_deserialization() {
+        let json = r#"{"outcome":"resolved","accuracy_rating":"partially_correct","resolution_notes":"Fixed after retry"}"#;
+        let req: ResolutionResolveRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.outcome, "resolved");
+        assert_eq!(req.accuracy_rating.as_deref(), Some("partially_correct"));
+        assert_eq!(req.resolution_notes.as_deref(), Some("Fixed after retry"));
+        assert!(req.escalation_target.is_none());
+        assert!(req.not_an_issue_reason.is_none());
+    }
+
+    #[test]
+    fn test_resolution_resolve_request_deserialization_minimal() {
+        let json = r#"{"outcome":"unresolved"}"#;
+        let req: ResolutionResolveRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.outcome, "unresolved");
+        assert!(req.accuracy_rating.is_none());
     }
 }
 

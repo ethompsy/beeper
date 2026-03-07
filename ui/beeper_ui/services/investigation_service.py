@@ -3,6 +3,7 @@
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -363,6 +364,143 @@ class InvestigationService:
             raise InvestigationServiceError(
                 f"Failed to connect to operator: {e}"
             ) from e
+
+    def resolve_investigation(
+        self,
+        investigation_id: str,
+        outcome: str,
+        accuracy_rating: str | None = None,
+        resolution_notes: str | None = None,
+        escalation_target: str | None = None,
+        not_an_issue_reason: str | None = None,
+    ) -> bool:
+        """Resolve an investigation with a final outcome.
+
+        Args:
+            investigation_id: The investigation CRD name.
+            outcome: Resolution outcome (resolved, not_an_issue, escalated, unresolved).
+            accuracy_rating: Beeper accuracy rating (correct, partially_correct, incorrect).
+            resolution_notes: Optional resolution notes.
+            escalation_target: Escalation target (for escalated outcome).
+            not_an_issue_reason: Reason for not-an-issue outcome.
+
+        Returns:
+            True if resolution succeeded, False if investigation not found.
+
+        Raises:
+            InvestigationServiceError: If the operator cannot be reached.
+        """
+        try:
+            response = self.client.post(
+                f"{self.operator_url}/api/v1/investigations/{investigation_id}/resolve",
+                json={
+                    "outcome": outcome,
+                    "accuracy_rating": accuracy_rating,
+                    "resolution_notes": resolution_notes,
+                    "escalation_target": escalation_target,
+                    "not_an_issue_reason": not_an_issue_reason,
+                },
+            )
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return True
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "Timeout resolving investigation %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Timeout connecting to operator: {e}"
+            ) from e
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "Operator returned error resolving investigation %s: %s",
+                investigation_id, e.response.status_code,
+            )
+            raise InvestigationServiceError(
+                f"Operator returned error: {e.response.status_code}"
+            ) from e
+        except httpx.RequestError as e:
+            logger.warning(
+                "Failed to connect to operator for resolution %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Failed to connect to operator: {e}"
+            ) from e
+
+    def update_kb_with_resolution(
+        self, investigation_id: str, resolution_data: dict[str, Any]
+    ) -> bool:
+        """Update KB knowledge entry with resolution data.
+
+        Finds the KB entry linked to this investigation in the knowledge
+        collection and adds resolution fields to its payload.
+
+        Args:
+            investigation_id: The investigation ID to look up in KB.
+            resolution_data: Dict of resolution data to merge into KB entry.
+
+        Returns:
+            True if KB entry found and updated, False if no entry exists.
+        """
+        try:
+            results, _ = self.qdrant_client.scroll(
+                collection_name="knowledge",
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="investigation_id",
+                            match=MatchValue(value=investigation_id),
+                        )
+                    ]
+                ),
+                limit=1,
+                with_payload=False,
+                with_vectors=False,
+            )
+            if not results:
+                logger.info(
+                    "No KB entry found for investigation %s",
+                    investigation_id,
+                )
+                return False
+            point_id = results[0].id
+            self.qdrant_client.set_payload(
+                collection_name="knowledge",
+                payload=resolution_data,
+                points=[point_id],
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "Failed to update KB with resolution for %s: %s",
+                investigation_id, e,
+            )
+            return False
+
+    @staticmethod
+    def calculate_mttr(
+        started_at: str | None, resolved_at: str
+    ) -> int | None:
+        """Calculate MTTR (Mean Time To Resolution) in seconds.
+
+        Args:
+            started_at: ISO 8601 investigation start timestamp.
+            resolved_at: ISO 8601 resolution timestamp.
+
+        Returns:
+            MTTR in seconds, or None if started_at is None.
+        """
+        if started_at is None:
+            return None
+        try:
+            start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(resolved_at.replace("Z", "+00:00"))
+            return max(0, int((end - start).total_seconds()))
+        except (ValueError, TypeError):
+            return None
 
     def save_resolution_feedback(
         self, investigation_id: str, feedback: dict[str, Any]

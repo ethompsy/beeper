@@ -2853,3 +2853,180 @@ a.match-badge.kb-entry-link::after {
     color: #6b7280;
     font-size: 0.9rem;
 }
+
+/* Resolution Form & Result Styles */
+.resolution-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.resolution-form .form-group {
+    margin-bottom: 12px;
+}
+
+.outcome-fields {
+    display: none;
+}
+
+.outcome-fields.active {
+    display: block;
+}
+
+.btn-resolve {
+    background-color: #3b82f6;
+    color: white;
+}
+
+.btn-resolve:hover {
+    background-color: #2563eb;
+}
+
+.resolution-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid;
+}
+
+.resolution-result .result-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.resolution-result .result-content {
+    flex: 1;
+}
+
+.resolution-resolved {
+    background-color: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.resolution-resolved .result-icon {
+    color: #22c55e;
+}
+
+.resolution-not-an-issue {
+    background-color: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.resolution-not-an-issue .result-icon {
+    color: #3b82f6;
+}
+
+.resolution-escalated {
+    background-color: #fffbeb;
+    border-color: #fde68a;
+}
+
+.resolution-escalated .result-icon {
+    color: #f59e0b;
+}
+
+.resolution-unresolved {
+    background-color: #f9fafb;
+    border-color: #e5e7eb;
+}
+
+.resolution-unresolved .result-icon {
+    color: #6b7280;
+}
+
+.resolution-error {
+    background-color: #fef2f2;
+    border-color: #fecaca;
+}
+
+.resolution-error .result-icon {
+    color: #ef4444;
+}
+
+.resolution-status-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid;
+}
+
+.resolution-status-banner .banner-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.resolution-status-banner .banner-content {
+    flex: 1;
+}
+
+.resolution-status-banner.resolution-resolved {
+    background-color: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.resolution-status-banner.resolution-resolved .banner-icon {
+    color: #22c55e;
+}
+
+.resolution-status-banner.resolution-not-an-issue {
+    background-color: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.resolution-status-banner.resolution-not-an-issue .banner-icon {
+    color: #3b82f6;
+}
+
+.resolution-status-banner.resolution-escalated {
+    background-color: #fffbeb;
+    border-color: #fde68a;
+}
+
+.resolution-status-banner.resolution-escalated .banner-icon {
+    color: #f59e0b;
+}
+
+.resolution-status-banner.resolution-unresolved {
+    background-color: #f9fafb;
+    border-color: #e5e7eb;
+}
+
+.resolution-status-banner.resolution-unresolved .banner-icon {
+    color: #6b7280;
+}
+
+.mttr-display {
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin: 4px 0;
+}
+
+.accuracy-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.accuracy-correct {
+    background-color: #22c55e;
+    color: white;
+}
+
+.accuracy-partially_correct {
+    background-color: #eab308;
+    color: #78350f;
+}
+
+.accuracy-incorrect {
+    background-color: #ef4444;
+    color: white;
+}
