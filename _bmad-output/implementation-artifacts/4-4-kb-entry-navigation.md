@@ -1,6 +1,6 @@
 # Story 4.4: KB Entry Navigation
 
-Status: review
+Status: done
 
 ## Story
 
@@ -224,6 +224,7 @@ Claude Opus 4.6
 ### Change Log
 
 - 2026-03-06: Implemented story 4-4 — KB Entry Navigation. Added related-kb route, _related_kb.html template, enhanced _findings.html with clickable KB links, added SSE kb-update event, HTMX lazy-load section in detail view, ~120 lines CSS. 13 new tests added (TestRelatedKBNavigation class), 81 investigation tests total, 356 total pass, zero regressions. Ruff + mypy clean on investigations routes.
+- 2026-03-07: Adversarial code review found 7 issues (1 HIGH, 4 MEDIUM, 2 LOW). Fixed: (1) missing SSE kb-update test — added 2 tests (event rendering + sent-only-once), (2) hardcoded `/knowledge/` URLs in _findings.html replaced with `url_for()` for consistency, (3) KBService resource leak — added `close()` method to KBService, called in SSE generator `finally` block, (4) KBService resource leak in `investigation_related_kb()` route — added `finally: kb_svc.close()`, (5) unused `Range` import cleaned from kb_service.py. AC2 similarity score noted as data limitation (service-based filtering, not vector search). Tests: 83 investigation tests (up from 81), 358 total pass, zero regressions. Ruff + mypy clean on investigation files.
 
 ### File List
 

@@ -374,6 +374,8 @@ def investigation_related_kb(investigation_id: str) -> str:
                 "Failed to fetch KB entries for investigation %s",
                 investigation_id,
             )
+        finally:
+            kb_svc.close()
     except InvestigationServiceError:
         logger.warning(
             "Failed to fetch investigation %s for related KB",
@@ -492,6 +494,8 @@ def _generate_detail_sse_events(
                             "SSE: Failed to fetch KB entries for %s",
                             investigation_id,
                         )
+                    finally:
+                        kb_svc.close()
                     kb_update_sent = True
 
                 last_findings_keys = current_keys

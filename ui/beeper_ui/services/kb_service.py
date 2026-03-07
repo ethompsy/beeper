@@ -24,7 +24,6 @@ from qdrant_client.models import (
     MatchValue,
     OrderBy,
     PointStruct,
-    Range,
 )
 
 from beeper_ui.services.embedding_service import EmbeddingService, EmbeddingServiceError
@@ -248,6 +247,12 @@ class KBService:
             logger.info(f"Connecting to Qdrant at {self.host}:{self.port}")
             self._client = QdrantClient(host=self.host, port=self.port)
         return self._client
+
+    def close(self) -> None:
+        """Close the Qdrant client connection."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None
 
     def list_recent_entries(
         self,

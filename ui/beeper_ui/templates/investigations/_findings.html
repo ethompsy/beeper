@@ -22,7 +22,7 @@
         <div class="findings-content">
             <p>{{ findings.get('prior_research_summary') }}</p>
             {% if findings.get('exact_match_found') and findings.get('exact_match_id') %}
-            <a href="/knowledge/{{ findings.get('exact_match_id')|urlencode }}"
+            <a href="{{ url_for('knowledge.kb_entry', entry_id=findings.get('exact_match_id')) }}"
                target="_blank"
                class="match-badge match-exact kb-entry-link">Exact Match Found</a>
             {% elif findings.get('exact_match_found') %}
@@ -39,7 +39,7 @@
                     {% if match is string and ':' in match %}
                     <li>
                         {% set match_id = match.split(':')[0].strip() %}
-                        <a href="/knowledge/{{ match_id|urlencode }}"
+                        <a href="{{ url_for('knowledge.kb_entry', entry_id=match_id) }}"
                            target="_blank"
                            class="kb-entry-link">{{ match_id }}</a>:
                         {{ match.split(':', 1)[1].strip() }}

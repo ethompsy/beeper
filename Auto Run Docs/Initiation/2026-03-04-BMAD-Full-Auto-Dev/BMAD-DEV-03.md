@@ -80,13 +80,14 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Make all decisions autonomously
   <!-- Completed 2026-03-06: Full implementation of story 4-4 across 8 tasks. Route: GET /investigations/<id>/related-kb fetching KB entries by service via KBService, with exact match highlighting. Templates: _related_kb.html (prior research banner, entry cards with content preview, new tab links), enhanced _findings.html (clickable exact match link, relevant_matches list with ID links, "View all related entries" anchor). SSE: kb-update event when KB query step completes, renders related KB entries. HTMX: lazy-load #related-kb section in _detail_content.html. CSS: ~120 lines (prior-research-banner, kb-entry-card, kb-entry-link, content-preview, relevant-matches). Tests: 13 new tests (TestRelatedKBNavigation class), 81 investigation tests total, 356 total pass, zero regressions. Ruff + mypy clean. Sprint status → review. -->
 
-- [ ] Review and finalize story 4-4:
+- [x] Review and finalize story 4-4:
   - Use the `/bmad-bmm-code-review` skill to review story 4-4 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `4-4-kb-entry-navigation: done`
   - Update story file status to `done`
   - Commit all changes as `4-4 done`
+  <!-- Completed 2026-03-07: Adversarial code review found 7 issues (1 HIGH, 4 MEDIUM, 2 LOW). Fixed: (1) missing SSE kb-update test — added 2 new tests (event rendering + sent-only-once guard), (2) hardcoded /knowledge/ URLs in _findings.html replaced with url_for() for consistency with _related_kb.html, (3) KBService resource leak — added close() method and called in SSE generator finally block, (4) KBService leak in related-kb route — added finally: kb_svc.close(), (5) unused Range import cleaned from kb_service.py. AC2 similarity score noted as data limitation. Tests: 83 investigation tests (up from 81), 358 total pass, zero regressions. Ruff + mypy clean on investigation files. Sprint status + story → done. -->
 
 - [ ] Create and implement story 4-5 (Resolution Confirmation). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 4, Story 4-5 (FR11: confirm or reject resolution recommendations). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: recommendations display (4-3), investigation pane (4-2), existing HTMX form patterns in `ui/`

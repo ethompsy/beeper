@@ -1480,6 +1480,136 @@ class TestRelatedKBNavigation:
         response = client.get("/investigations/../../etc/passwd/related-kb")
         assert response.status_code == 404
 
+    @respx.mock
+    def test_sse_kb_update_event_renders_related_kb(
+        self, client: FlaskClient
+    ) -> None:
+        """Test SSE sends kb-update event when prior_research_summary appears."""
+        from unittest.mock import patch
+
+        detail = MOCK_INVESTIGATION_DETAIL.copy()
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=detail))
+
+        findings_v1: dict[str, object] = {}
+        findings_v2: dict[str, object] = {
+            "customer_impacting": True,
+            "reasoning": "Users affected",
+            "prior_research_summary": "Found matching KB entry",
+            "exact_match_found": True,
+            "exact_match_id": "kb-match-sse",
+        }
+
+        mock_kb_entries = [
+            _make_mock_kb_entry("kb-001", "SSE KB Entry", "payments"),
+        ]
+        exact_entry = _make_mock_kb_entry(
+            "kb-match-sse", "Exact SSE Match", "payments"
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            side_effect=[findings_v1, findings_v2],
+        ), patch(
+            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
+            return_value=mock_kb_entries,
+        ), patch(
+            "beeper_ui.routes.investigations.KBService.get_entry",
+            return_value=exact_entry,
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            from beeper_ui.routes.investigations import (
+                _generate_detail_sse_events,
+            )
+
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-detail-001"
+                )
+                # First iteration: step-update (initial) + no findings
+                event1 = next(gen)
+                assert "event: step-update" in event1
+
+                # Second iteration: findings appeared with prior_research_summary
+                # Should get findings-update, evidence-update, AND kb-update
+                events = []
+                event2 = next(gen)
+                events.append(event2)
+                event3 = next(gen)
+                events.append(event3)
+                event4 = next(gen)
+                events.append(event4)
+
+                all_events = "\n".join(events)
+                assert "event: findings-update" in all_events
+                assert "event: kb-update" in all_events
+
+                gen.close()
+
+    @respx.mock
+    def test_sse_kb_update_sent_only_once(
+        self, client: FlaskClient
+    ) -> None:
+        """Test SSE kb-update event is only sent once per stream.
+
+        Iteration 1: findings with prior_research_summary → yields
+            step-update, findings-update, evidence-update, kb-update (4 events)
+        Iteration 2: findings with additional key → yields
+            findings-update, evidence-update (2 events, NO second kb-update)
+        """
+        from unittest.mock import patch
+
+        detail = MOCK_INVESTIGATION_DETAIL.copy()
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=detail))
+
+        findings_with_kb: dict[str, object] = {
+            "prior_research_summary": "Found matching KB entry",
+            "exact_match_found": False,
+        }
+        findings_with_kb_v2: dict[str, object] = {
+            "prior_research_summary": "Found matching KB entry",
+            "exact_match_found": False,
+            "new_key": "new data",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            side_effect=[findings_with_kb, findings_with_kb_v2],
+        ), patch(
+            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
+            return_value=[],
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            from beeper_ui.routes.investigations import (
+                _generate_detail_sse_events,
+            )
+
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-detail-001"
+                )
+                # Iteration 1 yields 4 events, iteration 2 yields 2 events
+                all_events_text = ""
+                for _ in range(6):
+                    event = next(gen)
+                    all_events_text += event
+
+                # kb-update should appear exactly once (from iteration 1 only)
+                assert all_events_text.count("event: kb-update") == 1
+                # findings-update should appear twice (once per iteration)
+                assert all_events_text.count("event: findings-update") == 2
+
+                gen.close()
+
 
 def _make_mock_kb_entry(
     entry_id: str, title: str, service: str
