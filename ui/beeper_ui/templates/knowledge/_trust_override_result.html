@@ -1,0 +1,76 @@
+{% if error_message %}
+<div class="card trust-card trust-override-error">
+    <p class="error-text">{{ error_message }}</p>
+</div>
+{% else %}
+<div class="card trust-card" id="trust-card-{{ trust.service_name }}">
+    <div class="trust-card-header">
+        <span class="service-badge">{{ trust.service_name }}</span>
+        <span class="trust-badge trust-{{ trust.trust_level }}">{{ trust.trust_level }}</span>
+    </div>
+
+    <div class="trust-accuracy">
+        <div class="trust-accuracy-label">
+            <span>Accuracy</span>
+            <span class="trust-accuracy-pct">{{ trust.accuracy_pct }}%</span>
+        </div>
+        <div class="category-bar-track">
+            <div class="trust-accuracy-bar trust-accuracy-{{ 'high' if trust.accuracy_pct >= 90 else ('mid' if trust.accuracy_pct >= 80 else 'low') }}"
+                 style="width: {{ trust.accuracy_pct }}%"></div>
+        </div>
+    </div>
+
+    <div class="trust-stats">
+        <div class="trust-stat">
+            <span class="trust-stat-value">{{ trust.total_entries }}</span>
+            <span class="trust-stat-label">Total entries</span>
+        </div>
+        <div class="trust-stat">
+            <span class="trust-stat-value">{{ trust.correct_entries }}</span>
+            <span class="trust-stat-label">Correct</span>
+        </div>
+        <div class="trust-stat">
+            <span class="trust-stat-value">{{ trust.reviewed_entries }}</span>
+            <span class="trust-stat-label">Corrected</span>
+        </div>
+    </div>
+
+    {% if trust.manually_adjusted %}
+    <div class="trust-manual-note">
+        Manually set{% if trust.manual_reason %}: {{ trust.manual_reason }}{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="trust-updated">
+        Last updated: {{ trust.last_updated[:10] if trust.last_updated else 'N/A' }}
+    </div>
+
+    <div class="trust-override-success">Override applied successfully</div>
+
+    <div class="trust-override-form">
+        <details>
+            <summary class="btn btn-secondary btn-sm">Manual Override</summary>
+            <form hx-post="{{ url_for('knowledge.kb_trust_override', service_name=trust.service_name) }}"
+                  hx-target="#trust-card-{{ trust.service_name }}"
+                  hx-swap="outerHTML"
+                  hx-indicator="#override-loading-{{ trust.service_name }}">
+                <div class="override-fields">
+                    <label>
+                        Trust Level:
+                        <select name="trust_level">
+                            <option value="draft" {{ 'selected' if trust.trust_level == 'draft' }}>Draft</option>
+                            <option value="trusted" {{ 'selected' if trust.trust_level == 'trusted' }}>Trusted</option>
+                        </select>
+                    </label>
+                    <label>
+                        Reason:
+                        <input type="text" name="reason" placeholder="Reason for override" required maxlength="500">
+                    </label>
+                    <button type="submit" class="btn btn-primary btn-sm">Apply Override</button>
+                    <span id="override-loading-{{ trust.service_name }}" class="htmx-indicator">Saving...</span>
+                </div>
+            </form>
+        </details>
+    </div>
+</div>
+{% endif %}

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Trust Settings - Beeper{% endblock %}
+
+{% block content %}
+<div class="kb-header">
+    <div class="kb-header-content">
+        <div>
+            <h2>Trust Settings</h2>
+            <p class="kb-description">Per-service authoring trust levels and accuracy metrics</p>
+        </div>
+        <a href="{{ url_for('knowledge.kb_index') }}" class="btn btn-secondary">Back to KB</a>
+    </div>
+</div>
+
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to load trust data</h3>
+    <p>{{ error_message }}</p>
+</div>
+{% elif trusts|length == 0 %}
+<div class="card">
+    <p>No trust records yet. Trust levels are created when Beeper generates entries and corrections are reviewed.</p>
+</div>
+{% else %}
+
+<div class="trust-grid">
+    {% for trust in trusts %}
+    <div class="card trust-card" id="trust-card-{{ trust.service_name }}">
+        <div class="trust-card-header">
+            <span class="service-badge">{{ trust.service_name }}</span>
+            <span class="trust-badge trust-{{ trust.trust_level }}">{{ trust.trust_level }}</span>
+        </div>
+
+        <div class="trust-accuracy">
+            <div class="trust-accuracy-label">
+                <span>Accuracy</span>
+                <span class="trust-accuracy-pct">{{ trust.accuracy_pct }}%</span>
+            </div>
+            <div class="category-bar-track">
+                <div class="trust-accuracy-bar trust-accuracy-{{ 'high' if trust.accuracy_pct >= 90 else ('mid' if trust.accuracy_pct >= 80 else 'low') }}"
+                     style="width: {{ trust.accuracy_pct }}%"></div>
+            </div>
+        </div>
+
+        <div class="trust-stats">
+            <div class="trust-stat">
+                <span class="trust-stat-value">{{ trust.total_entries }}</span>
+                <span class="trust-stat-label">Total entries</span>
+            </div>
+            <div class="trust-stat">
+                <span class="trust-stat-value">{{ trust.correct_entries }}</span>
+                <span class="trust-stat-label">Correct</span>
+            </div>
+            <div class="trust-stat">
+                <span class="trust-stat-value">{{ trust.reviewed_entries }}</span>
+                <span class="trust-stat-label">Corrected</span>
+            </div>
+        </div>
+
+        {% if trust.manually_adjusted %}
+        <div class="trust-manual-note">
+            Manually set{% if trust.manual_reason %}: {{ trust.manual_reason }}{% endif %}
+        </div>
+        {% endif %}
+
+        <div class="trust-updated">
+            Last updated: {{ trust.last_updated[:10] if trust.last_updated else 'N/A' }}
+        </div>
+
+        <div class="trust-override-form">
+            <details>
+                <summary class="btn btn-secondary btn-sm">Manual Override</summary>
+                <form hx-post="{{ url_for('knowledge.kb_trust_override', service_name=trust.service_name) }}"
+                      hx-target="#trust-card-{{ trust.service_name }}"
+                      hx-swap="outerHTML"
+                      hx-indicator="#override-loading-{{ trust.service_name }}">
+                    <div class="override-fields">
+                        <label>
+                            Trust Level:
+                            <select name="trust_level">
+                                <option value="draft" {{ 'selected' if trust.trust_level == 'draft' }}>Draft</option>
+                                <option value="trusted" {{ 'selected' if trust.trust_level == 'trusted' }}>Trusted</option>
+                            </select>
+                        </label>
+                        <label>
+                            Reason:
+                            <input type="text" name="reason" placeholder="Reason for override" required maxlength="500">
+                        </label>
+                        <button type="submit" class="btn btn-primary btn-sm">Apply Override</button>
+                        <span id="override-loading-{{ trust.service_name }}" class="htmx-indicator">Saving...</span>
+                    </div>
+                </form>
+            </details>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% endif %}
+{% endblock %}

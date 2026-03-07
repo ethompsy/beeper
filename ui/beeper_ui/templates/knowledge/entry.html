@@ -47,6 +47,9 @@
             <span class="entry-author">by {{ entry.author }}</span>
             {% endif %}
             <span class="entry-version">v{{ entry.version }}</span>
+            {% if entry.auto_published %}
+            <span class="trust-badge trust-auto-published">Auto-published</span>
+            {% endif %}
         </div>
     </header>
 

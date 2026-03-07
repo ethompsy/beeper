@@ -59,10 +59,11 @@ This phase implements the Living Knowledge epic, enabling Beeper to learn and im
   - Commit all changes as `5-3 done`
   - *Completed: Adversarial code review found 4 issues (1 HIGH, 3 MEDIUM). Fixed all: eliminated double LLM call in prompt context API (was calling generate_prompt_adjustments twice), added learning_patterns collection to init-collections.py, added service scope query param to adjustments endpoint (AC#3), sanitized error messages in JSON API. Added 1 new test (adjustments_service_scoped). All 509 tests pass. Ruff/mypy clean (no new errors). Sprint status and story status already done.*
 
-- [ ] Create and implement story 5-4 (Graduated Authoring Trust). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 5, Story 5-4 (FR23: publish entries directly as trust is established). Then use the `/bmad-bmm-dev-story` skill to implement it:
+- [x] Create and implement story 5-4 (Graduated Authoring Trust). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 5, Story 5-4 (FR23: publish entries directly as trust is established). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: KB entry creation patterns, learning from diffs (5-3) for accuracy metrics, version history (2-6) for versioning, KB client for trust level storage
   - Implement: per-service trust level tracking, accuracy metric calculation, automatic trust graduation, "Auto-published" transparency flag, trust settings admin view
   - Make all decisions autonomously
+  - *Completed: Story spec created and all 6 tasks implemented. Added ServiceTrustLevel dataclass, 7 KBService trust methods (CRUD, accuracy calc, graduation eval, auto-publish check), trust re-evaluation hook in apply route, auto_published field on KBEntry, trust settings UI with manual override forms, auto-published badge on entry page. 48 new tests, all 557 pass. Ruff/mypy clean (no new errors).*
 
 - [ ] Review and finalize story 5-4:
   - Use the `/bmad-bmm-code-review` skill to review story 5-4 — auto-fix all issues found

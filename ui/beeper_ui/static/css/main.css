@@ -3399,3 +3399,141 @@ a.match-badge.kb-entry-link::after {
     padding: 4px 12px;
     font-size: 0.85em;
 }
+
+/* Trust Settings */
+.trust-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.trust-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.trust-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.trust-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.trust-draft {
+    background-color: #8b949e;
+    color: #fff;
+}
+
+.trust-trusted {
+    background-color: #3fb950;
+    color: #fff;
+}
+
+.trust-auto-published {
+    background-color: #58a6ff;
+    color: #fff;
+}
+
+.trust-accuracy-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85em;
+    margin-bottom: 4px;
+}
+
+.trust-accuracy-pct {
+    font-weight: 600;
+}
+
+.trust-accuracy-bar {
+    height: 100%;
+    border-radius: 4px;
+    min-width: 4px;
+}
+
+.trust-accuracy-high { background-color: #3fb950; }
+.trust-accuracy-mid { background-color: #f0883e; }
+.trust-accuracy-low { background-color: #f85149; }
+
+.trust-stats {
+    display: flex;
+    gap: 16px;
+}
+
+.trust-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.trust-stat-value {
+    font-size: 1.2em;
+    font-weight: 600;
+}
+
+.trust-stat-label {
+    font-size: 0.75em;
+    color: var(--text-secondary, #8b949e);
+}
+
+.trust-manual-note {
+    font-size: 0.8em;
+    color: #f0883e;
+    font-style: italic;
+}
+
+.trust-updated {
+    font-size: 0.8em;
+    color: var(--text-secondary, #8b949e);
+}
+
+.trust-override-form details {
+    margin-top: 4px;
+}
+
+.override-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.override-fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.85em;
+}
+
+.override-fields select,
+.override-fields input[type="text"] {
+    padding: 6px 8px;
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.trust-override-success {
+    font-size: 0.85em;
+    color: #3fb950;
+    font-weight: 600;
+}
+
+.trust-override-error {
+    border: 1px solid #f85149;
+}
+
+.trust-override-error .error-text {
+    color: #f85149;
+    margin: 0;
+}

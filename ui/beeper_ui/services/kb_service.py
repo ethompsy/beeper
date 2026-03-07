@@ -35,6 +35,7 @@ KNOWLEDGE_COLLECTION = "knowledge"
 VERSIONS_COLLECTION = "knowledge_versions"
 CORRECTIONS_COLLECTION = "corrections"
 LEARNING_PATTERNS_COLLECTION = "learning_patterns"
+SERVICE_TRUST_COLLECTION = "service_trust_levels"
 
 # Valid learning pattern categories
 LEARNING_CATEGORIES = {
@@ -94,6 +95,7 @@ class KBEntry:
     author: Optional[str]
     version: int
     tags: list[str]
+    auto_published: bool = False
     relevance_score: Optional[float] = None  # Set during semantic search
 
     @classmethod
@@ -129,6 +131,7 @@ class KBEntry:
             author=payload.get("author"),
             version=payload.get("version", 1),
             tags=payload.get("tags", []),
+            auto_published=payload.get("auto_published", False),
         )
 
 
@@ -202,6 +205,36 @@ class LearningPattern:
             original_snippet=payload.get("original_snippet", ""),
             corrected_snippet=payload.get("corrected_snippet", ""),
             created_at=payload.get("created_at", ""),
+        )
+
+
+@dataclass
+class ServiceTrustLevel:
+    """Represents a per-service trust level for Beeper's authoring."""
+
+    service_name: str
+    trust_level: str  # "draft" | "trusted"
+    accuracy_pct: float
+    total_entries: int
+    reviewed_entries: int
+    correct_entries: int
+    last_updated: str  # ISO 8601
+    manually_adjusted: bool
+    manual_reason: str
+
+    @classmethod
+    def from_qdrant(cls, payload: dict[str, Any]) -> "ServiceTrustLevel":
+        """Create ServiceTrustLevel from Qdrant point payload."""
+        return cls(
+            service_name=payload.get("service_name", ""),
+            trust_level=payload.get("trust_level", "draft"),
+            accuracy_pct=payload.get("accuracy_pct", 0.0),
+            total_entries=payload.get("total_entries", 0),
+            reviewed_entries=payload.get("reviewed_entries", 0),
+            correct_entries=payload.get("correct_entries", 0),
+            last_updated=payload.get("last_updated", ""),
+            manually_adjusted=payload.get("manually_adjusted", False),
+            manual_reason=payload.get("manual_reason", ""),
         )
 
 
@@ -872,6 +905,11 @@ class KBService:
             # Create timestamp
             now = datetime.now(timezone.utc)
 
+            # Check if service has earned auto-publish trust
+            auto_published = False
+            if service and author in ("beeper", "investigation"):
+                auto_published = self.should_auto_publish(service)
+
             # Build payload
             payload = {
                 "entry_id": entry_id,
@@ -884,6 +922,7 @@ class KBService:
                 "author": author or "import",
                 "version": 1,
                 "tags": tags or [],
+                "auto_published": auto_published,
             }
 
             # Create point
@@ -1500,3 +1539,340 @@ class KBService:
             "by_service": by_service,
             "patterns": patterns,
         }
+
+    # ── Service Trust Level Methods ──
+
+    def get_service_trust(
+        self, service_name: str
+    ) -> Optional[ServiceTrustLevel]:
+        """Get trust level for a specific service.
+
+        Args:
+            service_name: Service to get trust for
+
+        Returns:
+            ServiceTrustLevel or None if not found.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=SERVICE_TRUST_COLLECTION,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="service_name",
+                            match=MatchValue(value=service_name),
+                        )
+                    ]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+            if results:
+                return ServiceTrustLevel.from_qdrant(
+                    results[0].payload or {}
+                )
+            return None
+        except UnexpectedResponse as e:
+            raise KBServiceError(
+                f"Failed to get service trust: {e}"
+            ) from e
+        except Exception as e:
+            raise KBServiceError(
+                f"Failed to get service trust: {e}"
+            ) from e
+
+    def upsert_service_trust(
+        self,
+        service_name: str,
+        trust_level: str,
+        accuracy_pct: float,
+        total_entries: int,
+        reviewed_entries: int,
+        correct_entries: int,
+        manually_adjusted: bool = False,
+        manual_reason: str = "",
+    ) -> ServiceTrustLevel:
+        """Create or update a service trust level record.
+
+        Args:
+            service_name: Service name
+            trust_level: "draft" or "trusted"
+            accuracy_pct: Accuracy percentage (0-100)
+            total_entries: Total entries for this service
+            reviewed_entries: Number of reviewed entries
+            correct_entries: Number of correct entries
+            manually_adjusted: Whether this was a manual override
+            manual_reason: Reason for manual override
+
+        Returns:
+            The upserted ServiceTrustLevel.
+
+        Raises:
+            KBServiceError: If the upsert fails.
+        """
+        if trust_level not in ("draft", "trusted"):
+            trust_level = "draft"
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+
+            # Check if record exists to reuse point_id
+            existing = self.get_service_trust(service_name)
+            point_id = str(uuid.uuid4())
+
+            # Try to find existing point to overwrite
+            if existing:
+                try:
+                    results, _ = self.client.scroll(
+                        collection_name=SERVICE_TRUST_COLLECTION,
+                        scroll_filter=Filter(
+                            must=[
+                                FieldCondition(
+                                    key="service_name",
+                                    match=MatchValue(
+                                        value=service_name
+                                    ),
+                                )
+                            ]
+                        ),
+                        limit=1,
+                        with_payload=False,
+                        with_vectors=False,
+                    )
+                    if results:
+                        point_id = str(results[0].id)
+                except Exception:
+                    pass
+
+            payload = {
+                "service_name": service_name,
+                "trust_level": trust_level,
+                "accuracy_pct": accuracy_pct,
+                "total_entries": total_entries,
+                "reviewed_entries": reviewed_entries,
+                "correct_entries": correct_entries,
+                "last_updated": now,
+                "manually_adjusted": manually_adjusted,
+                "manual_reason": manual_reason,
+            }
+
+            self.client.upsert(
+                collection_name=SERVICE_TRUST_COLLECTION,
+                points=[
+                    PointStruct(
+                        id=point_id, vector=[0.0], payload=payload
+                    )
+                ],
+            )
+
+            return ServiceTrustLevel.from_qdrant(payload)
+
+        except KBServiceError:
+            raise
+        except Exception as e:
+            raise KBServiceError(
+                f"Failed to upsert service trust: {e}"
+            ) from e
+
+    def get_all_service_trusts(self) -> list[ServiceTrustLevel]:
+        """Get all service trust level records.
+
+        Returns:
+            List of ServiceTrustLevel objects.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=SERVICE_TRUST_COLLECTION,
+                limit=200,
+                with_payload=True,
+                with_vectors=False,
+            )
+            return [
+                ServiceTrustLevel.from_qdrant(p.payload or {})
+                for p in results
+            ]
+        except Exception as e:
+            raise KBServiceError(
+                f"Failed to get service trusts: {e}"
+            ) from e
+
+    def set_manual_trust_override(
+        self,
+        service_name: str,
+        trust_level: str,
+        reason: str,
+    ) -> ServiceTrustLevel:
+        """Manually set a service's trust level (admin override).
+
+        Args:
+            service_name: Service name
+            trust_level: "draft" or "trusted"
+            reason: Reason for override
+
+        Returns:
+            The updated ServiceTrustLevel.
+
+        Raises:
+            KBServiceError: If the update fails.
+        """
+        existing = self.get_service_trust(service_name)
+        return self.upsert_service_trust(
+            service_name=service_name,
+            trust_level=trust_level,
+            accuracy_pct=existing.accuracy_pct if existing else 0.0,
+            total_entries=existing.total_entries if existing else 0,
+            reviewed_entries=(
+                existing.reviewed_entries if existing else 0
+            ),
+            correct_entries=existing.correct_entries if existing else 0,
+            manually_adjusted=True,
+            manual_reason=reason,
+        )
+
+    def calculate_service_accuracy(
+        self, service_name: str
+    ) -> dict[str, Any]:
+        """Calculate accuracy metrics for a service.
+
+        Counts total entries authored by Beeper for this service,
+        and entries that had corrections (learning patterns exist).
+
+        Args:
+            service_name: Service to calculate accuracy for
+
+        Returns:
+            Dict with total_entries, reviewed_entries,
+            correct_entries, accuracy_pct.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            # Count total entries for this service by Beeper
+            entry_results, _ = self.client.scroll(
+                collection_name=KNOWLEDGE_COLLECTION,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="service",
+                            match=MatchValue(value=service_name),
+                        ),
+                    ]
+                ),
+                limit=500,
+                with_payload=["entry_id"],
+                with_vectors=False,
+            )
+            total_entries = len(entry_results)
+
+            if total_entries == 0:
+                return {
+                    "total_entries": 0,
+                    "reviewed_entries": 0,
+                    "correct_entries": 0,
+                    "accuracy_pct": 0.0,
+                }
+
+            # Get unique entry_ids that have learning patterns
+            patterns = self.get_learning_patterns(
+                service_name=service_name
+            )
+            corrected_entry_ids = {p.entry_id for p in patterns}
+            reviewed_entries = len(corrected_entry_ids)
+            correct_entries = total_entries - reviewed_entries
+
+            accuracy_pct = (
+                (correct_entries / total_entries * 100)
+                if total_entries > 0
+                else 0.0
+            )
+
+            return {
+                "total_entries": total_entries,
+                "reviewed_entries": reviewed_entries,
+                "correct_entries": correct_entries,
+                "accuracy_pct": round(accuracy_pct, 1),
+            }
+        except KBServiceError:
+            raise
+        except Exception as e:
+            raise KBServiceError(
+                f"Failed to calculate accuracy: {e}"
+            ) from e
+
+    def evaluate_trust_graduation(
+        self, service_name: str
+    ) -> Optional[ServiceTrustLevel]:
+        """Evaluate and update trust level based on accuracy.
+
+        Graduation: >=10 entries, >=90% accuracy → "trusted"
+        Downgrade: <80% accuracy → "draft"
+
+        Args:
+            service_name: Service to evaluate
+
+        Returns:
+            Updated ServiceTrustLevel, or None if no entries.
+
+        Raises:
+            KBServiceError: If evaluation fails.
+        """
+        metrics = self.calculate_service_accuracy(service_name)
+
+        if metrics["total_entries"] == 0:
+            return None
+
+        existing = self.get_service_trust(service_name)
+
+        # Don't override manual adjustments automatically
+        if existing and existing.manually_adjusted:
+            return existing
+
+        current_level = existing.trust_level if existing else "draft"
+        new_level = current_level
+
+        # Graduation: enough entries with high accuracy
+        if (
+            current_level == "draft"
+            and metrics["total_entries"] >= 10
+            and metrics["accuracy_pct"] >= 90.0
+        ):
+            new_level = "trusted"
+
+        # Downgrade: accuracy dropped
+        if (
+            current_level == "trusted"
+            and metrics["accuracy_pct"] < 80.0
+        ):
+            new_level = "draft"
+
+        return self.upsert_service_trust(
+            service_name=service_name,
+            trust_level=new_level,
+            accuracy_pct=metrics["accuracy_pct"],
+            total_entries=metrics["total_entries"],
+            reviewed_entries=metrics["reviewed_entries"],
+            correct_entries=metrics["correct_entries"],
+        )
+
+    def should_auto_publish(self, service_name: str) -> bool:
+        """Check if a service has earned trusted status.
+
+        Args:
+            service_name: Service to check
+
+        Returns:
+            True if service trust level is "trusted".
+        """
+        try:
+            trust = self.get_service_trust(service_name)
+            return trust is not None and trust.trust_level == "trusted"
+        except KBServiceError:
+            return False

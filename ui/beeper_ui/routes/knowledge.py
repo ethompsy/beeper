@@ -1420,6 +1420,15 @@ def kb_apply_revision(
     except Exception as e:
         logger.warning(f"Unexpected learning error (non-blocking): {e}")
 
+    # Re-evaluate trust for this service (non-blocking)
+    try:
+        service_name = entry.service or "general"
+        service_client.evaluate_trust_graduation(service_name)
+    except KBServiceError as e:
+        logger.warning(f"Trust evaluation failed (non-blocking): {e}")
+    except Exception as e:
+        logger.warning(f"Unexpected trust error (non-blocking): {e}")
+
     return render_template(
         "knowledge/_revision_result.html",
         entry=entry,
@@ -1686,6 +1695,83 @@ def kb_learning_prompt_context(service_name: str) -> tuple[dict[str, Any], int]:
         "adjustments": adjustments,
         "pattern_count": len(patterns),
     }, 200
+
+
+@knowledge_bp.route("/trust-settings")
+def kb_trust_settings() -> tuple[str, int] | str:
+    """Display trust settings page with per-service trust levels.
+
+    Returns:
+        Rendered trust settings page.
+    """
+    service_client = get_kb_service()
+
+    try:
+        trusts = service_client.get_all_service_trusts()
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/trust_settings.html",
+            trusts=[],
+            error_message=str(e),
+        )
+
+    return render_template(
+        "knowledge/trust_settings.html",
+        trusts=trusts,
+        error_message=None,
+    )
+
+
+@knowledge_bp.route(
+    "/trust-settings/<service_name>/override", methods=["POST"]
+)
+def kb_trust_override(
+    service_name: str,
+) -> tuple[str, int] | str:
+    """Manually override a service's trust level.
+
+    Args:
+        service_name: Service to override trust for
+
+    Returns:
+        Rendered override result partial.
+    """
+    trust_level = request.form.get("trust_level", "draft")
+    reason = request.form.get("reason", "")
+
+    if trust_level not in ("draft", "trusted"):
+        return render_template(
+            "knowledge/_trust_override_result.html",
+            error_message="Invalid trust level",
+        ), 400
+
+    if not reason or not reason.strip():
+        return render_template(
+            "knowledge/_trust_override_result.html",
+            error_message="Reason is required for manual override",
+        ), 400
+
+    reason = reason.strip()[:500]
+
+    service_client = get_kb_service()
+
+    try:
+        trust = service_client.set_manual_trust_override(
+            service_name=service_name,
+            trust_level=trust_level,
+            reason=reason,
+        )
+    except KBServiceError as e:
+        return render_template(
+            "knowledge/_trust_override_result.html",
+            error_message=f"Failed to update trust: {e}",
+        ), 500
+
+    return render_template(
+        "knowledge/_trust_override_result.html",
+        trust=trust,
+        error_message=None,
+    )
 
 
 @knowledge_bp.route("/<entry_id>")

@@ -66,6 +66,14 @@ COLLECTIONS = {
             ("category", PayloadSchemaType.KEYWORD),
         ],
     },
+    "service_trust_levels": {
+        "description": "Per-service trust levels for graduated authoring",
+        "vector_dim": 1,  # No semantic search needed; payload-only points
+        "payload_indexes": [
+            ("service_name", PayloadSchemaType.KEYWORD),
+            ("trust_level", PayloadSchemaType.KEYWORD),
+        ],
+    },
 }
 
 

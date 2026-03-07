@@ -93,7 +93,7 @@ development_status:
   5-1-conversational-corrections-interface: done
   5-2-beeper-revision-processing: done
   5-3-learning-from-diffs: done
-  5-4-graduated-authoring-trust: backlog
+  5-4-graduated-authoring-trust: done
   epic-5-retrospective: optional
 
   # Epic 6: Operations & Insights
