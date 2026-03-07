@@ -4,12 +4,13 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
 
 ## Tasks
 
-- [ ] Create story 4-1 spec (Investigation List View) using the `/bmad-bmm-create-story` skill. This story covers FR31: SREs can view a list of active investigations. The story should:
+- [x] Create story 4-1 spec (Investigation List View) using the `/bmad-bmm-create-story` skill. This story covers FR31: SREs can view a list of active investigations. The story should:
   - Be created from `_bmad-output/planning-artifacts/epics.md` Epic 4, Story 4-1
   - Include Dev Notes referencing existing UI code: the `ui/` module structure, Flask routes, HTMX patterns, SSE implementation
   - Reference existing operator API endpoints for fetching investigation status from K8s CRDs
   - Update sprint-status.yaml: `epic-4: in-progress`, `4-1-investigation-list-view: ready-for-dev`
   - Make all decisions autonomously
+  <!-- Completed 2026-03-06: Story file created at _bmad-output/implementation-artifacts/4-1-investigation-list-view.md with 9 tasks, comprehensive dev notes covering SSE polling-backed design, operator API endpoint, service layer, HTMX templates, and filter panel. Sprint status updated. -->
 
 - [ ] Implement story 4-1 (Investigation List View) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
