@@ -8,14 +8,14 @@
         <strong>Investigation Resolved</strong>
         {% if findings.get('accuracy_rating') %}
         <span class="accuracy-badge accuracy-{{ findings.get('accuracy_rating', '') }}">
-            {{ findings.get('accuracy_rating', '')|replace('_', ' ')|title }}
+            {{ ACCURACY_LABELS.get(findings.get('accuracy_rating', ''), findings.get('accuracy_rating', '')) }}
         </span>
         {% endif %}
         {% if findings.get('resolution_notes') %}
         <p class="confirmation-detail">{{ findings.get('resolution_notes') }}</p>
         {% endif %}
         {% if findings.get('mttr_seconds') is not none %}
-        <p class="mttr-display">MTTR: {{ findings.get('mttr_seconds', 0) // 60 }}m</p>
+        <p class="mttr-display">MTTR: {{ findings.get('mttr_seconds') | format_mttr }}</p>
         {% endif %}
         {% if findings.get('resolved_at') %}
         <p class="confirmation-timestamp">{{ findings.get('resolved_at') }}</p>
@@ -29,7 +29,7 @@
     <div class="banner-content">
         <strong>Marked as Not an Issue</strong>
         {% if findings.get('not_an_issue_reason') %}
-        <span class="rejection-reason-badge">{{ findings.get('not_an_issue_reason', '')|replace('_', ' ')|title }}</span>
+        <span class="rejection-reason-badge">{{ NOT_AN_ISSUE_LABELS.get(findings.get('not_an_issue_reason', ''), findings.get('not_an_issue_reason', '')) }}</span>
         {% endif %}
         {% if findings.get('resolution_notes') %}
         <p class="confirmation-detail">{{ findings.get('resolution_notes') }}</p>
@@ -67,7 +67,7 @@
         <p class="confirmation-detail">{{ findings.get('resolution_notes') }}</p>
         {% endif %}
         {% if findings.get('mttr_seconds') is not none %}
-        <p class="mttr-display">MTTR: {{ findings.get('mttr_seconds', 0) // 60 }}m</p>
+        <p class="mttr-display">MTTR: {{ findings.get('mttr_seconds') | format_mttr }}</p>
         {% endif %}
         {% if findings.get('resolved_at') %}
         <p class="confirmation-timestamp">{{ findings.get('resolved_at') }}</p>
@@ -168,9 +168,17 @@
     function toggle() {
         document.querySelectorAll('.outcome-fields').forEach(function(el) {
             el.classList.remove('active');
+            el.querySelectorAll('input, select, textarea').forEach(function(inp) {
+                inp.disabled = true;
+            });
         });
         var target = document.querySelector('.outcome-' + sel.value);
-        if (target) target.classList.add('active');
+        if (target) {
+            target.classList.add('active');
+            target.querySelectorAll('input, select, textarea').forEach(function(inp) {
+                inp.disabled = false;
+            });
+        }
     }
     sel.addEventListener('change', toggle);
 })();

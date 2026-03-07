@@ -2234,6 +2234,15 @@ class TestInvestigationResolution:
         assert response.status_code == 400
         assert b"Invalid accuracy rating" in response.data
 
+    def test_resolve_invalid_not_an_issue_reason(self, client: FlaskClient) -> None:
+        """Test resolve with invalid not_an_issue_reason returns 400."""
+        response = client.post(
+            "/investigations/inv-001/resolve",
+            data={"outcome": "not_an_issue", "not_an_issue_reason": "invalid_reason"},
+        )
+        assert response.status_code == 400
+        assert b"Invalid reason" in response.data
+
     def test_resolve_escalated_no_target(self, client: FlaskClient) -> None:
         """Test escalated without target returns 400."""
         response = client.post(
@@ -2398,6 +2407,65 @@ class TestInvestigationResolution:
 
                 all_events = "".join(events)
                 assert "resolution-update" in all_events
+
+
+    @respx.mock
+    def test_sse_resolution_update_independent_of_key_changes(
+        self, client: FlaskClient
+    ) -> None:
+        """Test SSE resolution-update fires on value-only change without key change.
+
+        When resolution_outcome value changes but no new keys are added,
+        the resolution-update event should still fire.
+        """
+        detail = {
+            "id": "inv-res-002", "status": "awaiting_confirmation",
+            "service": "test", "severity": "low", "condition": "Test",
+            "started_at": "2026-03-07T10:00:00Z",
+        }
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-res-002"
+        ).mock(return_value=Response(200, json=detail))
+
+        # Same keys, but resolution_outcome value changes
+        findings_v1: dict[str, object] = {
+            "customer_impacting": True,
+            "recommendations": [{"action": "test", "confidence": "high"}],
+            "resolution_outcome": "escalated",
+        }
+        findings_v2: dict[str, object] = {
+            "customer_impacting": True,
+            "recommendations": [{"action": "test", "confidence": "high"}],
+            "resolution_outcome": "resolved",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            side_effect=[findings_v1, findings_v2],
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            from beeper_ui.routes.investigations import (
+                _generate_detail_sse_events,
+            )
+
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-res-002"
+                )
+                # Iteration 1: step-update, findings-update, evidence-update, resolution-update (4)
+                # Iteration 2: resolution-update only (value changed, no key change) (1)
+                events = []
+                for _ in range(5):
+                    events.append(next(gen))
+
+                all_text = "\n".join(events)
+                # resolution-update should fire twice (once per value change)
+                assert all_text.count("event: resolution-update") == 2
+
+                gen.close()
 
 
 class TestFormatMTTR:

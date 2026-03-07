@@ -1,6 +1,6 @@
 # Story 4.6: Investigation Resolution
 
-Status: review
+Status: done
 
 ## Story
 

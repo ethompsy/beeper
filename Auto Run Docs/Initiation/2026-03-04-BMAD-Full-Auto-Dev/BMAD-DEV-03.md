@@ -110,13 +110,14 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Make all decisions autonomously
   <!-- Completed 2026-03-07: Full implementation of story 4-6 across 12 tasks. Operator: POST /resolve endpoint with ResolutionResolveRequest struct, conditional phase handling (escalated keeps phase unchanged), 7 Rust tests. UI Service: resolve_investigation(), update_kb_with_resolution() (Qdrant knowledge collection scroll+set_payload), calculate_mttr() static method. Routes: POST /resolve with outcome-conditional validation, MTTR calculation, Qdrant feedback persistence, KB update for non-escalated outcomes, format_mttr() helper. Templates: _resolution_form.html (4 outcome-dependent field sets, already-resolved banners, inline JS for field toggling), _resolution_result.html (per-outcome success states + error), _detail_content.html (Investigation Resolution card with SSE). CSS: ~170 lines (form, result variants, status banners, MTTR display, accuracy badges, outcome field toggle). SSE: resolution-update event with last_resolution_outcome tracking. Tests: 11 service + 18 route = 29 new tests, 416 total pass, zero regressions. Ruff + mypy clean on investigation files. Sprint status → review. -->
 
-- [ ] Review and finalize story 4-6:
+- [x] Review and finalize story 4-6:
   - Use the `/bmad-bmm-code-review` skill to review story 4-6 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `4-6-investigation-resolution: done`
   - Update story file status to `done`
   - Commit all changes as `4-6 done`
+  <!-- Completed 2026-03-07: Adversarial code review found 6 issues (1 HIGH, 3 MEDIUM, 2 LOW). Fixed: (1) duplicate resolution_notes textarea names — added disabled attribute to hidden field inputs via JS toggle to prevent stale form data submission, (2) MTTR display in already-resolved banners replaced raw `// 60` math with `format_mttr` Jinja2 template filter for correct <1m/hours/days formatting, (3) registered format_mttr as Jinja2 template filter and ACCURACY_LABELS/NOT_AN_ISSUE_LABELS/OUTCOME_LABELS as template globals in app.py, (4) already-resolved banners now use label dict lookups instead of raw `|replace|title` for consistent human-readable labels, (5) added test for invalid not_an_issue_reason validation, (6) added SSE resolution-update independence test (value-only change fires event). Tests: 164 investigation tests (up from 162), 418 total pass, zero regressions. Ruff + mypy clean on investigation files. Sprint status + story → done. -->
 
 - [ ] Run Epic 4 retrospective and mark epic complete:
   - Use the `/bmad-bmm-retrospective` skill to conduct the Epic 4 retrospective

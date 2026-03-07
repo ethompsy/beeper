@@ -26,6 +26,19 @@ def create_app(config_class: type | None = None) -> Flask:
     # Register markdown template filter
     setup_markdown_filter(app)
 
+    # Register investigation template helpers
+    from beeper_ui.routes.investigations import (
+        ACCURACY_LABELS,
+        NOT_AN_ISSUE_LABELS,
+        OUTCOME_LABELS,
+        format_mttr,
+    )
+
+    app.jinja_env.filters["format_mttr"] = format_mttr
+    app.jinja_env.globals["OUTCOME_LABELS"] = OUTCOME_LABELS
+    app.jinja_env.globals["ACCURACY_LABELS"] = ACCURACY_LABELS
+    app.jinja_env.globals["NOT_AN_ISSUE_LABELS"] = NOT_AN_ISSUE_LABELS
+
     # Register blueprints
     from beeper_ui.routes import register_blueprints
 
