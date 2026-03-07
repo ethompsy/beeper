@@ -1,0 +1,87 @@
+{# Recommendations & Confidence Display partial #}
+{# Data source: ResolutionRecommendationStep StepResult.data via findings dict #}
+
+{% set recommendations = findings.get('recommendations', []) %}
+{% set ranking_rationale = findings.get('ranking_rationale', '') %}
+{% set diagnostic_actions = findings.get('diagnostic_actions', []) %}
+{% set synthesis_source = findings.get('synthesis_source', '') %}
+{% set alternative_hypotheses = findings.get('alternative_hypotheses', []) %}
+
+{# Determine if any recommendation has low confidence #}
+{% set has_low_confidence = [] %}
+{% for rec in recommendations %}
+    {% if rec.get('confidence') == 'low' %}
+        {% if has_low_confidence.append(true) %}{% endif %}
+    {% endif %}
+{% endfor %}
+{% set is_low_confidence = has_low_confidence | length > 0 or synthesis_source == 'fallback' %}
+
+{% if recommendations %}
+    {# Synthesis source indicator #}
+    {% if synthesis_source == 'llm' %}
+    <span class="synthesis-badge synthesis-llm">AI-generated</span>
+    {% elif synthesis_source == 'fallback' %}
+    <span class="synthesis-badge synthesis-fallback">Fallback</span>
+    {% endif %}
+
+    {# Low confidence warning banner #}
+    {% if is_low_confidence %}
+    <div class="low-confidence-warning">
+        Low confidence &mdash; recommendations may need validation
+    </div>
+    {% endif %}
+
+    {# Recommendation cards #}
+    {% for rec in recommendations %}
+    <div class="recommendation-card{% if loop.first %} recommendation-top{% endif %} recommendation-confidence-{{ rec.get('confidence', 'low') }}">
+        {% if loop.first %}
+        <span class="top-recommendation-label">Top Recommendation</span>
+        {% endif %}
+        <div class="recommendation-header">
+            <span class="confidence-badge confidence-{{ rec.get('confidence', 'low') }}">{{ rec.get('confidence', 'unknown') }}</span>
+            <span class="risk-badge risk-{{ rec.get('risk_assessment', 'medium') }}">Risk: {{ rec.get('risk_assessment', 'unknown') }}</span>
+        </div>
+        <p class="recommendation-action">{{ rec.get('action', '') }}</p>
+        {% if rec.get('expected_outcome') %}
+        <p class="recommendation-outcome">Expected outcome: {{ rec.get('expected_outcome') }}</p>
+        {% endif %}
+        {% if rec.get('based_on_prior_incident') %}
+        <a href="/knowledge/{{ rec.get('based_on_prior_incident') }}" class="prior-incident-link">Based on prior incident: {{ rec.get('based_on_prior_incident') }}</a>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {# Ranking rationale #}
+    {% if ranking_rationale %}
+    <p class="ranking-rationale">{{ ranking_rationale }}</p>
+    {% endif %}
+
+    {# Diagnostic actions (shown especially for low confidence) #}
+    {% if diagnostic_actions %}
+    <div class="diagnostic-actions">
+        <h5>Diagnostic Actions</h5>
+        <ol>
+            {% for action in diagnostic_actions %}
+            <li>{{ action }}</li>
+            {% endfor %}
+        </ol>
+    </div>
+    {% endif %}
+
+    {# Alternative hypotheses for low confidence #}
+    {% if is_low_confidence and alternative_hypotheses %}
+    <details class="alternative-hypotheses-detail">
+        <summary>Alternative Hypotheses</summary>
+        <div class="alternative-hypotheses">
+            {% for alt in alternative_hypotheses %}
+            <div class="alternative-hypothesis">
+                <p>{{ alt }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+
+{% else %}
+    <p class="empty-state-text">No recommendations yet &mdash; investigation still in progress</p>
+{% endif %}

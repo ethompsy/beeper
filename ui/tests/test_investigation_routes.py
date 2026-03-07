@@ -1,6 +1,6 @@
 """Tests for Investigation routes."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import respx
 from flask.testing import FlaskClient
@@ -821,7 +821,7 @@ class TestDetailSSEEventGeneration:
         self, client: FlaskClient
     ) -> None:
         """Test SSE sends findings-update when new findings appear."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
 
         detail = MOCK_INVESTIGATION_DETAIL.copy()
 
@@ -870,3 +870,279 @@ class TestDetailSSEEventGeneration:
         response = client.get("/investigations/")
         assert response.status_code == 200
         assert b'href="/investigations/inv-abc123"' in response.data
+
+
+MOCK_FINDINGS_WITH_RECOMMENDATIONS = {
+    "customer_impacting": True,
+    "reasoning": "Users experiencing payment failures",
+    "root_cause_hypothesis": "Database pool exhausted",
+    "confidence_percentage": 85,
+    "confidence_level": "high",
+    "recommendations": [
+        {
+            "action": "Scale database connection pool from 10 to 50",
+            "confidence": "high",
+            "expected_outcome": "Connection errors will stop within 2 minutes",
+            "risk_assessment": "low",
+            "based_on_prior_incident": "inc-2026-001",
+        },
+        {
+            "action": "Restart the affected database pods",
+            "confidence": "medium",
+            "expected_outcome": "Clears stale connections and restores service",
+            "risk_assessment": "medium",
+            "based_on_prior_incident": None,
+        },
+        {
+            "action": "Enable query timeout limits",
+            "confidence": "low",
+            "expected_outcome": "Prevents long-running queries from exhausting pool",
+            "risk_assessment": "low",
+            "based_on_prior_incident": None,
+        },
+    ],
+    "recommendation_count": 3,
+    "ranking_rationale": "Ranked by confidence level and risk assessment",
+    "diagnostic_actions": [
+        "Check database connection pool metrics",
+        "Review slow query logs for the last hour",
+    ],
+    "synthesis_source": "llm",
+    "resolution_model_tier": "standard",
+    "resolution_model_used": "gpt-4",
+    "alternative_hypotheses": [
+        "Network partition between app and database",
+        "Resource exhaustion on database host",
+    ],
+}
+
+
+class TestRecommendationsDisplay:
+    """Tests for recommendations and confidence display (Story 4-3)."""
+
+    @respx.mock
+    def test_recommendations_cards_rendered(self, client: FlaskClient) -> None:
+        """Test recommendation cards display action, confidence, risk, outcome."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"recommendation-card" in response.data
+            assert b"Scale database connection pool from 10 to 50" in response.data
+            assert b"confidence-high" in response.data
+            assert b"risk-low" in response.data
+            assert b"Connection errors will stop within 2 minutes" in response.data
+
+    @respx.mock
+    def test_top_recommendation_highlighted(self, client: FlaskClient) -> None:
+        """Test first recommendation has top recommendation class."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"recommendation-top" in response.data
+            assert b"Top Recommendation" in response.data
+
+    @respx.mock
+    def test_ranking_rationale_displayed(self, client: FlaskClient) -> None:
+        """Test ranking rationale text is rendered."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"ranking-rationale" in response.data
+            assert b"Ranked by confidence level and risk assessment" in response.data
+
+    @respx.mock
+    def test_low_confidence_warning(self, client: FlaskClient) -> None:
+        """Test low confidence warning appears when any rec has low confidence."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"low-confidence-warning" in response.data
+            assert b"recommendations may need validation" in response.data
+
+    @respx.mock
+    def test_diagnostic_actions_rendered(self, client: FlaskClient) -> None:
+        """Test diagnostic actions list renders when present."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"diagnostic-actions" in response.data
+            assert b"Check database connection pool metrics" in response.data
+            assert b"Review slow query logs for the last hour" in response.data
+
+    @respx.mock
+    def test_alternative_hypotheses_low_confidence(
+        self, client: FlaskClient
+    ) -> None:
+        """Test alternative hypotheses display when low confidence."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"Alternative Hypotheses" in response.data
+            assert b"Network partition between app and database" in response.data
+
+    @respx.mock
+    def test_empty_recommendations(self, client: FlaskClient) -> None:
+        """Test empty recommendations shows in-progress message."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        findings_no_recs = {
+            "customer_impacting": True,
+            "reasoning": "Users affected",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=findings_no_recs,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"No recommendations yet" in response.data
+            assert b"investigation still in progress" in response.data
+
+    @respx.mock
+    def test_fallback_source_indicator(self, client: FlaskClient) -> None:
+        """Test fallback source indicator and low confidence warning."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        fallback_findings = {
+            "recommendations": [
+                {
+                    "action": "Check service logs",
+                    "confidence": "medium",
+                    "expected_outcome": "Identify error patterns",
+                    "risk_assessment": "low",
+                    "based_on_prior_incident": None,
+                },
+            ],
+            "ranking_rationale": "Fallback recommendations",
+            "diagnostic_actions": [],
+            "synthesis_source": "fallback",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=fallback_findings,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"synthesis-fallback" in response.data
+            assert b"Fallback" in response.data
+            # Fallback triggers low confidence warning
+            assert b"low-confidence-warning" in response.data
+
+    @respx.mock
+    def test_prior_incident_link(self, client: FlaskClient) -> None:
+        """Test prior incident link renders when based_on_prior_incident set."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"prior-incident-link" in response.data
+            assert b"inc-2026-001" in response.data
+
+    @respx.mock
+    def test_recommendations_htmx_partial(self, client: FlaskClient) -> None:
+        """Test HTMX partial response includes recommendations HTML."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get(
+                "/investigations/inv-detail-001",
+                headers={"HX-Request": "true"},
+            )
+            assert response.status_code == 200
+            assert b"<!DOCTYPE html>" not in response.data
+            assert b"recommendation-card" in response.data
+            assert b"recommendation-top" in response.data
+
+    @respx.mock
+    def test_sse_findings_update_includes_recommendations(
+        self, client: FlaskClient
+    ) -> None:
+        """Test SSE findings-update event includes recommendation cards."""
+        detail = MOCK_INVESTIGATION_DETAIL.copy()
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=detail))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            side_effect=[{}, MOCK_FINDINGS_WITH_RECOMMENDATIONS],
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            from beeper_ui.routes.investigations import _generate_detail_sse_events
+
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-detail-001"
+                )
+                # First: step-update (initial)
+                event1 = next(gen)
+                assert "event: step-update" in event1
+
+                # Second: findings-update with recommendations
+                event2 = next(gen)
+                assert "event: findings-update" in event2
+                assert "recommendation-card" in event2
+
+                gen.close()

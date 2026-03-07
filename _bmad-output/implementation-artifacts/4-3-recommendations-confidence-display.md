@@ -1,6 +1,6 @@
 # Story 4.3: Recommendations & Confidence Display
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -20,58 +20,58 @@ so that I understand how certain Beeper is about its findings and can make infor
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `_recommendations.html` template partial (AC: 1, 2, 3, 4)
-  - [ ] 1.1 Create `ui/beeper_ui/templates/investigations/_recommendations.html` — renders the full recommendations section from `findings` dict data
-  - [ ] 1.2 Iterate over `findings.get('recommendations', [])` — each recommendation is a dict with keys: `action`, `confidence`, `expected_outcome`, `risk_assessment`, `based_on_prior_incident`
-  - [ ] 1.3 Render each recommendation as a `.recommendation-card` with: action text, confidence badge (`.confidence-badge.confidence-{level}`), risk badge (`.risk-badge.risk-{level}`), expected outcome paragraph, prior incident link (if `based_on_prior_incident` is not None)
-  - [ ] 1.4 Highlight the first recommendation (index 0) with `.recommendation-top` class — recommendations are pre-sorted by confidence desc, risk asc from the pipeline
-  - [ ] 1.5 Display `findings.get('ranking_rationale', '')` below the recommendation list as `.ranking-rationale` text
-  - [ ] 1.6 Add low-confidence warning section: **When** any recommendation has `confidence == "low"` OR `findings.get('synthesis_source') == "fallback"`, show `.low-confidence-warning` banner with message "Low confidence — recommendations may need validation"
-  - [ ] 1.7 Render `findings.get('diagnostic_actions', [])` as a `.diagnostic-actions` checklist when present — these are safe investigative steps the SRE can take before acting on recommendations
-  - [ ] 1.8 Display alternative hypotheses from RCA data: `findings.get('alternative_hypotheses', [])` in a collapsible `<details>` section when low confidence, reusing existing `.alternative-hypothesis` CSS class from 4-2
-  - [ ] 1.9 Handle empty state: when `findings.get('recommendations')` is None or empty list, show "No recommendations yet — investigation still in progress" message
-  - [ ] 1.10 Add `synthesis_source` indicator: show "AI-generated" badge when `synthesis_source == "llm"`, "Fallback" badge when `synthesis_source == "fallback"`
+- [x] Task 1: Create `_recommendations.html` template partial (AC: 1, 2, 3, 4)
+  - [x] 1.1 Create `ui/beeper_ui/templates/investigations/_recommendations.html` — renders the full recommendations section from `findings` dict data
+  - [x] 1.2 Iterate over `findings.get('recommendations', [])` — each recommendation is a dict with keys: `action`, `confidence`, `expected_outcome`, `risk_assessment`, `based_on_prior_incident`
+  - [x] 1.3 Render each recommendation as a `.recommendation-card` with: action text, confidence badge (`.confidence-badge.confidence-{level}`), risk badge (`.risk-badge.risk-{level}`), expected outcome paragraph, prior incident link (if `based_on_prior_incident` is not None)
+  - [x] 1.4 Highlight the first recommendation (index 0) with `.recommendation-top` class — recommendations are pre-sorted by confidence desc, risk asc from the pipeline
+  - [x] 1.5 Display `findings.get('ranking_rationale', '')` below the recommendation list as `.ranking-rationale` text
+  - [x] 1.6 Add low-confidence warning section: **When** any recommendation has `confidence == "low"` OR `findings.get('synthesis_source') == "fallback"`, show `.low-confidence-warning` banner with message "Low confidence — recommendations may need validation"
+  - [x] 1.7 Render `findings.get('diagnostic_actions', [])` as a `.diagnostic-actions` checklist when present — these are safe investigative steps the SRE can take before acting on recommendations
+  - [x] 1.8 Display alternative hypotheses from RCA data: `findings.get('alternative_hypotheses', [])` in a collapsible `<details>` section when low confidence, reusing existing `.alternative-hypothesis` CSS class from 4-2
+  - [x] 1.9 Handle empty state: when `findings.get('recommendations')` is None or empty list, show "No recommendations yet — investigation still in progress" message
+  - [x] 1.10 Add `synthesis_source` indicator: show "AI-generated" badge when `synthesis_source == "llm"`, "Fallback" badge when `synthesis_source == "fallback"`
 
-- [ ] Task 2: Update `_findings.html` to use new recommendations partial (AC: 1, 2, 3)
-  - [ ] 2.1 Replace the existing simple "Resolution Recommendation" `<div class="findings-section">` block in `_findings.html` with `{% include "investigations/_recommendations.html" %}` — the `findings` dict is already in template context
-  - [ ] 2.2 Ensure the recommendations section is visually distinct from other findings sections — use a `.findings-section.recommendations-section` wrapper with enhanced visual treatment (slightly different border/background to draw attention)
-  - [ ] 2.3 Move recommendations section to be the LAST findings section (after RCA hypothesis) so it appears as the conclusion/actionable outcome of the investigation
+- [x] Task 2: Update `_findings.html` to use new recommendations partial (AC: 1, 2, 3)
+  - [x] 2.1 Replace the existing simple "Resolution Recommendation" `<div class="findings-section">` block in `_findings.html` with `{% include "investigations/_recommendations.html" %}` — the `findings` dict is already in template context
+  - [x] 2.2 Ensure the recommendations section is visually distinct from other findings sections — use a `.findings-section.recommendations-section` wrapper with enhanced visual treatment (slightly different border/background to draw attention)
+  - [x] 2.3 Move recommendations section to be the LAST findings section (after RCA hypothesis) so it appears as the conclusion/actionable outcome of the investigation
 
-- [ ] Task 3: Add CSS styles for recommendation cards (AC: 1, 2, 3, 4)
-  - [ ] 3.1 Add `.recommendation-card` styles to `static/css/main.css`: card layout with left border color-coded by confidence level (green=high, yellow=medium, red=low), padding, margin-bottom for spacing between cards
-  - [ ] 3.2 Add `.recommendation-top` styles: slightly larger card, subtle highlight background (`#f0fdf4` green-tint for high confidence, `#fffbeb` yellow-tint for medium, `#fef2f2` red-tint for low), "Top Recommendation" label badge
-  - [ ] 3.3 Add `.confidence-badge` inline badge styles: `.confidence-badge.confidence-high` (green `#22c55e` bg), `.confidence-badge.confidence-medium` (yellow `#eab308` bg), `.confidence-badge.confidence-low` (red `#ef4444` bg) — follow existing `.impact-badge` sizing pattern
-  - [ ] 3.4 Add `.risk-badge` inline badge styles: `.risk-badge.risk-high` (red `#fee2e2` bg, `#991b1b` text), `.risk-badge.risk-medium` (yellow `#fef3c7` bg, `#92400e` text), `.risk-badge.risk-low` (green `#dcfce7` bg, `#166534` text) — follow existing badge pattern
-  - [ ] 3.5 Add `.low-confidence-warning` banner: yellow background (`#fef3c7`), amber border, warning icon via CSS, padding, margin-bottom
-  - [ ] 3.6 Add `.diagnostic-actions` list styles: ordered list with checkbox-like indicators, muted text color, indented under warning banner
-  - [ ] 3.7 Add `.ranking-rationale` styles: italic text, muted color (`#6b7280`), smaller font, top border separator
-  - [ ] 3.8 Add `.synthesis-badge` styles: small pill badge, `.synthesis-llm` (blue tint), `.synthesis-fallback` (gray tint)
-  - [ ] 3.9 Add `.prior-incident-link` styles: inline link with icon indicator, underline on hover
-  - [ ] 3.10 Add `.recommendations-section` wrapper: slightly different from standard `.findings-section` — subtle accent border or background to distinguish actionable recommendations from analytical findings
+- [x] Task 3: Add CSS styles for recommendation cards (AC: 1, 2, 3, 4)
+  - [x] 3.1 Add `.recommendation-card` styles to `static/css/main.css`: card layout with left border color-coded by confidence level (green=high, yellow=medium, red=low), padding, margin-bottom for spacing between cards
+  - [x] 3.2 Add `.recommendation-top` styles: slightly larger card, subtle highlight background (`#f0fdf4` green-tint for high confidence, `#fffbeb` yellow-tint for medium, `#fef2f2` red-tint for low), "Top Recommendation" label badge
+  - [x] 3.3 Add `.confidence-badge` inline badge styles: `.confidence-badge.confidence-high` (green `#22c55e` bg), `.confidence-badge.confidence-medium` (yellow `#eab308` bg), `.confidence-badge.confidence-low` (red `#ef4444` bg) — follow existing `.impact-badge` sizing pattern
+  - [x] 3.4 Add `.risk-badge` inline badge styles: `.risk-badge.risk-high` (red `#fee2e2` bg, `#991b1b` text), `.risk-badge.risk-medium` (yellow `#fef3c7` bg, `#92400e` text), `.risk-badge.risk-low` (green `#dcfce7` bg, `#166534` text) — follow existing badge pattern
+  - [x] 3.5 Add `.low-confidence-warning` banner: yellow background (`#fef3c7`), amber border, warning icon via CSS, padding, margin-bottom
+  - [x] 3.6 Add `.diagnostic-actions` list styles: ordered list with checkbox-like indicators, muted text color, indented under warning banner
+  - [x] 3.7 Add `.ranking-rationale` styles: italic text, muted color (`#6b7280`), smaller font, top border separator
+  - [x] 3.8 Add `.synthesis-badge` styles: small pill badge, `.synthesis-llm` (blue tint), `.synthesis-fallback` (gray tint)
+  - [x] 3.9 Add `.prior-incident-link` styles: inline link with icon indicator, underline on hover
+  - [x] 3.10 Add `.recommendations-section` wrapper: slightly different from standard `.findings-section` — subtle accent border or background to distinguish actionable recommendations from analytical findings
 
-- [ ] Task 4: Route and SSE integration verification (AC: 1, 2, 3)
-  - [ ] 4.1 Verify the existing `investigation_detail()` route in `investigations.py` passes `findings` dict to template context — no route changes needed since `get_investigation_findings()` already returns all pipeline metadata including recommendations data
-  - [ ] 4.2 Verify the existing `findings-update` SSE event in `investigation_detail_stream()` re-renders `_findings.html` (which now includes `_recommendations.html`) — no SSE changes needed
-  - [ ] 4.3 If the pipeline metadata keys differ from expected (e.g., `resolution_recommendation` singular vs `recommendations` list), add a data normalization helper in the route that transforms findings data before passing to template — check actual Qdrant data against `resolution_recommendations.py` StepResult.data keys
+- [x] Task 4: Route and SSE integration verification (AC: 1, 2, 3)
+  - [x] 4.1 Verify the existing `investigation_detail()` route in `investigations.py` passes `findings` dict to template context — no route changes needed since `get_investigation_findings()` already returns all pipeline metadata including recommendations data
+  - [x] 4.2 Verify the existing `findings-update` SSE event in `investigation_detail_stream()` re-renders `_findings.html` (which now includes `_recommendations.html`) — no SSE changes needed
+  - [x] 4.3 If the pipeline metadata keys differ from expected (e.g., `resolution_recommendation` singular vs `recommendations` list), add a data normalization helper in the route that transforms findings data before passing to template — check actual Qdrant data against `resolution_recommendations.py` StepResult.data keys
 
-- [ ] Task 5: Tests for recommendations display (AC: 1, 2, 3, 4)
-  - [ ] 5.1 Test `GET /investigations/<id>` renders recommendation cards when findings contain `recommendations` list — verify each card shows action, confidence badge, risk badge, expected outcome
-  - [ ] 5.2 Test top recommendation is highlighted with `.recommendation-top` class
-  - [ ] 5.3 Test ranking rationale text is displayed
-  - [ ] 5.4 Test low confidence warning appears when any recommendation has `confidence == "low"`
-  - [ ] 5.5 Test diagnostic actions list renders when present in findings
-  - [ ] 5.6 Test alternative hypotheses display when low confidence (from RCA data in same findings dict)
-  - [ ] 5.7 Test empty recommendations state — "No recommendations yet" message when `recommendations` key missing or empty
-  - [ ] 5.8 Test fallback source indicator when `synthesis_source == "fallback"`
-  - [ ] 5.9 Test prior incident link renders when `based_on_prior_incident` is not None
-  - [ ] 5.10 Test HTMX partial response (with `HX-Request` header) includes recommendations HTML
-  - [ ] 5.11 Test SSE `findings-update` event includes recommendation cards in rendered HTML
+- [x] Task 5: Tests for recommendations display (AC: 1, 2, 3, 4)
+  - [x] 5.1 Test `GET /investigations/<id>` renders recommendation cards when findings contain `recommendations` list — verify each card shows action, confidence badge, risk badge, expected outcome
+  - [x] 5.2 Test top recommendation is highlighted with `.recommendation-top` class
+  - [x] 5.3 Test ranking rationale text is displayed
+  - [x] 5.4 Test low confidence warning appears when any recommendation has `confidence == "low"`
+  - [x] 5.5 Test diagnostic actions list renders when present in findings
+  - [x] 5.6 Test alternative hypotheses display when low confidence (from RCA data in same findings dict)
+  - [x] 5.7 Test empty recommendations state — "No recommendations yet" message when `recommendations` key missing or empty
+  - [x] 5.8 Test fallback source indicator when `synthesis_source == "fallback"`
+  - [x] 5.9 Test prior incident link renders when `based_on_prior_incident` is not None
+  - [x] 5.10 Test HTMX partial response (with `HX-Request` header) includes recommendations HTML
+  - [x] 5.11 Test SSE `findings-update` event includes recommendation cards in rendered HTML
 
-- [ ] Task 6: Integration verification (AC: 1, 2, 3, 4)
-  - [ ] 6.1 Run `ruff check` on all new/modified Python files — fix any issues
-  - [ ] 6.2 Run `mypy --strict` on all new/modified Python files — fix any issues
-  - [ ] 6.3 Run full Python test suite — verify zero regressions
-  - [ ] 6.4 Verify recommendations display renders correctly within investigation detail page (manual template inspection)
+- [x] Task 6: Integration verification (AC: 1, 2, 3, 4)
+  - [x] 6.1 Run `ruff check` on all new/modified Python files — fix any issues
+  - [x] 6.2 Run `mypy --strict` on all new/modified Python files — fix any issues
+  - [x] 6.3 Run full Python test suite — verify zero regressions
+  - [x] 6.4 Verify recommendations display renders correctly within investigation detail page (manual template inspection)
 
 ## Dev Notes
 
@@ -224,4 +224,13 @@ Claude Opus 4.6
 
 ### Change Log
 
+- 2026-03-06: Implemented story 4-3 — template-only enhancement with rich recommendation cards, confidence badges, risk badges, diagnostic actions, alternative hypotheses, and comprehensive CSS. 11 new tests added, 341 total pass, zero regressions. Ruff + mypy clean on all modified files.
+
 ### File List
+
+- `ui/beeper_ui/templates/investigations/_recommendations.html` (NEW) — Recommendations partial template with confidence badges, risk badges, diagnostic actions, alternative hypotheses, synthesis source indicators
+- `ui/beeper_ui/templates/investigations/_findings.html` (MODIFIED) — Replaced simple resolution text with `{% include "_recommendations.html" %}`, added `.recommendations-section` wrapper
+- `ui/beeper_ui/static/css/main.css` (MODIFIED) — Added ~200 lines of CSS: recommendation cards, confidence/risk badges, low-confidence warning, diagnostic actions, ranking rationale, synthesis badges, prior incident links
+- `ui/tests/test_investigation_routes.py` (MODIFIED) — Added 11 new tests in `TestRecommendationsDisplay` class covering all ACs
+- `_bmad-output/implementation-artifacts/4-3-recommendations-confidence-display.md` (MODIFIED) — Story status → review, all tasks marked complete
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (MODIFIED) — 4-3 status → in-progress

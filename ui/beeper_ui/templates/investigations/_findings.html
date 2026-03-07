@@ -80,21 +80,13 @@
     </div>
     {% endif %}
 
-    {# Resolution Recommendations #}
-    {% if findings.get('resolution_recommendation') %}
-    <div class="findings-section">
-        <h4>Resolution Recommendation</h4>
+    {# Resolution Recommendations — rich card display #}
+    <div class="findings-section recommendations-section">
+        <h4>Resolution Recommendations</h4>
         <div class="findings-content">
-            <p>{{ findings.get('resolution_recommendation') }}</p>
-            {% if findings.get('estimated_mttr_minutes') %}
-            <span class="mttr-estimate">Estimated MTTR: {{ findings.get('estimated_mttr_minutes') }} min</span>
-            {% endif %}
-            {% if findings.get('escalation_recommended') %}
-            <span class="escalation-badge">Escalation Recommended</span>
-            {% endif %}
+            {% include "investigations/_recommendations.html" %}
         </div>
     </div>
-    {% endif %}
 </div>
 {% else %}
 <p class="empty-state-text">No findings yet. Waiting for investigation steps to complete...</p>
