@@ -109,9 +109,13 @@ class LlmResponseCache:
             response: The LLM response to cache.
         """
         key = self._generate_cache_key(messages, model, max_tokens, temperature)
-        if len(self._entries) >= self._max_entries:
-            oldest_key = min(self._entries, key=lambda k: self._entries[k].created_at)
-            del self._entries[oldest_key]
+        if key not in self._entries and len(self._entries) >= self._max_entries:
+            if self._entries:
+                oldest_key = min(
+                    self._entries, key=lambda k: self._entries[k].created_at
+                )
+                logger.debug("Cache evicting oldest entry (key=%s…)", oldest_key[:12])
+                del self._entries[oldest_key]
         self._entries[key] = CacheEntry(
             response=response,
             created_at=time.monotonic(),

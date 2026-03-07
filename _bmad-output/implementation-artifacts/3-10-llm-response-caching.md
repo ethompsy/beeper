@@ -1,6 +1,6 @@
 # Story 3.10: LLM Response Caching
 
-Status: review
+Status: done
 
 ## Story
 

@@ -75,7 +75,7 @@ development_status:
   3-7-resolution-recommendations: done
   3-8-investigation-documentation: done
   3-9-tiered-llm-model-selection: done
-  3-10-llm-response-caching: review
+  3-10-llm-response-caching: done
   epic-3-retrospective: optional
 
   # Epic 4: Investigation Experience

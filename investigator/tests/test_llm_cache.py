@@ -110,6 +110,27 @@ class TestLlmResponseCacheOperations:
         assert cache.get(msg2, "model", 4096, 0.0) == "resp2"
         assert cache.get(msg3, "model", 4096, 0.0) == "resp3"
 
+    def test_put_update_does_not_evict_at_capacity(self) -> None:
+        """Updating an existing key at capacity should not evict another entry."""
+        cache = LlmResponseCache(max_entries=2)
+        msg1 = [{"role": "user", "content": "first"}]
+        msg2 = [{"role": "user", "content": "second"}]
+
+        cache.put(msg1, "model", 4096, 0.0, "resp1")
+        cache.put(msg2, "model", 4096, 0.0, "resp2")
+        # Update msg1 — should NOT evict msg2
+        cache.put(msg1, "model", 4096, 0.0, "resp1-updated")
+
+        assert cache.get(msg1, "model", 4096, 0.0) == "resp1-updated"
+        assert cache.get(msg2, "model", 4096, 0.0) == "resp2"
+
+    def test_put_with_max_entries_zero_does_not_raise(self) -> None:
+        """max_entries=0 should not raise ValueError."""
+        cache = LlmResponseCache(max_entries=0)
+        messages = [{"role": "user", "content": "Hello"}]
+        # Should not raise
+        cache.put(messages, "model", 4096, 0.0, "response")
+
     def test_clear_removes_all_entries(self) -> None:
         """6.8: clear() removes all entries."""
         cache = LlmResponseCache()
@@ -361,26 +382,57 @@ class TestCacheStatsPropagation:
     """Tests for cache stats propagation to InvestigationResult (Task 8)."""
 
     def test_cache_stats_in_investigation_result(self) -> None:
-        """8.1: cache_stats propagated to InvestigationResult.metadata."""
-        from beeper_investigator.agent import InvestigatorAgent
-
-        agent = MagicMock(spec=InvestigatorAgent)
-        agent.context = MagicMock()
-        agent.context.investigation_id = "test-id"
-        agent.context.service = "test-service"
-        agent.context.condition = "test-cond"
-        agent.context.severity = "warning"
-
-        # Test that LlmClient.get_cache_stats returns expected structure
-        config = LlmConfig(
-            provider="anthropic", model="claude-sonnet-4", api_key="key"
+        """8.1: cache_stats propagated to InvestigationResult.metadata via agent.run()."""
+        from beeper_investigator.agent import (
+            InvestigatorAgent,
+            SourceClients,
         )
-        client = LlmClient(config)
-        stats = client.get_cache_stats()
-        assert "hits" in stats
-        assert "misses" in stats
-        assert "hit_rate" in stats
-        assert "entries_count" in stats
+        from beeper_investigator.context import InvestigationContext
+        from beeper_investigator.steps import StepResult
+
+        mock_kb = MagicMock()
+        mock_kb.health_check.return_value = True
+
+        mock_llm = MagicMock()
+        mock_llm.test_connection.return_value = True
+        mock_llm.get_model_usage.return_value = {}
+        mock_llm.get_cache_stats.return_value = {
+            "hits": 5,
+            "misses": 10,
+            "hit_rate": 0.333,
+            "entries_count": 8,
+            "max_entries": 256,
+            "ttl_seconds": 3600,
+        }
+
+        mock_step = MagicMock()
+        mock_step.name = "test-step"
+        mock_step.execute.return_value = StepResult(
+            success=True, summary="ok", data={},
+        )
+
+        context = InvestigationContext(
+            investigation_id="test-id",
+            namespace="default",
+            condition="test-cond",
+            service="test-service",
+            severity="warning",
+        )
+        agent = InvestigatorAgent(
+            context=context,
+            kb_client=mock_kb,
+            llm_client=mock_llm,
+            sources=SourceClients(),
+            status_updater=MagicMock(),
+        )
+        agent.steps = [mock_step]
+
+        result = agent.run()
+
+        assert "cache_stats" in result.metadata
+        assert result.metadata["cache_stats"]["hits"] == 5
+        assert result.metadata["cache_stats"]["misses"] == 10
+        assert result.metadata["cache_stats"]["hit_rate"] == 0.333
 
     def test_cache_stats_contains_expected_keys(self) -> None:
         """8.2: cache_stats contains expected keys."""

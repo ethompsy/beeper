@@ -68,13 +68,14 @@ This phase completes the Investigation Engine epic by implementing the remaining
   - Make all decisions autonomously
   - *(Completed: Created `llm/cache.py` with LlmResponseCache (SHA-256 keys, TTL, LRU eviction, metrics). Integrated transparently into LlmClient. 30 new tests, 373 total passing, 0 regressions.)*
 
-- [ ] Review and finalize story 3-10:
+- [x] Review and finalize story 3-10:
   - Use the `/bmad-bmm-code-review` skill to review story 3-10 — auto-fix all issues found
   - After review fixes, run `cd investigator && poetry run pytest && poetry run ruff check . && poetry run mypy .`
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `3-10-llm-response-caching: done`
   - Update story file status to `done`
   - Commit all changes as `3-10 done`
+  - *(Completed: Adversarial code review found 4 MEDIUM issues, all fixed: (1) moved lazy import to module level in client.py, (2) replaced weak test 8.1 with end-to-end agent.run() propagation test, (3) fixed ValueError crash on max_entries=0, (4) fixed unnecessary eviction on key update at capacity. Added 2 new tests. 375 passed, ruff clean, mypy only pre-existing story 3-8 issues.)*
 
 - [ ] Run Epic 3 retrospective and mark epic complete:
   - Use the `/bmad-bmm-retrospective` skill to conduct the Epic 3 retrospective

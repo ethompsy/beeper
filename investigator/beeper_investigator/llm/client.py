@@ -15,6 +15,8 @@ from typing import Any, Literal
 
 import litellm
 
+from beeper_investigator.llm.cache import LlmResponseCache
+
 logger = logging.getLogger(__name__)
 
 ModelTier = Literal["screening", "standard", "deep_rca"]
@@ -173,8 +175,6 @@ class LlmClient:
         Args:
             config: LLM configuration.
         """
-        from beeper_investigator.llm.cache import LlmResponseCache
-
         self.config = config
         self._model_usage: dict[str, int] = {}
         self._cache = LlmResponseCache(
