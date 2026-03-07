@@ -36,11 +36,12 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Make all decisions autonomously
   <!-- Completed 2026-03-06: Story file created at _bmad-output/implementation-artifacts/4-2-real-time-investigation-pane.md with 9 tasks, comprehensive dev notes covering SSE polling-backed detail streaming, operator detail API endpoint, step timeline display logic, Qdrant findings retrieval, expandable evidence panels, and list-to-detail HTMX navigation. Sprint status updated. -->
 
-- [ ] Implement story 4-2 (Real-Time Investigation Pane) using the `/bmad-bmm-dev-story` skill:
+- [x] Implement story 4-2 (Real-Time Investigation Pane) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
   - Before writing new code, review: the investigation list view (story 4-1 code) for navigation and SSE patterns, `agent.py` step pipeline for understanding what data to stream, `k8s/status.py` for status update flow
   - Implement: SSE endpoint streaming step progress, expandable evidence sections, real-time findings display
   - Make all decisions autonomously
+  <!-- Completed 2026-03-06: Full implementation of story 4-2 across 9 tasks. Operator: GET /api/v1/investigations/:id detail endpoint with InvestigationDetailResponse, 404 handling, 4 Rust tests. UI: InvestigationDetail dataclass, get_investigation() + get_investigation_findings() (Qdrant), detail route with HTMX partial support, SSE streaming (step-update/findings-update/investigation-complete events), 6 new templates (detail, step progress timeline, findings, evidence panels, not-found), ~300 lines CSS (step timeline, confidence indicators, animations). List rows clickable with hx-get/hx-push-url. Tests: 68 investigation tests (19 service + 49 route), 322 total pass, zero regressions. Ruff + mypy clean. Sprint status → review. -->
 
 - [ ] Review and finalize story 4-2:
   - Use the `/bmad-bmm-code-review` skill to review story 4-2 — auto-fix all issues found
