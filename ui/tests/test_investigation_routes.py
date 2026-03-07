@@ -700,3 +700,173 @@ class TestStepStates:
 
         states = _get_step_states(None, "investigating")
         assert all(s["state"] == "pending" for s in states)
+
+    def test_step_states_last_step(self) -> None:
+        """Test last step as active."""
+        from beeper_ui.routes.investigations import _get_step_states
+
+        states = _get_step_states("Documenting investigation findings", "investigating")
+        assert states[0]["state"] == "completed"
+        assert states[1]["state"] == "completed"
+        assert states[2]["state"] == "completed"
+        assert states[3]["state"] == "completed"
+        assert states[4]["state"] == "completed"
+        assert states[5]["state"] == "active"
+        assert states[5]["key"] == "documentation"
+
+
+class TestDetailSSEEventGeneration:
+    """Tests for SSE event generation logic."""
+
+    @respx.mock
+    def test_sse_sends_step_update_on_message_change(
+        self, client: FlaskClient
+    ) -> None:
+        """Test SSE sends step-update event when status.message changes."""
+        from unittest.mock import patch
+
+        detail_v1 = MOCK_INVESTIGATION_DETAIL.copy()
+        detail_v1["message"] = "Assessing customer impact"
+
+        detail_v2 = MOCK_INVESTIGATION_DETAIL.copy()
+        detail_v2["message"] = "Querying knowledge base"
+
+        # First call returns v1, second returns v2
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(
+            side_effect=[
+                Response(200, json=detail_v1),
+                Response(200, json=detail_v2),
+            ]
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            from beeper_ui.routes.investigations import _generate_detail_sse_events
+
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-detail-001"
+                )
+                # First event: step-update with v1
+                event1 = next(gen)
+                assert "event: step-update" in event1
+
+                # Second event: step-update with v2 (message changed)
+                event2 = next(gen)
+                assert "event: step-update" in event2
+
+                gen.close()
+
+    @respx.mock
+    def test_sse_sends_complete_on_phase_completed(
+        self, client: FlaskClient
+    ) -> None:
+        """Test SSE sends investigation-complete when phase is completed."""
+        from unittest.mock import patch
+
+        detail = MOCK_INVESTIGATION_DETAIL.copy()
+        detail["status"] = "completed"
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=detail))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            from beeper_ui.routes.investigations import _generate_detail_sse_events
+
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-detail-001"
+                )
+                events = list(gen)
+                # Should include a step-update and investigation-complete
+                assert any("event: step-update" in e for e in events)
+                assert any("event: investigation-complete" in e for e in events)
+                assert any("data: done" in e for e in events)
+
+    @respx.mock
+    def test_sse_sends_not_found_event(self, client: FlaskClient) -> None:
+        """Test SSE sends investigation-complete with not-found when 404."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-gone"
+        ).mock(return_value=Response(404, json={"error": "not found"}))
+
+        from beeper_ui.routes.investigations import _generate_detail_sse_events
+
+        app = client.application
+        with app.app_context():
+            gen = _generate_detail_sse_events(
+                "http://mock-operator:8080", 5.0, "inv-gone"
+            )
+            events = list(gen)
+            assert len(events) == 1
+            assert "event: investigation-complete" in events[0]
+            assert "data: not-found" in events[0]
+
+    @respx.mock
+    def test_sse_sends_findings_update_on_new_data(
+        self, client: FlaskClient
+    ) -> None:
+        """Test SSE sends findings-update when new findings appear."""
+        from unittest.mock import patch, MagicMock
+
+        detail = MOCK_INVESTIGATION_DETAIL.copy()
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=detail))
+
+        findings_v1: dict[str, object] = {}
+        findings_v2 = {
+            "customer_impacting": True,
+            "reasoning": "Users affected",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            side_effect=[findings_v1, findings_v2],
+        ), patch(
+            "beeper_ui.routes.investigations.time.sleep"
+        ):
+            from beeper_ui.routes.investigations import _generate_detail_sse_events
+
+            app = client.application
+            with app.app_context():
+                gen = _generate_detail_sse_events(
+                    "http://mock-operator:8080", 5.0, "inv-detail-001"
+                )
+                # First iteration: step-update (initial) + no findings
+                event1 = next(gen)
+                assert "event: step-update" in event1
+
+                # Second iteration: no step change, but findings appeared
+                event2 = next(gen)
+                assert "event: findings-update" in event2
+
+                gen.close()
+
+    @respx.mock
+    def test_detail_page_has_investigation_link(
+        self, client: FlaskClient
+    ) -> None:
+        """Test that investigation list rows contain navigation links."""
+        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
+            return_value=Response(200, json=MOCK_INVESTIGATIONS)
+        )
+
+        response = client.get("/investigations/")
+        assert response.status_code == 200
+        assert b'href="/investigations/inv-abc123"' in response.data

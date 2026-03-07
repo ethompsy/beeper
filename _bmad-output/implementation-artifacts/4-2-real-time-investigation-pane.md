@@ -1,6 +1,6 @@
 # Story 4.2: Real-Time Investigation Pane
 
-Status: review
+Status: done
 
 ## Story
 

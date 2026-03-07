@@ -65,8 +65,10 @@
     </div>
 
     {# Evidence Panels #}
+    <div id="evidence" sse-swap="evidence-update" hx-swap="innerHTML">
     {% if findings %}
     {% include "investigations/_evidence_panel.html" %}
     {% endif %}
+    </div>
 </div>
 {% endif %}

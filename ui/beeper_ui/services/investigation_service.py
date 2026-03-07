@@ -101,10 +101,13 @@ class InvestigationService:
         return self._qdrant_client
 
     def close(self) -> None:
-        """Close the HTTP client."""
+        """Close the HTTP and Qdrant clients."""
         if self._client is not None and not self._client.is_closed:
             self._client.close()
             self._client = None
+        if self._qdrant_client is not None:
+            self._qdrant_client.close()
+            self._qdrant_client = None
 
     def list_investigations(
         self,

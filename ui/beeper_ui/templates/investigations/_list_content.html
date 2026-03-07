@@ -18,10 +18,7 @@
     </thead>
     <tbody>
         {% for inv in investigations %}
-        <tr class="investigation-row investigation-row-link"
-            hx-get="/investigations/{{ inv.id }}"
-            hx-push-url="true"
-            hx-target="body">
+        <tr class="investigation-row investigation-row-link">
             <td>
                 <span class="severity-indicator severity-{{ inv.severity }}"
                       role="img"
@@ -38,7 +35,7 @@
                     {% endif %}
                 </span>
             </td>
-            <td><code>{{ inv.id }}</code></td>
+            <td><a href="/investigations/{{ inv.id }}" class="investigation-link"><code>{{ inv.id }}</code></a></td>
             <td><span class="service-badge">{{ inv.service }}</span></td>
             <td class="investigation-condition">{{ inv.condition }}</td>
             <td>{{ inv.started_at or 'Pending' }}</td>

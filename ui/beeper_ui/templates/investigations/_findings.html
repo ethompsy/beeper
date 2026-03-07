@@ -59,8 +59,8 @@
         <div class="findings-content">
             {% if findings.get('confidence_percentage') %}
             <div class="confidence-indicator confidence-{{ findings.get('confidence_level', 'low') }}">
-                <span class="confidence-bar" style="width: {{ findings.get('confidence_percentage', 0) }}%"></span>
-                <span class="confidence-text">{{ findings.get('confidence_percentage', 0) }}% confidence ({{ findings.get('confidence_level', 'unknown') }})</span>
+                <span class="confidence-bar" style="width: {{ findings.get('confidence_percentage', 0)|int }}%"></span>
+                <span class="confidence-text">{{ findings.get('confidence_percentage', 0)|int }}% confidence ({{ findings.get('confidence_level', 'unknown') }})</span>
             </div>
             {% endif %}
             <div class="hypothesis-card">

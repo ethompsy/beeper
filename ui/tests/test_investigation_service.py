@@ -358,3 +358,29 @@ class TestInvestigationService:
         result = service.get_investigation_findings("inv-001")
 
         assert result == {}
+
+    def test_close_closes_qdrant_client(self) -> None:
+        """Test close() closes both httpx and Qdrant clients."""
+        mock_qdrant = MagicMock()
+
+        service = InvestigationService("http://localhost:8080")
+        service._qdrant_client = mock_qdrant
+        # Initialize httpx client
+        _ = service.client
+
+        service.close()
+
+        mock_qdrant.close.assert_called_once()
+        assert service._qdrant_client is None
+        assert service._client is None
+
+    def test_close_without_qdrant(self) -> None:
+        """Test close() works when Qdrant client was never initialized."""
+        service = InvestigationService("http://localhost:8080")
+        # Initialize httpx client
+        _ = service.client
+
+        # Should not raise
+        service.close()
+        assert service._client is None
+        assert service._qdrant_client is None

@@ -351,6 +351,7 @@ def _generate_detail_sse_events(
             detail = svc.get_investigation(investigation_id)
             if detail is None:
                 yield "event: investigation-complete\ndata: not-found\n\n"
+                svc.close()
                 return
 
             current_message = detail.message
@@ -383,6 +384,16 @@ def _generate_detail_sse_events(
                     f"data: {line}" for line in html.split("\n")
                 )
                 yield f"event: findings-update\n{data_lines}\n\n"
+
+                # Also update evidence panels
+                evidence_html = render_template(
+                    "investigations/_evidence_panel.html",
+                    findings=findings,
+                )
+                evidence_lines = "\n".join(
+                    f"data: {line}" for line in evidence_html.split("\n")
+                )
+                yield f"event: evidence-update\n{evidence_lines}\n\n"
                 last_findings_keys = current_keys
 
             # Send completion event

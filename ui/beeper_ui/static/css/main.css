@@ -2243,6 +2243,15 @@ main {
     background-color: #eef2ff;
 }
 
+.investigation-link {
+    color: #4361ee;
+    text-decoration: none;
+}
+
+.investigation-link:hover {
+    text-decoration: underline;
+}
+
 /* Fade-in animation for new findings */
 @keyframes fade-in {
     from { opacity: 0; transform: translateY(8px); }

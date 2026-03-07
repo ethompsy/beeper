@@ -43,13 +43,14 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Make all decisions autonomously
   <!-- Completed 2026-03-06: Full implementation of story 4-2 across 9 tasks. Operator: GET /api/v1/investigations/:id detail endpoint with InvestigationDetailResponse, 404 handling, 4 Rust tests. UI: InvestigationDetail dataclass, get_investigation() + get_investigation_findings() (Qdrant), detail route with HTMX partial support, SSE streaming (step-update/findings-update/investigation-complete events), 6 new templates (detail, step progress timeline, findings, evidence panels, not-found), ~300 lines CSS (step timeline, confidence indicators, animations). List rows clickable with hx-get/hx-push-url. Tests: 68 investigation tests (19 service + 49 route), 322 total pass, zero regressions. Ruff + mypy clean. Sprint status → review. -->
 
-- [ ] Review and finalize story 4-2:
+- [x] Review and finalize story 4-2:
   - Use the `/bmad-bmm-code-review` skill to review story 4-2 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `4-2-real-time-investigation-pane: done`
   - Update story file status to `done`
   - Commit all changes as `4-2 done`
+  <!-- Completed 2026-03-06: Adversarial code review found 7 issues (2 HIGH, 4 MEDIUM, 1 LOW). Fixed: (1) HTMX list-to-detail navigation broken — replaced hx-target="body" with standard anchor links to ensure SSE connects on page load, (2) SSE generator resource leak — added svc.close() on 404 path, (3) Evidence panels SSE update — added evidence-update SSE event target, (4) CSS injection risk — added |int filter to confidence_percentage, (5) Qdrant client leak — close() now closes both httpx and Qdrant clients, (6) Added 7 new tests: SSE event generation (step-update on message change, complete on phase, not-found, findings-update), Qdrant close, link navigation. Tests: 76 investigation tests (up from 68), 330 total pass, zero regressions. Ruff + mypy clean on investigation files. Sprint status + story → done. -->
 
 - [ ] Create story 4-3 spec (Recommendations & Confidence Display) using the `/bmad-bmm-create-story` skill. This story covers FR33: SREs can view recommended resolutions with confidence levels. The story should:
   - Be created from `_bmad-output/planning-artifacts/epics.md` Epic 4, Story 4-3
