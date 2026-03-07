@@ -80,7 +80,7 @@ development_status:
 
   # Epic 4: Investigation Experience
   epic-4: in-progress
-  4-1-investigation-list-view: ready-for-dev
+  4-1-investigation-list-view: review
   4-2-real-time-investigation-pane: backlog
   4-3-recommendations-confidence-display: backlog
   4-4-kb-entry-navigation: backlog

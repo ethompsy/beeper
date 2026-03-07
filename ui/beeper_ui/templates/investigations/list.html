@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Investigations - Beeper{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="kb-header-content">
+        <div>
+            <h2>Investigations</h2>
+            <p class="kb-description">Active and completed investigations triggered by anomaly detection.</p>
+        </div>
+    </div>
+</div>
+
+{# Filter Panel #}
+{% include "investigations/_filter_panel.html" %}
+
+{# Active Filter Chips #}
+{% if any_filter_active %}
+<div class="active-filters">
+    {% if selected_status %}
+    <span class="filter-chip">
+        <span class="chip-label">Status:</span> {{ selected_status|replace('_', ' ')|title }}
+    </span>
+    {% endif %}
+    {% if selected_service %}
+    <span class="filter-chip">
+        <span class="chip-label">Service:</span> {{ selected_service }}
+    </span>
+    {% endif %}
+    {% if selected_severity %}
+    <span class="filter-chip">
+        <span class="chip-label">Severity:</span> {{ selected_severity|capitalize }}
+    </span>
+    {% endif %}
+</div>
+{% endif %}
+
+{# Investigation List with SSE updates #}
+<div id="investigation-list"
+     hx-ext="sse"
+     sse-connect="/investigations/stream"
+     sse-swap="investigation-update"
+     hx-swap="innerHTML">
+    {% include "investigations/_list_content.html" %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/htmx-ext-sse.js') }}"></script>
+{% endblock %}

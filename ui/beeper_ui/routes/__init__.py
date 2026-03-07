@@ -10,9 +10,11 @@ def register_blueprints(app: Flask) -> None:
         app: Flask application instance.
     """
     from beeper_ui.routes.health import health_bp
+    from beeper_ui.routes.investigations import investigations_bp
     from beeper_ui.routes.knowledge import knowledge_bp
     from beeper_ui.routes.sources import sources_bp
 
     app.register_blueprint(sources_bp)
+    app.register_blueprint(investigations_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(knowledge_bp)

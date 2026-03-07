@@ -3,13 +3,19 @@
 //! Provides REST API endpoints for the UI to fetch source status,
 //! health information, and ingestion statistics.
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::get,
+    Json, Router,
+};
 use kube::{api::ListParams, Api, Client};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use crate::crds::Source;
+use crate::crds::{Investigation, InvestigationPhase, Severity, Source};
 use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
 use crate::llm::LlmManager;
@@ -53,6 +59,7 @@ pub fn api_router_with_detection(
 
     Router::new()
         .route("/api/v1/sources", get(list_sources))
+        .route("/api/v1/investigations", get(list_investigations))
         .route("/api/v1/health/components", get(health_components))
         .route("/api/v1/ingestion/stats", get(ingestion_stats))
         .route("/api/v1/detection/stats", get(detection_stats_handler))
@@ -144,6 +151,139 @@ async fn list_sources(State(state): State<ApiState>) -> impl IntoResponse {
                     title: "Failed to list sources".to_string(),
                     status: 500,
                     detail: format!("Could not retrieve source list: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ----- Investigation API -----
+
+/// Query parameters for filtering investigations
+#[derive(Debug, Deserialize)]
+pub struct InvestigationQuery {
+    pub status: Option<String>,
+    pub service: Option<String>,
+    pub severity: Option<String>,
+}
+
+/// Response for a single investigation
+#[derive(Debug, Serialize)]
+pub struct InvestigationResponse {
+    pub id: String,
+    pub status: String,
+    pub service: String,
+    pub severity: String,
+    pub condition: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub triggered_at: Option<String>,
+}
+
+/// Map InvestigationPhase to UI-friendly status string
+fn phase_to_status(phase: &Option<InvestigationPhase>) -> String {
+    match phase {
+        Some(InvestigationPhase::Pending) | Some(InvestigationPhase::Running) => {
+            "investigating".to_string()
+        }
+        Some(InvestigationPhase::Completed) => "completed".to_string(),
+        Some(InvestigationPhase::Failed) => "failed".to_string(),
+        None => "investigating".to_string(),
+    }
+}
+
+/// Map Severity to lowercase string
+fn severity_to_string(severity: &Severity) -> String {
+    match severity {
+        Severity::Low => "low".to_string(),
+        Severity::Medium => "medium".to_string(),
+        Severity::High => "high".to_string(),
+        Severity::Critical => "critical".to_string(),
+    }
+}
+
+/// Status sort priority (lower = higher priority)
+fn status_sort_order(status: &str) -> u8 {
+    match status {
+        "awaiting_confirmation" => 0,
+        "investigating" => 1,
+        "failed" => 2,
+        "completed" => 3,
+        _ => 4,
+    }
+}
+
+/// List all investigations with optional filtering
+async fn list_investigations(
+    State(state): State<ApiState>,
+    Query(params): Query<InvestigationQuery>,
+) -> impl IntoResponse {
+    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+
+    match investigations_api.list(&ListParams::default()).await {
+        Ok(investigation_list) => {
+            let mut investigations: Vec<InvestigationResponse> = investigation_list
+                .items
+                .into_iter()
+                .map(|inv| {
+                    let id = inv.metadata.name.unwrap_or_default();
+                    let spec = inv.spec;
+                    let status = inv.status.unwrap_or_default();
+
+                    let ui_status = phase_to_status(&status.phase);
+                    let severity = severity_to_string(&spec.severity);
+
+                    InvestigationResponse {
+                        id,
+                        status: ui_status,
+                        service: spec.service,
+                        severity,
+                        condition: spec.condition,
+                        started_at: status.started_at,
+                        completed_at: status.completed_at,
+                        triggered_at: spec.triggered_at,
+                    }
+                })
+                .collect();
+
+            // Apply filters
+            if let Some(ref status_filter) = params.status {
+                investigations.retain(|inv| inv.status == *status_filter);
+            }
+            if let Some(ref service_filter) = params.service {
+                investigations.retain(|inv| inv.service == *service_filter);
+            }
+            if let Some(ref severity_filter) = params.severity {
+                investigations.retain(|inv| inv.severity == *severity_filter);
+            }
+
+            // Sort: awaiting_confirmation first, then investigating, then completed
+            // Within each group, most recent first (by started_at descending)
+            investigations.sort_by(|a, b| {
+                let order_cmp = status_sort_order(&a.status).cmp(&status_sort_order(&b.status));
+                if order_cmp != std::cmp::Ordering::Equal {
+                    return order_cmp;
+                }
+                // Within same status, sort by started_at descending (most recent first)
+                b.started_at
+                    .as_deref()
+                    .unwrap_or("")
+                    .cmp(a.started_at.as_deref().unwrap_or(""))
+            });
+
+            debug!(count = investigations.len(), "Listed investigations");
+            (StatusCode::OK, Json(investigations)).into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, "Failed to list investigations");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-list-failed".to_string(),
+                    title: "Failed to list investigations".to_string(),
+                    status: 500,
+                    detail: format!("Could not retrieve investigation list: {}", e),
                 }),
             )
                 .into_response()
@@ -536,6 +676,103 @@ mod tests {
         let json = serde_json::to_string(&problem).unwrap();
         assert!(json.contains("\"type\":\"https://beeper.io/errors/test\""));
         assert!(json.contains("\"status\":500"));
+    }
+
+    #[test]
+    fn test_investigation_response_serialization() {
+        let response = InvestigationResponse {
+            id: "inv-abc123".to_string(),
+            status: "investigating".to_string(),
+            service: "payments".to_string(),
+            severity: "high".to_string(),
+            condition: "High error rate detected".to_string(),
+            started_at: Some("2026-02-09T12:00:00Z".to_string()),
+            completed_at: None,
+            triggered_at: Some("2026-02-09T11:55:00Z".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"id\":\"inv-abc123\""));
+        assert!(json.contains("\"status\":\"investigating\""));
+        assert!(json.contains("\"service\":\"payments\""));
+        assert!(json.contains("\"severity\":\"high\""));
+        assert!(json.contains("\"condition\":\"High error rate detected\""));
+        assert!(json.contains("\"started_at\":\"2026-02-09T12:00:00Z\""));
+        assert!(json.contains("\"triggered_at\":\"2026-02-09T11:55:00Z\""));
+        // completed_at should be null
+        assert!(json.contains("\"completed_at\":null"));
+    }
+
+    #[test]
+    fn test_investigation_response_completed() {
+        let response = InvestigationResponse {
+            id: "inv-xyz789".to_string(),
+            status: "completed".to_string(),
+            service: "api-gateway".to_string(),
+            severity: "medium".to_string(),
+            condition: "Latency spike".to_string(),
+            started_at: Some("2026-02-09T10:00:00Z".to_string()),
+            completed_at: Some("2026-02-09T10:15:00Z".to_string()),
+            triggered_at: Some("2026-02-09T09:55:00Z".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"status\":\"completed\""));
+        assert!(json.contains("\"completed_at\":\"2026-02-09T10:15:00Z\""));
+    }
+
+    #[test]
+    fn test_phase_to_status_mapping() {
+        assert_eq!(
+            phase_to_status(&Some(InvestigationPhase::Pending)),
+            "investigating"
+        );
+        assert_eq!(
+            phase_to_status(&Some(InvestigationPhase::Running)),
+            "investigating"
+        );
+        assert_eq!(
+            phase_to_status(&Some(InvestigationPhase::Completed)),
+            "completed"
+        );
+        assert_eq!(
+            phase_to_status(&Some(InvestigationPhase::Failed)),
+            "failed"
+        );
+        assert_eq!(phase_to_status(&None), "investigating");
+    }
+
+    #[test]
+    fn test_severity_to_string_mapping() {
+        assert_eq!(severity_to_string(&Severity::Low), "low");
+        assert_eq!(severity_to_string(&Severity::Medium), "medium");
+        assert_eq!(severity_to_string(&Severity::High), "high");
+        assert_eq!(severity_to_string(&Severity::Critical), "critical");
+    }
+
+    #[test]
+    fn test_status_sort_order() {
+        assert!(status_sort_order("awaiting_confirmation") < status_sort_order("investigating"));
+        assert!(status_sort_order("investigating") < status_sort_order("completed"));
+        assert!(status_sort_order("failed") < status_sort_order("completed"));
+    }
+
+    #[test]
+    fn test_investigation_query_deserialization() {
+        let json = r#"{"status":"investigating","service":"payments","severity":"high"}"#;
+        let query: InvestigationQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.status.as_deref(), Some("investigating"));
+        assert_eq!(query.service.as_deref(), Some("payments"));
+        assert_eq!(query.severity.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn test_investigation_query_empty() {
+        let json = r#"{}"#;
+        let query: InvestigationQuery = serde_json::from_str(json).unwrap();
+        assert!(query.status.is_none());
+        assert!(query.service.is_none());
+        assert!(query.severity.is_none());
     }
 
     #[test]

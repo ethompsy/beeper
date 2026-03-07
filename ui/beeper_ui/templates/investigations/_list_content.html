@@ -1,0 +1,51 @@
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to fetch investigations</h3>
+    <p>{{ error_message }}</p>
+    <p>Make sure the Beeper operator is running and accessible.</p>
+</div>
+{% elif investigations %}
+<table class="investigations-table">
+    <thead>
+        <tr>
+            <th>Severity</th>
+            <th>Status</th>
+            <th>ID</th>
+            <th>Service</th>
+            <th>Condition</th>
+            <th>Started</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for inv in investigations %}
+        <tr class="investigation-row">
+            <td>
+                <span class="severity-indicator severity-{{ inv.severity }}"
+                      role="img"
+                      aria-label="{{ inv.severity }} severity"></span>
+                {{ inv.severity|capitalize }}
+            </td>
+            <td>
+                <span class="status-badge investigation-status-{{ inv.status }}">
+                    {% if inv.status == 'investigating' %}In Progress
+                    {% elif inv.status == 'awaiting_confirmation' %}Awaiting Confirmation
+                    {% elif inv.status == 'completed' %}Completed
+                    {% elif inv.status == 'failed' %}Failed
+                    {% else %}{{ inv.status|replace('_', ' ')|title }}
+                    {% endif %}
+                </span>
+            </td>
+            <td><code>{{ inv.id }}</code></td>
+            <td><span class="service-badge">{{ inv.service }}</span></td>
+            <td class="investigation-condition">{{ inv.condition }}</td>
+            <td>{{ inv.started_at or 'Pending' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card empty-state">
+    <p>No active investigations.</p>
+    <p>Investigations are created automatically when Beeper detects anomalies in your services.</p>
+</div>
+{% endif %}

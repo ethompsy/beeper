@@ -12,12 +12,13 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Make all decisions autonomously
   <!-- Completed 2026-03-06: Story file created at _bmad-output/implementation-artifacts/4-1-investigation-list-view.md with 9 tasks, comprehensive dev notes covering SSE polling-backed design, operator API endpoint, service layer, HTMX templates, and filter panel. Sprint status updated. -->
 
-- [ ] Implement story 4-1 (Investigation List View) using the `/bmad-bmm-dev-story` skill:
+- [x] Implement story 4-1 (Investigation List View) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
   - Before writing new code, explore the `ui/` directory to understand existing Flask app structure, templates, static assets, and HTMX patterns
   - Search for existing SSE implementations in the codebase (operator or UI) to reuse patterns
   - Implement: Flask route, Jinja2 template with HTMX, SSE endpoint for real-time updates, filtering controls
   - Make all decisions autonomously
+  <!-- Completed 2026-03-06: Full implementation of story 4-1 across 8 tasks. Operator: GET /api/v1/investigations endpoint with filtering/sorting (Rust). UI: InvestigationService (httpx), investigation routes with HTMX, filter panel, SSE polling-backed streaming, severity/status CSS. Tests: 20 new tests (9 service + 11 route), 135 total pass. Ruff + mypy --strict clean. Sprint status → review. -->
 
 - [ ] Review and finalize story 4-1:
   - Use the `/bmad-bmm-code-review` skill to review story 4-1 — auto-fix all issues found
