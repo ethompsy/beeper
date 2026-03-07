@@ -4,54 +4,61 @@ This phase completes the Investigation Engine epic by implementing the remaining
 
 ## Tasks
 
-- [ ] Create story 3-8 spec (Investigation Documentation) using the `/bmad-bmm-create-story` skill. This story covers FR9: documenting investigation process and findings to the Knowledge Base. The story should:
+- [x] Create story 3-8 spec (Investigation Documentation) using the `/bmad-bmm-create-story` skill. This story covers FR9: documenting investigation process and findings to the Knowledge Base. The story should:
   - Be created from `_bmad-output/planning-artifacts/epics.md` Epic 3, Story 3-8
   - Output to `_bmad-output/implementation-artifacts/` following the established story file format
   - Include Dev Notes referencing existing code: `agent.py` `_finalize()` and `_persist_result()`, `kb/client.py`, `kb/schemas.py`
   - Set status to `ready-for-dev` and update sprint-status.yaml
   - Make all decisions autonomously
+  - *(Completed in prior run — story file and sprint-status confirmed done)*
 
-- [ ] Implement story 3-8 (Investigation Documentation) using the `/bmad-bmm-dev-story` skill:
+- [x] Implement story 3-8 (Investigation Documentation) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
   - Before writing new code, examine `agent.py` `_persist_result()` — it already stores basic investigation results to Qdrant with placeholder embeddings. This story should enhance that with proper investigation documentation
   - Search `kb/client.py` and `kb/schemas.py` for existing KB write patterns and embedding generation
   - Follow all Dev Notes, acceptance criteria, and anti-patterns from the story file
   - Make all decisions autonomously
+  - *(Completed in prior run — 52 unit tests passing)*
 
-- [ ] Review and finalize story 3-8:
+- [x] Review and finalize story 3-8:
   - Use the `/bmad-bmm-code-review` skill to review story 3-8 — auto-fix all issues found
   - After review fixes, run `cd investigator && poetry run pytest && poetry run ruff check . && poetry run mypy .`
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `3-8-investigation-documentation: done`
   - Update story file status to `done`
   - Commit all changes as `3-8 done`
+  - *(Completed in prior run — committed as "3-8 complete")*
 
-- [ ] Create story 3-9 spec (Tiered LLM Model Selection) using the `/bmad-bmm-create-story` skill. This story covers FR43/FR44: lightweight models for screening tasks and powerful models for deep RCA. The story should:
+- [x] Create story 3-9 spec (Tiered LLM Model Selection) using the `/bmad-bmm-create-story` skill. This story covers FR43/FR44: lightweight models for screening tasks and powerful models for deep RCA. The story should:
   - Be created from `_bmad-output/planning-artifacts/epics.md` Epic 3, Story 3-9
   - Include Dev Notes referencing existing code: `llm/client.py` (LiteLLM wrapper, `complete_sync()`, screening model support)
   - Reference how existing steps call the LLM: `impact_assessment.py` uses screening model, `rca_hypothesis.py` and `resolution_recommendations.py` use default model
   - Make all decisions autonomously
+  - *(Completed in prior run — story file and sprint-status confirmed done)*
 
-- [ ] Implement story 3-9 (Tiered LLM Model Selection) using the `/bmad-bmm-dev-story` skill:
+- [x] Implement story 3-9 (Tiered LLM Model Selection) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
   - Before writing new code, examine `llm/client.py` — understand the existing `complete_sync()` API, screening model support, and LiteLLM configuration
   - Search all step files (`impact_assessment.py`, `kb_query.py`, `signal_correlation.py`, `rca_hypothesis.py`, `resolution_recommendations.py`) to understand how each step calls the LLM client
   - Implement tiered model selection without breaking existing step implementations
   - Make all decisions autonomously
+  - *(Completed in prior run — 315 total tests passing)*
 
-- [ ] Review and finalize story 3-9:
+- [x] Review and finalize story 3-9:
   - Use the `/bmad-bmm-code-review` skill to review story 3-9 — auto-fix all issues found
   - After review fixes, run `cd investigator && poetry run pytest && poetry run ruff check . && poetry run mypy .`
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `3-9-tiered-llm-model-selection: done`
   - Update story file status to `done`
   - Commit all changes as `3-9 done`
+  - *(Completed in prior run — committed as "3-9 complete")*
 
-- [ ] Create story 3-10 spec (LLM Response Caching) using the `/bmad-bmm-create-story` skill. This story covers FR45: cache and memoize LLM results to reduce costs. The story should:
+- [x] Create story 3-10 spec (LLM Response Caching) using the `/bmad-bmm-create-story` skill. This story covers FR45: cache and memoize LLM results to reduce costs. The story should:
   - Be created from `_bmad-output/planning-artifacts/epics.md` Epic 3, Story 3-10
   - Include Dev Notes referencing existing code: `llm/client.py` (LiteLLM wrapper where caching should be integrated)
   - Consider: cache key generation, TTL, invalidation strategy, cache hit/miss metrics
   - Make all decisions autonomously
+  - *(Story spec created at `_bmad-output/implementation-artifacts/3-10-llm-response-caching.md` with 9 tasks, 31 subtasks. Covers SHA-256 cache key generation, TTL-based invalidation, LRU eviction, cache hit/miss metrics, transparent LlmClient integration. Sprint-status updated to `ready-for-dev`.)*
 
 - [ ] Implement story 3-10 (LLM Response Caching) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
