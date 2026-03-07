@@ -165,17 +165,20 @@ class ResolutionRecommendationStep:
             rca_data, kb_data, impact_data, signal_data
         )
 
+        model_name = self.llm_client.select_model("standard")
+
         try:
             raw = self.llm_client.complete_sync(
                 messages,
                 max_tokens=1024,
                 temperature=0.0,
+                model=model_name,
             )
         except Exception as exc:
             logger.warning("LLM recommendation synthesis failed: %s", exc)
-            return self._fallback_result(rca_data, kb_data)
+            return self._fallback_result(rca_data, kb_data, model_name)
 
-        return self._parse_result(raw, rca_data, kb_data)
+        return self._parse_result(raw, rca_data, kb_data, model_name)
 
     # ── Pipeline metadata extraction ─────────────────────────
 
@@ -329,24 +332,25 @@ class ResolutionRecommendationStep:
         raw: str,
         rca_data: dict[str, Any],
         kb_data: dict[str, Any],
+        model_name: str | None = None,
     ) -> StepResult:
         try:
             parsed = _parse_response(raw)
         except (json.JSONDecodeError, ValueError):
             logger.warning("Failed to parse LLM recommendation response")
-            return self._fallback_result(rca_data, kb_data)
+            return self._fallback_result(rca_data, kb_data, model_name)
 
         raw_recs = parsed.get("recommendations", [])
         if not isinstance(raw_recs, list) or not raw_recs:
             logger.warning("LLM returned empty recommendations")
-            return self._fallback_result(rca_data, kb_data)
+            return self._fallback_result(rca_data, kb_data, model_name)
 
         recommendations = self._normalize_recommendations(raw_recs)
         if not recommendations:
             logger.warning(
                 "All LLM recommendations failed validation"
             )
-            return self._fallback_result(rca_data, kb_data)
+            return self._fallback_result(rca_data, kb_data, model_name)
 
         ranking_rationale = parsed.get("ranking_rationale", "")
         if not isinstance(ranking_rationale, str):
@@ -395,6 +399,8 @@ class ResolutionRecommendationStep:
                 "ranking_rationale": ranking_rationale,
                 "diagnostic_actions": diagnostic_actions,
                 "synthesis_source": "llm",
+                "resolution_model_tier": "standard",
+                "resolution_model_used": model_name,
             },
         )
 
@@ -509,6 +515,7 @@ class ResolutionRecommendationStep:
         self,
         rca_data: dict[str, Any],
         kb_data: dict[str, Any],
+        model_name: str | None = None,
     ) -> StepResult:
         """Build result when LLM fails or returns bad data."""
         recommendations: list[dict[str, Any]] = []
@@ -590,6 +597,8 @@ class ResolutionRecommendationStep:
                 ),
                 "diagnostic_actions": diagnostic_actions,
                 "synthesis_source": "fallback",
+                "resolution_model_tier": "standard" if model_name else "none",
+                "resolution_model_used": model_name,
             },
         )
 
@@ -628,5 +637,7 @@ class ResolutionRecommendationStep:
                 ),
                 "diagnostic_actions": diagnostic_actions,
                 "synthesis_source": "fallback",
+                "resolution_model_tier": "none",
+                "resolution_model_used": None,
             },
         )

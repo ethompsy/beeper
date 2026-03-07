@@ -8,11 +8,16 @@ Configuration is loaded from environment variables:
 - BEEPER_LLM_ENDPOINT: Custom endpoint (optional, required for Azure)
 """
 
+import logging
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import litellm
+
+logger = logging.getLogger(__name__)
+
+ModelTier = Literal["screening", "standard", "deep_rca"]
 
 
 @dataclass
@@ -24,6 +29,7 @@ class LlmConfig:
     api_key: str | None = None
     endpoint: str | None = None
     screening_model: str | None = None
+    deep_rca_model: str | None = None
     embedding_model: str | None = None
 
     def validate_model(self) -> None:
@@ -70,6 +76,7 @@ class LlmConfig:
         api_key = os.environ.get("BEEPER_LLM_API_KEY")
         endpoint = os.environ.get("BEEPER_LLM_ENDPOINT")
         screening_model = os.environ.get("BEEPER_LLM_SCREENING_MODEL") or None
+        deep_rca_model = os.environ.get("BEEPER_LLM_DEEP_RCA_MODEL") or None
         embedding_model = os.environ.get("BEEPER_LLM_EMBEDDING_MODEL") or None
 
         if not provider:
@@ -101,6 +108,7 @@ class LlmConfig:
             api_key=api_key,
             endpoint=endpoint,
             screening_model=screening_model,
+            deep_rca_model=deep_rca_model,
             embedding_model=embedding_model,
         )
         config.validate_model()
@@ -157,6 +165,7 @@ class LlmClient:
             config: LLM configuration.
         """
         self.config = config
+        self._model_usage: dict[str, int] = {}
         self._configure_litellm()
 
     def _configure_litellm(self) -> None:
@@ -230,6 +239,9 @@ class LlmClient:
             )
             # Extract the response text
             content: str | None = response.choices[0].message.content
+            self._model_usage[effective_model] = (
+                self._model_usage.get(effective_model, 0) + 1
+            )
             if content is None:
                 return ""
             return content
@@ -271,6 +283,9 @@ class LlmClient:
             )
             # Extract the response text
             content: str | None = response.choices[0].message.content
+            self._model_usage[effective_model] = (
+                self._model_usage.get(effective_model, 0) + 1
+            )
             if content is None:
                 return ""
             return content
@@ -342,3 +357,43 @@ class LlmClient:
         (e.g. ``azure/``, ``ollama/``) are applied correctly.
         """
         return self.config.screening_model or self.config.get_litellm_model()
+
+    @property
+    def deep_rca_model(self) -> str:
+        """Get the deep RCA model, falling back to the default model.
+
+        Falls back to ``get_litellm_model()`` so that provider prefixes
+        (e.g. ``azure/``, ``ollama/``) are applied correctly.
+        """
+        return self.config.deep_rca_model or self.config.get_litellm_model()
+
+    def select_model(self, tier: ModelTier) -> str:
+        """Select model for the given task tier.
+
+        Args:
+            tier: Task tier determining model capability level.
+
+        Returns:
+            Model string formatted for LiteLLM.
+
+        Raises:
+            ValueError: If tier is not a recognized ModelTier value.
+        """
+        if tier == "screening":
+            model = self.screening_model
+        elif tier == "standard":
+            model = self.config.get_litellm_model()
+        elif tier == "deep_rca":
+            model = self.deep_rca_model
+        else:
+            raise ValueError(f"Unknown model tier: {tier!r}")
+        logger.info("Model tier '%s' selected: %s", tier, model)
+        return model
+
+    def get_model_usage(self) -> dict[str, int]:
+        """Return a copy of the model usage counter dict."""
+        return dict(self._model_usage)
+
+    def reset_model_usage(self) -> None:
+        """Clear model usage counters."""
+        self._model_usage.clear()

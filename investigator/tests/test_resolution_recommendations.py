@@ -167,6 +167,7 @@ def _make_step(
     )
 
     mock_llm = MagicMock()
+    mock_llm.select_model.return_value = "claude-sonnet-4"
 
     if llm_error:
         mock_llm.complete_sync.side_effect = llm_error
@@ -974,17 +975,15 @@ class TestPromptContent:
         user_msg = messages[1]["content"]
         assert "payments-db" in user_msg or "api-gateway" in user_msg
 
-    def test_uses_default_model_not_screening(self) -> None:
-        """Step uses default model (no explicit model override)."""
+    def test_uses_standard_model(self) -> None:
+        """Step uses standard tier via select_model."""
         step, mock_llm, _ = _make_step()
 
         step.execute()
 
+        mock_llm.select_model.assert_called_once_with("standard")
         call_args = mock_llm.complete_sync.call_args
-        assert (
-            "model" not in call_args.kwargs
-            or call_args.kwargs.get("model") is None
-        )
+        assert call_args.kwargs.get("model") == "claude-sonnet-4"
 
 
 # ── Helper function tests ──

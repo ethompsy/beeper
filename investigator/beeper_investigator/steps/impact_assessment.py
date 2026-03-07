@@ -86,25 +86,31 @@ class CustomerImpactStep:
             },
         ]
 
+        model_name = self.llm_client.select_model("screening")
+
         try:
             raw = self.llm_client.complete_sync(
                 messages,
                 max_tokens=256,
                 temperature=0.0,
-                model=self.llm_client.screening_model,
+                model=model_name,
             )
         except Exception as exc:
             logger.warning("LLM call failed for impact assessment: %s", exc)
             return StepResult(
                 success=False,
                 summary="Customer impact assessment failed; defaulting to unknown",
-                data={"customer_impacting": "unknown"},
+                data={
+                    "customer_impacting": "unknown",
+                    "impact_model_tier": "screening",
+                    "impact_model_used": model_name,
+                },
                 error=str(exc),
             )
 
-        return self._parse_result(raw)
+        return self._parse_result(raw, model_name)
 
-    def _parse_result(self, raw: str) -> StepResult:
+    def _parse_result(self, raw: str, model_name: str) -> StepResult:
         """Parse the LLM response into a StepResult."""
         try:
             parsed = _parse_response(raw)
@@ -116,6 +122,8 @@ class CustomerImpactStep:
                 data={
                     "customer_impacting": "unknown",
                     "reasoning": "LLM response could not be parsed",
+                    "impact_model_tier": "screening",
+                    "impact_model_used": model_name,
                 },
             )
 
@@ -136,5 +144,10 @@ class CustomerImpactStep:
         return StepResult(
             success=True,
             summary=f"Customer impact: {impact}",
-            data={"customer_impacting": impact, "reasoning": reasoning},
+            data={
+                "customer_impacting": impact,
+                "reasoning": reasoning,
+                "impact_model_tier": "screening",
+                "impact_model_used": model_name,
+            },
         )

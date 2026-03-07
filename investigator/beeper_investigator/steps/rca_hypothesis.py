@@ -160,17 +160,21 @@ class RCAHypothesisStep:
             },
         ]
 
+        model_name = self.llm_client.select_model("deep_rca")
+        logger.info("Escalating to deep RCA model for hypothesis generation")
+
         try:
             raw = self.llm_client.complete_sync(
                 messages,
                 max_tokens=1024,
                 temperature=0.0,
+                model=model_name,
             )
         except Exception as exc:
             logger.warning("LLM RCA synthesis failed: %s", exc)
-            return self._fallback_result(signal_data, kb_data)
+            return self._fallback_result(signal_data, kb_data, model_name)
 
-        return self._parse_result(raw, signal_data, kb_data)
+        return self._parse_result(raw, signal_data, kb_data, model_name)
 
     # ── Pipeline metadata extraction ─────────────────────────
 
@@ -265,19 +269,20 @@ class RCAHypothesisStep:
         raw: str,
         signal_data: dict[str, Any],
         kb_data: dict[str, Any],
+        model_name: str | None = None,
     ) -> StepResult:
         """Parse LLM response into a StepResult."""
         try:
             parsed = _parse_response(raw)
         except (json.JSONDecodeError, ValueError):
             logger.warning("Failed to parse LLM RCA response")
-            return self._fallback_result(signal_data, kb_data)
+            return self._fallback_result(signal_data, kb_data, model_name)
 
         # Extract and normalize fields
         hypothesis = parsed.get("root_cause_hypothesis", "")
         if not isinstance(hypothesis, str) or not hypothesis:
             logger.warning("LLM returned empty or invalid hypothesis")
-            return self._fallback_result(signal_data, kb_data)
+            return self._fallback_result(signal_data, kb_data, model_name)
 
         level = parsed.get("confidence_level", "low")
         if isinstance(level, str):
@@ -351,6 +356,8 @@ class RCAHypothesisStep:
                 "additional_data_needs": additional_needs,
                 "kb_citation": kb_citation,
                 "synthesis_source": "llm",
+                "rca_model_tier": "deep_rca",
+                "rca_model_used": model_name,
             },
         )
 
@@ -387,6 +394,7 @@ class RCAHypothesisStep:
         self,
         signal_data: dict[str, Any],
         kb_data: dict[str, Any],
+        model_name: str | None = None,
     ) -> StepResult:
         """Build result from signal correlation hypotheses when LLM fails."""
         hypotheses = signal_data.get("hypotheses", [])
@@ -456,6 +464,8 @@ class RCAHypothesisStep:
                 "additional_data_needs": additional_needs,
                 "kb_citation": kb_citation,
                 "synthesis_source": "fallback",
+                "rca_model_tier": "deep_rca" if model_name else "none",
+                "rca_model_used": model_name,
             },
         )
 
@@ -486,6 +496,8 @@ class RCAHypothesisStep:
                 ],
                 "kb_citation": None,
                 "synthesis_source": "fallback",
+                "rca_model_tier": "none",
+                "rca_model_used": None,
             },
         )
 

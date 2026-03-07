@@ -167,6 +167,7 @@ def _make_step(
     )
 
     mock_llm = MagicMock()
+    mock_llm.select_model.return_value = "claude-sonnet-4"
     if llm_error:
         mock_llm.complete_sync.side_effect = llm_error
     else:
@@ -835,6 +836,8 @@ class TestStepResultSchema:
         "embedding_generated",
         "related_investigations",
         "synthesis_source",
+        "doc_model_tier",
+        "doc_model_used",
     }
 
     def test_schema_on_success(self) -> None:

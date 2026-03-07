@@ -74,7 +74,7 @@ development_status:
   3-6-rca-hypothesis-generation: done
   3-7-resolution-recommendations: done
   3-8-investigation-documentation: done
-  3-9-tiered-llm-model-selection: backlog
+  3-9-tiered-llm-model-selection: done
   3-10-llm-response-caching: backlog
   epic-3-retrospective: optional
 

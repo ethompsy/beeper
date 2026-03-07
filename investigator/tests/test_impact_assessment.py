@@ -29,6 +29,7 @@ def _make_step(
     else:
         mock_llm.complete_sync.return_value = llm_response
     mock_llm.screening_model = "claude-3-haiku-20240307"
+    mock_llm.select_model.return_value = "claude-3-haiku-20240307"
 
     mock_status = MagicMock()
 
@@ -119,11 +120,12 @@ class TestCustomerImpactStep:
         assert result.error is not None
 
     def test_uses_screening_model(self) -> None:
-        """Step passes screening model to complete_sync()."""
+        """Step passes screening model to complete_sync() via select_model."""
         step, mock_llm, _ = _make_step()
 
         step.execute()
 
+        mock_llm.select_model.assert_called_once_with("screening")
         call_kwargs = mock_llm.complete_sync.call_args
         assert call_kwargs[1]["model"] == "claude-3-haiku-20240307"
 

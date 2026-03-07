@@ -177,6 +177,8 @@ class InvestigationDocumentationStep:
                 "embedding_generated": embedding_ok,
                 "related_investigations": list(related),
                 "synthesis_source": doc["synthesis_source"],
+                "doc_model_tier": doc.get("doc_model_tier", "none"),
+                "doc_model_used": doc.get("doc_model_used"),
             },
         )
 
@@ -317,18 +319,22 @@ class InvestigationDocumentationStep:
             signal_data, resolution_data, related,
         )
 
+        model_name = self.llm_client.select_model("standard")
+
         try:
             raw = self.llm_client.complete_sync(
                 messages,
                 max_tokens=1024,
                 temperature=0.0,
+                model=model_name,
             )
         except Exception as exc:
             logger.warning(
                 "LLM documentation synthesis failed: %s", exc
             )
             return self._fallback_documentation(
-                rca_data, signal_data, resolution_data
+                rca_data, signal_data, resolution_data,
+                model_name,
             )
 
         try:
@@ -338,7 +344,8 @@ class InvestigationDocumentationStep:
                 "Failed to parse LLM documentation response"
             )
             return self._fallback_documentation(
-                rca_data, signal_data, resolution_data
+                rca_data, signal_data, resolution_data,
+                model_name,
             )
 
         title = parsed.get("title", "")
@@ -389,6 +396,8 @@ class InvestigationDocumentationStep:
             "confidence_overview": confidence_overview,
             "key_findings": key_findings,
             "synthesis_source": "llm",
+            "doc_model_tier": "standard",
+            "doc_model_used": model_name,
         }
 
     def _fallback_documentation(
@@ -396,6 +405,7 @@ class InvestigationDocumentationStep:
         rca_data: dict[str, Any],
         signal_data: dict[str, Any],
         resolution_data: dict[str, Any],
+        model_name: str | None = None,
     ) -> dict[str, Any]:
         """Generate documentation from raw metadata."""
         title = (
@@ -445,6 +455,8 @@ class InvestigationDocumentationStep:
             "confidence_overview": confidence_overview,
             "key_findings": [],
             "synthesis_source": "fallback",
+            "doc_model_tier": "standard" if model_name else "none",
+            "doc_model_used": model_name,
         }
 
     def _build_fallback_summary(

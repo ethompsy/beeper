@@ -81,6 +81,7 @@ class InvestigatorAgent:
             if self.steps is None:
                 self.steps = self._build_steps()
             result = self._run_steps()
+            result.metadata["model_usage"] = self.llm_client.get_model_usage()
             self._finalize(result)
             return result
         except Exception as exc:
