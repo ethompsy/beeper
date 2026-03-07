@@ -205,6 +205,7 @@ Claude Opus 4.6
 - Auto-published badge on entry detail page
 - 48 new tests in test_trust.py covering all service methods, routes, and integration flows
 - 557 total tests pass, ruff clean, mypy 17 errors (all pre-existing)
+- Code review: 9 issues found (3 HIGH, 4 MEDIUM, 2 LOW), 7 fixed
 
 ### Change Log
 
@@ -219,6 +220,12 @@ Claude Opus 4.6
 - Added auto-published badge to entry.html
 - Added trust CSS styles to main.css
 - Added service_trust_levels collection to init-collections.py
+- **Review fix**: Eliminated duplicate Qdrant query in upsert_service_trust (was querying twice for same point)
+- **Review fix**: Sanitized error messages in trust routes (no longer leaks Qdrant internals)
+- **Review fix**: Added service_name validation in override route (alphanumeric/hyphens, max 100 chars)
+- **Review fix**: Added warning log for swallowed exception in upsert (was silent `except: pass`)
+- **Review fix**: Added 10 new tests: boundary tests (10 entries/90%/80% thresholds), service=None auto-publish, author=investigation, service_name validation, error message sanitization, general fallback for null service
+- **Review fix**: Moved Correction import to module level, extracted _make_correction_payload helper
 
 ### File List
 

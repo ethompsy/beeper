@@ -1709,10 +1709,11 @@ def kb_trust_settings() -> tuple[str, int] | str:
     try:
         trusts = service_client.get_all_service_trusts()
     except KBServiceError as e:
+        logger.warning("Trust settings query failed: %s", e)
         return render_template(
             "knowledge/trust_settings.html",
             trusts=[],
-            error_message=str(e),
+            error_message="Unable to load trust data",
         )
 
     return render_template(
@@ -1736,6 +1737,15 @@ def kb_trust_override(
     Returns:
         Rendered override result partial.
     """
+    # Validate service_name (alphanumeric, hyphens, underscores, max 100)
+    if not service_name or len(service_name) > 100 or not re.match(
+        r"^[a-zA-Z0-9_-]+$", service_name
+    ):
+        return render_template(
+            "knowledge/_trust_override_result.html",
+            error_message="Invalid service name",
+        ), 400
+
     trust_level = request.form.get("trust_level", "draft")
     reason = request.form.get("reason", "")
 
@@ -1762,9 +1772,10 @@ def kb_trust_override(
             reason=reason,
         )
     except KBServiceError as e:
+        logger.warning("Trust override failed for %s: %s", service_name, e)
         return render_template(
             "knowledge/_trust_override_result.html",
-            error_message=f"Failed to update trust: {e}",
+            error_message="Failed to update trust level",
         ), 500
 
     return render_template(

@@ -65,13 +65,14 @@ This phase implements the Living Knowledge epic, enabling Beeper to learn and im
   - Make all decisions autonomously
   - *Completed: Story spec created and all 6 tasks implemented. Added ServiceTrustLevel dataclass, 7 KBService trust methods (CRUD, accuracy calc, graduation eval, auto-publish check), trust re-evaluation hook in apply route, auto_published field on KBEntry, trust settings UI with manual override forms, auto-published badge on entry page. 48 new tests, all 557 pass. Ruff/mypy clean (no new errors).*
 
-- [ ] Review and finalize story 5-4:
+- [x] Review and finalize story 5-4:
   - Use the `/bmad-bmm-code-review` skill to review story 5-4 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `5-4-graduated-authoring-trust: done`
   - Update story file status to `done`
   - Commit all changes as `5-4 done`
+  - *Completed: Adversarial code review found 9 issues (3 HIGH, 4 MEDIUM, 2 LOW). Fixed 7: eliminated duplicate Qdrant query in upsert_service_trust, sanitized error messages in trust routes (no internal leaks), added service_name validation (alphanumeric+hyphens, max 100), logged swallowed exception in upsert, moved Correction import to module level, added _make_correction_payload helper. Added 10 new tests: boundary tests for graduation thresholds (10 entries, 90%, 80%), service=None auto-publish, author=investigation, service_name validation, error sanitization, general fallback. All 567 tests pass. Ruff/mypy clean (no new errors).*
 
 - [ ] Run Epic 5 retrospective and mark epic complete:
   - Use the `/bmad-bmm-retrospective` skill to conduct the Epic 5 retrospective

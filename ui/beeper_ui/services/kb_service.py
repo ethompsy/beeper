@@ -1620,33 +1620,30 @@ class KBService:
         try:
             now = datetime.now(timezone.utc).isoformat()
 
-            # Check if record exists to reuse point_id
-            existing = self.get_service_trust(service_name)
+            # Single query to find existing point (reuse ID to avoid duplicates)
             point_id = str(uuid.uuid4())
-
-            # Try to find existing point to overwrite
-            if existing:
-                try:
-                    results, _ = self.client.scroll(
-                        collection_name=SERVICE_TRUST_COLLECTION,
-                        scroll_filter=Filter(
-                            must=[
-                                FieldCondition(
-                                    key="service_name",
-                                    match=MatchValue(
-                                        value=service_name
-                                    ),
-                                )
-                            ]
-                        ),
-                        limit=1,
-                        with_payload=False,
-                        with_vectors=False,
-                    )
-                    if results:
-                        point_id = str(results[0].id)
-                except Exception:
-                    pass
+            try:
+                results, _ = self.client.scroll(
+                    collection_name=SERVICE_TRUST_COLLECTION,
+                    scroll_filter=Filter(
+                        must=[
+                            FieldCondition(
+                                key="service_name",
+                                match=MatchValue(value=service_name),
+                            )
+                        ]
+                    ),
+                    limit=1,
+                    with_payload=False,
+                    with_vectors=False,
+                )
+                if results:
+                    point_id = str(results[0].id)
+            except Exception as e:
+                logger.warning(
+                    "Could not find existing trust point for %s: %s",
+                    service_name, e,
+                )
 
             payload = {
                 "service_name": service_name,

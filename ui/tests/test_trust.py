@@ -6,6 +6,7 @@ import pytest
 from flask.testing import FlaskClient
 
 from beeper_ui.services.kb_service import (
+    Correction,
     KBEntry,
     KBService,
     KBServiceError,
@@ -58,6 +59,34 @@ def _make_entry(
         tags=[],
         auto_published=auto_published,
     )
+
+
+def _make_correction_payload(
+    correction_id: str = "corr-abc123",
+    entry_id: str = "kb-test123",
+    status: str = "pending",
+) -> dict:
+    """Create a mock correction payload."""
+    return {
+        "correction_id": correction_id,
+        "entry_id": entry_id,
+        "messages": [
+            {
+                "role": "user",
+                "content": "Fix this",
+                "timestamp": "2026-03-07T10:00:00+00:00",
+            },
+            {
+                "role": "assistant",
+                "content": "OK",
+                "timestamp": "2026-03-07T10:01:00+00:00",
+            },
+        ],
+        "status": status,
+        "summary": "Fix",
+        "created_at": "2026-03-07T10:00:00+00:00",
+        "updated_at": "2026-03-07T10:01:00+00:00",
+    }
 
 
 # ── ServiceTrustLevel Data Model Tests ──
@@ -970,23 +999,10 @@ class TestTrustReEvaluationHook:
         mock_svc = MagicMock()
         mock_get_kb.return_value = mock_svc
 
-        from beeper_ui.services.kb_service import Correction
-
         entry = _make_entry()
         mock_svc.get_entry.return_value = entry
 
-        correction = Correction.from_qdrant({
-            "correction_id": "corr-abc",
-            "entry_id": "kb-test123",
-            "messages": [
-                {"role": "user", "content": "Fix", "timestamp": "2026-03-07T10:00:00+00:00"},
-                {"role": "assistant", "content": "OK", "timestamp": "2026-03-07T10:01:00+00:00"},
-            ],
-            "status": "pending",
-            "summary": "Fix",
-            "created_at": "2026-03-07T10:00:00+00:00",
-            "updated_at": "2026-03-07T10:01:00+00:00",
-        })
+        correction = Correction.from_qdrant(_make_correction_payload())
         mock_svc.get_correction.return_value = correction
         mock_svc.update_entry.return_value = 2
         mock_svc.update_correction.return_value = correction
@@ -1003,7 +1019,7 @@ class TestTrustReEvaluationHook:
         ]
 
         response = client.post(
-            "/knowledge/kb-test123/corrections/corr-abc/apply",
+            "/knowledge/kb-test123/corrections/corr-abc123/apply",
             data={"revised_content": "New content"},
         )
         assert response.status_code == 200
@@ -1024,23 +1040,10 @@ class TestTrustReEvaluationHook:
         mock_svc = MagicMock()
         mock_get_kb.return_value = mock_svc
 
-        from beeper_ui.services.kb_service import Correction
-
         entry = _make_entry()
         mock_svc.get_entry.return_value = entry
 
-        correction = Correction.from_qdrant({
-            "correction_id": "corr-abc",
-            "entry_id": "kb-test123",
-            "messages": [
-                {"role": "user", "content": "Fix", "timestamp": "2026-03-07T10:00:00+00:00"},
-                {"role": "assistant", "content": "OK", "timestamp": "2026-03-07T10:01:00+00:00"},
-            ],
-            "status": "pending",
-            "summary": "Fix",
-            "created_at": "2026-03-07T10:00:00+00:00",
-            "updated_at": "2026-03-07T10:01:00+00:00",
-        })
+        correction = Correction.from_qdrant(_make_correction_payload())
         mock_svc.get_correction.return_value = correction
         mock_svc.update_entry.return_value = 2
         mock_svc.update_correction.return_value = correction
@@ -1055,11 +1058,326 @@ class TestTrustReEvaluationHook:
         )
 
         response = client.post(
-            "/knowledge/kb-test123/corrections/corr-abc/apply",
+            "/knowledge/kb-test123/corrections/corr-abc123/apply",
             data={"revised_content": "New content"},
         )
         # Apply still succeeds even though trust evaluation failed
         assert response.status_code == 200
+
+    @patch("beeper_ui.routes.knowledge.get_learning_service")
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_trust_evaluation_no_service_uses_general(
+        self,
+        mock_get_kb: MagicMock,
+        mock_get_embed: MagicMock,
+        mock_get_learn: MagicMock,
+        client: FlaskClient,
+    ) -> None:
+        mock_svc = MagicMock()
+        mock_get_kb.return_value = mock_svc
+
+        entry = _make_entry(service=None)
+        mock_svc.get_entry.return_value = entry
+
+        correction = Correction.from_qdrant(_make_correction_payload())
+        mock_svc.get_correction.return_value = correction
+        mock_svc.update_entry.return_value = 2
+        mock_svc.update_correction.return_value = correction
+
+        mock_learn = MagicMock()
+        mock_get_learn.return_value = mock_learn
+        mock_learn.analyze_correction.return_value = []
+
+        response = client.post(
+            "/knowledge/kb-test123/corrections/corr-abc123/apply",
+            data={"revised_content": "New content"},
+        )
+        assert response.status_code == 200
+        mock_svc.evaluate_trust_graduation.assert_called_once_with(
+            "general"
+        )
+
+
+# ── Boundary Tests for Trust Graduation ──
+
+
+class TestTrustGraduationBoundaries:
+    """Boundary tests for trust graduation thresholds."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_graduation_exactly_10_entries_90_pct(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Exactly 10 entries, 1 corrected = 90% → should graduate."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        entries = [MagicMock() for _ in range(10)]
+        for i, e in enumerate(entries):
+            e.payload = {"entry_id": f"kb-{i}"}
+
+        pattern = MagicMock()
+        pattern.payload = {
+            "pattern_id": "lrn-1",
+            "entry_id": "kb-0",
+            "correction_id": "corr-1",
+            "service_name": "api-gateway",
+            "category": "missing_context",
+            "description": "test",
+            "original_snippet": "",
+            "corrected_snippet": "",
+            "created_at": "2026-03-07T12:00:00+00:00",
+        }
+
+        mock_client.scroll.side_effect = [
+            (entries, None),       # calculate: entries
+            ([pattern], None),     # calculate: patterns
+            ([], None),            # get_service_trust
+            ([], None),            # upsert: find existing
+        ]
+
+        svc = KBService()
+        trust = svc.evaluate_trust_graduation("api-gateway")
+        assert trust is not None
+        assert trust.trust_level == "trusted"
+        assert trust.accuracy_pct == 90.0
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_no_graduation_9_entries_100_pct(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """9 entries, all correct → 100% but below 10 threshold."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        entries = [MagicMock() for _ in range(9)]
+        for i, e in enumerate(entries):
+            e.payload = {"entry_id": f"kb-{i}"}
+
+        mock_client.scroll.side_effect = [
+            (entries, None),
+            ([], None),
+            ([], None),
+            ([], None),
+        ]
+
+        svc = KBService()
+        trust = svc.evaluate_trust_graduation("api-gateway")
+        assert trust is not None
+        assert trust.trust_level == "draft"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_no_graduation_10_entries_89_pct(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """10 entries, 2 corrected = 80% → below 90% threshold."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        entries = [MagicMock() for _ in range(10)]
+        for i, e in enumerate(entries):
+            e.payload = {"entry_id": f"kb-{i}"}
+
+        patterns = []
+        for i in range(2):
+            p = MagicMock()
+            p.payload = {
+                "pattern_id": f"lrn-{i}",
+                "entry_id": f"kb-{i}",
+                "correction_id": f"corr-{i}",
+                "service_name": "api-gateway",
+                "category": "missing_context",
+                "description": "test",
+                "original_snippet": "",
+                "corrected_snippet": "",
+                "created_at": "2026-03-07T12:00:00+00:00",
+            }
+            patterns.append(p)
+
+        mock_client.scroll.side_effect = [
+            (entries, None),
+            (patterns, None),
+            ([], None),
+            ([], None),
+        ]
+
+        svc = KBService()
+        trust = svc.evaluate_trust_graduation("api-gateway")
+        assert trust is not None
+        assert trust.trust_level == "draft"
+        assert trust.accuracy_pct == 80.0
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_no_downgrade_at_exactly_80_pct(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Trusted service at exactly 80% → should NOT downgrade."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        entries = [MagicMock() for _ in range(10)]
+        for i, e in enumerate(entries):
+            e.payload = {"entry_id": f"kb-{i}"}
+
+        patterns = []
+        for i in range(2):
+            p = MagicMock()
+            p.payload = {
+                "pattern_id": f"lrn-{i}",
+                "entry_id": f"kb-{i}",
+                "correction_id": f"corr-{i}",
+                "service_name": "api-gateway",
+                "category": "missing_context",
+                "description": "test",
+                "original_snippet": "",
+                "corrected_snippet": "",
+                "created_at": "2026-03-07T12:00:00+00:00",
+            }
+            patterns.append(p)
+
+        trusted_point = MagicMock()
+        trusted_point.payload = _make_trust_payload(
+            trust_level="trusted", accuracy_pct=95.0
+        )
+        trusted_point.id = "existing-id"
+
+        mock_client.scroll.side_effect = [
+            (entries, None),
+            (patterns, None),
+            ([trusted_point], None),
+            ([trusted_point], None),
+        ]
+
+        svc = KBService()
+        trust = svc.evaluate_trust_graduation("api-gateway")
+        assert trust is not None
+        assert trust.trust_level == "trusted"
+        assert trust.accuracy_pct == 80.0
+
+
+# ── Additional Auto-Publish Edge Case Tests ──
+
+
+class TestAutoPublishEdgeCases:
+    """Additional edge case tests for auto-publish."""
+
+    @patch("beeper_ui.services.kb_service.EmbeddingService")
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_create_entry_no_service_no_auto_publish(
+        self, mock_client_class: MagicMock, mock_embed_class: MagicMock
+    ) -> None:
+        """service=None should not check trust or set auto_published."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_embed = MagicMock()
+        mock_embed_class.return_value = mock_embed
+        mock_embed.get_embedding.return_value = [0.1] * 1536
+
+        # scroll should NOT be called for trust check
+        mock_client.scroll.return_value = ([], None)
+
+        svc = KBService()
+        svc.create_entry(
+            title="Test",
+            content="Content",
+            entry_type="investigation",
+            service=None,
+            author="beeper",
+        )
+
+        first_upsert = mock_client.upsert.call_args_list[0]
+        points = (
+            first_upsert.kwargs.get("points")
+            or first_upsert[1].get("points")
+        )
+        payload = points[0].payload
+        assert payload["auto_published"] is False
+
+    @patch("beeper_ui.services.kb_service.EmbeddingService")
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_create_entry_investigation_author_trusted(
+        self, mock_client_class: MagicMock, mock_embed_class: MagicMock
+    ) -> None:
+        """author='investigation' with trusted service → auto_published."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_embed = MagicMock()
+        mock_embed_class.return_value = mock_embed
+        mock_embed.get_embedding.return_value = [0.1] * 1536
+
+        trust_point = MagicMock()
+        trust_point.payload = _make_trust_payload(trust_level="trusted")
+        mock_client.scroll.return_value = ([trust_point], None)
+
+        svc = KBService()
+        svc.create_entry(
+            title="Test",
+            content="Content",
+            entry_type="investigation",
+            service="api-gateway",
+            author="investigation",
+        )
+
+        first_upsert = mock_client.upsert.call_args_list[0]
+        points = (
+            first_upsert.kwargs.get("points")
+            or first_upsert[1].get("points")
+        )
+        payload = points[0].payload
+        assert payload["auto_published"] is True
+
+
+# ── Additional Route Validation Tests ──
+
+
+class TestTrustRouteValidation:
+    """Tests for trust route input validation."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_trust_override_invalid_service_name(
+        self, mock_get_kb: MagicMock, client: FlaskClient
+    ) -> None:
+        response = client.post(
+            "/knowledge/trust-settings/invalid service!/override",
+            data={"trust_level": "trusted", "reason": "test"},
+        )
+        assert response.status_code == 400
+        assert b"Invalid service name" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_trust_override_service_name_too_long(
+        self, mock_get_kb: MagicMock, client: FlaskClient
+    ) -> None:
+        long_name = "a" * 101
+        response = client.post(
+            f"/knowledge/trust-settings/{long_name}/override",
+            data={"trust_level": "trusted", "reason": "test"},
+        )
+        assert response.status_code == 400
+        assert b"Invalid service name" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_trust_override_service_error_body(
+        self, mock_get_kb: MagicMock, client: FlaskClient
+    ) -> None:
+        """Verify error response does not leak internal details."""
+        mock_svc = MagicMock()
+        mock_get_kb.return_value = mock_svc
+        mock_svc.set_manual_trust_override.side_effect = KBServiceError(
+            "Qdrant connection refused at localhost:6333"
+        )
+
+        response = client.post(
+            "/knowledge/trust-settings/api-gateway/override",
+            data={"trust_level": "trusted", "reason": "test reason"},
+        )
+        assert response.status_code == 500
+        # Should show generic message, not internal details
+        assert b"Failed to update trust level" in response.data
+        assert b"localhost:6333" not in response.data
 
 
 # ── KB Index Trust Settings Link Test ──
