@@ -80,13 +80,15 @@
     </div>
     {% endif %}
 
-    {# Resolution Recommendations — rich card display #}
+    {# Resolution Recommendations — rich card display (only show section when recommendations data exists or pipeline has run) #}
+    {% if findings.get('recommendations') is not none or findings.get('synthesis_source') %}
     <div class="findings-section recommendations-section">
         <h4>Resolution Recommendations</h4>
         <div class="findings-content">
             {% include "investigations/_recommendations.html" %}
         </div>
     </div>
+    {% endif %}
 </div>
 {% else %}
 <p class="empty-state-text">No findings yet. Waiting for investigation steps to complete...</p>

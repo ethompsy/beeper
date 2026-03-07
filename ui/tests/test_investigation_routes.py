@@ -1024,19 +1024,21 @@ class TestRecommendationsDisplay:
 
     @respx.mock
     def test_empty_recommendations(self, client: FlaskClient) -> None:
-        """Test empty recommendations shows in-progress message."""
+        """Test empty recommendations list shows in-progress message."""
         respx.get(
             "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
         ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
 
-        findings_no_recs = {
+        findings_empty_recs = {
             "customer_impacting": True,
             "reasoning": "Users affected",
+            "recommendations": [],
+            "synthesis_source": "llm",
         }
 
         with patch(
             "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
-            return_value=findings_no_recs,
+            return_value=findings_empty_recs,
         ):
             response = client.get("/investigations/inv-detail-001")
             assert response.status_code == 200
@@ -1146,3 +1148,91 @@ class TestRecommendationsDisplay:
                 assert "recommendation-card" in event2
 
                 gen.close()
+
+    @respx.mock
+    def test_no_warning_when_all_high_confidence(
+        self, client: FlaskClient
+    ) -> None:
+        """Test low confidence warning does NOT appear when all recs are high."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        all_high_findings = {
+            "recommendations": [
+                {
+                    "action": "Scale connection pool",
+                    "confidence": "high",
+                    "expected_outcome": "Fixes the issue",
+                    "risk_assessment": "low",
+                    "based_on_prior_incident": None,
+                },
+                {
+                    "action": "Restart pods",
+                    "confidence": "high",
+                    "expected_outcome": "Clears stale connections",
+                    "risk_assessment": "medium",
+                    "based_on_prior_incident": None,
+                },
+            ],
+            "ranking_rationale": "Both high confidence",
+            "diagnostic_actions": [],
+            "synthesis_source": "llm",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=all_high_findings,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"recommendation-card" in response.data
+            assert b"low-confidence-warning" not in response.data
+            assert b"recommendations may need validation" not in response.data
+
+    @respx.mock
+    def test_recommendations_section_hidden_when_no_data(
+        self, client: FlaskClient
+    ) -> None:
+        """Test recommendations section not rendered when no recommendation data exists."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        findings_no_rec_keys = {
+            "customer_impacting": True,
+            "reasoning": "Users affected",
+            "root_cause_hypothesis": "Database issue",
+            "confidence_percentage": 75,
+            "confidence_level": "medium",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=findings_no_rec_keys,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            assert b"recommendations-section" not in response.data
+
+    @respx.mock
+    def test_alt_hypotheses_reference_not_duplicated(
+        self, client: FlaskClient
+    ) -> None:
+        """Test alt hypotheses in RCA, referenced not duplicated in recs."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=MOCK_FINDINGS_WITH_RECOMMENDATIONS,
+        ):
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            # Alternative hypotheses shown in RCA section
+            assert b"Alternative Hypotheses" in response.data
+            # Reference text in recommendations section (not duplicate list)
+            assert b"See alternative hypotheses" in response.data
+            # The collapsible detail (old duplicate) should not exist
+            assert b"alternative-hypotheses-detail" not in response.data

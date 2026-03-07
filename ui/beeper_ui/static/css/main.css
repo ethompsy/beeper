@@ -2367,7 +2367,7 @@ main {
 
 .confidence-badge.confidence-medium {
     background: #eab308;
-    color: white;
+    color: #78350f;
 }
 
 .confidence-badge.confidence-low {
@@ -2504,4 +2504,12 @@ main {
 
 .alternative-hypotheses-detail .alternative-hypotheses {
     padding: 10px 14px;
+}
+
+/* Reference to alternative hypotheses in RCA section */
+.recommendations-alt-ref {
+    margin: 12px 0 0 0;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: #6b7280;
 }

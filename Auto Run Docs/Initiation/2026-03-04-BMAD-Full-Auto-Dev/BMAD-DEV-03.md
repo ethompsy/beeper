@@ -58,19 +58,21 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Make all decisions autonomously
   <!-- Completed 2026-03-06: Story file created at _bmad-output/implementation-artifacts/4-3-recommendations-confidence-display.md with 6 tasks, comprehensive dev notes covering ResolutionRecommendationStep data schema (recommendations list with action/confidence/risk_assessment/expected_outcome/based_on_prior_incident, ranking_rationale, diagnostic_actions), confidence bands (high >80% green, medium 50-80% yellow, low <50% red), template-only enhancement approach (no new endpoints/services/SSE), existing pattern reuse from 4-2. Sprint status updated. -->
 
-- [ ] Implement story 4-3 (Recommendations & Confidence Display) using the `/bmad-bmm-dev-story` skill:
+- [x] Implement story 4-3 (Recommendations & Confidence Display) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
   - Before writing new code, review: resolution recommendations step output schema, existing investigation pane (4-2) for display patterns, UI templates for consistent styling
   - Implement: ranked recommendation cards with visual confidence indicators, risk badges, supporting evidence, warning display for low confidence
   - Make all decisions autonomously
+  <!-- Completed 2026-03-06: Full implementation of story 4-3 across 6 tasks. Template-only enhancement — no new endpoints, services, or SSE events. Created _recommendations.html partial with: recommendation cards (confidence-colored left borders), confidence badges (high/medium/low), risk badges, top recommendation highlight, ranking rationale, low-confidence warning banner, diagnostic actions checklist, alternative hypotheses (collapsible details), synthesis source indicator (AI-generated/Fallback), empty state handling. Updated _findings.html to include new partial with .recommendations-section wrapper. Added ~200 lines CSS to main.css. Verified route passes findings dict correctly, SSE findings-update automatically re-renders. Tests: 11 new tests (TestRecommendationsDisplay class), 341 total pass, zero regressions. Ruff + mypy clean. Sprint status → review. -->
 
-- [ ] Review and finalize story 4-3:
+- [x] Review and finalize story 4-3:
   - Use the `/bmad-bmm-code-review` skill to review story 4-3 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `4-3-recommendations-confidence-display: done`
   - Update story file status to `done`
   - Commit all changes as `4-3 done`
+  <!-- Completed 2026-03-06: Adversarial code review found 7 issues (1 HIGH, 4 MEDIUM, 2 LOW). Fixed: (1) duplicate alternative hypotheses replaced with reference to RCA section, (2) prior incident link URL-encoded, (3) defensive type guard on recommendation iteration, (4) yellow confidence badge contrast fixed for WCAG compliance, (5) negative test for no-warning-when-all-high-confidence, (6) recommendations section conditionally rendered, (7) role="alert" on warning banner. Tests: 14 recommendation tests (up from 11), 344 total pass, zero regressions. Ruff + mypy clean on investigation files. Sprint status + story → done. -->
 
 - [ ] Create and implement story 4-4 (KB Entry Navigation). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 4, Story 4-4 (FR34: navigate from investigation to related KB entries). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: KB wiki interface (Epic 2 code in `ui/`), investigation pane (4-2) for linking patterns, `kb/client.py` for fetching related entries

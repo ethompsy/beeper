@@ -1,6 +1,6 @@
 # Story 4.3: Recommendations & Confidence Display
 
-Status: review
+Status: done
 
 ## Story
 
@@ -225,6 +225,7 @@ Claude Opus 4.6
 ### Change Log
 
 - 2026-03-06: Implemented story 4-3 — template-only enhancement with rich recommendation cards, confidence badges, risk badges, diagnostic actions, alternative hypotheses, and comprehensive CSS. 11 new tests added, 341 total pass, zero regressions. Ruff + mypy clean on all modified files.
+- 2026-03-06: Code review found 7 issues (1 HIGH, 4 MEDIUM, 2 LOW). Fixed: (1) duplicate alternative hypotheses — replaced duplicate list in recommendations with reference to RCA section, (2) prior incident link URL-encoded with `|urlencode` filter, (3) defensive `{% if rec is mapping %}` guard on recommendation iteration, (4) yellow confidence badge contrast fixed (white → dark brown `#78350f`), (5) missing negative test added — `test_no_warning_when_all_high_confidence`, (6) recommendations section conditionally rendered when data exists, (7) `role="alert"` on low-confidence warning banner. Added 3 new tests (14 total), 344 total pass, zero regressions. Ruff + mypy clean. Sprint status + story → done.
 
 ### File List
 
