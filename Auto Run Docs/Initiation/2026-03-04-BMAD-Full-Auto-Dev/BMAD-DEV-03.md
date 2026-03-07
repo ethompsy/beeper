@@ -52,10 +52,11 @@ This phase builds the user-facing Investigation Experience, giving SREs the abil
   - Commit all changes as `4-2 done`
   <!-- Completed 2026-03-06: Adversarial code review found 7 issues (2 HIGH, 4 MEDIUM, 1 LOW). Fixed: (1) HTMX list-to-detail navigation broken — replaced hx-target="body" with standard anchor links to ensure SSE connects on page load, (2) SSE generator resource leak — added svc.close() on 404 path, (3) Evidence panels SSE update — added evidence-update SSE event target, (4) CSS injection risk — added |int filter to confidence_percentage, (5) Qdrant client leak — close() now closes both httpx and Qdrant clients, (6) Added 7 new tests: SSE event generation (step-update on message change, complete on phase, not-found, findings-update), Qdrant close, link navigation. Tests: 76 investigation tests (up from 68), 330 total pass, zero regressions. Ruff + mypy clean on investigation files. Sprint status + story → done. -->
 
-- [ ] Create story 4-3 spec (Recommendations & Confidence Display) using the `/bmad-bmm-create-story` skill. This story covers FR33: SREs can view recommended resolutions with confidence levels. The story should:
+- [x] Create story 4-3 spec (Recommendations & Confidence Display) using the `/bmad-bmm-create-story` skill. This story covers FR33: SREs can view recommended resolutions with confidence levels. The story should:
   - Be created from `_bmad-output/planning-artifacts/epics.md` Epic 4, Story 4-3
   - Include Dev Notes referencing: `resolution_recommendations.py` StepResult data schema (recommendations list, ranking_rationale, diagnostic_actions), confidence level bands (high >80%, medium 50-80%, low <50%)
   - Make all decisions autonomously
+  <!-- Completed 2026-03-06: Story file created at _bmad-output/implementation-artifacts/4-3-recommendations-confidence-display.md with 6 tasks, comprehensive dev notes covering ResolutionRecommendationStep data schema (recommendations list with action/confidence/risk_assessment/expected_outcome/based_on_prior_incident, ranking_rationale, diagnostic_actions), confidence bands (high >80% green, medium 50-80% yellow, low <50% red), template-only enhancement approach (no new endpoints/services/SSE), existing pattern reuse from 4-2. Sprint status updated. -->
 
 - [ ] Implement story 4-3 (Recommendations & Confidence Display) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task

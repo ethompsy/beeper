@@ -82,7 +82,7 @@ development_status:
   epic-4: in-progress
   4-1-investigation-list-view: done
   4-2-real-time-investigation-pane: done
-  4-3-recommendations-confidence-display: backlog
+  4-3-recommendations-confidence-display: ready-for-dev
   4-4-kb-entry-navigation: backlog
   4-5-resolution-confirmation: backlog
   4-6-investigation-resolution: backlog
