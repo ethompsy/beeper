@@ -59,10 +59,11 @@ This phase implements the Operations & Insights epic, giving administrators visi
   - Commit all changes as `6-3 done`
   - **Done:** Adversarial code review found 7 issues (2 high, 3 medium, 2 low). All fixed: HIGH get_high_cost_services ignoring period filter (added period parameter), HIGH task 1.4 falsely marked complete (corrected description), MEDIUM unused re import and SERVICE_NAME_PATTERN removed, MEDIUM trend chart not filtering by period (added date cutoff), MEDIUM CSV export missing model breakdown (added model section). 2 new tests added (invalid period fallback, high cost respects period). 22 cost insights tests pass, 626+406=1032 full suite, ruff clean, mypy clean.
 
-- [ ] Run Epic 6 retrospective and mark epic complete:
+- [x] Run Epic 6 retrospective and mark epic complete:
   - Use the `/bmad-bmm-retrospective` skill to conduct the Epic 6 retrospective
   - Reference previous retrospectives for format consistency
   - Create retrospective file at `_bmad-output/implementation-artifacts/epic-6-retro-YYYY-MM-DD.md`
   - Include: all 3 stories delivered (6-1 through 6-3), test counts, code review issues fixed, admin/ops patterns established, cost management lessons
   - Update sprint-status.yaml: `epic-6: done`, `epic-6-retrospective: done`
   - Commit as `epic-6 retrospective done`
+  - **Done:** Retrospective created at `_bmad-output/implementation-artifacts/epic-6-retro-2026-03-07.md`. 3 stories delivered, 87 tests added (1032 total), 21 code review issues found and fixed (2C, 3H, 8M, 8L). Documented: service extension pattern, SVG chart pattern, HTMX filtering pattern, cost management architecture, 5 improvement actions. Epic 5 follow-through: 5/7 applied, 2 still outstanding. Sprint status updated: epic-6 → done, epic-6-retrospective → done.

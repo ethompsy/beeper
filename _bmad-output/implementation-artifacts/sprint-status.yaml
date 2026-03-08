@@ -97,8 +97,8 @@ development_status:
   epic-5-retrospective: done
 
   # Epic 6: Operations & Insights
-  epic-6: in-progress
+  epic-6: done
   6-1-mttr-trends-dashboard: done
   6-2-llm-spending-caps: done
   6-3-cost-visibility-alerts: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
