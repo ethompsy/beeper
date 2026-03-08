@@ -14,7 +14,7 @@ This phase closes out the project by running the deferred Epic 2 (Knowledge Base
   - Commit as `epic-2 retrospective done`
   - ✅ Completed 2026-03-08: Retrospective saved to `epic-2-retro-2026-03-08.md`. Reviewed all 7 story files, extracted 46 code review issues (38 fixed), documented patterns established, updated sprint-status.yaml.
 
-- [ ] Generate final sprint status summary and cross-epic analysis:
+- [x] Generate final sprint status summary and cross-epic analysis:
   - Read sprint-status.yaml and all retrospective files to compile a comprehensive summary
   - Create `_bmad-output/implementation-artifacts/final-sprint-summary-YYYY-MM-DD.md` with YAML front matter:
     ```yaml
@@ -45,6 +45,7 @@ This phase closes out the project by running the deferred Epic 2 (Knowledge Base
     - Key patterns and conventions established
     - Risks and known limitations
   - Commit as `final sprint summary`
+  - Completed 2026-03-08: Summary saved to `final-sprint-summary-2026-03-08.md`. Compiled metrics from all 6 retrospectives, sprint-status.yaml, and epics.md. Covers: project overview (39 stories, 1032 tests, 236 review issues), epic-by-epic breakdown, FR coverage (47/47), NFR validation (16/16 MVP), architecture compliance (11/11), code review effectiveness, deferred items, risks, and sprint velocity analysis.
 
 - [ ] Run full release validation across all components:
   - **Investigator module:** `cd investigator && poetry run pytest -v && poetry run ruff check . && poetry run mypy .`
