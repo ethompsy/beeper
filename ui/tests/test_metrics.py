@@ -535,3 +535,135 @@ class TestMetricsRoutes:
         response = client.get("/metrics/")
         assert response.status_code == 200
         assert b"Unable to connect to metrics data store" in response.data
+
+    @patch("beeper_ui.routes.metrics.MetricsService")
+    def test_invalid_period_defaults_to_month(
+        self, mock_svc_cls: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test invalid period parameter falls back to month."""
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_mttr_data.return_value = {
+            "trend": [], "overall_avg_mttr": 0,
+            "total_count": 0, "improvement_pct": None, "improving": None,
+        }
+        mock_svc.get_mttr_by_service.return_value = []
+        mock_svc.get_mttr_by_severity.return_value = []
+        mock_svc.get_services.return_value = []
+        mock_svc.get_severities.return_value = []
+
+        response = client.get("/metrics/mttr?period=invalid")
+        assert response.status_code == 200
+        mock_svc.get_mttr_data.assert_called_once_with(
+            time_period="month", service=None, severity=None
+        )
+
+    @patch("beeper_ui.routes.metrics.MetricsService")
+    def test_invalid_service_ignored(
+        self, mock_svc_cls: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test invalid service name is sanitized to empty."""
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_mttr_data.return_value = {
+            "trend": [], "overall_avg_mttr": 0,
+            "total_count": 0, "improvement_pct": None, "improving": None,
+        }
+        mock_svc.get_mttr_by_service.return_value = []
+        mock_svc.get_mttr_by_severity.return_value = []
+        mock_svc.get_services.return_value = []
+        mock_svc.get_severities.return_value = []
+
+        response = client.get("/metrics/mttr?service=../../etc/passwd")
+        assert response.status_code == 200
+        mock_svc.get_mttr_data.assert_called_once_with(
+            time_period="month", service=None, severity=None
+        )
+
+    @patch("beeper_ui.routes.metrics.MetricsService")
+    def test_invalid_severity_ignored(
+        self, mock_svc_cls: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test invalid severity is sanitized to empty."""
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_mttr_data.return_value = {
+            "trend": [], "overall_avg_mttr": 0,
+            "total_count": 0, "improvement_pct": None, "improving": None,
+        }
+        mock_svc.get_mttr_by_service.return_value = []
+        mock_svc.get_mttr_by_severity.return_value = []
+        mock_svc.get_services.return_value = []
+        mock_svc.get_severities.return_value = []
+
+        response = client.get("/metrics/mttr?severity=invalid")
+        assert response.status_code == 200
+        mock_svc.get_mttr_data.assert_called_once_with(
+            time_period="month", service=None, severity=None
+        )
+
+    @patch("beeper_ui.routes.metrics.MetricsService")
+    def test_drilldown_invalid_date_format(
+        self, mock_svc_cls: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test drilldown with invalid date format returns empty."""
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+
+        response = client.get("/metrics/mttr/drilldown?start=2026/02/01&end=2026/02/28")
+        assert response.status_code == 200
+        mock_svc.get_investigations_for_period.assert_not_called()
+
+    @patch("beeper_ui.routes.metrics.MetricsService")
+    def test_drilldown_start_after_end(
+        self, mock_svc_cls: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test drilldown with start > end returns empty."""
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+
+        response = client.get("/metrics/mttr/drilldown?start=2026-02-28&end=2026-02-01")
+        assert response.status_code == 200
+        mock_svc.get_investigations_for_period.assert_not_called()
+
+    @patch("beeper_ui.routes.metrics.MetricsService")
+    def test_export_invalid_format_defaults_to_json(
+        self, mock_svc_cls: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test invalid export format falls back to json."""
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.export_mttr_data.return_value = '{"trend": []}'
+
+        response = client.get("/metrics/export?format=xml")
+        assert response.status_code == 200
+        mock_svc.export_mttr_data.assert_called_once_with(
+            time_period="month", fmt="json"
+        )
+
+
+class TestMetricsServiceCaching:
+    """Tests for MetricsService scroll caching."""
+
+    @patch("beeper_ui.services.metrics_service.QdrantClient")
+    def test_scroll_called_once_for_multiple_methods(
+        self, mock_qdrant_cls: MagicMock
+    ) -> None:
+        """Test that _scroll_resolved_investigations caches results."""
+        mock_client = MagicMock()
+        mock_qdrant_cls.return_value = mock_client
+        mock_client.scroll.side_effect = _mock_scroll_with_points(MOCK_POINTS)
+
+        svc = MetricsService()
+        svc._qdrant_client = mock_client
+
+        svc.get_mttr_data()
+        svc.get_mttr_by_service()
+        svc.get_mttr_by_severity()
+        svc.get_services()
+        svc.get_severities()
+
+        # scroll should only be called once due to caching
+        assert mock_client.scroll.call_count == 1
+
+        svc.close()

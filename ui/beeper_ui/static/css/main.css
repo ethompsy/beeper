@@ -3648,11 +3648,10 @@ a.match-badge.kb-entry-link::after {
 
 .mttr-data-point {
     cursor: pointer;
-    transition: r 0.2s, fill 0.2s;
+    transition: fill 0.2s;
 }
 
 .mttr-data-point:hover {
-    r: 7;
     fill: #4f46e5;
 }
 

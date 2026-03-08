@@ -12,20 +12,22 @@ This phase implements the Operations & Insights epic, giving administrators visi
   - Make all decisions autonomously
   - **Done:** Story created at `_bmad-output/implementation-artifacts/6-1-mttr-trends-dashboard.md`. 7 tasks, 5 ACs. Charting: server-rendered inline SVG trend lines + CSS horizontal bars for breakdowns. New MetricsService + metrics Blueprint. HTMX filtering, drill-down, JSON/CSV export. Sprint status updated.
 
-- [ ] Implement story 6-1 (MTTR Trends Dashboard) using the `/bmad-bmm-dev-story` skill:
+- [x] Implement story 6-1 (MTTR Trends Dashboard) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
   - Before writing new code, review: investigation resolution (4-6) for MTTR data sources, existing UI templates and styling from Epic 4, Flask route patterns
   - Search for any existing metrics/dashboard patterns in the codebase
   - Implement: MTTR aggregation logic, trend visualization, filtering by service/severity/time period, drill-down navigation, export functionality
   - Make all decisions autonomously
+  - **Done:** All 7 tasks implemented. MetricsService (MTTR aggregation from Qdrant), metrics Blueprint (4 routes), server-rendered SVG trend chart, HTMX filtering, drill-down, JSON/CSV export. 21 tests pass, ruff clean, mypy clean, 588/588 full suite pass. Story status: review.
 
-- [ ] Review and finalize story 6-1:
+- [x] Review and finalize story 6-1:
   - Use the `/bmad-bmm-code-review` skill to review story 6-1 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `6-1-mttr-trends-dashboard: done`
   - Update story file status to `done`
   - Commit all changes as `6-1 done`
+  - **Done:** Adversarial code review found 7 issues (1 critical, 2 high, 2 medium, 2 low). All fixed: N+1 query problem (added scroll caching), code duplication (extracted shared helpers), missing drilldown date validation, CSS SVG animation fix, 7 new tests for input validation/caching. 28 tests pass, 595/595 full suite, ruff clean, mypy clean.
 
 - [ ] Create and implement story 6-2 (LLM Spending Caps). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 6, Story 6-2 (FR46: set spending caps and rate limits for LLM usage). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: LLM client (`llm/client.py`) for tracking call costs, tiered model selection (3-9) for model cost data, LLM caching (3-10) for cost savings data

@@ -21,6 +21,7 @@ class MetricsService:
 
     def __init__(self) -> None:
         self._qdrant_client: QdrantClient | None = None
+        self._cached_points: list[dict[str, Any]] | None = None
 
     @property
     def qdrant_client(self) -> QdrantClient:
@@ -40,9 +41,15 @@ class MetricsService:
     def _scroll_resolved_investigations(self) -> list[dict[str, Any]]:
         """Scroll all investigations with MTTR data from Qdrant.
 
+        Results are cached per service instance to avoid redundant Qdrant
+        scrolls when multiple aggregation methods are called in one request.
+
         Returns:
             List of payload dicts for investigations with mttr_seconds set.
         """
+        if self._cached_points is not None:
+            return self._cached_points
+
         all_points: list[dict[str, Any]] = []
         offset = None
         while True:
@@ -61,6 +68,7 @@ class MetricsService:
                     all_points.append(payload)
             if offset is None:
                 break
+        self._cached_points = all_points
         return all_points
 
     @staticmethod

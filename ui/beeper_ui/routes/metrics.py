@@ -15,12 +15,80 @@ metrics_bp = Blueprint("metrics", __name__, url_prefix="/metrics")
 VALID_PERIODS = {"week", "month", "quarter"}
 VALID_SEVERITIES = {"low", "medium", "high", "critical"}
 SERVICE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9._-]{1,128}$")
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VALID_FORMATS = {"json", "csv"}
 
 
 def get_metrics_service() -> MetricsService:
     """Create a MetricsService instance."""
     return MetricsService()
+
+
+def _validate_filters() -> tuple[str, str, str]:
+    """Validate and sanitize common filter parameters from the request.
+
+    Returns:
+        Tuple of (period, service, severity) with safe defaults.
+    """
+    period = request.args.get("period", "month")
+    if period not in VALID_PERIODS:
+        period = "month"
+
+    service = request.args.get("service", "")
+    if service and not SERVICE_NAME_PATTERN.match(service):
+        service = ""
+
+    severity = request.args.get("severity", "")
+    if severity and severity not in VALID_SEVERITIES:
+        severity = ""
+
+    return period, service, severity
+
+
+def _load_mttr_template_data(svc: MetricsService) -> dict[str, Any]:
+    """Load all MTTR dashboard data from the service.
+
+    Args:
+        svc: MetricsService instance.
+
+    Returns:
+        Dict of template variables for MTTR content rendering.
+    """
+    period, service, severity = _validate_filters()
+
+    mttr_data = svc.get_mttr_data(
+        time_period=period,
+        service=service or None,
+        severity=severity or None,
+    )
+    by_service = svc.get_mttr_by_service()
+    by_severity = svc.get_mttr_by_severity()
+    services = svc.get_services()
+    severities = svc.get_severities()
+
+    max_service_mttr = max(
+        (s["avg_mttr"] for s in by_service), default=1
+    )
+    max_severity_mttr = max(
+        (s["avg_mttr"] for s in by_severity), default=1
+    )
+
+    chart = _compute_chart_data(mttr_data["trend"])
+
+    return {
+        "mttr_data": mttr_data,
+        "by_service": by_service,
+        "by_severity": by_severity,
+        "services": services,
+        "severities": severities,
+        "selected_period": period,
+        "selected_service": service,
+        "selected_severity": severity,
+        "max_service_mttr": max_service_mttr,
+        "max_severity_mttr": max_severity_mttr,
+        "error_message": None,
+        **chart,
+    }
 
 
 def _compute_chart_data(
@@ -96,48 +164,7 @@ def metrics_dashboard() -> str:
     """Render MTTR trends dashboard page."""
     svc = get_metrics_service()
     try:
-        period = request.args.get("period", "month")
-        if period not in VALID_PERIODS:
-            period = "month"
-
-        service = request.args.get("service", "")
-        if service and not SERVICE_NAME_PATTERN.match(service):
-            service = ""
-
-        severity = request.args.get("severity", "")
-        if severity and severity not in VALID_SEVERITIES:
-            severity = ""
-
-        mttr_data = svc.get_mttr_data(
-            time_period=period,
-            service=service or None,
-            severity=severity or None,
-        )
-        by_service = svc.get_mttr_by_service()
-        by_severity = svc.get_mttr_by_severity()
-        services = svc.get_services()
-        severities = svc.get_severities()
-
-        # Compute max values for bar chart percentages
-        max_service_mttr = max((s["avg_mttr"] for s in by_service), default=1) or 1
-        max_severity_mttr = max((s["avg_mttr"] for s in by_severity), default=1) or 1
-
-        chart = _compute_chart_data(mttr_data["trend"])
-
-        template_data = {
-            "mttr_data": mttr_data,
-            "by_service": by_service,
-            "by_severity": by_severity,
-            "services": services,
-            "severities": severities,
-            "selected_period": period,
-            "selected_service": service,
-            "selected_severity": severity,
-            "max_service_mttr": max_service_mttr,
-            "max_severity_mttr": max_severity_mttr,
-            "error_message": None,
-            **chart,
-        }
+        template_data = _load_mttr_template_data(svc)
 
         if request.headers.get("HX-Request"):
             return render_template("metrics/_mttr_content.html", **template_data)
@@ -157,47 +184,9 @@ def mttr_partial() -> str:
     """Return MTTR content partial for HTMX filtering."""
     svc = get_metrics_service()
     try:
-        period = request.args.get("period", "month")
-        if period not in VALID_PERIODS:
-            period = "month"
-
-        service = request.args.get("service", "")
-        if service and not SERVICE_NAME_PATTERN.match(service):
-            service = ""
-
-        severity = request.args.get("severity", "")
-        if severity and severity not in VALID_SEVERITIES:
-            severity = ""
-
-        mttr_data = svc.get_mttr_data(
-            time_period=period,
-            service=service or None,
-            severity=severity or None,
-        )
-        by_service = svc.get_mttr_by_service()
-        by_severity = svc.get_mttr_by_severity()
-        services = svc.get_services()
-        severities = svc.get_severities()
-
-        max_service_mttr = max((s["avg_mttr"] for s in by_service), default=1) or 1
-        max_severity_mttr = max((s["avg_mttr"] for s in by_severity), default=1) or 1
-
-        chart = _compute_chart_data(mttr_data["trend"])
-
+        template_data = _load_mttr_template_data(svc)
         return render_template(
-            "metrics/_mttr_content.html",
-            mttr_data=mttr_data,
-            by_service=by_service,
-            by_severity=by_severity,
-            services=services,
-            severities=severities,
-            selected_period=period,
-            selected_service=service,
-            selected_severity=severity,
-            max_service_mttr=max_service_mttr,
-            max_severity_mttr=max_severity_mttr,
-            error_message=None,
-            **chart,
+            "metrics/_mttr_content.html", **template_data
         )
     except Exception as e:
         logger.exception("Failed to load MTTR data: %s", e)
@@ -220,7 +209,13 @@ def mttr_drilldown() -> str:
         if service and not SERVICE_NAME_PATTERN.match(service):
             service = ""
 
-        if not start or not end:
+        if (
+            not start
+            or not end
+            or not DATE_PATTERN.match(start)
+            or not DATE_PATTERN.match(end)
+            or start > end
+        ):
             return render_template(
                 "metrics/_drilldown.html", investigations=[], period_label=""
             )

@@ -1,6 +1,6 @@
 # Story 6.1: MTTR Trends Dashboard
 
-Status: review
+Status: done
 
 ## Story
 
@@ -360,16 +360,17 @@ Claude Opus 4.6
 ### Change Log
 
 - 2026-03-07: Implemented MTTR Trends Dashboard — MetricsService, metrics blueprint, templates, tests. 21 tests, ruff clean, mypy clean, 588/588 full suite pass.
+- 2026-03-07: Code review completed. Fixed: N+1 query (added scroll caching), code duplication (extracted _validate_filters/_load_mttr_template_data helpers), missing drilldown date validation, CSS SVG r attribute animation. Added 7 tests for input validation and caching. 28 tests pass, 595/595 full suite pass.
 
 ### File List
 
 **New files:**
-- `ui/beeper_ui/services/metrics_service.py` — MetricsService class with MTTR aggregation, export
-- `ui/beeper_ui/routes/metrics.py` — metrics_bp Blueprint with 4 routes
+- `ui/beeper_ui/services/metrics_service.py` — MetricsService class with MTTR aggregation, export, scroll caching
+- `ui/beeper_ui/routes/metrics.py` — metrics_bp Blueprint with 4 routes, input validation helpers
 - `ui/beeper_ui/templates/metrics/mttr.html` — Full dashboard page
 - `ui/beeper_ui/templates/metrics/_mttr_content.html` — HTMX partial with charts
 - `ui/beeper_ui/templates/metrics/_drilldown.html` — Drill-down investigation list
-- `ui/tests/test_metrics.py` — 21 tests (service + routes)
+- `ui/tests/test_metrics.py` — 28 tests (service + routes + validation + caching)
 
 **Modified files:**
 - `ui/beeper_ui/routes/__init__.py` — Registered metrics_bp
