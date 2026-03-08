@@ -3772,22 +3772,16 @@ a.match-badge.kb-entry-link::after {
     background-color: #22c55e;
 }
 
-.spending-progress-fill[data-pct] {
-    background-color: #22c55e;
-}
-
-/* Color transitions based on percentage thresholds via CSS custom properties */
-.spending-progress-fill[style*="width: 6"],
-.spending-progress-fill[style*="width: 7"] {
+/* Color classes applied server-side based on percentage */
+.spending-progress-fill.spend-level-warning {
     background-color: #eab308;
 }
 
-.spending-progress-fill[style*="width: 8"],
-.spending-progress-fill[style*="width: 9"] {
+.spending-progress-fill.spend-level-high {
     background-color: #f97316;
 }
 
-.spending-progress-fill[style*="width: 100%"] {
+.spending-progress-fill.spend-level-critical {
     background-color: #ef4444;
 }
 

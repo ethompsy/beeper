@@ -1,6 +1,6 @@
 # Story 6.2: LLM Spending Caps
 
-Status: review
+Status: done
 
 ## Story
 
@@ -252,6 +252,7 @@ Claude Opus 4.6
 ### Change Log
 
 - 2026-03-07: Implemented LLM Spending Caps — CostTracker, SpendingCapEnforcer, SpendingService, spending blueprint, templates, tests. 28 investigator tests + 9 UI tests pass, ruff clean, mypy clean, 403/403 investigator suite + 604/604 UI suite pass (1007 total).
+- 2026-03-07: Code review (adversarial) — 7 issues found (1 critical, 1 high, 3 medium, 2 low). All fixed: (1) CRITICAL: `update_spend()` never called in agent — spending caps were non-functional; added cost feedback after investigation completes. (2) HIGH: division by zero when cap set to 0; added guard. (3) MEDIUM: CSS progress bar colors wrong for single-digit percentages; replaced fragile `[style*=]` selectors with server-side class assignment. (4) MEDIUM: unhandled ValueError from invalid env var values; added try/except with fallback. (5) MEDIUM: 3 modified step files undocumented in File List; added. (6-7) LOW: removed unused data-pct attribute, added 3 new tests for edge cases. 31 investigator tests + 9 UI tests pass, 406+604=1010 full suite, ruff clean, mypy clean.
 
 ### File List
 
@@ -262,12 +263,15 @@ Claude Opus 4.6
 - `ui/beeper_ui/routes/spending.py` — spending_bp Blueprint with 2 routes
 - `ui/beeper_ui/templates/spending/spending.html` — Full spending dashboard page
 - `ui/beeper_ui/templates/spending/_spending_content.html` — HTMX partial content
-- `investigator/tests/test_spending_caps.py` — 28 tests (cost, caps, rate limits, integration)
+- `investigator/tests/test_spending_caps.py` — 31 tests (cost, caps, rate limits, edge cases, integration)
 - `ui/tests/test_spending.py` — 9 tests (service + routes + error handling)
 
 **Modified files:**
 - `investigator/beeper_investigator/llm/client.py` — Added CostTracker integration to complete/complete_sync
-- `investigator/beeper_investigator/agent.py` — Added SpendingCapEnforcer check in _initialize, propagate cost_stats
+- `investigator/beeper_investigator/agent.py` — Added SpendingCapEnforcer check in _initialize, propagate cost_stats, update_spend after investigation
+- `investigator/beeper_investigator/steps/rca_hypothesis.py` — Fixed `or {}` to `if is not None else {}` for pipeline_metadata
+- `investigator/beeper_investigator/steps/resolution_recommendations.py` — Fixed `or {}` to `if is not None else {}` for pipeline_metadata
+- `investigator/beeper_investigator/steps/investigation_documentation.py` — Fixed `or {}` to `if is not None else {}` for pipeline_metadata
 - `ui/beeper_ui/routes/__init__.py` — Registered spending_bp
 - `ui/beeper_ui/templates/base.html` — Added Spending nav link
-- `ui/beeper_ui/static/css/main.css` — Added spending dashboard styles
+- `ui/beeper_ui/static/css/main.css` — Added spending dashboard styles, replaced fragile style-based color selectors with class-based

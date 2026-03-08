@@ -90,6 +90,10 @@ class InvestigatorAgent:
             result.metadata["model_usage"] = self.llm_client.get_model_usage()
             result.metadata["cache_stats"] = self.llm_client.get_cache_stats()
             result.metadata["cost_stats"] = self.llm_client.get_cost_stats()
+            # Update spending enforcer with actual investigation cost
+            if self.spending_enforcer:
+                cost_cents = result.metadata["cost_stats"].get("total_cost_cents", 0)
+                self.spending_enforcer.update_spend(cost_cents)
             self._finalize(result)
             return result
         except Exception as exc:

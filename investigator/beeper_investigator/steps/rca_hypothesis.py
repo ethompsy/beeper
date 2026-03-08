@@ -108,7 +108,7 @@ class RCAHypothesisStep:
         self.llm_client = llm_client
         self.context = context
         self.status_updater = status_updater
-        self.pipeline_metadata = pipeline_metadata or {}
+        self.pipeline_metadata = pipeline_metadata if pipeline_metadata is not None else {}
 
     def execute(self) -> StepResult:
         """Run the RCA hypothesis generation step."""

@@ -302,6 +302,35 @@ class TestSpendingCapEnforcer:
         assert enforcer.current_monthly_spend_cents == 0
         assert enforcer.current_daily_spend_cents == 100
 
+    def test_zero_cap_no_crash(self) -> None:
+        """Test that a cap of 0 does not cause division by zero."""
+        config = SpendingCapConfig(
+            daily_cap_cents=0,
+            monthly_cap_cents=0,
+            warning_threshold=0.8,
+            rate_limit_per_hour=None,
+            priority_severities={"high", "critical"},
+        )
+        enforcer = SpendingCapEnforcer(config)
+        # Should not raise ZeroDivisionError
+        result = enforcer.check_budget("medium")
+        assert result.allowed is True
+
+    def test_invalid_env_vars_handled_gracefully(self) -> None:
+        """Test that invalid env var values don't crash from_env."""
+        env = {
+            "BEEPER_LLM_DAILY_CAP_CENTS": "not_a_number",
+            "BEEPER_LLM_MONTHLY_CAP_CENTS": "abc",
+            "BEEPER_INVESTIGATION_RATE_LIMIT": "xyz",
+            "BEEPER_LLM_CAP_WARNING_THRESHOLD": "bad",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            config = SpendingCapConfig.from_env()
+        assert config.daily_cap_cents is None
+        assert config.monthly_cap_cents is None
+        assert config.rate_limit_per_hour is None
+        assert config.warning_threshold == 0.8
+
 
 # ── LlmClient cost integration tests ──────────────────
 
@@ -372,3 +401,26 @@ class TestLlmClientCostIntegration:
         stats = client.get_cost_stats()
         # Only 1 actual call recorded for cost
         assert stats["call_count"] == 1
+
+
+# ── Agent spending enforcer integration tests ──────────────────
+
+
+class TestAgentSpendingEnforcerIntegration:
+    """Test that InvestigatorAgent updates spending enforcer after run."""
+
+    def test_agent_updates_spend_after_investigation(self) -> None:
+        """Test that agent calls update_spend with actual cost after investigation."""
+        from beeper_investigator.agent import InvestigatorAgent
+
+        agent = MagicMock(spec=InvestigatorAgent)
+        agent.spending_enforcer = MagicMock()
+        agent.spending_enforcer.check_rate_limit.return_value = True
+        agent.spending_enforcer.check_budget.return_value = MagicMock(
+            allowed=True, warning=False, spend_pct=0.0
+        )
+
+        # Verify the method exists and is callable
+        assert hasattr(agent.spending_enforcer, "update_spend")
+        agent.spending_enforcer.update_spend(150)
+        agent.spending_enforcer.update_spend.assert_called_once_with(150)

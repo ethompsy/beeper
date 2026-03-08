@@ -61,10 +61,29 @@ class SpendingCapConfig:
             "BEEPER_CAP_PRIORITY_SEVERITIES", "high,critical"
         )
 
-        daily_cap = int(daily_raw) if daily_raw else None
-        monthly_cap = int(monthly_raw) if monthly_raw else None
-        rate_limit = int(rate_raw) if rate_raw else None
-        warning_threshold = float(threshold_raw)
+        try:
+            daily_cap = int(daily_raw) if daily_raw else None
+        except ValueError:
+            logger.warning("Invalid BEEPER_LLM_DAILY_CAP_CENTS='%s', ignoring", daily_raw)
+            daily_cap = None
+        try:
+            monthly_cap = int(monthly_raw) if monthly_raw else None
+        except ValueError:
+            logger.warning("Invalid BEEPER_LLM_MONTHLY_CAP_CENTS='%s', ignoring", monthly_raw)
+            monthly_cap = None
+        try:
+            rate_limit = int(rate_raw) if rate_raw else None
+        except ValueError:
+            logger.warning("Invalid BEEPER_INVESTIGATION_RATE_LIMIT='%s', ignoring", rate_raw)
+            rate_limit = None
+        try:
+            warning_threshold = float(threshold_raw)
+        except ValueError:
+            logger.warning(
+                "Invalid BEEPER_LLM_CAP_WARNING_THRESHOLD='%s', using 0.8",
+                threshold_raw,
+            )
+            warning_threshold = 0.8
         priority_severities = {
             s.strip() for s in priorities_raw.split(",") if s.strip()
         }
@@ -112,7 +131,7 @@ class SpendingCapEnforcer:
         is_priority = severity.lower() in self.config.priority_severities
 
         # Check daily cap
-        if self.config.daily_cap_cents is not None:
+        if self.config.daily_cap_cents is not None and self.config.daily_cap_cents > 0:
             daily_pct = self._current_daily_spend_cents / self.config.daily_cap_cents
             if daily_pct >= 1.0 and not is_priority:
                 return CapCheckResult(
@@ -140,7 +159,7 @@ class SpendingCapEnforcer:
                     )
 
         # Check monthly cap
-        if self.config.monthly_cap_cents is not None:
+        if self.config.monthly_cap_cents is not None and self.config.monthly_cap_cents > 0:
             monthly_pct = (
                 self._current_monthly_spend_cents / self.config.monthly_cap_cents
             )

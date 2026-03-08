@@ -19,8 +19,8 @@
         {% if summary.daily_cap_usd %}
         <div class="spending-cap-label">of ${{ "%.2f"|format(summary.daily_cap_usd) }} cap</div>
         <div class="spending-progress-bar">
-            <div class="spending-progress-fill" style="width: {{ [summary.daily_pct or 0, 100] | min }}%"
-                 data-pct="{{ summary.daily_pct or 0 }}"></div>
+            {% set dpct = summary.daily_pct or 0 %}
+            <div class="spending-progress-fill{% if dpct >= 95 %} spend-level-critical{% elif dpct >= 80 %} spend-level-high{% elif dpct >= 60 %} spend-level-warning{% endif %}" style="width: {{ [dpct, 100] | min }}%"></div>
         </div>
         <div class="spending-pct">{{ "%.0f"|format(summary.daily_pct or 0) }}%</div>
         {% else %}
@@ -35,8 +35,8 @@
         {% if summary.monthly_cap_usd %}
         <div class="spending-cap-label">of ${{ "%.2f"|format(summary.monthly_cap_usd) }} cap</div>
         <div class="spending-progress-bar">
-            <div class="spending-progress-fill" style="width: {{ [summary.monthly_pct or 0, 100] | min }}%"
-                 data-pct="{{ summary.monthly_pct or 0 }}"></div>
+            {% set mpct = summary.monthly_pct or 0 %}
+            <div class="spending-progress-fill{% if mpct >= 95 %} spend-level-critical{% elif mpct >= 80 %} spend-level-high{% elif mpct >= 60 %} spend-level-warning{% endif %}" style="width: {{ [mpct, 100] | min }}%"></div>
         </div>
         <div class="spending-pct">{{ "%.0f"|format(summary.monthly_pct or 0) }}%</div>
         {% else %}
