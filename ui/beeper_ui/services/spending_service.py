@@ -1,5 +1,8 @@
 """Spending service for LLM cost aggregation and dashboard data."""
 
+import csv
+import io
+import json
 import logging
 import os
 from collections import defaultdict
@@ -11,6 +14,7 @@ from qdrant_client import QdrantClient
 logger = logging.getLogger(__name__)
 
 INVESTIGATIONS_COLLECTION = "investigations"
+VALID_COST_PERIODS = {"week", "month", "quarter"}
 
 
 class SpendingService:
@@ -245,3 +249,373 @@ class SpendingService:
             "caps_configured": caps_configured,
             "warnings": warnings,
         }
+
+    def _filter_by_period(
+        self, points: list[dict[str, Any]], period: str = "month"
+    ) -> list[dict[str, Any]]:
+        """Filter investigation points by time period.
+
+        Args:
+            points: List of investigation payload dicts.
+            period: 'week', 'month', or 'quarter'.
+
+        Returns:
+            Filtered list of points within the period.
+        """
+        now = datetime.now(UTC)
+        if period == "week":
+            cutoff = now - timedelta(days=7)
+        elif period == "quarter":
+            cutoff = now - timedelta(days=90)
+        else:
+            cutoff = now - timedelta(days=30)
+
+        filtered = []
+        for point in points:
+            created_at = str(point.get("created_at", ""))
+            try:
+                dt = datetime.fromisoformat(
+                    created_at.replace("Z", "+00:00")
+                )
+                if dt >= cutoff:
+                    filtered.append(point)
+            except (ValueError, TypeError):
+                continue
+        return filtered
+
+    def get_cost_by_service(
+        self, period: str = "month"
+    ) -> list[dict[str, Any]]:
+        """Get cost breakdown by service.
+
+        Args:
+            period: Time period filter ('week', 'month', 'quarter').
+
+        Returns:
+            List of dicts sorted by total_cost descending.
+        """
+        all_points = self._scroll_investigations_with_costs()
+        filtered = self._filter_by_period(all_points, period)
+
+        service_data: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {
+                "total_cost": 0.0,
+                "count": 0,
+                "models": defaultdict(
+                    lambda: {"cost": 0.0, "calls": 0}
+                ),
+            }
+        )
+
+        for point in filtered:
+            service = str(point.get("service", "unknown"))
+            cost_stats = point.get("cost_stats", {})
+            cost = float(cost_stats.get("total_cost_usd", 0))
+            service_data[service]["total_cost"] += cost
+            service_data[service]["count"] += 1
+
+            per_model = cost_stats.get("per_model", {})
+            if isinstance(per_model, dict):
+                for model, mdata in per_model.items():
+                    if isinstance(mdata, dict):
+                        service_data[service]["models"][model][
+                            "cost"
+                        ] += float(mdata.get("cost_usd", 0))
+                        service_data[service]["models"][model][
+                            "calls"
+                        ] += int(mdata.get("calls", 0))
+
+        result = []
+        for service, data in service_data.items():
+            count = data["count"]
+            total = data["total_cost"]
+            result.append({
+                "service": service,
+                "total_cost_usd": round(total, 4),
+                "investigation_count": count,
+                "cost_per_investigation": (
+                    round(total / count, 4) if count > 0 else 0
+                ),
+                "model_breakdown": {
+                    m: {
+                        "cost_usd": round(md["cost"], 4),
+                        "calls": md["calls"],
+                    }
+                    for m, md in data["models"].items()
+                },
+            })
+
+        result.sort(
+            key=lambda x: float(x["total_cost_usd"]), reverse=True
+        )
+        return result
+
+    def get_cost_by_severity(
+        self, period: str = "month"
+    ) -> list[dict[str, Any]]:
+        """Get cost breakdown by severity.
+
+        Args:
+            period: Time period filter ('week', 'month', 'quarter').
+
+        Returns:
+            List of dicts sorted by total_cost descending.
+        """
+        all_points = self._scroll_investigations_with_costs()
+        filtered = self._filter_by_period(all_points, period)
+
+        severity_data: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"total_cost": 0.0, "count": 0}
+        )
+
+        for point in filtered:
+            severity = str(point.get("severity", "unknown"))
+            cost_stats = point.get("cost_stats", {})
+            cost = float(cost_stats.get("total_cost_usd", 0))
+            severity_data[severity]["total_cost"] += cost
+            severity_data[severity]["count"] += 1
+
+        result: list[dict[str, Any]] = []
+        for severity, data in severity_data.items():
+            count = int(data["count"])
+            total = float(data["total_cost"])
+            result.append({
+                "severity": severity,
+                "total_cost_usd": round(total, 4),
+                "investigation_count": count,
+                "cost_per_investigation": (
+                    round(total / count, 4) if count > 0 else 0
+                ),
+            })
+
+        result.sort(
+            key=lambda x: float(x["total_cost_usd"]), reverse=True
+        )
+        return result
+
+    def get_cost_by_model(
+        self, period: str = "month"
+    ) -> list[dict[str, Any]]:
+        """Get cost breakdown by LLM model.
+
+        Args:
+            period: Time period filter ('week', 'month', 'quarter').
+
+        Returns:
+            List of dicts sorted by total_cost descending.
+        """
+        all_points = self._scroll_investigations_with_costs()
+        filtered = self._filter_by_period(all_points, period)
+
+        model_data: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {
+                "total_cost": 0.0,
+                "call_count": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+            }
+        )
+
+        for point in filtered:
+            cost_stats = point.get("cost_stats", {})
+            per_model = cost_stats.get("per_model", {})
+            if not isinstance(per_model, dict):
+                continue
+            for model, mdata in per_model.items():
+                if not isinstance(mdata, dict):
+                    continue
+                model_data[model]["total_cost"] += float(
+                    mdata.get("cost_usd", 0)
+                )
+                model_data[model]["call_count"] += int(
+                    mdata.get("calls", 0)
+                )
+                model_data[model]["prompt_tokens"] += int(
+                    mdata.get("prompt_tokens", 0)
+                )
+                model_data[model]["completion_tokens"] += int(
+                    mdata.get("completion_tokens", 0)
+                )
+
+        result = [
+            {
+                "model": model,
+                "total_cost_usd": round(data["total_cost"], 4),
+                "call_count": data["call_count"],
+                "total_prompt_tokens": data["prompt_tokens"],
+                "total_completion_tokens": data["completion_tokens"],
+            }
+            for model, data in model_data.items()
+        ]
+
+        result.sort(
+            key=lambda x: float(x["total_cost_usd"]), reverse=True
+        )
+        return result
+
+    def get_high_cost_services(
+        self, threshold_multiplier: float | None = None
+    ) -> list[dict[str, Any]]:
+        """Identify services with costs exceeding threshold.
+
+        Args:
+            threshold_multiplier: Flag services above this multiple of
+                average. Defaults to BEEPER_COST_HIGH_THRESHOLD_MULTIPLIER
+                env var or 2.0.
+
+        Returns:
+            List of flagged service dicts with recommendations.
+        """
+        if threshold_multiplier is None:
+            try:
+                threshold_multiplier = float(
+                    os.getenv(
+                        "BEEPER_COST_HIGH_THRESHOLD_MULTIPLIER", "2.0"
+                    )
+                )
+            except (ValueError, TypeError):
+                threshold_multiplier = 2.0
+
+        by_service = self.get_cost_by_service()
+        if len(by_service) < 2:
+            return []
+
+        avg_cost = sum(
+            s["total_cost_usd"] for s in by_service
+        ) / len(by_service)
+        threshold = avg_cost * threshold_multiplier
+
+        # Get trend data for each service
+        all_points = self._scroll_investigations_with_costs()
+        now = datetime.now(UTC)
+        mid = now - timedelta(days=15)
+
+        flagged = []
+        for svc in by_service:
+            if svc["total_cost_usd"] <= threshold:
+                continue
+
+            multiplier = (
+                svc["total_cost_usd"] / avg_cost if avg_cost > 0 else 0
+            )
+
+            # Calculate trend
+            trend = self._calculate_service_trend(
+                svc["service"], all_points, mid, now
+            )
+
+            recommendation = (
+                f"{svc['service']} generated "
+                f"${svc['total_cost_usd']:.2f} in LLM costs "
+                f"({multiplier:.1f}x average) \u2014 consider tuning "
+                f"anomaly detection thresholds or excluding noisy "
+                f"log patterns"
+            )
+
+            flagged.append({
+                "service": svc["service"],
+                "total_cost_usd": svc["total_cost_usd"],
+                "average_cost_usd": round(avg_cost, 4),
+                "multiplier": round(multiplier, 1),
+                "investigation_count": svc["investigation_count"],
+                "cost_per_investigation": svc["cost_per_investigation"],
+                "trend": trend,
+                "recommendation": recommendation,
+            })
+
+        return flagged
+
+    def _calculate_service_trend(
+        self,
+        service: str,
+        all_points: list[dict[str, Any]],
+        midpoint: datetime,
+        now: datetime,
+    ) -> str:
+        """Calculate cost trend for a service (increasing/stable/decreasing).
+
+        Compares cost in recent half to earlier half of the data window.
+        """
+        cutoff = midpoint - timedelta(days=15)
+        earlier_cost = 0.0
+        recent_cost = 0.0
+
+        for point in all_points:
+            if str(point.get("service", "")) != service:
+                continue
+            created_at = str(point.get("created_at", ""))
+            cost = float(
+                point.get("cost_stats", {}).get("total_cost_usd", 0)
+            )
+            try:
+                dt = datetime.fromisoformat(
+                    created_at.replace("Z", "+00:00")
+                )
+            except (ValueError, TypeError):
+                continue
+            if cutoff <= dt < midpoint:
+                earlier_cost += cost
+            elif midpoint <= dt <= now:
+                recent_cost += cost
+
+        if earlier_cost == 0:
+            return "stable"
+        change_pct = ((recent_cost - earlier_cost) / earlier_cost) * 100
+        if change_pct > 10:
+            return "increasing"
+        elif change_pct < -10:
+            return "decreasing"
+        return "stable"
+
+    def export_cost_data(
+        self, period: str = "month", fmt: str = "json"
+    ) -> str | bytes:
+        """Export cost breakdown data as JSON or CSV.
+
+        Args:
+            period: Time period for data.
+            fmt: 'json' or 'csv'.
+
+        Returns:
+            JSON string or CSV bytes.
+        """
+        by_service = self.get_cost_by_service(period=period)
+        by_severity = self.get_cost_by_severity(period=period)
+        by_model = self.get_cost_by_model(period=period)
+        high_cost = self.get_high_cost_services()
+
+        if fmt == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow([
+                "service",
+                "total_cost_usd",
+                "investigation_count",
+                "cost_per_investigation",
+            ])
+            for svc in by_service:
+                writer.writerow([
+                    svc["service"],
+                    svc["total_cost_usd"],
+                    svc["investigation_count"],
+                    svc["cost_per_investigation"],
+                ])
+            return output.getvalue().encode("utf-8")
+
+        data = {
+            "period": period,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "by_service": by_service,
+            "by_severity": by_severity,
+            "by_model": by_model,
+            "high_cost_services": [
+                {
+                    "service": h["service"],
+                    "total_cost_usd": h["total_cost_usd"],
+                    "multiplier": h["multiplier"],
+                    "recommendation": h["recommendation"],
+                }
+                for h in high_cost
+            ],
+        }
+        return json.dumps(data, indent=2)

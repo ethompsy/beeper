@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Cost Insights - Beeper{% endblock %}
+
+{% block content %}
+<h2>Cost Insights</h2>
+
+<div class="cost-filter-bar">
+    <select name="period"
+            hx-get="/spending/costs/breakdown"
+            hx-target="#cost-breakdown-content"
+            hx-swap="innerHTML">
+        <option value="week"{% if selected_period == 'week' %} selected{% endif %}>Last Week</option>
+        <option value="month"{% if selected_period == 'month' %} selected{% endif %}>Last Month</option>
+        <option value="quarter"{% if selected_period == 'quarter' %} selected{% endif %}>Last Quarter</option>
+    </select>
+    <a href="/spending/costs/export?format=json&period={{ selected_period or 'month' }}" class="export-btn">Export JSON</a>
+    <a href="/spending/costs/export?format=csv&period={{ selected_period or 'month' }}" class="export-btn">Export CSV</a>
+</div>
+
+<div id="cost-breakdown-content">
+    {% include "spending/_cost_breakdown.html" %}
+</div>
+{% endblock %}

@@ -44,10 +44,11 @@ This phase implements the Operations & Insights epic, giving administrators visi
   - Commit all changes as `6-2 done`
   - **Done:** Adversarial code review found 7 issues (1 critical, 1 high, 3 medium, 2 low). All fixed: CRITICAL spending caps never enforced (update_spend never called — added cost feedback in agent.run()), HIGH division-by-zero guard for zero caps, MEDIUM CSS progress bar color selectors replaced with server-side classes, MEDIUM env var validation with try/except, MEDIUM documented 3 undocumented step file changes. 3 new tests added. 31 investigator + 9 UI tests pass, 406+604=1010 full suite, ruff clean, mypy clean.
 
-- [ ] Create and implement story 6-3 (Cost Visibility & Alerts). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 6, Story 6-3 (FR47: surface environments with excessive investigation costs). Then use the `/bmad-bmm-dev-story` skill to implement it:
+- [x] Create and implement story 6-3 (Cost Visibility & Alerts). First, use the `/bmad-bmm-create-story` skill to create the spec from Epic 6, Story 6-3 (FR47: surface environments with excessive investigation costs). Then use the `/bmad-bmm-dev-story` skill to implement it:
   - Before writing new code, review: spending caps (6-2) for cost tracking infrastructure, MTTR dashboard (6-1) for visualization patterns, existing admin UI
   - Implement: per-service cost breakdown, "High Cost" flagging, threshold-based alerts, actionable recommendations (tune sensitivity, exclude patterns, set service limits), export (CSV/JSON)
   - Make all decisions autonomously
+  - **Done:** Story created at `_bmad-output/implementation-artifacts/6-3-cost-visibility-alerts.md`. 7 tasks, 5 ACs. Extended SpendingService with cost breakdown methods (by service/severity/model, high-cost flagging with configurable 2x threshold, trend calculation). 3 new routes on spending_bp (/costs, /costs/breakdown, /costs/export). Server-rendered SVG trend chart, HTMX filtering, category bars, high-cost alert cards with actionable recommendations. JSON/CSV export. 20 new tests, ruff clean, mypy clean, 1030/1030 full suite pass. Story status: review.
 
 - [ ] Review and finalize story 6-3:
   - Use the `/bmad-bmm-code-review` skill to review story 6-3 — auto-fix all issues found

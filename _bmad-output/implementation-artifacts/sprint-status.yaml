@@ -100,5 +100,5 @@ development_status:
   epic-6: in-progress
   6-1-mttr-trends-dashboard: done
   6-2-llm-spending-caps: done
-  6-3-cost-visibility-alerts: backlog
+  6-3-cost-visibility-alerts: review
   epic-6-retrospective: optional

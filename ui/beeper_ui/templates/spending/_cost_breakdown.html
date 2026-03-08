@@ -1,0 +1,108 @@
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to load cost data</h3>
+    <p>{{ error_message }}</p>
+</div>
+{% elif by_service is not defined or by_service | length == 0 %}
+<div class="card">
+    <p class="empty-state">No cost data found for the selected period. Cost data is recorded when investigations complete.</p>
+</div>
+{% else %}
+
+{% if high_cost_services %}
+<div class="cost-alerts-section">
+    <h3>High Cost Alerts</h3>
+    {% for alert in high_cost_services %}
+    <div class="cost-alert-card">
+        <div class="cost-alert-header">
+            <span class="service-badge">{{ alert.service }}</span>
+            <span class="high-cost-badge">High Cost</span>
+            <span class="cost-alert-multiplier">{{ alert.multiplier }}x average</span>
+        </div>
+        <div class="cost-alert-stats">
+            ${{ "%.2f"|format(alert.total_cost_usd) }} total &middot;
+            {{ alert.investigation_count }} investigations &middot;
+            ${{ "%.2f"|format(alert.cost_per_investigation) }}/inv &middot;
+            <span class="cost-trend-{{ alert.trend }}">{{ alert.trend }}</span>
+        </div>
+        <p class="cost-alert-recommendation">{{ alert.recommendation }}</p>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="learning-grid">
+    <div class="card">
+        <h3>Cost by Service</h3>
+        <div class="category-bars">
+            {% for svc in by_service %}
+            <div class="category-bar-row">
+                <span class="category-label">
+                    {{ svc.service }}
+                    {% if svc.service in high_cost_service_names %}
+                    <span class="high-cost-badge">High Cost</span>
+                    {% endif %}
+                </span>
+                <div class="category-bar-track">
+                    <div class="category-bar-fill service-bar"
+                         style="width: {{ (svc.total_cost_usd / max_service_cost * 100) | round(1) }}%"></div>
+                </div>
+                <span class="category-count">${{ "%.2f"|format(svc.total_cost_usd) }} ({{ svc.investigation_count }} inv)</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Cost by Severity</h3>
+        <div class="category-bars">
+            {% for sev in by_severity %}
+            <div class="category-bar-row">
+                <span class="category-label">{{ sev.severity | title }}</span>
+                <div class="category-bar-track">
+                    <div class="category-bar-fill severity-bar severity-{{ sev.severity }}"
+                         style="width: {{ (sev.total_cost_usd / max_severity_cost * 100) | round(1) }}%"></div>
+                </div>
+                <span class="category-count">${{ "%.2f"|format(sev.total_cost_usd) }} ({{ sev.investigation_count }} inv)</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% if by_model %}
+<div class="card">
+    <h3>Cost by LLM Model</h3>
+    <div class="category-bars">
+        {% for mdl in by_model %}
+        <div class="category-bar-row">
+            <span class="category-label">{{ mdl.model }}</span>
+            <div class="category-bar-track">
+                <div class="category-bar-fill cost-model-bar"
+                     style="width: {{ (mdl.total_cost_usd / max_model_cost * 100) | round(1) }}%"></div>
+            </div>
+            <span class="category-count">${{ "%.2f"|format(mdl.total_cost_usd) }} ({{ mdl.call_count }} calls)</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if data_points %}
+<div class="card">
+    <h3>Daily Cost Trend</h3>
+    <svg class="cost-trend-chart" viewBox="0 0 {{ chart_width }} {{ chart_height }}" preserveAspectRatio="none">
+        {% for line in y_grid_lines %}
+        <line x1="60" y1="{{ line.y }}" x2="{{ chart_width - 60 }}" y2="{{ line.y }}" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="55" y="{{ line.y + 4 }}" text-anchor="end" fill="#9ca3af" font-size="11">${{ "%.2f"|format(line.value) }}</text>
+        {% endfor %}
+        <polyline points="{{ trend_points }}" fill="none" stroke="#f59e0b" stroke-width="2"/>
+        {% for point in data_points %}
+        <circle cx="{{ point.x }}" cy="{{ point.y }}" r="4" fill="#f59e0b"/>
+        <text x="{{ point.x }}" y="{{ chart_height - 5 }}" text-anchor="middle" fill="#9ca3af" font-size="9">{{ point.period[-5:] }}</text>
+        {% endfor %}
+    </svg>
+</div>
+{% endif %}
+
+{% endif %}
