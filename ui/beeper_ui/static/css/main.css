@@ -3537,3 +3537,190 @@ a.match-badge.kb-entry-link::after {
     color: #f85149;
     margin: 0;
 }
+
+/* ========================================
+   Metrics / MTTR Dashboard
+   ======================================== */
+
+.mttr-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    flex-wrap: wrap;
+}
+
+.mttr-filter-bar label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+
+.mttr-filter-bar select {
+    padding: 6px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    background: white;
+    cursor: pointer;
+}
+
+.export-btn-group {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+}
+
+.export-btn {
+    font-size: 0.8rem;
+    text-decoration: none;
+}
+
+/* Summary cards */
+.mttr-summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.mttr-summary-card {
+    text-align: center;
+}
+
+.mttr-summary-card h3 {
+    margin: 0 0 8px 0;
+    font-size: 0.85rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.mttr-big-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin: 0;
+}
+
+.mttr-count {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin: 4px 0 0 0;
+}
+
+/* Improvement badge */
+.improvement-badge {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+    padding: 4px 12px;
+    border-radius: 6px;
+    display: inline-block;
+}
+
+.improvement-positive {
+    color: #059669;
+    background: #d1fae5;
+}
+
+.improvement-negative {
+    color: #dc2626;
+    background: #fee2e2;
+}
+
+/* SVG Trend Chart */
+.mttr-chart-container {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.mttr-trend-chart {
+    width: 100%;
+    height: auto;
+    min-height: 200px;
+    max-height: 350px;
+}
+
+.mttr-data-point {
+    cursor: pointer;
+    transition: r 0.2s, fill 0.2s;
+}
+
+.mttr-data-point:hover {
+    r: 7;
+    fill: #4f46e5;
+}
+
+.chart-hint {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    text-align: center;
+    margin: 8px 0 0 0;
+}
+
+/* Severity bar colors */
+.severity-bar.severity-critical {
+    background: #dc2626;
+}
+
+.severity-bar.severity-high {
+    background: #ea580c;
+}
+
+.severity-bar.severity-medium {
+    background: #d97706;
+}
+
+.severity-bar.severity-low {
+    background: #059669;
+}
+
+.severity-bar {
+    background: #6366f1;
+}
+
+/* Drill-down */
+.drilldown-card {
+    margin-top: 20px;
+}
+
+.drilldown-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.drilldown-table th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 2px solid #e5e7eb;
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.drilldown-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.drilldown-table tr:hover {
+    background: #f9fafb;
+}
+
+.drilldown-table a {
+    color: #6366f1;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.drilldown-table a:hover {
+    text-decoration: underline;
+}

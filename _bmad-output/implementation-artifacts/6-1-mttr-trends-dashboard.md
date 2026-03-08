@@ -1,6 +1,6 @@
 # Story 6.1: MTTR Trends Dashboard
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -26,66 +26,66 @@ so that I can measure Beeper's impact and report on reliability improvements.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create MetricsService for MTTR data aggregation (AC: 1, 2, 5)
-  - [ ] 1.1 Create `ui/beeper_ui/services/metrics_service.py` with `MetricsService` class — lazy-init Qdrant client (follow `InvestigationService` pattern)
-  - [ ] 1.2 Add `get_mttr_data(time_period: str = "month", service: str | None = None, severity: str | None = None) -> dict` — scrolls Qdrant `investigations` collection, filters for records with `mttr_seconds IS NOT NULL` and `resolution_outcome IN (resolved, not_an_issue, unresolved)`, groups by time bucket (week/month/quarter), returns aggregated MTTR stats
-  - [ ] 1.3 Add `get_mttr_by_service() -> list[dict]` — aggregates MTTR per service from investigations collection
-  - [ ] 1.4 Add `get_mttr_by_severity() -> list[dict]` — aggregates MTTR per severity level
-  - [ ] 1.5 Add `get_investigations_for_period(start_date: str, end_date: str, service: str | None = None) -> list[dict]` — returns resolved investigations for drill-down view
-  - [ ] 1.6 Add `export_mttr_data(time_period: str, format: str = "json") -> str | bytes` — exports MTTR data as JSON or CSV
+- [x] Task 1: Create MetricsService for MTTR data aggregation (AC: 1, 2, 5)
+  - [x]1.1 Create `ui/beeper_ui/services/metrics_service.py` with `MetricsService` class — lazy-init Qdrant client (follow `InvestigationService` pattern)
+  - [x]1.2 Add `get_mttr_data(time_period: str = "month", service: str | None = None, severity: str | None = None) -> dict` — scrolls Qdrant `investigations` collection, filters for records with `mttr_seconds IS NOT NULL` and `resolution_outcome IN (resolved, not_an_issue, unresolved)`, groups by time bucket (week/month/quarter), returns aggregated MTTR stats
+  - [x]1.3 Add `get_mttr_by_service() -> list[dict]` — aggregates MTTR per service from investigations collection
+  - [x]1.4 Add `get_mttr_by_severity() -> list[dict]` — aggregates MTTR per severity level
+  - [x]1.5 Add `get_investigations_for_period(start_date: str, end_date: str, service: str | None = None) -> list[dict]` — returns resolved investigations for drill-down view
+  - [x]1.6 Add `export_mttr_data(time_period: str, format: str = "json") -> str | bytes` — exports MTTR data as JSON or CSV
 
-- [ ] Task 2: Create metrics Flask blueprint and routes (AC: 1, 2, 3, 4, 5)
-  - [ ] 2.1 Create `ui/beeper_ui/routes/metrics.py` with `metrics_bp = Blueprint("metrics", __name__, url_prefix="/metrics")`
-  - [ ] 2.2 Add `GET /metrics/` route — renders MTTR trends dashboard page with default time period (month)
-  - [ ] 2.3 Add `GET /metrics/mttr` HTMX partial route — returns `_mttr_content.html` filtered by query params (`period`, `service`, `severity`) for dynamic filtering without full page reload
-  - [ ] 2.4 Add `GET /metrics/mttr/drilldown` route — returns `_drilldown.html` partial listing investigations for a specific time bucket
-  - [ ] 2.5 Add `GET /metrics/export` route — returns JSON or CSV file download based on `format` query param
-  - [ ] 2.6 Register `metrics_bp` in `ui/beeper_ui/routes/__init__.py`
+- [x] Task 2: Create metrics Flask blueprint and routes (AC: 1, 2, 3, 4, 5)
+  - [x]2.1 Create `ui/beeper_ui/routes/metrics.py` with `metrics_bp = Blueprint("metrics", __name__, url_prefix="/metrics")`
+  - [x]2.2 Add `GET /metrics/` route — renders MTTR trends dashboard page with default time period (month)
+  - [x]2.3 Add `GET /metrics/mttr` HTMX partial route — returns `_mttr_content.html` filtered by query params (`period`, `service`, `severity`) for dynamic filtering without full page reload
+  - [x]2.4 Add `GET /metrics/mttr/drilldown` route — returns `_drilldown.html` partial listing investigations for a specific time bucket
+  - [x]2.5 Add `GET /metrics/export` route — returns JSON or CSV file download based on `format` query param
+  - [x]2.6 Register `metrics_bp` in `ui/beeper_ui/routes/__init__.py`
 
-- [ ] Task 3: Create MTTR dashboard templates (AC: 1, 2, 4)
-  - [ ] 3.1 Create `ui/beeper_ui/templates/metrics/mttr.html` — extends `base.html`, full page with filter controls and content area
-  - [ ] 3.2 Create `ui/beeper_ui/templates/metrics/_mttr_content.html` — HTMX partial containing: summary cards (overall MTTR, trend direction, improvement %), SVG trend chart, service breakdown bars, severity breakdown bars
-  - [ ] 3.3 Trend chart: use server-rendered inline `<svg>` with `<polyline>` for MTTR trend line (no JS library — consistent with project's no-JS philosophy)
-  - [ ] 3.4 Service/severity breakdowns: use existing CSS horizontal bar pattern from `learning.html` (`.category-bars`, `.category-bar-track`, `.category-bar-fill`)
-  - [ ] 3.5 Filter controls: time period selector (week/month/quarter) using `hx-get="/metrics/mttr"` with `hx-target="#mttr-content"` for HTMX filtering; service dropdown; severity dropdown
-  - [ ] 3.6 Export button linking to `/metrics/export?period=X&format=json` (and CSV option)
-  - [ ] 3.7 Improvement percentage: green badge when MTTR is decreasing, red when increasing
+- [x] Task 3: Create MTTR dashboard templates (AC: 1, 2, 4)
+  - [x]3.1 Create `ui/beeper_ui/templates/metrics/mttr.html` — extends `base.html`, full page with filter controls and content area
+  - [x]3.2 Create `ui/beeper_ui/templates/metrics/_mttr_content.html` — HTMX partial containing: summary cards (overall MTTR, trend direction, improvement %), SVG trend chart, service breakdown bars, severity breakdown bars
+  - [x]3.3 Trend chart: use server-rendered inline `<svg>` with `<polyline>` for MTTR trend line (no JS library — consistent with project's no-JS philosophy)
+  - [x]3.4 Service/severity breakdowns: use existing CSS horizontal bar pattern from `learning.html` (`.category-bars`, `.category-bar-track`, `.category-bar-fill`)
+  - [x]3.5 Filter controls: time period selector (week/month/quarter) using `hx-get="/metrics/mttr"` with `hx-target="#mttr-content"` for HTMX filtering; service dropdown; severity dropdown
+  - [x]3.6 Export button linking to `/metrics/export?period=X&format=json` (and CSV option)
+  - [x]3.7 Improvement percentage: green badge when MTTR is decreasing, red when increasing
 
-- [ ] Task 4: Create drill-down template (AC: 3)
-  - [ ] 4.1 Create `ui/beeper_ui/templates/metrics/_drilldown.html` — HTMX partial showing list of investigations for a clicked time bucket
-  - [ ] 4.2 Each investigation row: ID (linked to `/investigations/<id>`), service badge, severity badge, MTTR formatted via `format_mttr()`, resolved_at date
-  - [ ] 4.3 Trend chart data points use `hx-get="/metrics/mttr/drilldown?start=X&end=Y"` with `hx-target="#drilldown-panel"` to load investigation list on click
+- [x] Task 4: Create drill-down template (AC: 3)
+  - [x]4.1 Create `ui/beeper_ui/templates/metrics/_drilldown.html` — HTMX partial showing list of investigations for a clicked time bucket
+  - [x]4.2 Each investigation row: ID (linked to `/investigations/<id>`), service badge, severity badge, MTTR formatted via `format_mttr()`, resolved_at date
+  - [x]4.3 Trend chart data points use `hx-get="/metrics/mttr/drilldown?start=X&end=Y"` with `hx-target="#drilldown-panel"` to load investigation list on click
 
-- [ ] Task 5: Add navigation and CSS (AC: 1)
-  - [ ] 5.1 Add "Metrics" link to `base.html` nav: `<a href="/metrics/">Metrics</a>` (after "Health")
-  - [ ] 5.2 Add CSS to `main.css` for: `.mttr-summary-cards` grid, `.mttr-trend-chart` SVG container, `.mttr-filter-bar` controls, `.improvement-badge` (green/red), `.drilldown-panel` styles, `.export-btn` styles
-  - [ ] 5.3 Reuse existing CSS patterns: `.card`, `.category-bars`, `.category-bar-track`, `.category-bar-fill`, `.service-badge`, `.status-badge`, `.mttr-display`
+- [x] Task 5: Add navigation and CSS (AC: 1)
+  - [x]5.1 Add "Metrics" link to `base.html` nav: `<a href="/metrics/">Metrics</a>` (after "Health")
+  - [x]5.2 Add CSS to `main.css` for: `.mttr-summary-cards` grid, `.mttr-trend-chart` SVG container, `.mttr-filter-bar` controls, `.improvement-badge` (green/red), `.drilldown-panel` styles, `.export-btn` styles
+  - [x]5.3 Reuse existing CSS patterns: `.card`, `.category-bars`, `.category-bar-track`, `.category-bar-fill`, `.service-badge`, `.status-badge`, `.mttr-display`
 
-- [ ] Task 6: Tests (AC: 1, 2, 3, 4, 5)
-  - [ ] 6.1 Create `ui/tests/test_metrics.py`
-  - [ ] 6.2 Test `MetricsService.get_mttr_data()` with mock Qdrant — returns aggregated data
-  - [ ] 6.3 Test `MetricsService.get_mttr_data()` with no resolved investigations — returns empty
-  - [ ] 6.4 Test `MetricsService.get_mttr_by_service()` groups correctly
-  - [ ] 6.5 Test `MetricsService.get_mttr_by_severity()` groups correctly
-  - [ ] 6.6 Test `MetricsService.get_investigations_for_period()` returns filtered list
-  - [ ] 6.7 Test `MetricsService.export_mttr_data()` returns valid JSON
-  - [ ] 6.8 Test `MetricsService.export_mttr_data()` returns valid CSV
-  - [ ] 6.9 Test `GET /metrics/` renders full page with HTMX content area
-  - [ ] 6.10 Test `GET /metrics/mttr` with HX-Request header returns partial
-  - [ ] 6.11 Test `GET /metrics/mttr?period=week` filters by week
-  - [ ] 6.12 Test `GET /metrics/mttr?service=api-gateway` filters by service
-  - [ ] 6.13 Test `GET /metrics/mttr/drilldown?start=X&end=Y` returns investigation list
-  - [ ] 6.14 Test `GET /metrics/export?format=json` returns JSON download
-  - [ ] 6.15 Test `GET /metrics/export?format=csv` returns CSV download
-  - [ ] 6.16 Test dashboard with Qdrant unavailable — shows error card gracefully
-  - [ ] 6.17 Test improvement percentage calculation (positive and negative trends)
+- [x] Task 6: Tests (AC: 1, 2, 3, 4, 5)
+  - [x]6.1 Create `ui/tests/test_metrics.py`
+  - [x]6.2 Test `MetricsService.get_mttr_data()` with mock Qdrant — returns aggregated data
+  - [x]6.3 Test `MetricsService.get_mttr_data()` with no resolved investigations — returns empty
+  - [x]6.4 Test `MetricsService.get_mttr_by_service()` groups correctly
+  - [x]6.5 Test `MetricsService.get_mttr_by_severity()` groups correctly
+  - [x]6.6 Test `MetricsService.get_investigations_for_period()` returns filtered list
+  - [x]6.7 Test `MetricsService.export_mttr_data()` returns valid JSON
+  - [x]6.8 Test `MetricsService.export_mttr_data()` returns valid CSV
+  - [x]6.9 Test `GET /metrics/` renders full page with HTMX content area
+  - [x]6.10 Test `GET /metrics/mttr` with HX-Request header returns partial
+  - [x]6.11 Test `GET /metrics/mttr?period=week` filters by week
+  - [x]6.12 Test `GET /metrics/mttr?service=api-gateway` filters by service
+  - [x]6.13 Test `GET /metrics/mttr/drilldown?start=X&end=Y` returns investigation list
+  - [x]6.14 Test `GET /metrics/export?format=json` returns JSON download
+  - [x]6.15 Test `GET /metrics/export?format=csv` returns CSV download
+  - [x]6.16 Test dashboard with Qdrant unavailable — shows error card gracefully
+  - [x]6.17 Test improvement percentage calculation (positive and negative trends)
 
-- [ ] Task 7: Integration verification (AC: 1, 2, 3, 4, 5)
-  - [ ] 7.1 Run `ruff check` on all new/modified Python files — fix any issues
-  - [ ] 7.2 Run `mypy` on all new/modified Python files — fix any issues
-  - [ ] 7.3 Run full Python test suite — verify zero regressions
-  - [ ] 7.4 Verify navigation link appears in base template
-  - [ ] 7.5 Verify SVG trend chart renders with mock data (template inspection)
+- [x] Task 7: Integration verification (AC: 1, 2, 3, 4, 5)
+  - [x]7.1 Run `ruff check` on all new/modified Python files — fix any issues
+  - [x]7.2 Run `mypy` on all new/modified Python files — fix any issues
+  - [x]7.3 Run full Python test suite — verify zero regressions
+  - [x]7.4 Verify navigation link appears in base template
+  - [x]7.5 Verify SVG trend chart renders with mock data (template inspection)
 
 ## Dev Notes
 
@@ -359,4 +359,19 @@ Claude Opus 4.6
 
 ### Change Log
 
+- 2026-03-07: Implemented MTTR Trends Dashboard — MetricsService, metrics blueprint, templates, tests. 21 tests, ruff clean, mypy clean, 588/588 full suite pass.
+
 ### File List
+
+**New files:**
+- `ui/beeper_ui/services/metrics_service.py` — MetricsService class with MTTR aggregation, export
+- `ui/beeper_ui/routes/metrics.py` — metrics_bp Blueprint with 4 routes
+- `ui/beeper_ui/templates/metrics/mttr.html` — Full dashboard page
+- `ui/beeper_ui/templates/metrics/_mttr_content.html` — HTMX partial with charts
+- `ui/beeper_ui/templates/metrics/_drilldown.html` — Drill-down investigation list
+- `ui/tests/test_metrics.py` — 21 tests (service + routes)
+
+**Modified files:**
+- `ui/beeper_ui/routes/__init__.py` — Registered metrics_bp
+- `ui/beeper_ui/templates/base.html` — Added Metrics nav link
+- `ui/beeper_ui/static/css/main.css` — Added metrics dashboard styles
