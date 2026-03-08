@@ -409,12 +409,22 @@ class TestExportCostData:
         assert "high_cost_services" in data
 
     def test_csv_export(self) -> None:
-        """Test CSV export has headers and data rows."""
+        """Test CSV export has service and model sections."""
         svc = SpendingService()
         svc._qdrant_client = MagicMock()
         svc._qdrant_client.scroll.return_value = (
             [
-                self._make_point(service="api-gateway"),
+                self._make_point(
+                    service="api-gateway",
+                    per_model={
+                        "claude-haiku-3.5": {
+                            "cost_usd": 0.05,
+                            "calls": 2,
+                            "prompt_tokens": 3000,
+                            "completion_tokens": 1000,
+                        },
+                    },
+                ),
                 self._make_point(service="payment-service"),
             ],
             None,
@@ -422,12 +432,15 @@ class TestExportCostData:
 
         result = svc.export_cost_data(period="month", fmt="csv")
         assert isinstance(result, bytes)
-        lines = result.decode("utf-8").strip().split("\n")
+        content = result.decode("utf-8")
+        lines = content.strip().split("\n")
 
-        # Header + 2 data rows
-        assert len(lines) == 3
+        # Service section: header + 2 data rows
         assert "service" in lines[0]
         assert "total_cost_usd" in lines[0]
+        # Model section: blank line + header + model rows
+        assert "model" in content
+        assert "call_count" in content
 
 
 class TestPeriodFiltering:
@@ -623,3 +636,27 @@ class TestCostInsightsRoutes:
         response = client.get("/spending/costs")
         assert response.status_code == 200
         assert b"Unable to connect" in response.data
+
+    @patch("beeper_ui.routes.spending.get_spending_service")
+    def test_invalid_period_falls_back_to_month(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that invalid period parameter falls back to 'month'."""
+        mock_svc = self._mock_service()
+        mock_get_svc.return_value = mock_svc
+
+        response = client.get("/spending/costs?period=year")
+        assert response.status_code == 200
+        mock_svc.get_cost_by_service.assert_called_with(period="month")
+
+    @patch("beeper_ui.routes.spending.get_spending_service")
+    def test_high_cost_respects_period(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that high cost detection uses the selected period."""
+        mock_svc = self._mock_service()
+        mock_get_svc.return_value = mock_svc
+
+        response = client.get("/spending/costs?period=week")
+        assert response.status_code == 200
+        mock_svc.get_high_cost_services.assert_called_with(period="week")

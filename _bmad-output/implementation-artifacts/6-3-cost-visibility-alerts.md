@@ -1,6 +1,6 @@
 # Story 6.3: Cost Visibility & Alerts
 
-Status: review
+Status: done
 
 ## Story
 
@@ -37,7 +37,7 @@ so that I can identify noisy systems and optimize Beeper's focus.
   - [x]1.1 Add `get_cost_by_service(period: str = "month") -> list[dict]` to `spending_service.py` — aggregates from cached scroll data: group by `service` field in investigation payloads, return list of `{service, total_cost_usd, investigation_count, cost_per_investigation, model_breakdown: dict}` sorted by total_cost descending
   - [x]1.2 Add `get_cost_by_severity(period: str = "month") -> list[dict]` — group by `severity` field, return `{severity, total_cost_usd, investigation_count, cost_per_investigation}` sorted by total_cost descending
   - [x]1.3 Add `get_cost_by_model(period: str = "month") -> list[dict]` — aggregate from `cost_stats.per_model` nested dict in each investigation's payload, return `{model, total_cost_usd, call_count, total_prompt_tokens, total_completion_tokens}` sorted by total_cost descending
-  - [x]1.4 Add `get_cost_trend_by_service(period: str = "daily") -> dict[str, list[dict]]` — returns per-service cost trends (daily or weekly buckets) for SVG chart rendering, keyed by service name
+  - [x]1.4 Reuse existing `get_spending_trend(period="daily")` for SVG cost trend chart rendering — filtered by selected period in route. Per-service trend method not needed since template renders single overall trend line.
   - [x]1.5 Add `get_high_cost_services(threshold_multiplier: float = 2.0) -> list[dict]` — identifies services with cost > threshold_multiplier × average per-service cost. Returns list of `{service, total_cost_usd, average_cost_usd, multiplier, investigation_count, cost_per_investigation, trend, recommendation}` where trend is "increasing"/"stable"/"decreasing" and recommendation is actionable text
   - [x]1.6 Add `export_cost_data(period: str = "month", fmt: str = "json") -> str | bytes` — exports cost breakdown as JSON (dict with by_service, by_severity, by_model, high_cost_services, generated_at) or CSV (service rows with cost columns). Follow `MetricsService.export_mttr_data()` pattern exactly.
   - [x]1.7 Add period filtering to `_scroll_investigations_with_costs()` — accept optional `period` param ("week"/"month"/"quarter") to filter investigations by `created_at` date range. Default "month" returns last 30 days. Cache key should include period.

@@ -14,7 +14,7 @@ from qdrant_client import QdrantClient
 logger = logging.getLogger(__name__)
 
 INVESTIGATIONS_COLLECTION = "investigations"
-VALID_COST_PERIODS = {"week", "month", "quarter"}
+
 
 
 class SpendingService:
@@ -454,7 +454,9 @@ class SpendingService:
         return result
 
     def get_high_cost_services(
-        self, threshold_multiplier: float | None = None
+        self,
+        threshold_multiplier: float | None = None,
+        period: str = "month",
     ) -> list[dict[str, Any]]:
         """Identify services with costs exceeding threshold.
 
@@ -462,6 +464,7 @@ class SpendingService:
             threshold_multiplier: Flag services above this multiple of
                 average. Defaults to BEEPER_COST_HIGH_THRESHOLD_MULTIPLIER
                 env var or 2.0.
+            period: Time period filter ('week', 'month', 'quarter').
 
         Returns:
             List of flagged service dicts with recommendations.
@@ -476,7 +479,7 @@ class SpendingService:
             except (ValueError, TypeError):
                 threshold_multiplier = 2.0
 
-        by_service = self.get_cost_by_service()
+        by_service = self.get_cost_by_service(period=period)
         if len(by_service) < 2:
             return []
 
@@ -599,6 +602,23 @@ class SpendingService:
                     svc["total_cost_usd"],
                     svc["investigation_count"],
                     svc["cost_per_investigation"],
+                ])
+            # Model usage breakdown (AC 5)
+            writer.writerow([])
+            writer.writerow([
+                "model",
+                "total_cost_usd",
+                "call_count",
+                "total_prompt_tokens",
+                "total_completion_tokens",
+            ])
+            for mdl in by_model:
+                writer.writerow([
+                    mdl["model"],
+                    mdl["total_cost_usd"],
+                    mdl["call_count"],
+                    mdl["total_prompt_tokens"],
+                    mdl["total_completion_tokens"],
                 ])
             return output.getvalue().encode("utf-8")
 

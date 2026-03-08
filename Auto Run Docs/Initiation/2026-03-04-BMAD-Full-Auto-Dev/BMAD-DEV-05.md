@@ -50,13 +50,14 @@ This phase implements the Operations & Insights epic, giving administrators visi
   - Make all decisions autonomously
   - **Done:** Story created at `_bmad-output/implementation-artifacts/6-3-cost-visibility-alerts.md`. 7 tasks, 5 ACs. Extended SpendingService with cost breakdown methods (by service/severity/model, high-cost flagging with configurable 2x threshold, trend calculation). 3 new routes on spending_bp (/costs, /costs/breakdown, /costs/export). Server-rendered SVG trend chart, HTMX filtering, category bars, high-cost alert cards with actionable recommendations. JSON/CSV export. 20 new tests, ruff clean, mypy clean, 1030/1030 full suite pass. Story status: review.
 
-- [ ] Review and finalize story 6-3:
+- [x] Review and finalize story 6-3:
   - Use the `/bmad-bmm-code-review` skill to review story 6-3 — auto-fix all issues found
   - After review fixes, run all relevant tests, ruff, mypy
   - Fix any remaining test failures or lint/type issues
   - Update sprint-status.yaml: `6-3-cost-visibility-alerts: done`
   - Update story file status to `done`
   - Commit all changes as `6-3 done`
+  - **Done:** Adversarial code review found 7 issues (2 high, 3 medium, 2 low). All fixed: HIGH get_high_cost_services ignoring period filter (added period parameter), HIGH task 1.4 falsely marked complete (corrected description), MEDIUM unused re import and SERVICE_NAME_PATTERN removed, MEDIUM trend chart not filtering by period (added date cutoff), MEDIUM CSV export missing model breakdown (added model section). 2 new tests added (invalid period fallback, high cost respects period). 22 cost insights tests pass, 626+406=1032 full suite, ruff clean, mypy clean.
 
 - [ ] Run Epic 6 retrospective and mark epic complete:
   - Use the `/bmad-bmm-retrospective` skill to conduct the Epic 6 retrospective

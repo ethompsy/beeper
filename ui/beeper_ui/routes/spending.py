@@ -1,7 +1,7 @@
 """Spending routes for LLM cost dashboard."""
 
 import logging
-import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from flask import Blueprint, Response, render_template, request
@@ -14,7 +14,6 @@ spending_bp = Blueprint("spending", __name__, url_prefix="/spending")
 
 VALID_COST_PERIODS = {"week", "month", "quarter"}
 VALID_FORMATS = {"json", "csv"}
-SERVICE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9._-]{1,128}$")
 
 
 def get_spending_service() -> SpendingService:
@@ -180,7 +179,7 @@ def _load_cost_template_data(svc: SpendingService) -> dict[str, Any]:
     by_service = svc.get_cost_by_service(period=period)
     by_severity = svc.get_cost_by_severity(period=period)
     by_model = svc.get_cost_by_model(period=period)
-    high_cost = svc.get_high_cost_services()
+    high_cost = svc.get_high_cost_services(period=period)
 
     max_service_cost = max(
         (s["total_cost_usd"] for s in by_service), default=1.0
@@ -202,9 +201,17 @@ def _load_cost_template_data(svc: SpendingService) -> dict[str, Any]:
 
     high_cost_service_names = {h["service"] for h in high_cost}
 
-    # Compute cost trend chart from daily spending data
+    # Compute cost trend chart filtered to selected period
     trend = svc.get_spending_trend(period="daily")
-    chart = _compute_spend_chart_data(trend)
+    now = datetime.now(UTC)
+    if period == "week":
+        cutoff_str = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    elif period == "quarter":
+        cutoff_str = (now - timedelta(days=90)).strftime("%Y-%m-%d")
+    else:
+        cutoff_str = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    filtered_trend = [t for t in trend if t["period"] >= cutoff_str]
+    chart = _compute_spend_chart_data(filtered_trend)
 
     return {
         "by_service": by_service,
