@@ -3723,3 +3723,123 @@ a.match-badge.kb-entry-link::after {
 .drilldown-table a:hover {
     text-decoration: underline;
 }
+
+/* Spending Dashboard */
+.spending-summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.spending-amount {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin: 8px 0 4px;
+}
+
+.spending-cap-label {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin-bottom: 8px;
+}
+
+.spending-pct {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin-top: 4px;
+}
+
+.spending-detail {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    margin-top: 8px;
+}
+
+.spending-progress-bar {
+    width: 100%;
+    height: 10px;
+    background: #e5e7eb;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.spending-progress-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.3s ease, background-color 0.3s ease;
+    background-color: #22c55e;
+}
+
+.spending-progress-fill[data-pct] {
+    background-color: #22c55e;
+}
+
+/* Color transitions based on percentage thresholds via CSS custom properties */
+.spending-progress-fill[style*="width: 6"],
+.spending-progress-fill[style*="width: 7"] {
+    background-color: #eab308;
+}
+
+.spending-progress-fill[style*="width: 8"],
+.spending-progress-fill[style*="width: 9"] {
+    background-color: #f97316;
+}
+
+.spending-progress-fill[style*="width: 100%"] {
+    background-color: #ef4444;
+}
+
+.spending-cap-alert {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    color: #92400e;
+}
+
+.spending-cap-alert p {
+    margin: 4px 0;
+    font-weight: 500;
+}
+
+.cap-status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 8px;
+}
+
+.cap-status-active {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.cap-status-warning {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.cap-status-ok {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.cap-status-inactive {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.spending-trend-chart {
+    width: 100%;
+    height: 300px;
+}
+
+.spending-rate-indicator {
+    font-size: 0.9rem;
+    color: #6b7280;
+}

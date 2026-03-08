@@ -15,6 +15,7 @@ from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.kb.client import INVESTIGATIONS_COLLECTION, KBClient
 from beeper_investigator.llm.client import LlmClient
+from beeper_investigator.llm.spending_cap import SpendingCapConfig, SpendingCapEnforcer
 from beeper_investigator.sources.loki import LokiClient
 from beeper_investigator.sources.prometheus import PrometheusClient
 from beeper_investigator.steps import InvestigationStep, StepResult
@@ -69,6 +70,11 @@ class InvestigatorAgent:
         # Shared by reference with RCAHypothesisStep; updated after each
         # step in _run_steps() so later steps see prior step results.
         self._pipeline_metadata: dict[str, Any] = {}
+        # Spending cap enforcement (optional — disabled when env vars not set)
+        cap_config = SpendingCapConfig.from_env()
+        self.spending_enforcer: SpendingCapEnforcer | None = (
+            SpendingCapEnforcer(cap_config) if cap_config.enabled else None
+        )
 
     def run(self) -> InvestigationResult:
         """Execute the full investigation lifecycle.
@@ -83,6 +89,7 @@ class InvestigatorAgent:
             result = self._run_steps()
             result.metadata["model_usage"] = self.llm_client.get_model_usage()
             result.metadata["cache_stats"] = self.llm_client.get_cache_stats()
+            result.metadata["cost_stats"] = self.llm_client.get_cost_stats()
             self._finalize(result)
             return result
         except Exception as exc:
@@ -125,6 +132,31 @@ class InvestigatorAgent:
             logger.info("Loki source available at %s", self.sources.loki.base_url)
         else:
             logger.info("Loki source not configured")
+
+        # Check spending caps and rate limits
+        if self.spending_enforcer:
+            # Rate limit check
+            if not self.spending_enforcer.check_rate_limit():
+                msg = "Investigation rate limit exceeded"
+                logger.warning(msg)
+                self.status_updater.set_failed(msg)
+                raise RuntimeError(msg)
+
+            # Budget check
+            check = self.spending_enforcer.check_budget(self.context.severity)
+            if check.warning:
+                logger.warning(
+                    "Spending cap warning: %s (%.1f%%)",
+                    check.reason,
+                    check.spend_pct,
+                )
+            if not check.allowed:
+                msg = f"Spending cap enforcement: {check.reason}"
+                logger.warning("Investigation capped: %s", check.reason)
+                self.status_updater.set_failed(msg)
+                raise RuntimeError(msg)
+
+            self.spending_enforcer.record_investigation()
 
     def _build_steps(self) -> list[InvestigationStep]:
         """Build the ordered list of investigation steps.

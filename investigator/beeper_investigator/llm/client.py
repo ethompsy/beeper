@@ -16,6 +16,7 @@ from typing import Any, Literal
 import litellm
 
 from beeper_investigator.llm.cache import LlmResponseCache
+from beeper_investigator.llm.cost import CostTracker
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +182,7 @@ class LlmClient:
             ttl_seconds=config.cache_ttl_seconds,
             max_entries=config.cache_max_entries,
         )
+        self.cost_tracker = CostTracker()
         self._configure_litellm()
 
     def _configure_litellm(self) -> None:
@@ -269,6 +271,15 @@ class LlmClient:
                 self._model_usage.get(effective_model, 0) + 1
             )
 
+            # Track token costs
+            usage = getattr(response, "usage", None)
+            if usage:
+                self.cost_tracker.record_call(
+                    model=effective_model,
+                    prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                    completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                )
+
             # Cache store (only non-empty, deterministic responses)
             if self.config.cache_enabled and temperature == 0.0 and content:
                 self._cache.put(messages, effective_model, max_tokens, temperature, content)
@@ -328,6 +339,15 @@ class LlmClient:
             self._model_usage[effective_model] = (
                 self._model_usage.get(effective_model, 0) + 1
             )
+
+            # Track token costs
+            usage = getattr(response, "usage", None)
+            if usage:
+                self.cost_tracker.record_call(
+                    model=effective_model,
+                    prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                    completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                )
 
             # Cache store (only non-empty, deterministic responses)
             if self.config.cache_enabled and temperature == 0.0 and content:
@@ -452,3 +472,7 @@ class LlmClient:
     def get_cache_stats(self) -> dict[str, Any]:
         """Return cache performance statistics."""
         return self._cache.get_cache_stats()
+
+    def get_cost_stats(self) -> dict[str, Any]:
+        """Return LLM cost statistics."""
+        return self.cost_tracker.get_cost_stats()

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Spending - Beeper{% endblock %}
+
+{% block content %}
+<h2>LLM Spending Dashboard</h2>
+
+<div id="spending-content"
+     hx-get="/spending/status"
+     hx-trigger="every 30s"
+     hx-swap="innerHTML">
+    {% include "spending/_spending_content.html" %}
+</div>
+{% endblock %}

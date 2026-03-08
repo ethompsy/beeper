@@ -99,6 +99,6 @@ development_status:
   # Epic 6: Operations & Insights
   epic-6: in-progress
   6-1-mttr-trends-dashboard: done
-  6-2-llm-spending-caps: backlog
+  6-2-llm-spending-caps: review
   6-3-cost-visibility-alerts: backlog
   epic-6-retrospective: optional
