@@ -4,12 +4,13 @@ This phase implements the Operations & Insights epic, giving administrators visi
 
 ## Tasks
 
-- [ ] Create story 6-1 spec (MTTR Trends Dashboard) using the `/bmad-bmm-create-story` skill. This story covers FR35: SRE Leads can view MTTR trends over time. The story should:
+- [x] Create story 6-1 spec (MTTR Trends Dashboard) using the `/bmad-bmm-create-story` skill. This story covers FR35: SRE Leads can view MTTR trends over time. The story should:
   - Be created from `_bmad-output/planning-artifacts/epics.md` Epic 6, Story 6-1
   - Include Dev Notes referencing: investigation resolution (story 4-6) where MTTR is calculated, existing UI patterns from Epic 4, charting approach (server-rendered vs JS library)
   - Consider: time period selection, service breakdown, severity breakdown, drill-down to investigations, data export
   - Update sprint-status.yaml: `epic-6: in-progress`, `6-1-mttr-trends-dashboard: ready-for-dev`
   - Make all decisions autonomously
+  - **Done:** Story created at `_bmad-output/implementation-artifacts/6-1-mttr-trends-dashboard.md`. 7 tasks, 5 ACs. Charting: server-rendered inline SVG trend lines + CSS horizontal bars for breakdowns. New MetricsService + metrics Blueprint. HTMX filtering, drill-down, JSON/CSV export. Sprint status updated.
 
 - [ ] Implement story 6-1 (MTTR Trends Dashboard) using the `/bmad-bmm-dev-story` skill:
   - Read the story file created in the previous task
