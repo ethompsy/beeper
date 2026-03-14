@@ -21,7 +21,7 @@ use beeper_operator::{
     detection::{DetectionConfig, DetectionConsumer, DetectionStats},
     health::health_router,
     ingestion::{ingestion_router, IngestionBuffer},
-    slo::{new_slo_cache, run_slo_engine},
+    slo::{budget::new_budget_policy_state, new_slo_cache, run_slo_engine},
     InvestigatorConfig,
 };
 
@@ -97,11 +97,15 @@ async fn main() -> anyhow::Result<()> {
     // Create SLO cache (shared between SLO engine and API server)
     let slo_cache = new_slo_cache();
 
+    // Create budget policy state (shared between SLO engine and API server)
+    let budget_policy_state = new_budget_policy_state();
+
     // Start health + API server in background (combined on same port)
     let health_client = Arc::clone(&client);
     let api_buffer = Arc::clone(&buffer);
     let api_detection_stats = Arc::clone(&detection_stats);
     let api_slo_cache = slo_cache.clone();
+    let api_budget_policy_state = budget_policy_state.clone();
     let health_handle = tokio::spawn(async move {
         if let Err(e) =
             start_health_api_server(
@@ -109,6 +113,7 @@ async fn main() -> anyhow::Result<()> {
                 api_buffer,
                 api_detection_stats,
                 api_slo_cache,
+                api_budget_policy_state,
                 health_port,
             )
                 .await
@@ -160,6 +165,7 @@ async fn main() -> anyhow::Result<()> {
     let qdrant_endpoint = env::var("QDRANT_URL")
         .unwrap_or_else(|_| "http://qdrant:6333".to_string());
     let detection_slo_cache = slo_cache.clone();
+    let slo_budget_policy_state = budget_policy_state.clone();
     let slo_handle = tokio::spawn(async move {
         run_slo_engine(
             slo_client,
@@ -167,6 +173,7 @@ async fn main() -> anyhow::Result<()> {
             qdrant_endpoint,
             slo_namespace,
             slo_cache,
+            slo_budget_policy_state,
         )
         .await;
     });
@@ -221,12 +228,13 @@ async fn start_health_api_server(
     buffer: Arc<IngestionBuffer>,
     detection_stats: Arc<DetectionStats>,
     slo_cache: beeper_operator::slo::SloCache,
+    budget_policy_state: beeper_operator::slo::budget::BudgetPolicyState,
     port: u16,
 ) -> anyhow::Result<()> {
     use beeper_operator::api::api_router_full;
     // Combine health and API routers
     let health = health_router(Arc::clone(&client));
-    let api = api_router_full(client, buffer, None, Some(detection_stats), Some(slo_cache));
+    let api = api_router_full(client, buffer, None, Some(detection_stats), Some(slo_cache), Some(budget_policy_state));
     let app: Router = health.merge(api);
 
     let addr = format!("0.0.0.0:{}", port);

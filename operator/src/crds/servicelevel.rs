@@ -32,6 +32,10 @@ pub struct ServiceLevelSpec {
     /// Burn rate alert thresholds (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub burn_rate_alerts: Option<Vec<BurnRateAlert>>,
+
+    /// Error budget policies (optional) — threshold-based actions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_budget_policies: Option<Vec<ErrorBudgetPolicy>>,
 }
 
 /// Service Level Indicator specification
@@ -87,6 +91,28 @@ pub struct BurnRateAlert {
 
     /// Burn rate factor threshold (e.g., 14.4 for fast burn, 6.0 for slow burn)
     pub factor: f64,
+}
+
+/// Error budget policy configuration
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct ErrorBudgetPolicy {
+    /// Consumption threshold (0.0 to 1.0) that triggers the action.
+    /// E.g., 0.50 means 50% of error budget consumed.
+    pub threshold: f64,
+
+    /// Action to take when threshold is crossed
+    pub action: BudgetPolicyAction,
+}
+
+/// Action to take when an error budget policy threshold is crossed
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum BudgetPolicyAction {
+    /// Generate a notification event with budget status
+    Notify,
+    /// Record a deployment freeze recommendation
+    Freeze,
 }
 
 /// Current condition of a ServiceLevel resource
@@ -184,6 +210,29 @@ pub fn validate_spec(spec: &ServiceLevelSpec) -> Result<(), String> {
         }
     }
 
+    if let Some(policies) = &spec.error_budget_policies {
+        let mut seen_thresholds: Vec<u64> = Vec::new();
+        for (i, policy) in policies.iter().enumerate() {
+            if policy.threshold.is_nan()
+                || policy.threshold <= 0.0
+                || policy.threshold > 1.0
+            {
+                return Err(format!(
+                    "spec.error_budget_policies[{}].threshold must be between 0.0 (exclusive) and 1.0 (inclusive), got {}",
+                    i, policy.threshold
+                ));
+            }
+            let fingerprint = (policy.threshold * 10000.0) as u64;
+            if seen_thresholds.contains(&fingerprint) {
+                return Err(format!(
+                    "spec.error_budget_policies[{}].threshold {} is a duplicate",
+                    i, policy.threshold
+                ));
+            }
+            seen_thresholds.push(fingerprint);
+        }
+    }
+
     Ok(())
 }
 
@@ -218,6 +267,7 @@ mod tests {
                     factor: 6.0,
                 },
             ]),
+            error_budget_policies: None,
         }
     }
 
@@ -247,12 +297,14 @@ mod tests {
                 window: "7d".to_string(),
             },
             burn_rate_alerts: None,
+            error_budget_policies: None,
         };
 
         let json = serde_json::to_string(&spec).unwrap();
         assert!(json.contains("\"service\":\"auth-service\""));
         assert!(json.contains("\"type\":\"latency\""));
         assert!(!json.contains("burn_rate_alerts")); // None should be skipped
+        assert!(!json.contains("error_budget_policies")); // None should be skipped
     }
 
     #[test]
@@ -538,6 +590,196 @@ mod tests {
     fn test_validate_spec_empty_burn_rate_alerts_vec() {
         let mut spec = sample_spec();
         spec.burn_rate_alerts = Some(vec![]);
+        assert!(validate_spec(&spec).is_ok());
+    }
+
+    // ----- ErrorBudgetPolicy tests -----
+
+    #[test]
+    fn test_error_budget_policy_notify_serialization() {
+        let policy = ErrorBudgetPolicy {
+            threshold: 0.5,
+            action: BudgetPolicyAction::Notify,
+        };
+        let json = serde_json::to_string(&policy).unwrap();
+        assert!(json.contains("\"threshold\":0.5"));
+        assert!(json.contains("\"action\":\"notify\""));
+    }
+
+    #[test]
+    fn test_error_budget_policy_freeze_serialization() {
+        let policy = ErrorBudgetPolicy {
+            threshold: 0.95,
+            action: BudgetPolicyAction::Freeze,
+        };
+        let json = serde_json::to_string(&policy).unwrap();
+        assert!(json.contains("\"threshold\":0.95"));
+        assert!(json.contains("\"action\":\"freeze\""));
+    }
+
+    #[test]
+    fn test_budget_policy_action_deserialization() {
+        let notify: BudgetPolicyAction = serde_json::from_str("\"notify\"").unwrap();
+        assert_eq!(notify, BudgetPolicyAction::Notify);
+
+        let freeze: BudgetPolicyAction = serde_json::from_str("\"freeze\"").unwrap();
+        assert_eq!(freeze, BudgetPolicyAction::Freeze);
+    }
+
+    #[test]
+    fn test_spec_with_error_budget_policies() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = Some(vec![
+            ErrorBudgetPolicy {
+                threshold: 0.5,
+                action: BudgetPolicyAction::Notify,
+            },
+            ErrorBudgetPolicy {
+                threshold: 0.75,
+                action: BudgetPolicyAction::Notify,
+            },
+            ErrorBudgetPolicy {
+                threshold: 0.95,
+                action: BudgetPolicyAction::Freeze,
+            },
+        ]);
+
+        let json = serde_json::to_string(&spec).unwrap();
+        assert!(json.contains("\"error_budget_policies\""));
+        assert!(json.contains("\"threshold\":0.5"));
+        assert!(json.contains("\"action\":\"freeze\""));
+
+        // Round-trip deserialization
+        let deserialized: ServiceLevelSpec = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.error_budget_policies.as_ref().unwrap().len(), 3);
+        assert_eq!(
+            deserialized.error_budget_policies.as_ref().unwrap()[2].action,
+            BudgetPolicyAction::Freeze
+        );
+    }
+
+    #[test]
+    fn test_spec_without_error_budget_policies_omits_field() {
+        let spec = sample_spec();
+        let json = serde_json::to_string(&spec).unwrap();
+        assert!(!json.contains("error_budget_policies"));
+    }
+
+    #[test]
+    fn test_spec_deserialization_with_policies() {
+        let json = r#"{
+            "service": "payment-service",
+            "sli": {
+                "type": "availability",
+                "metric": "http_requests_total",
+                "good_selector": "{}",
+                "total_selector": "{}"
+            },
+            "objective": { "target": 0.999, "window": "30d" },
+            "error_budget_policies": [
+                { "threshold": 0.50, "action": "notify" },
+                { "threshold": 0.95, "action": "freeze" }
+            ]
+        }"#;
+
+        let spec: ServiceLevelSpec = serde_json::from_str(json).unwrap();
+        let policies = spec.error_budget_policies.unwrap();
+        assert_eq!(policies.len(), 2);
+        assert_eq!(policies[0].threshold, 0.50);
+        assert_eq!(policies[0].action, BudgetPolicyAction::Notify);
+        assert_eq!(policies[1].threshold, 0.95);
+        assert_eq!(policies[1].action, BudgetPolicyAction::Freeze);
+    }
+
+    // ----- Error budget policy validation tests -----
+
+    #[test]
+    fn test_validate_spec_valid_error_budget_policies() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = Some(vec![
+            ErrorBudgetPolicy { threshold: 0.5, action: BudgetPolicyAction::Notify },
+            ErrorBudgetPolicy { threshold: 0.75, action: BudgetPolicyAction::Notify },
+            ErrorBudgetPolicy { threshold: 0.95, action: BudgetPolicyAction::Freeze },
+        ]);
+        assert!(validate_spec(&spec).is_ok());
+    }
+
+    #[test]
+    fn test_validate_spec_error_budget_threshold_zero() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = Some(vec![
+            ErrorBudgetPolicy { threshold: 0.0, action: BudgetPolicyAction::Notify },
+        ]);
+        let result = validate_spec(&spec);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("between 0.0 (exclusive) and 1.0"));
+    }
+
+    #[test]
+    fn test_validate_spec_error_budget_threshold_negative() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = Some(vec![
+            ErrorBudgetPolicy { threshold: -0.1, action: BudgetPolicyAction::Notify },
+        ]);
+        let result = validate_spec(&spec);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("between 0.0 (exclusive) and 1.0"));
+    }
+
+    #[test]
+    fn test_validate_spec_error_budget_threshold_over_one() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = Some(vec![
+            ErrorBudgetPolicy { threshold: 1.5, action: BudgetPolicyAction::Freeze },
+        ]);
+        let result = validate_spec(&spec);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("between 0.0 (exclusive) and 1.0"));
+    }
+
+    #[test]
+    fn test_validate_spec_error_budget_threshold_nan() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = Some(vec![
+            ErrorBudgetPolicy { threshold: f64::NAN, action: BudgetPolicyAction::Notify },
+        ]);
+        let result = validate_spec(&spec);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("between 0.0 (exclusive) and 1.0"));
+    }
+
+    #[test]
+    fn test_validate_spec_error_budget_threshold_one_is_valid() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = Some(vec![
+            ErrorBudgetPolicy { threshold: 1.0, action: BudgetPolicyAction::Freeze },
+        ]);
+        assert!(validate_spec(&spec).is_ok());
+    }
+
+    #[test]
+    fn test_validate_spec_error_budget_duplicate_threshold() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = Some(vec![
+            ErrorBudgetPolicy { threshold: 0.5, action: BudgetPolicyAction::Notify },
+            ErrorBudgetPolicy { threshold: 0.5, action: BudgetPolicyAction::Freeze },
+        ]);
+        let result = validate_spec(&spec);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("duplicate"));
+    }
+
+    #[test]
+    fn test_validate_spec_error_budget_empty_vec() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = Some(vec![]);
+        assert!(validate_spec(&spec).is_ok());
+    }
+
+    #[test]
+    fn test_validate_spec_no_error_budget_policies() {
+        let mut spec = sample_spec();
+        spec.error_budget_policies = None;
         assert!(validate_spec(&spec).is_ok());
     }
 }

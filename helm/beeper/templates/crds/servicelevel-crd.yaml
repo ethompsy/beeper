@@ -99,6 +99,28 @@ spec:
                         description: Burn rate factor threshold
                         exclusiveMinimum: true
                         minimum: 0
+                error_budget_policies:
+                  type: array
+                  description: Error budget policy configurations
+                  items:
+                    type: object
+                    required:
+                      - threshold
+                      - action
+                    properties:
+                      threshold:
+                        type: number
+                        format: double
+                        description: Consumption threshold (0.0 to 1.0) that triggers the action
+                        exclusiveMinimum: true
+                        minimum: 0
+                        maximum: 1.0
+                      action:
+                        type: string
+                        description: Action to take when threshold is crossed
+                        enum:
+                          - notify
+                          - freeze
             status:
               type: object
               properties:

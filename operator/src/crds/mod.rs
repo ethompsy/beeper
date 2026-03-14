@@ -11,7 +11,7 @@ pub use investigation::{
     Investigation, InvestigationPhase, InvestigationSpec, InvestigationStatus, Severity,
 };
 pub use servicelevel::{
-    BurnRateAlert, ObjectiveSpec, ServiceLevel, ServiceLevelCondition, ServiceLevelSpec,
-    ServiceLevelStatus, SliSpec, SliType,
+    BudgetPolicyAction, BurnRateAlert, ErrorBudgetPolicy, ObjectiveSpec, ServiceLevel,
+    ServiceLevelCondition, ServiceLevelSpec, ServiceLevelStatus, SliSpec, SliType,
 };
 pub use source::{Source, SourceSpec, SourceStatus, SourceType};

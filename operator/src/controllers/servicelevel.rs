@@ -197,6 +197,7 @@ mod tests {
                     factor: 6.0,
                 },
             ]),
+            error_budget_policies: None,
         }
     }
 

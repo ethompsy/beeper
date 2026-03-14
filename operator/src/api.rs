@@ -19,6 +19,8 @@ use crate::crds::{Investigation, InvestigationPhase, ServiceLevel, ServiceLevelC
 use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
 use crate::llm::LlmManager;
+use crate::slo::budget::BudgetPolicyState;
+use crate::slo::calculator::parse_window_duration;
 use crate::slo::SloCache;
 
 /// Shared state for API endpoints
@@ -29,12 +31,14 @@ pub struct ApiState {
     pub llm_manager: Option<Arc<LlmManager>>,
     pub detection_stats: Option<Arc<DetectionStats>>,
     pub slo_cache: Option<SloCache>,
+    pub budget_policy_state: Option<BudgetPolicyState>,
 }
 
 /// Create the API router
 pub fn api_router(client: Arc<Client>, buffer: Arc<IngestionBuffer>) -> Router {
     api_router_with_detection(client, buffer, None, None)
 }
+
 
 /// Create the API router with optional LLM manager
 pub fn api_router_with_llm(
@@ -52,7 +56,7 @@ pub fn api_router_with_detection(
     llm_manager: Option<Arc<LlmManager>>,
     detection_stats: Option<Arc<DetectionStats>>,
 ) -> Router {
-    api_router_full(client, buffer, llm_manager, detection_stats, None)
+    api_router_full(client, buffer, llm_manager, detection_stats, None, None)
 }
 
 /// Create the API router with all optional components including SLO cache
@@ -62,6 +66,7 @@ pub fn api_router_full(
     llm_manager: Option<Arc<LlmManager>>,
     detection_stats: Option<Arc<DetectionStats>>,
     slo_cache: Option<SloCache>,
+    budget_policy_state: Option<BudgetPolicyState>,
 ) -> Router {
     let state = ApiState {
         client,
@@ -69,6 +74,7 @@ pub fn api_router_full(
         llm_manager,
         detection_stats,
         slo_cache,
+        budget_policy_state,
     };
 
     Router::new()
@@ -89,6 +95,10 @@ pub fn api_router_full(
         )
         .route("/api/v1/slo/services", get(list_servicelevels))
         .route("/api/v1/slo/services/:name", get(get_servicelevel))
+        .route(
+            "/api/v1/slo/services/:name/budget",
+            get(get_servicelevel_budget),
+        )
         .route("/api/v1/health/components", get(health_components))
         .route("/api/v1/ingestion/stats", get(ingestion_stats))
         .route("/api/v1/detection/stats", get(detection_stats_handler))
@@ -944,6 +954,8 @@ pub struct ServiceLevelResponse {
     pub burn_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_budget_remaining: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_frozen: Option<bool>,
 }
 
 /// Response for ServiceLevel detail view
@@ -964,6 +976,8 @@ pub struct ServiceLevelDetailResponse {
     pub burn_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_budget_remaining: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_frozen: Option<bool>,
 }
 
 /// SLI detail for ServiceLevel response
@@ -1029,6 +1043,14 @@ async fn list_servicelevels(State(state): State<ApiState>) -> impl IntoResponse 
         None
     };
 
+    // Load budget policy state snapshot
+    let budget_data = if let Some(ref bps) = state.budget_policy_state {
+        let guard = bps.read().await;
+        Some(guard.clone())
+    } else {
+        None
+    };
+
     match servicelevels_api.list(&ListParams::default()).await {
         Ok(sl_list) => {
             let service_levels: Vec<ServiceLevelResponse> = sl_list
@@ -1057,6 +1079,12 @@ async fn list_servicelevels(State(state): State<ApiState>) -> impl IntoResponse 
                             (None, None, None)
                         };
 
+                    // Look up freeze status from budget policy state
+                    let is_frozen = budget_data
+                        .as_ref()
+                        .and_then(|data| data.get(&name))
+                        .map(|s| s.is_frozen);
+
                     ServiceLevelResponse {
                         name,
                         service: spec.service,
@@ -1069,6 +1097,7 @@ async fn list_servicelevels(State(state): State<ApiState>) -> impl IntoResponse 
                         compliance,
                         burn_rate,
                         error_budget_remaining,
+                        is_frozen,
                     }
                 })
                 .collect();
@@ -1140,6 +1169,14 @@ async fn get_servicelevel(
                     (None, None, None)
                 };
 
+            // Look up freeze status from budget policy state
+            let is_frozen = if let Some(ref bps) = state.budget_policy_state {
+                let guard = bps.read().await;
+                guard.get(&sl_name).map(|s| s.is_frozen)
+            } else {
+                None
+            };
+
             let response = ServiceLevelDetailResponse {
                 name: sl_name,
                 service: spec.service,
@@ -1161,6 +1198,7 @@ async fn get_servicelevel(
                 compliance,
                 burn_rate,
                 error_budget_remaining,
+                is_frozen,
             };
 
             debug!(servicelevel_name = %response.name, "Got ServiceLevel detail");
@@ -1188,6 +1226,136 @@ async fn get_servicelevel(
                     title: "Failed to get ServiceLevel".to_string(),
                     status: 500,
                     detail: format!("Could not retrieve ServiceLevel: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Response for error budget status of a ServiceLevel
+#[derive(Debug, Serialize)]
+pub struct ErrorBudgetResponse {
+    pub service: String,
+    pub target: f64,
+    pub error_budget_total: f64,
+    pub error_budget_remaining: f64,
+    pub error_budget_consumed: f64,
+    pub burn_rate: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projected_exhaustion_secs: Option<f64>,
+    pub is_frozen: bool,
+    pub triggered_policies: Vec<BudgetPolicyEventResponse>,
+}
+
+/// Response for a triggered budget policy event
+#[derive(Debug, Serialize)]
+pub struct BudgetPolicyEventResponse {
+    pub threshold: f64,
+    pub action: String,
+    pub triggered_at: String,
+    pub consumption_at_trigger: f64,
+}
+
+/// Get error budget status for a ServiceLevel
+async fn get_servicelevel_budget(
+    State(state): State<ApiState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let servicelevels_api: Api<ServiceLevel> = Api::all((*state.client).clone());
+
+    match servicelevels_api.get(&name).await {
+        Ok(sl) => {
+            let sl_name = sl.metadata.name.clone().unwrap_or_default();
+            let spec = sl.spec;
+
+            // Get live SLO data
+            let (compliance, burn_rate, error_budget_remaining) =
+                if let Some(ref cache) = state.slo_cache {
+                    let guard = cache.read().await;
+                    if let Some(calc) = guard.get(&sl_name) {
+                        (calc.compliance, calc.burn_rate, calc.error_budget_remaining)
+                    } else {
+                        (spec.objective.target, 0.0, 1.0) // Defaults when no data
+                    }
+                } else {
+                    (spec.objective.target, 0.0, 1.0)
+                };
+
+            let error_budget_total = 1.0 - spec.objective.target;
+            let error_budget_consumed = 1.0 - error_budget_remaining;
+
+            // Calculate projected exhaustion
+            let projected_exhaustion_secs = if burn_rate > 0.0 && error_budget_remaining > 0.0 {
+                parse_window_duration(&spec.objective.window)
+                    .ok()
+                    .map(|window_secs| {
+                        (error_budget_remaining * window_secs as f64) / burn_rate
+                    })
+            } else {
+                None
+            };
+
+            // Get budget policy state
+            let (is_frozen, triggered_policies) =
+                if let Some(ref bps) = state.budget_policy_state {
+                    let guard = bps.read().await;
+                    if let Some(status) = guard.get(&sl_name) {
+                        let events: Vec<BudgetPolicyEventResponse> = status
+                            .triggered_events
+                            .iter()
+                            .map(|e| BudgetPolicyEventResponse {
+                                threshold: e.threshold,
+                                action: e.action.clone(),
+                                triggered_at: e.triggered_at.clone(),
+                                consumption_at_trigger: e.current_consumption,
+                            })
+                            .collect();
+                        (status.is_frozen, events)
+                    } else {
+                        (false, vec![])
+                    }
+                } else {
+                    (false, vec![])
+                };
+
+            let response = ErrorBudgetResponse {
+                service: spec.service,
+                target: spec.objective.target,
+                error_budget_total,
+                error_budget_remaining,
+                error_budget_consumed,
+                burn_rate,
+                projected_exhaustion_secs,
+                is_frozen,
+                triggered_policies,
+            };
+
+            debug!(servicelevel_name = %sl_name, "Got error budget status");
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(kube::Error::Api(err)) if err.code == 404 => {
+            warn!(servicelevel_name = %name, "ServiceLevel not found for budget query");
+            (
+                StatusCode::NOT_FOUND,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/servicelevel-not-found".to_string(),
+                    title: "ServiceLevel not found".to_string(),
+                    status: 404,
+                    detail: format!("No ServiceLevel found with name: {}", name),
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, servicelevel_name = %name, "Failed to get ServiceLevel for budget query");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/servicelevel-budget-failed".to_string(),
+                    title: "Failed to get error budget status".to_string(),
+                    status: 500,
+                    detail: format!("Could not retrieve error budget status: {}", e),
                 }),
             )
                 .into_response()
@@ -1418,6 +1586,7 @@ mod tests {
             compliance: Some(0.9995),
             burn_rate: Some(0.5),
             error_budget_remaining: Some(0.5),
+            is_frozen: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1429,6 +1598,7 @@ mod tests {
         assert!(json.contains("\"compliance\":0.9995"));
         assert!(json.contains("\"burn_rate\":0.5"));
         assert!(json.contains("\"error_budget_remaining\":0.5"));
+        assert!(!json.contains("\"is_frozen\"")); // None should be skipped
     }
 
     #[test]
@@ -1445,12 +1615,14 @@ mod tests {
             compliance: None,
             burn_rate: None,
             error_budget_remaining: None,
+            is_frozen: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(!json.contains("\"compliance\""));
         assert!(!json.contains("\"burn_rate\""));
         assert!(!json.contains("\"error_budget_remaining\""));
+        assert!(!json.contains("\"is_frozen\""));
     }
 
     #[test]
@@ -1481,6 +1653,7 @@ mod tests {
             compliance: Some(0.998),
             burn_rate: Some(2.0),
             error_budget_remaining: Some(0.0),
+            is_frozen: Some(true),
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1492,6 +1665,7 @@ mod tests {
         assert!(json.contains("\"condition\":\"healthy\""));
         assert!(json.contains("\"compliance\":0.998"));
         assert!(json.contains("\"burn_rate\":2.0"));
+        assert!(json.contains("\"is_frozen\":true"));
     }
 
     #[test]
@@ -1509,6 +1683,7 @@ mod tests {
                 compliance: None,
                 burn_rate: None,
                 error_budget_remaining: None,
+                is_frozen: None,
             }],
         };
 
@@ -2029,6 +2204,121 @@ mod tests {
         let req: ResolutionResolveRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.outcome, "unresolved");
         assert!(req.accuracy_rating.is_none());
+    }
+
+    #[test]
+    fn test_error_budget_response_serialization() {
+        let response = ErrorBudgetResponse {
+            service: "payment-service".to_string(),
+            target: 0.999,
+            error_budget_total: 0.001,
+            error_budget_remaining: 0.00085,
+            error_budget_consumed: 0.15,
+            burn_rate: 1.5,
+            projected_exhaustion_secs: Some(3600.0),
+            is_frozen: false,
+            triggered_policies: vec![],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"service\":\"payment-service\""));
+        assert!(json.contains("\"target\":0.999"));
+        assert!(json.contains("\"error_budget_total\":0.001"));
+        assert!(json.contains("\"burn_rate\":1.5"));
+        assert!(json.contains("\"projected_exhaustion_secs\":3600.0"));
+        assert!(json.contains("\"is_frozen\":false"));
+        assert!(json.contains("\"triggered_policies\":[]"));
+    }
+
+    #[test]
+    fn test_error_budget_response_with_triggered_policies() {
+        let response = ErrorBudgetResponse {
+            service: "auth-service".to_string(),
+            target: 0.999,
+            error_budget_total: 0.001,
+            error_budget_remaining: 0.0002,
+            error_budget_consumed: 0.80,
+            burn_rate: 4.0,
+            projected_exhaustion_secs: Some(900.0),
+            is_frozen: true,
+            triggered_policies: vec![
+                BudgetPolicyEventResponse {
+                    threshold: 0.5,
+                    action: "notify".to_string(),
+                    triggered_at: "2026-03-14T10:00:00Z".to_string(),
+                    consumption_at_trigger: 0.5,
+                },
+                BudgetPolicyEventResponse {
+                    threshold: 0.75,
+                    action: "freeze".to_string(),
+                    triggered_at: "2026-03-14T10:30:00Z".to_string(),
+                    consumption_at_trigger: 0.76,
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"is_frozen\":true"));
+        assert!(json.contains("\"action\":\"notify\""));
+        assert!(json.contains("\"action\":\"freeze\""));
+        assert!(json.contains("\"threshold\":0.5"));
+        assert!(json.contains("\"threshold\":0.75"));
+        assert!(json.contains("\"consumption_at_trigger\":0.76"));
+    }
+
+    #[test]
+    fn test_error_budget_response_no_projected_exhaustion() {
+        let response = ErrorBudgetResponse {
+            service: "api-gateway".to_string(),
+            target: 0.99,
+            error_budget_total: 0.01,
+            error_budget_remaining: 0.01,
+            error_budget_consumed: 0.0,
+            burn_rate: 0.0,
+            projected_exhaustion_secs: None,
+            is_frozen: false,
+            triggered_policies: vec![],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(!json.contains("\"projected_exhaustion_secs\"")); // None should be skipped
+        assert!(json.contains("\"error_budget_consumed\":0.0"));
+    }
+
+    #[test]
+    fn test_budget_policy_event_response_serialization() {
+        let event = BudgetPolicyEventResponse {
+            threshold: 0.8,
+            action: "notify".to_string(),
+            triggered_at: "2026-03-14T12:00:00Z".to_string(),
+            consumption_at_trigger: 0.82,
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"threshold\":0.8"));
+        assert!(json.contains("\"action\":\"notify\""));
+        assert!(json.contains("\"triggered_at\":\"2026-03-14T12:00:00Z\""));
+        assert!(json.contains("\"consumption_at_trigger\":0.82"));
+    }
+
+    #[test]
+    fn test_servicelevel_response_with_frozen() {
+        let response = ServiceLevelResponse {
+            name: "frozen-slo".to_string(),
+            service: "payment-service".to_string(),
+            sli_type: "availability".to_string(),
+            target: 0.999,
+            condition: "critical".to_string(),
+            compliance: Some(0.995),
+            burn_rate: Some(5.0),
+            error_budget_remaining: Some(0.1),
+            is_frozen: Some(true),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"is_frozen\":true"));
+        assert!(json.contains("\"name\":\"frozen-slo\""));
+        assert!(json.contains("\"burn_rate\":5.0"));
     }
 }
 

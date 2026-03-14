@@ -4,6 +4,7 @@
 //! for all ServiceLevel CRDs. Writes snapshots to Qdrant and creates
 //! Investigation CRDs when burn rate exceeds configured thresholds.
 
+pub mod budget;
 pub mod burn_rate;
 pub mod calculator;
 pub mod impact;
@@ -20,6 +21,7 @@ use tracing::{debug, error, info, warn};
 use crate::crds::ServiceLevel;
 use crate::sources::PrometheusClient;
 
+use budget::{BudgetPolicyState, ErrorBudgetEvaluator};
 use burn_rate::BurnRateAlerter;
 use calculator::SloCalculator;
 
@@ -246,6 +248,7 @@ pub async fn run_slo_engine(
     qdrant_endpoint: String,
     namespace: String,
     slo_cache: SloCache,
+    budget_policy_state: BudgetPolicyState,
 ) {
     let refresh_secs = get_slo_refresh_secs();
     info!(
@@ -265,6 +268,7 @@ pub async fn run_slo_engine(
 
     let calculator = SloCalculator::new(prom_client);
     let mut alerter = BurnRateAlerter::with_slo_cache(client.clone(), namespace, slo_cache.clone());
+    let budget_evaluator = ErrorBudgetEvaluator::new(budget_policy_state);
     let mut qdrant = QdrantWriter::new(qdrant_endpoint);
 
     // Ensure slo_snapshots collection exists on first iteration
@@ -326,6 +330,21 @@ pub async fn run_slo_engine(
                                 alerter
                                     .evaluate(&name, spec, alerts, &calculator)
                                     .await;
+                            }
+
+                            // Evaluate error budget policies
+                            if let Some(policies) = &spec.error_budget_policies {
+                                if !policies.is_empty() {
+                                    budget_evaluator
+                                        .evaluate(
+                                            &name,
+                                            &spec.service,
+                                            policies,
+                                            &result,
+                                            &spec.objective.window,
+                                        )
+                                        .await;
+                                }
                             }
 
                             // Update cache
