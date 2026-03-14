@@ -1,6 +1,6 @@
 # Story 1.3: ServiceLevel CRD & Controller
 
-Status: review
+Status: done
 
 ## Story
 

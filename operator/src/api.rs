@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use crate::crds::{Investigation, InvestigationPhase, ServiceLevel, ServiceLevelCondition, Severity, Source};
+use crate::crds::{Investigation, InvestigationPhase, ServiceLevel, ServiceLevelCondition, Severity, SliType, Source};
 use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
 use crate::llm::LlmManager;
@@ -957,6 +957,15 @@ pub struct ServiceLevelListResponse {
     pub service_levels: Vec<ServiceLevelResponse>,
 }
 
+/// Map SliType to its canonical string representation (matches serde snake_case)
+fn sli_type_to_string(sli_type: &SliType) -> String {
+    match sli_type {
+        SliType::Availability => "availability".to_string(),
+        SliType::Latency => "latency".to_string(),
+        SliType::ErrorRate => "error_rate".to_string(),
+    }
+}
+
 /// Map ServiceLevelCondition to string
 fn condition_to_string(condition: &Option<ServiceLevelCondition>) -> String {
     match condition {
@@ -981,7 +990,7 @@ async fn list_servicelevels(State(state): State<ApiState>) -> impl IntoResponse 
                     let spec = sl.spec;
                     let status = sl.status.unwrap_or_default();
 
-                    let sli_type = format!("{:?}", spec.sli.sli_type).to_lowercase();
+                    let sli_type = sli_type_to_string(&spec.sli.sli_type);
 
                     ServiceLevelResponse {
                         name,
@@ -1031,7 +1040,7 @@ async fn get_servicelevel(
             let spec = sl.spec;
             let status = sl.status.unwrap_or_default();
 
-            let sli_type = format!("{:?}", spec.sli.sli_type).to_lowercase();
+            let sli_type = sli_type_to_string(&spec.sli.sli_type);
 
             let burn_rate_alerts = spec
                 .burn_rate_alerts
@@ -1280,6 +1289,108 @@ mod tests {
         assert!(json.contains("\"services_tracked\":50"));
         assert!(json.contains("\"anomalies_detected\":12"));
         assert!(json.contains("\"cooldown_entries\":3"));
+    }
+
+    #[test]
+    fn test_sli_type_to_string() {
+        assert_eq!(sli_type_to_string(&SliType::Availability), "availability");
+        assert_eq!(sli_type_to_string(&SliType::Latency), "latency");
+        assert_eq!(sli_type_to_string(&SliType::ErrorRate), "error_rate");
+    }
+
+    #[test]
+    fn test_condition_to_string() {
+        assert_eq!(
+            condition_to_string(&Some(ServiceLevelCondition::Healthy)),
+            "healthy"
+        );
+        assert_eq!(
+            condition_to_string(&Some(ServiceLevelCondition::Warning)),
+            "warning"
+        );
+        assert_eq!(
+            condition_to_string(&Some(ServiceLevelCondition::Critical)),
+            "critical"
+        );
+        assert_eq!(condition_to_string(&None), "unknown");
+    }
+
+    #[test]
+    fn test_servicelevel_response_serialization() {
+        let response = ServiceLevelResponse {
+            name: "payments-slo".to_string(),
+            service: "payment-service".to_string(),
+            sli_type: "error_rate".to_string(),
+            target: 0.999,
+            window: "30d".to_string(),
+            condition: "healthy".to_string(),
+            alerts_registered: Some(2),
+            last_evaluated: Some("2026-03-14T12:00:00Z".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"name\":\"payments-slo\""));
+        assert!(json.contains("\"sli_type\":\"error_rate\""));
+        assert!(json.contains("\"target\":0.999"));
+        assert!(json.contains("\"condition\":\"healthy\""));
+        assert!(json.contains("\"alerts_registered\":2"));
+    }
+
+    #[test]
+    fn test_servicelevel_detail_response_serialization() {
+        let response = ServiceLevelDetailResponse {
+            name: "payments-slo".to_string(),
+            service: "payment-service".to_string(),
+            sli: SliDetailResponse {
+                sli_type: "error_rate".to_string(),
+                metric: "http_requests_total".to_string(),
+                good_selector: "{status=~\"2..\"}".to_string(),
+                total_selector: "{}".to_string(),
+            },
+            objective: ObjectiveDetailResponse {
+                target: 0.999,
+                window: "30d".to_string(),
+            },
+            burn_rate_alerts: vec![BurnRateAlertResponse {
+                severity: "critical".to_string(),
+                short_window: "5m".to_string(),
+                long_window: "6h".to_string(),
+                factor: 6.0,
+            }],
+            condition: "healthy".to_string(),
+            alerts_registered: Some(1),
+            last_evaluated: Some("2026-03-14T12:00:00Z".to_string()),
+            error: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"service\":\"payment-service\""));
+        assert!(json.contains("\"type\":\"error_rate\""));
+        assert!(json.contains("\"metric\":\"http_requests_total\""));
+        assert!(json.contains("\"target\":0.999"));
+        assert!(json.contains("\"factor\":6.0"));
+        assert!(json.contains("\"condition\":\"healthy\""));
+    }
+
+    #[test]
+    fn test_servicelevel_list_response_serialization() {
+        let response = ServiceLevelListResponse {
+            service_levels: vec![ServiceLevelResponse {
+                name: "auth-slo".to_string(),
+                service: "auth-service".to_string(),
+                sli_type: "availability".to_string(),
+                target: 0.999,
+                window: "7d".to_string(),
+                condition: "warning".to_string(),
+                alerts_registered: None,
+                last_evaluated: None,
+            }],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"service_levels\":["));
+        assert!(json.contains("\"name\":\"auth-slo\""));
+        assert!(json.contains("\"sli_type\":\"availability\""));
     }
 
     #[test]

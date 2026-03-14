@@ -141,7 +141,10 @@ pub fn validate_spec(spec: &ServiceLevelSpec) -> Result<(), String> {
         return Err("spec.sli.total_selector must not be empty".to_string());
     }
 
-    if spec.objective.target < 0.0 || spec.objective.target > 1.0 {
+    if spec.objective.target.is_nan()
+        || spec.objective.target < 0.0
+        || spec.objective.target > 1.0
+    {
         return Err(format!(
             "spec.objective.target must be between 0.0 and 1.0, got {}",
             spec.objective.target
@@ -477,6 +480,15 @@ mod tests {
         let mut spec = sample_spec();
         spec.objective.target = 1.0;
         assert!(validate_spec(&spec).is_ok());
+    }
+
+    #[test]
+    fn test_validate_spec_target_nan() {
+        let mut spec = sample_spec();
+        spec.objective.target = f64::NAN;
+        let result = validate_spec(&spec);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("between 0.0 and 1.0"));
     }
 
     #[test]
