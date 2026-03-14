@@ -12,6 +12,7 @@ from beeper_ui.services.slo_service import (
     format_budget_remaining,
     format_burn_rate,
     format_compliance,
+    format_percentage,
     format_projected_exhaustion,
 )
 
@@ -263,6 +264,27 @@ class TestFormatProjectedExhaustion:
     def test_one_day_partial(self) -> None:
         # 1 day + 4 hours = 100800 seconds
         assert format_projected_exhaustion(100800.0) == "1d 4h"
+
+    def test_sub_minute_shows_seconds(self) -> None:
+        """Sub-minute durations show seconds instead of misleading '0m'."""
+        assert format_projected_exhaustion(30.0) == "30s"
+
+    def test_one_second(self) -> None:
+        assert format_projected_exhaustion(1.0) == "1s"
+
+
+class TestFormatPercentage:
+    """Tests for format_percentage helper."""
+
+    def test_normal_value(self) -> None:
+        assert format_percentage(0.5) == "50.0%"
+
+    def test_none_value(self) -> None:
+        assert format_percentage(None) == "N/A"
+
+    def test_delegates_to_budget_remaining(self) -> None:
+        """format_budget_remaining delegates to format_percentage."""
+        assert format_budget_remaining(0.75) == format_percentage(0.75)
 
 
 class TestConditionCssClass:

@@ -5,6 +5,8 @@ import respx
 from flask.testing import FlaskClient
 from httpx import Response
 
+from tests.conftest import _RoleClient
+
 MOCK_SERVICE_LEVELS = {
     "service_levels": [
         {
@@ -149,6 +151,48 @@ class TestSloDashboard:
         # Frozen badge
         assert b"Frozen" in response.data
 
+    @respx.mock
+    def test_slo_dashboard_unknown_condition_not_in_risk_count(
+        self, client: FlaskClient
+    ) -> None:
+        """Unknown condition services appear in total but not in counts."""
+        unknown_services = {
+            "service_levels": [
+                {
+                    "name": "new-slo",
+                    "service": "new-service",
+                    "sli_type": "availability",
+                    "target": 0.99,
+                    "window": "7d",
+                    "condition": "unknown",
+                    "compliance": None,
+                    "burn_rate": None,
+                    "error_budget_remaining": None,
+                    "is_frozen": False,
+                },
+                {
+                    "name": "healthy-slo",
+                    "service": "stable-service",
+                    "sli_type": "latency",
+                    "target": 0.999,
+                    "window": "30d",
+                    "condition": "healthy",
+                    "compliance": 0.9999,
+                    "burn_rate": 0.1,
+                    "error_budget_remaining": 0.95,
+                    "is_frozen": False,
+                },
+            ]
+        }
+        respx.get("http://mock-operator:8080/api/v1/slo/services").mock(
+            return_value=Response(200, json=unknown_services)
+        )
+        response = client.get("/slo/")
+        assert response.status_code == 200
+        # Unknown service still renders in the table
+        assert b"new-slo" in response.data
+        assert b"Unknown" in response.data
+
 
 class TestSloServiceDetail:
     """Tests for /slo/services/<name> detail route."""
@@ -237,24 +281,24 @@ class TestSloAccessControl:
 
     @respx.mock
     def test_slo_dashboard_accessible_by_user(
-        self, user_client: object
+        self, user_client: _RoleClient
     ) -> None:
         """Test user role can access SLO dashboard."""
         respx.get("http://mock-operator:8080/api/v1/slo/services").mock(
             return_value=Response(200, json={"service_levels": []})
         )
-        response = user_client.get("/slo/")  # type: ignore[union-attr]
+        response = user_client.get("/slo/")
         assert response.status_code == 200
 
     @respx.mock
     def test_slo_dashboard_accessible_by_admin(
-        self, admin_client: object
+        self, admin_client: _RoleClient
     ) -> None:
         """Test admin role can access SLO dashboard."""
         respx.get("http://mock-operator:8080/api/v1/slo/services").mock(
             return_value=Response(200, json={"service_levels": []})
         )
-        response = admin_client.get("/slo/")  # type: ignore[union-attr]
+        response = admin_client.get("/slo/")
         assert response.status_code == 200
 
 

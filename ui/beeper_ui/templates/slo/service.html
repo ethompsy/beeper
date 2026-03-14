@@ -124,10 +124,10 @@
         <tbody>
             {% for policy in budget.triggered_policies %}
             <tr>
-                <td>{{ format_budget_remaining(policy.threshold) }}</td>
+                <td>{{ format_percentage(policy.threshold) }}</td>
                 <td>{{ policy.action | title }}</td>
                 <td>{{ policy.triggered_at }}</td>
-                <td>{{ format_budget_remaining(policy.consumption_at_trigger) }}</td>
+                <td>{{ format_percentage(policy.consumption_at_trigger) }}</td>
             </tr>
             {% endfor %}
         </tbody>

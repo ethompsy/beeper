@@ -1,6 +1,6 @@
 # Story 1.7: SLO Compliance Dashboard
 
-Status: review
+Status: done
 
 ## Story
 

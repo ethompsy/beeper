@@ -49,12 +49,14 @@ def create_app(config_class: type | None = None) -> Flask:
         format_budget_remaining,
         format_burn_rate,
         format_compliance,
+        format_percentage,
         format_projected_exhaustion,
     )
 
     app.jinja_env.globals["format_compliance"] = format_compliance
     app.jinja_env.globals["format_burn_rate"] = format_burn_rate
     app.jinja_env.globals["format_budget_remaining"] = format_budget_remaining
+    app.jinja_env.globals["format_percentage"] = format_percentage
     app.jinja_env.globals["format_projected_exhaustion"] = format_projected_exhaustion
     app.jinja_env.globals["condition_css_class"] = condition_css_class
 

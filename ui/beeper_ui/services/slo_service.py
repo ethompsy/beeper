@@ -8,6 +8,12 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+class SloServiceError(Exception):
+    """Error communicating with the SLO service."""
+
+    pass
+
+
 class SloService:
     """Service for fetching SLO data from the operator API."""
 
@@ -135,6 +141,20 @@ def format_burn_rate(value: float | None) -> str:
     return f"{value:.1f}x"
 
 
+def format_percentage(value: float | None) -> str:
+    """Format a fraction (0.0-1.0) as percentage.
+
+    Args:
+        value: Fraction value, or None.
+
+    Returns:
+        Formatted string like "75.0%" or "N/A".
+    """
+    if value is None:
+        return "N/A"
+    return f"{value * 100:.1f}%"
+
+
 def format_budget_remaining(value: float | None) -> str:
     """Format error budget remaining as percentage.
 
@@ -144,9 +164,7 @@ def format_budget_remaining(value: float | None) -> str:
     Returns:
         Formatted string like "75.0%" or "N/A".
     """
-    if value is None:
-        return "N/A"
-    return f"{value * 100:.1f}%"
+    return format_percentage(value)
 
 
 def format_projected_exhaustion(secs: float | None) -> str:
@@ -167,7 +185,10 @@ def format_projected_exhaustion(secs: float | None) -> str:
         return f"{days}d {hours}h"
     if hours > 0:
         return f"{hours}h {minutes}m"
-    return f"{minutes}m"
+    if minutes > 0:
+        return f"{minutes}m"
+    seconds = int(secs)
+    return f"{seconds}s"
 
 
 def condition_css_class(condition: str) -> str:
@@ -185,9 +206,3 @@ def condition_css_class(condition: str) -> str:
         "critical": "status-critical",
     }
     return mapping.get(condition, "status-neutral")
-
-
-class SloServiceError(Exception):
-    """Error communicating with the SLO service."""
-
-    pass
