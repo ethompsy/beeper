@@ -1,6 +1,6 @@
 # Story 1.1: Permission Model Enforcement
 
-Status: review
+Status: done
 
 ## Story
 

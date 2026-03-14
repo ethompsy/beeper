@@ -115,11 +115,18 @@ class TestDefaultRoleIsUser:
             assert resp.status_code == 200
 
     def test_g_user_role_defaults_to_user(self, permission_app: Flask) -> None:
+        captured_role = {}
+
+        @permission_app.route("/test/capture-default-role")
+        def capture_default_role() -> dict[str, str]:
+            captured_role["role"] = g.user_role
+            return {"role": g.user_role}
+
         with permission_app.test_client() as client:
-            # Access a route and check g.user_role was set
-            resp = client.get("/test/admin-only")
-            # Even though 403, role was set
-            assert resp.status_code == 403
+            resp = client.get("/test/capture-default-role")
+            assert resp.status_code == 200
+            assert resp.get_json()["role"] == "user"
+            assert captured_role["role"] == "user"
 
 
 class TestXBeeperRoleHeader:
@@ -259,6 +266,20 @@ class TestK8sTokenRoleResolution:
             # Invalid token → no role from token → falls to header → default "user"
             assert resp.status_code == 403
 
+    def test_k8s_non_admin_token_blocks_header_bypass(self, permission_app: Flask) -> None:
+        """Security: valid non-admin K8s token must NOT fall through to X-Beeper-Role header."""
+        token = _make_k8s_token(["beeper-user"])
+        with permission_app.test_client() as client:
+            resp = client.get(
+                "/test/admin-only",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Beeper-Role": "admin",
+                },
+            )
+            # Token is authoritative — non-admin token means "user", header ignored
+            assert resp.status_code == 403
+
     def test_malformed_jwt_payload_falls_through(self, permission_app: Flask) -> None:
         # Create a JWT with invalid base64 payload
         token = "eyJhbGciOiJSUzI1NiJ9.!!!invalid!!!.fake"
@@ -268,6 +289,22 @@ class TestK8sTokenRoleResolution:
                 headers={"Authorization": f"Bearer {token}"},
             )
             assert resp.status_code == 403
+
+
+class TestRequireRoleValidation:
+    """require_role() validates the role argument at decoration time."""
+
+    def test_invalid_role_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Invalid role"):
+            @require_role("superadmin")
+            def bad_route() -> dict[str, str]:
+                return {"message": "should not reach"}
+
+    def test_capitalized_role_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Invalid role"):
+            @require_role("Admin")
+            def bad_route() -> dict[str, str]:
+                return {"message": "should not reach"}
 
 
 class TestExistingRoutesAccessible:

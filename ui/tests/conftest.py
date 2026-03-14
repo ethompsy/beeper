@@ -1,6 +1,7 @@
 """Pytest fixtures for Beeper UI tests."""
 
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 from flask import Flask
@@ -31,22 +32,27 @@ class _RoleClient:
         self._client = client
         self._role = role
 
-    def get(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def get(self, *args: Any, **kwargs: Any) -> Any:
         headers = dict(kwargs.pop("headers", {}) or {})
         headers["X-Beeper-Role"] = self._role
         return self._client.get(*args, headers=headers, **kwargs)
 
-    def post(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def post(self, *args: Any, **kwargs: Any) -> Any:
         headers = dict(kwargs.pop("headers", {}) or {})
         headers["X-Beeper-Role"] = self._role
         return self._client.post(*args, headers=headers, **kwargs)
 
-    def put(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def put(self, *args: Any, **kwargs: Any) -> Any:
         headers = dict(kwargs.pop("headers", {}) or {})
         headers["X-Beeper-Role"] = self._role
         return self._client.put(*args, headers=headers, **kwargs)
 
-    def delete(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def patch(self, *args: Any, **kwargs: Any) -> Any:
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers["X-Beeper-Role"] = self._role
+        return self._client.patch(*args, headers=headers, **kwargs)
+
+    def delete(self, *args: Any, **kwargs: Any) -> Any:
         headers = dict(kwargs.pop("headers", {}) or {})
         headers["X-Beeper-Role"] = self._role
         return self._client.delete(*args, headers=headers, **kwargs)

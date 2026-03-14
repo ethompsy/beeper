@@ -67,10 +67,13 @@ def _extract_role_from_k8s_token(token: str) -> str | None:
         payload_bytes = base64.urlsafe_b64decode(payload_b64)
         claims = json.loads(payload_bytes)
 
-        # Check for beeper-admin group
+        # Valid JWT — check for beeper-admin group
         groups: list[str] = claims.get("groups", [])
         if "beeper-admin" in groups:
             return "admin"
+
+        # Valid JWT but no admin group — return "user" (don't fall through to header)
+        return "user"
     except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
         # Token parsing failed — not a valid JWT, fall through
         pass
@@ -84,12 +87,18 @@ def require_role(role: str) -> Callable[..., Any]:
     Args:
         role: Required role ("admin" or "user").
 
+    Raises:
+        ValueError: If role is not a valid role.
+
     Usage:
         @app.route("/admin/config")
         @require_role("admin")
         def admin_config():
             ...
     """
+    if role not in VALID_ROLES:
+        msg = f"Invalid role '{role}'. Must be one of: {VALID_ROLES}"
+        raise ValueError(msg)
 
     def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(f)
