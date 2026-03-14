@@ -16,6 +16,7 @@ python-dotenv = "^1.0"
 markdown = "^3.5"
 bleach = "^6.1"
 litellm = "^1.30"
+slack-sdk = "^3.27"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

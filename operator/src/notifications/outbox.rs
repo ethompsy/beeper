@@ -2,7 +2,7 @@
 //!
 //! Processes queued notifications from the `notification_outbox` Qdrant collection.
 //! Uses a background loop with exponential backoff retry for failed deliveries.
-//! Actual channel delivery is a placeholder — implemented in Stories 2-3 through 2-5.
+//! Delivers to channels via the UI service delivery endpoint (POST /api/v1/notifications/deliver).
 
 use std::time::Duration;
 
@@ -70,9 +70,29 @@ const BACKOFF_MAX_SECS: u64 = 3600;
 /// Backoff multiplication factor
 const BACKOFF_FACTOR: u64 = 2;
 
+/// Response from the UI delivery endpoint
+#[derive(Debug, Deserialize)]
+pub struct DeliveryResponse {
+    /// Delivery status: delivered, failed, skipped
+    pub status: String,
+
+    /// Error message if delivery failed
+    #[serde(default)]
+    pub error: Option<String>,
+
+    /// Whether the error is retryable
+    #[serde(default)]
+    pub retryable: bool,
+
+    /// Slack thread timestamp (for threading follow-up messages)
+    #[serde(default)]
+    pub thread_ts: Option<String>,
+}
+
 /// Background worker that processes the notification outbox
 pub struct OutboxWorker {
     endpoint: String,
+    ui_endpoint: String,
     client: reqwest::Client,
     collection_ensured: bool,
 }
@@ -80,8 +100,20 @@ pub struct OutboxWorker {
 impl OutboxWorker {
     /// Create a new OutboxWorker
     pub fn new(endpoint: String) -> Self {
+        let ui_endpoint = get_ui_endpoint();
         Self {
             endpoint: endpoint.trim_end_matches('/').to_string(),
+            ui_endpoint,
+            client: reqwest::Client::new(),
+            collection_ensured: false,
+        }
+    }
+
+    /// Create a new OutboxWorker with explicit UI endpoint
+    pub fn new_with_ui(endpoint: String, ui_endpoint: String) -> Self {
+        Self {
+            endpoint: endpoint.trim_end_matches('/').to_string(),
+            ui_endpoint: ui_endpoint.trim_end_matches('/').to_string(),
             client: reqwest::Client::new(),
             collection_ensured: false,
         }
@@ -176,8 +208,8 @@ impl OutboxWorker {
 
     /// Process pending notifications from the outbox
     ///
-    /// Queries for notifications with status="pending", attempts delivery
-    /// (placeholder for now), and updates status accordingly.
+    /// Queries for notifications with status="pending", delivers via the UI
+    /// service delivery endpoint, and updates status accordingly.
     pub async fn process_pending(&self) -> Result<u32, OutboxError> {
         let url = format!(
             "{}/collections/notification_outbox/points/scroll",
@@ -243,20 +275,121 @@ impl OutboxWorker {
         if let Some(point_array) = scroll_result["result"]["points"].as_array() {
             for point in point_array {
                 let point_id = &point["id"];
+                let payload = &point["payload"];
 
-                // Placeholder delivery: mark as delivered
-                // Actual channel delivery will be implemented in Stories 2-3 through 2-5
+                // Deliver via UI service endpoint
+                let delivery_result = self.deliver_via_ui(payload).await;
+
                 let update_url = format!(
                     "{}/collections/notification_outbox/points/payload",
                     self.endpoint
                 );
 
-                let update_body = serde_json::json!({
-                    "payload": {
-                        "status": "delivered"
-                    },
-                    "points": [point_id]
-                });
+                let update_body = match &delivery_result {
+                    Ok(resp) if resp.status == "delivered" => {
+                        // Store thread_ts in payload for future threading
+                        let mut update_payload = serde_json::json!({
+                            "status": "delivered"
+                        });
+                        if let Some(thread_ts) = &resp.thread_ts {
+                            update_payload["payload"] = serde_json::json!({
+                                "slack_thread_ts": thread_ts
+                            });
+                        }
+                        serde_json::json!({
+                            "payload": update_payload,
+                            "points": [point_id]
+                        })
+                    }
+                    Ok(resp) if resp.status == "skipped" => {
+                        // Channel type not yet implemented, mark delivered to avoid retry loop
+                        debug!(
+                            point_id = ?point_id,
+                            reason = ?resp.error,
+                            "Notification delivery skipped (channel not yet implemented)"
+                        );
+                        serde_json::json!({
+                            "payload": { "status": "delivered" },
+                            "points": [point_id]
+                        })
+                    }
+                    Ok(resp) => {
+                        // Failed delivery — check retryable and update accordingly
+                        let retry_count = payload.get("retry_count")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0) as u32;
+
+                        if resp.retryable && should_retry(retry_count + 1) {
+                            let next_delay = compute_backoff_delay(retry_count + 1);
+                            let next_retry = chrono::Utc::now()
+                                + chrono::Duration::seconds(next_delay.as_secs() as i64);
+                            warn!(
+                                point_id = ?point_id,
+                                retry_count = retry_count + 1,
+                                next_retry = %next_retry.to_rfc3339(),
+                                error = ?resp.error,
+                                "Notification delivery failed, scheduling retry"
+                            );
+                            serde_json::json!({
+                                "payload": {
+                                    "status": "pending",
+                                    "retry_count": retry_count + 1,
+                                    "next_retry_at": next_retry.to_rfc3339(),
+                                    "last_error": resp.error.as_deref().unwrap_or("unknown error")
+                                },
+                                "points": [point_id]
+                            })
+                        } else {
+                            warn!(
+                                point_id = ?point_id,
+                                error = ?resp.error,
+                                "Notification delivery permanently failed"
+                            );
+                            serde_json::json!({
+                                "payload": {
+                                    "status": "failed",
+                                    "last_error": resp.error.as_deref().unwrap_or("unknown error")
+                                },
+                                "points": [point_id]
+                            })
+                        }
+                    }
+                    Err(e) => {
+                        // Network error reaching UI service — retryable
+                        let retry_count = payload.get("retry_count")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0) as u32;
+
+                        if should_retry(retry_count + 1) {
+                            let next_delay = compute_backoff_delay(retry_count + 1);
+                            let next_retry = chrono::Utc::now()
+                                + chrono::Duration::seconds(next_delay.as_secs() as i64);
+                            warn!(
+                                point_id = ?point_id,
+                                retry_count = retry_count + 1,
+                                error = %e,
+                                "UI delivery endpoint unreachable, scheduling retry"
+                            );
+                            serde_json::json!({
+                                "payload": {
+                                    "status": "pending",
+                                    "retry_count": retry_count + 1,
+                                    "next_retry_at": next_retry.to_rfc3339(),
+                                    "last_error": format!("UI service error: {}", e)
+                                },
+                                "points": [point_id]
+                            })
+                        } else {
+                            serde_json::json!({
+                                "payload": {
+                                    "status": "failed",
+                                    "last_error": format!("UI service error: {}", e)
+                                },
+                                "points": [point_id]
+                            })
+                        }
+                    }
+                };
 
                 let update_resp = self
                     .client
@@ -267,7 +400,7 @@ impl OutboxWorker {
 
                 match update_resp {
                     Ok(r) if r.status().is_success() => {
-                        debug!(point_id = ?point_id, "Notification marked as delivered");
+                        debug!(point_id = ?point_id, "Notification status updated");
                     }
                     Ok(r) => {
                         warn!(
@@ -289,6 +422,61 @@ impl OutboxWorker {
 
         debug!(count = points, "Processed pending notifications");
         Ok(points)
+    }
+
+    /// Deliver a notification via the UI service delivery endpoint
+    async fn deliver_via_ui(
+        &self,
+        payload: &serde_json::Value,
+    ) -> Result<DeliveryResponse, OutboxError> {
+        let delivery_url = format!(
+            "{}/api/v1/notifications/deliver",
+            self.ui_endpoint
+        );
+
+        // Build the delivery request body
+        let entry = serde_json::json!({
+            "investigation_id": payload.get("investigation_id").and_then(|v| v.as_str()).unwrap_or(""),
+            "event_type": payload.get("event_type").and_then(|v| v.as_str()).unwrap_or(""),
+            "severity": payload.get("severity").and_then(|v| v.as_str()).unwrap_or("low"),
+            "service": payload.get("service").and_then(|v| v.as_str()).unwrap_or(""),
+            "payload": payload.get("payload").cloned().unwrap_or(serde_json::json!({})),
+        });
+
+        // Determine channel type from the payload or use slack as default for now
+        let channel_type = payload.get("channel_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("slack");
+
+        let channel_config = serde_json::json!({
+            "channel_type": channel_type,
+            "config": payload.get("channel_config").cloned().unwrap_or(serde_json::json!({})),
+            "credentials_secret": payload.get("credentials_secret").and_then(|v| v.as_str()).unwrap_or(""),
+        });
+
+        let request_body = serde_json::json!({
+            "entry": entry,
+            "channel_config": channel_config,
+        });
+
+        let resp = self
+            .client
+            .post(&delivery_url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                OutboxError::QdrantError(format!("Failed to reach UI delivery endpoint: {}", e))
+            })?;
+
+        let delivery_resp: DeliveryResponse = resp
+            .json()
+            .await
+            .map_err(|e| {
+                OutboxError::QdrantError(format!("Failed to parse delivery response: {}", e))
+            })?;
+
+        Ok(delivery_resp)
     }
 
     /// Run the outbox worker as a background loop
@@ -367,6 +555,14 @@ fn get_outbox_interval_secs() -> u64 {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(DEFAULT_OUTBOX_INTERVAL_SECS)
+}
+
+/// Get UI service endpoint from environment
+fn get_ui_endpoint() -> String {
+    std::env::var("BEEPER_UI_URL")
+        .unwrap_or_else(|_| "http://localhost:5050".to_string())
+        .trim_end_matches('/')
+        .to_string()
 }
 
 #[cfg(test)]
@@ -536,5 +732,88 @@ mod tests {
     fn test_outbox_worker_new_trims_trailing_slash() {
         let worker = OutboxWorker::new("http://qdrant:6333/".to_string());
         assert_eq!(worker.endpoint, "http://qdrant:6333");
+    }
+
+    #[test]
+    fn test_outbox_worker_new_with_ui() {
+        let worker = OutboxWorker::new_with_ui(
+            "http://qdrant:6333".to_string(),
+            "http://ui:5050".to_string(),
+        );
+        assert_eq!(worker.endpoint, "http://qdrant:6333");
+        assert_eq!(worker.ui_endpoint, "http://ui:5050");
+        assert!(!worker.collection_ensured);
+    }
+
+    #[test]
+    fn test_outbox_worker_new_with_ui_trims_trailing_slash() {
+        let worker = OutboxWorker::new_with_ui(
+            "http://qdrant:6333/".to_string(),
+            "http://ui:5050/".to_string(),
+        );
+        assert_eq!(worker.endpoint, "http://qdrant:6333");
+        assert_eq!(worker.ui_endpoint, "http://ui:5050");
+    }
+
+    #[test]
+    fn test_delivery_response_deserialization_success() {
+        let json = r#"{
+            "status": "delivered",
+            "thread_ts": "1234567890.123456",
+            "retryable": false
+        }"#;
+        let resp: DeliveryResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.status, "delivered");
+        assert_eq!(resp.thread_ts.unwrap(), "1234567890.123456");
+        assert!(!resp.retryable);
+        assert!(resp.error.is_none());
+    }
+
+    #[test]
+    fn test_delivery_response_deserialization_failure() {
+        let json = r#"{
+            "status": "failed",
+            "error": "Slack API error: channel_not_found",
+            "retryable": false
+        }"#;
+        let resp: DeliveryResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.status, "failed");
+        assert_eq!(resp.error.unwrap(), "Slack API error: channel_not_found");
+        assert!(!resp.retryable);
+        assert!(resp.thread_ts.is_none());
+    }
+
+    #[test]
+    fn test_delivery_response_deserialization_retryable() {
+        let json = r#"{
+            "status": "failed",
+            "error": "rate_limited",
+            "retryable": true
+        }"#;
+        let resp: DeliveryResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.status, "failed");
+        assert!(resp.retryable);
+    }
+
+    #[test]
+    fn test_delivery_response_deserialization_skipped() {
+        let json = r#"{
+            "status": "skipped",
+            "error": "Channel type 'pagerduty' not yet implemented",
+            "retryable": false
+        }"#;
+        let resp: DeliveryResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.status, "skipped");
+        assert!(!resp.retryable);
+    }
+
+    #[test]
+    fn test_delivery_response_minimal() {
+        let json = r#"{"status": "delivered"}"#;
+        let resp: DeliveryResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.status, "delivered");
+        assert!(resp.error.is_none());
+        assert!(resp.thread_ts.is_none());
+        assert!(!resp.retryable);
     }
 }
