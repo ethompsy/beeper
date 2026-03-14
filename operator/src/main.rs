@@ -20,12 +20,13 @@ const GRACEFUL_SHUTDOWN_TIMEOUT_SECS: u64 = 10;
 
 use beeper_operator::{
     controllers::{
-        run_investigation_controller_with_config, run_servicelevel_controller,
-        run_source_controller,
+        run_investigation_controller_with_config, run_notificationchannel_controller,
+        run_servicelevel_controller, run_source_controller,
     },
     detection::{DetectionConfig, DetectionConsumer, DetectionStats},
     health::health_router,
     ingestion::{ingestion_router, IngestionBuffer},
+    notifications::OutboxWorker,
     slo::{budget::new_budget_policy_state, new_slo_cache, run_slo_engine},
     InvestigatorConfig,
 };
@@ -165,6 +166,14 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Start NotificationChannel controller in background
+    let nc_client = (*client).clone();
+    let nc_handle = tokio::spawn(async move {
+        if let Err(e) = run_notificationchannel_controller(nc_client).await {
+            error!(error = %e, "NotificationChannel controller failed");
+        }
+    });
+
     // Start SLO engine in background
     let slo_client = (*client).clone();
     let slo_namespace = detection_config.namespace.clone();
@@ -184,6 +193,16 @@ async fn main() -> anyhow::Result<()> {
             slo_budget_policy_state,
         )
         .await;
+    });
+
+    // Start notification outbox worker in background
+    let outbox_qdrant_endpoint = qdrant_endpoint.clone();
+    let outbox_shutdown_rx = _shutdown_rx.clone();
+    let outbox_handle = tokio::spawn(async move {
+        let mut worker = OutboxWorker::new(outbox_qdrant_endpoint);
+        if let Err(e) = worker.run(outbox_shutdown_rx).await {
+            error!(error = %e, "Outbox worker failed");
+        }
     });
 
     // Start detection consumer in background (if enabled)
@@ -244,7 +263,9 @@ async fn main() -> anyhow::Result<()> {
     source_handle.abort();
     investigation_handle.abort();
     servicelevel_handle.abort();
+    nc_handle.abort();
     slo_handle.abort();
+    outbox_handle.abort();
     if let Some(handle) = detection_handle {
         handle.abort();
     }

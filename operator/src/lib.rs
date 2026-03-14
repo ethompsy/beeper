@@ -28,6 +28,9 @@ pub mod investigator_job;
 /// LLM provider configuration and management
 pub mod llm;
 
+/// Notification engine — outbox worker and delivery
+pub mod notifications;
+
 /// SLO engine — burn rate calculation and alerting
 pub mod slo;
 
@@ -38,12 +41,14 @@ pub mod sources;
 pub use api::{api_router, api_router_full, api_router_with_llm};
 pub use controllers::{
     run_investigation_controller, run_investigation_controller_with_config,
-    run_servicelevel_controller, run_source_controller,
+    run_notificationchannel_controller, run_servicelevel_controller, run_source_controller,
 };
 pub use crds::{
-    Investigation, InvestigationSpec, InvestigationStatus, ServiceLevel, ServiceLevelSpec,
+    Investigation, InvestigationSpec, InvestigationStatus, NotificationChannel,
+    NotificationChannelSpec, NotificationChannelStatus, ServiceLevel, ServiceLevelSpec,
     ServiceLevelStatus, Source, SourceSpec, SourceStatus,
 };
+pub use notifications::{OutboxWorker, OutboxError};
 pub use health::{health_router, start_health_server};
 pub use ingestion::{ingestion_router, IngestionBuffer, IngestionData};
 pub use investigator_job::{

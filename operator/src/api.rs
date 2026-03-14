@@ -15,7 +15,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use crate::crds::{Investigation, InvestigationPhase, ServiceLevel, ServiceLevelCondition, Severity, SliType, Source};
+use crate::crds::{
+    Investigation, InvestigationPhase, NotificationChannel, NotificationChannelCondition,
+    ServiceLevel, ServiceLevelCondition, Severity, SliType, Source,
+};
 use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
 use crate::llm::LlmManager;
@@ -97,6 +100,10 @@ pub fn api_router_full(
         .route(
             "/api/v1/slo/services/:name/budget",
             get(get_servicelevel_budget),
+        )
+        .route(
+            "/api/v1/notifications/channels",
+            get(list_notification_channels),
         )
         .route("/api/v1/health/components", get(health_components))
         .route("/api/v1/ingestion/stats", get(ingestion_stats))
@@ -1368,6 +1375,74 @@ pub struct ProblemDetails {
     pub title: String,
     pub status: u16,
     pub detail: String,
+}
+
+// ----- Notification Channel API -----
+
+/// Response for a NotificationChannel in list view
+#[derive(Debug, Serialize)]
+pub struct NotificationChannelResponse {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub channel_type: String,
+    pub credentials_secret: String,
+    pub condition: String,
+    pub last_validated: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// List all NotificationChannel CRDs with their status
+async fn list_notification_channels(
+    State(state): State<ApiState>,
+) -> Result<Json<Vec<NotificationChannelResponse>>, StatusCode> {
+    let channels: Api<NotificationChannel> = Api::all((*state.client).clone());
+    let channel_list = channels
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| {
+            warn!(error = %e, "Failed to list NotificationChannels");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let responses: Vec<NotificationChannelResponse> = channel_list
+        .items
+        .iter()
+        .map(|ch| {
+            let name = ch
+                .metadata
+                .name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
+            let channel_type = format!("{:?}", ch.spec.channel_type).to_lowercase();
+            let condition = ch
+                .status
+                .as_ref()
+                .and_then(|s| s.condition.as_ref())
+                .map(|c| match c {
+                    NotificationChannelCondition::Configured => "configured".to_string(),
+                    NotificationChannelCondition::Error => "error".to_string(),
+                })
+                .unwrap_or_else(|| "unknown".to_string());
+            let last_validated = ch
+                .status
+                .as_ref()
+                .and_then(|s| s.last_validated.clone());
+            let error = ch.status.as_ref().and_then(|s| s.error.clone());
+
+            NotificationChannelResponse {
+                name,
+                channel_type,
+                credentials_secret: ch.spec.credentials_secret.clone(),
+                condition,
+                last_validated,
+                error,
+            }
+        })
+        .collect();
+
+    debug!(count = responses.len(), "Listed NotificationChannels");
+    Ok(Json(responses))
 }
 
 #[cfg(test)]

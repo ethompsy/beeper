@@ -1,0 +1,117 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: notificationchannels.beeper.dev
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+spec:
+  group: beeper.dev
+  names:
+    kind: NotificationChannel
+    listKind: NotificationChannelList
+    plural: notificationchannels
+    singular: notificationchannel
+    shortNames:
+      - nc
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - type
+                - config
+                - credentials_secret
+              properties:
+                type:
+                  type: string
+                  description: Channel type (slack, pagerduty, email, or webhook)
+                  enum:
+                    - slack
+                    - pagerduty
+                    - email
+                    - webhook
+                config:
+                  type: object
+                  description: Channel-specific configuration key-value pairs
+                  additionalProperties:
+                    type: string
+                credentials_secret:
+                  type: string
+                  description: Name of the K8s Secret containing channel credentials
+                routing:
+                  type: object
+                  description: Optional routing rules for this channel
+                  properties:
+                    min_severity:
+                      type: string
+                      description: Minimum severity level to route to this channel
+                    services:
+                      type: array
+                      description: List of services to route to this channel
+                      items:
+                        type: string
+                    quiet_hours:
+                      type: object
+                      description: Quiet hours configuration
+                      required:
+                        - enabled
+                        - start
+                        - end
+                        - timezone
+                        - escalation_override
+                      properties:
+                        enabled:
+                          type: boolean
+                          description: Whether quiet hours are enabled
+                        start:
+                          type: string
+                          description: Start time in HH:MM format
+                        end:
+                          type: string
+                          description: End time in HH:MM format
+                        timezone:
+                          type: string
+                          description: IANA timezone string
+                        escalation_override:
+                          type: boolean
+                          description: Whether critical notifications bypass quiet hours
+            status:
+              type: object
+              properties:
+                condition:
+                  type: string
+                  description: Current condition of the channel
+                  enum:
+                    - configured
+                    - error
+                last_validated:
+                  type: string
+                  format: date-time
+                  description: Last time the channel was validated (ISO 8601)
+                error:
+                  type: string
+                  description: Error message if validation failed
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Type
+          type: string
+          jsonPath: .spec.type
+        - name: Credentials Secret
+          type: string
+          jsonPath: .spec.credentials_secret
+        - name: Condition
+          type: string
+          jsonPath: .status.condition
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
