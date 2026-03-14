@@ -52,12 +52,23 @@ pub fn api_router_with_detection(
     llm_manager: Option<Arc<LlmManager>>,
     detection_stats: Option<Arc<DetectionStats>>,
 ) -> Router {
+    api_router_full(client, buffer, llm_manager, detection_stats, None)
+}
+
+/// Create the API router with all optional components including SLO cache
+pub fn api_router_full(
+    client: Arc<Client>,
+    buffer: Arc<IngestionBuffer>,
+    llm_manager: Option<Arc<LlmManager>>,
+    detection_stats: Option<Arc<DetectionStats>>,
+    slo_cache: Option<SloCache>,
+) -> Router {
     let state = ApiState {
         client,
         buffer,
         llm_manager,
         detection_stats,
-        slo_cache: None,
+        slo_cache,
     };
 
     Router::new()
@@ -973,7 +984,7 @@ pub struct ServiceLevelListResponse {
 }
 
 /// Map SliType to its canonical string representation (matches serde snake_case)
-fn sli_type_to_string(sli_type: &SliType) -> String {
+pub fn sli_type_to_string(sli_type: &SliType) -> String {
     match sli_type {
         SliType::Availability => "availability".to_string(),
         SliType::Latency => "latency".to_string(),

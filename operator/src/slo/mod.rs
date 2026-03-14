@@ -10,7 +10,6 @@ pub mod calculator;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::Utc;
 use kube::{api::ListParams, Api, Client};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -286,7 +285,6 @@ pub async fn run_slo_engine(
         let sl_api: Api<ServiceLevel> = Api::all(client.clone());
         match sl_api.list(&ListParams::default()).await {
             Ok(sl_list) => {
-                let now = Utc::now().to_rfc3339();
                 let mut cache_updates: HashMap<String, SloCalculationResult> = HashMap::new();
 
                 for sl in sl_list.items {

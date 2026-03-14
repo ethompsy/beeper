@@ -39,7 +39,7 @@ impl SloCalculator {
         let (compliance, burn_rate, error_budget_remaining) =
             compute_burn_rate(good_count, total_count, spec.objective.target);
 
-        let sli_type = sli_type_string(&spec.sli.sli_type);
+        let sli_type = crate::api::sli_type_to_string(&spec.sli.sli_type);
 
         Ok(SloCalculationResult {
             service: spec.service.clone(),
@@ -176,15 +176,6 @@ pub fn parse_window_duration(window: &str) -> Result<u64, SloError> {
             "unknown window suffix '{}' in '{}'",
             suffix, window
         ))),
-    }
-}
-
-/// Convert SliType to its canonical string representation
-fn sli_type_string(sli_type: &crate::crds::SliType) -> String {
-    match sli_type {
-        crate::crds::SliType::Availability => "availability".to_string(),
-        crate::crds::SliType::Latency => "latency".to_string(),
-        crate::crds::SliType::ErrorRate => "error_rate".to_string(),
     }
 }
 
@@ -349,29 +340,4 @@ mod tests {
         assert_eq!(parse_window_duration(" 5m ").unwrap(), 300);
     }
 
-    // ----- sli_type_string tests -----
-
-    #[test]
-    fn test_sli_type_string_availability() {
-        assert_eq!(
-            sli_type_string(&crate::crds::SliType::Availability),
-            "availability"
-        );
-    }
-
-    #[test]
-    fn test_sli_type_string_latency() {
-        assert_eq!(
-            sli_type_string(&crate::crds::SliType::Latency),
-            "latency"
-        );
-    }
-
-    #[test]
-    fn test_sli_type_string_error_rate() {
-        assert_eq!(
-            sli_type_string(&crate::crds::SliType::ErrorRate),
-            "error_rate"
-        );
-    }
 }

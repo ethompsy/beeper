@@ -47,7 +47,7 @@ development_status:
   1-1-permission-model-enforcement: done
   1-2-secrets-management-pii-scrubbing: done
   1-3-servicelevel-crd-controller: done
-  1-4-slo-burn-rate-calculation-engine: review
+  1-4-slo-burn-rate-calculation-engine: done
   1-5-customer-impact-scoring-investigation-priority: backlog
   1-6-error-budget-policies: backlog
   1-7-slo-compliance-dashboard: backlog
