@@ -26,6 +26,7 @@ pub enum RouterError {
 
 /// Severity levels with natural ordering (Low < Medium < High < Critical)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Severity {
     Low,
     Medium,
@@ -323,7 +324,8 @@ pub fn is_in_quiet_hours_at(
     let start = parse_hh_mm(&config.start)?;
     let end = parse_hh_mm(&config.end)?;
 
-    // Validate timezone is parseable (even though we don't use it here)
+    // Validate timezone is parseable — ensures error reporting is consistent
+    // with is_in_quiet_hours() even though this testable variant doesn't need the tz value
     let _tz: chrono_tz::Tz = config
         .timezone
         .parse()
@@ -1046,7 +1048,7 @@ mod tests {
         let json = serde_json::to_string(&decision).unwrap();
         assert!(json.contains("\"channel_name\":\"sre-slack\""));
         assert!(json.contains("\"matched\":true"));
-        assert!(json.contains("\"effective_severity\":\"High\""));
+        assert!(json.contains("\"effective_severity\":\"high\""));
     }
 
     #[test]
@@ -1059,6 +1061,75 @@ mod tests {
         let json = serde_json::to_string(&ctx).unwrap();
         assert!(json.contains("\"impact_score\":0.85"));
         assert!(json.contains("\"burn_rate\":5.0"));
+    }
+
+    // ===== Router error tests =====
+
+    // ===== Quiet hours through evaluate_channel tests =====
+
+    #[test]
+    fn test_evaluate_channel_quiet_hours_disabled_passes_through() {
+        let entry = make_entry("medium", "payment-service");
+        let routing = RoutingConfig {
+            min_severity: None,
+            services: None,
+            quiet_hours: Some(make_quiet_hours(false, "00:00", "23:59", false)),
+        };
+        let spec = make_channel_spec(ChannelType::Slack, Some(routing));
+        let decision = NotificationRouter::evaluate_channel(&entry, "test", &spec, None);
+        assert!(decision.matched);
+        assert!(decision.reason.contains("All routing rules matched"));
+    }
+
+    #[test]
+    fn test_evaluate_channel_combined_severity_service_quiet_hours() {
+        // Combined filter: severity high+, service payment-service, quiet hours disabled
+        let entry = make_entry("high", "payment-service");
+        let routing = RoutingConfig {
+            min_severity: Some("high".to_string()),
+            services: Some(vec!["payment-service".to_string()]),
+            quiet_hours: Some(make_quiet_hours(false, "22:00", "08:00", true)),
+        };
+        let spec = make_channel_spec(ChannelType::Pagerduty, Some(routing));
+        let decision = NotificationRouter::evaluate_channel(&entry, "sre-pd", &spec, None);
+        assert!(decision.matched);
+
+        // Same setup but wrong service → should be rejected by service filter
+        let entry_wrong_svc = make_entry("high", "api-gateway");
+        let decision2 = NotificationRouter::evaluate_channel(&entry_wrong_svc, "sre-pd", &spec, None);
+        assert!(!decision2.matched);
+        assert!(decision2.reason.contains("not in channel's service list"));
+
+        // Same setup but low severity → should be rejected by severity filter
+        let entry_low = make_entry("low", "payment-service");
+        let decision3 = NotificationRouter::evaluate_channel(&entry_low, "sre-pd", &spec, None);
+        assert!(!decision3.matched);
+        assert!(decision3.reason.contains("below minimum"));
+    }
+
+    #[test]
+    fn test_effective_severity_impact_score_above_one_still_elevates() {
+        // Out-of-range impact_score (>1.0) — should still elevate since it exceeds thresholds
+        let ctx = SloContext {
+            impact_score: Some(5.0),
+            burn_rate: None,
+            error_budget_remaining: None,
+        };
+        assert_eq!(compute_effective_severity(Severity::Medium, Some(&ctx)), Severity::Critical);
+        assert_eq!(compute_effective_severity(Severity::High, Some(&ctx)), Severity::Critical);
+        assert_eq!(compute_effective_severity(Severity::Low, Some(&ctx)), Severity::Medium);
+    }
+
+    #[test]
+    fn test_effective_severity_negative_impact_score_no_elevation() {
+        // Negative impact_score — should not elevate
+        let ctx = SloContext {
+            impact_score: Some(-0.5),
+            burn_rate: None,
+            error_budget_remaining: None,
+        };
+        assert_eq!(compute_effective_severity(Severity::Medium, Some(&ctx)), Severity::Medium);
+        assert_eq!(compute_effective_severity(Severity::High, Some(&ctx)), Severity::High);
     }
 
     // ===== Router error tests =====

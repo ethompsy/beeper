@@ -57,7 +57,7 @@ development_status:
   # Epic 2: Intelligent Notification Engine (Wave 1)
   epic-2: in-progress
   2-1-notificationchannel-crd-durable-outbox: done
-  2-2-notification-routing-rules-engine: review
+  2-2-notification-routing-rules-engine: done
   2-3-slack-channel-integration: backlog
   2-4-pagerduty-bidirectional-integration: backlog
   2-5-email-webhook-channels: backlog
