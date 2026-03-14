@@ -1,4 +1,4 @@
-# generated: 2026-02-03
+# generated: 2026-03-14
 # project: beeper
 # project_key: beeper
 # tracking_system: file-system
@@ -32,73 +32,100 @@
 # - Stories can be worked in parallel if team capacity allows
 # - SM typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - v0.2.0 sprint — extends brownfield v0.1.0 codebase (1,032 existing tests)
+# - 4-wave delivery model: Wave 1 (Epics 1-2), Wave 2 (Epics 3-4), Wave 3 (Epics 5-6), Wave 4 (Epics 7-8)
 
-generated: 2026-02-03
+generated: 2026-03-14
 project: beeper
 project_key: beeper
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 development_status:
-  # Epic 1: Platform Foundation
-  epic-1: done
-  1-1-project-scaffolding: done
-  1-2-qdrant-infrastructure: done
-  1-3-k8s-operator-scaffold: done
-  1-4-source-crd-prometheus-adapter: done
-  1-5-loki-adapter: done
-  1-6-streaming-data-ingestion: done
-  1-7-source-status-ui: done
-  1-8-llm-provider-configuration: done
-  1-9-investigation-crd-pod-spawning: done
-  epic-1-retrospective: done
+  # Epic 1: SLO Platform & Permissions Foundation (Wave 1)
+  epic-1: backlog
+  1-1-permission-model-enforcement: backlog
+  1-2-secrets-management-pii-scrubbing: backlog
+  1-3-servicelevel-crd-controller: backlog
+  1-4-slo-burn-rate-calculation-engine: backlog
+  1-5-customer-impact-scoring-investigation-priority: backlog
+  1-6-error-budget-policies: backlog
+  1-7-slo-compliance-dashboard: backlog
+  1-8-platform-resilience: backlog
+  epic-1-retrospective: optional
 
-  # Epic 2: Knowledge Base
-  epic-2: done
-  2-1-kb-wiki-interface: done
-  2-2-semantic-search: done
-  2-3-structured-search-filtering: done
-  2-4-runbook-import: done
-  2-5-kb-entry-editing: done
-  2-6-version-history: done
-  2-7-version-diff-view: done
-  epic-2-retrospective: done
+  # Epic 2: Intelligent Notification Engine (Wave 1)
+  epic-2: backlog
+  2-1-notificationchannel-crd-durable-outbox: backlog
+  2-2-notification-routing-rules-engine: backlog
+  2-3-slack-channel-integration: backlog
+  2-4-pagerduty-bidirectional-integration: backlog
+  2-5-email-webhook-channels: backlog
+  2-6-notification-audit-false-page-tracking: backlog
+  2-7-notification-configuration-ui: backlog
+  epic-2-retrospective: optional
 
-  # Epic 3: Investigation Engine
-  epic-3: done
-  3-1-anomaly-detection-engine: done
-  3-2-investigator-agent-scaffold: done
-  3-3-customer-impact-assessment: done
-  3-4-kb-query-prior-research: done
-  3-5-cross-layer-signal-correlation: done
-  3-6-rca-hypothesis-generation: done
-  3-7-resolution-recommendations: done
-  3-8-investigation-documentation: done
-  3-9-tiered-llm-model-selection: done
-  3-10-llm-response-caching: done
-  epic-3-retrospective: done
+  # Epic 3: Graduated Trust & Autonomy (Wave 2)
+  epic-3: backlog
+  3-1-trust-level-configuration-persistence: backlog
+  3-2-confidence-gate-engine: backlog
+  3-3-confidence-gate-threshold-configuration: backlog
+  3-4-one-click-investigation-feedback: backlog
+  3-5-adaptive-alert-threshold-tuning: backlog
+  3-6-impact-weighted-escalation-urgency: backlog
+  3-7-noise-report-dashboard: backlog
+  epic-3-retrospective: optional
 
-  # Epic 4: Investigation Experience
-  epic-4: done
-  4-1-investigation-list-view: done
-  4-2-real-time-investigation-pane: done
-  4-3-recommendations-confidence-display: done
-  4-4-kb-entry-navigation: done
-  4-5-resolution-confirmation: done
-  4-6-investigation-resolution: done
-  epic-4-retrospective: done
+  # Epic 4: Autonomous Remediation Pipeline (Wave 2)
+  epic-4: backlog
+  4-1-repository-crd-git-provider-integration: backlog
+  4-2-human-language-runbook-execution: backlog
+  4-3-advisory-test-plan-generation: backlog
+  4-4-auto-pr-generation-evidence-trail: backlog
+  4-5-sandbox-test-execution: backlog
+  4-6-post-fix-metric-verification: backlog
+  4-7-trust-gated-remediation-actions: backlog
+  4-8-proven-fix-accumulation-kb: backlog
+  epic-4-retrospective: optional
 
-  # Epic 5: Living Knowledge
-  epic-5: done
-  5-1-conversational-corrections-interface: done
-  5-2-beeper-revision-processing: done
-  5-3-learning-from-diffs: done
-  5-4-graduated-authoring-trust: done
-  epic-5-retrospective: done
+  # Epic 5: Real-Time Investigation Collaboration (Wave 3)
+  epic-5: backlog
+  5-1-websocket-collaboration-channel: backlog
+  5-2-evidence-presentation-references: backlog
+  5-3-investigation-annotation-redirection: backlog
+  5-4-fix-approval-rejection: backlog
+  5-5-shift-handoff-summaries: backlog
+  5-6-kb-entry-surfacing-live-investigations: backlog
+  epic-5-retrospective: optional
 
-  # Epic 6: Operations & Insights
-  epic-6: done
-  6-1-mttr-trends-dashboard: done
-  6-2-llm-spending-caps: done
-  6-3-cost-visibility-alerts: done
-  epic-6-retrospective: done
+  # Epic 6: Knowledge & Signal Intelligence (Wave 3)
+  epic-6: backlog
+  6-1-automatic-kb-entry-creation: backlog
+  6-2-bi-directional-kb-investigation-links: backlog
+  6-3-per-service-knowledge-views: backlog
+  6-4-kb-entry-validation-weighting: backlog
+  6-5-kb-entry-review-edit-correction: backlog
+  6-6-unified-investigation-timeline: backlog
+  6-7-deploy-correlation: backlog
+  6-8-service-dependency-topology: backlog
+  6-9-change-event-ingestion-correlation: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Developer Experience & Analytics (Wave 4)
+  epic-7: backlog
+  7-1-command-palette-keyboard-shortcuts: backlog
+  7-2-investigation-workflow-states: backlog
+  7-3-remediation-progress-tracking: backlog
+  7-4-per-service-health-feeds: backlog
+  7-5-reliability-score-per-service: backlog
+  7-6-mttr-impact-trust-trend-dashboards: backlog
+  7-7-investor-ready-reports: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Investor Demo Platform (Cross-cutting)
+  epic-8: backlog
+  8-1-chaotic-demo-application-deployment: backlog
+  8-2-configurable-fault-injection: backlog
+  8-3-full-lifecycle-demonstration: backlog
+  8-4-scripted-repeatable-demo-scenarios: backlog
+  epic-8-retrospective: optional

@@ -1,0 +1,25 @@
+What's Next?
+
+  The BMAD Method workflow after PRD completion:
+
+  ┌────────────────────────────────┬──────────────────────────────────────────┬─────────────────────┬─────────────────────────────────────────────────────────────────────┐
+  │              Step              │                 Workflow                 │        Agent        │                               Purpose                               │
+  ├────────────────────────────────┼──────────────────────────────────────────┼─────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Validate PRD                   │ /bmad-bmm-create-prd (Validate Mode)     │ John (PM)           │ Verify PRD is comprehensive and cohesive                            │
+  ├────────────────────────────────┼──────────────────────────────────────────┼─────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Create UX Design               │ /bmad-bmm-create-ux-design               │ Sally (UX)          │ Plan UI/UX patterns — recommended since Beeper has a primary web UI │
+  ├────────────────────────────────┼──────────────────────────────────────────┼─────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Create Architecture            │ /bmad-bmm-create-architecture            │ Winston (Architect) │ Document technical decisions for AI agent consistency               │
+  ├────────────────────────────────┼──────────────────────────────────────────┼─────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Create Epics & Stories         │ /bmad-bmm-create-epics-and-stories       │ John (PM)           │ Break PRD into implementation-ready stories                         │
+  ├────────────────────────────────┼──────────────────────────────────────────┼─────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Check Implementation Readiness │ /bmad-bmm-check-implementation-readiness │ Winston (Architect) │ Final gate before development begins                                │
+  └────────────────────────────────┴──────────────────────────────────────────┴─────────────────────┴─────────────────────────────────────────────────────────────────────┘
+
+  The PRD serves as the foundation for all downstream work. Beeper is inevitable — now we have the document to prove it.
+
+  Optional (recommended):                                   
+  - /bmad-bmm-testarch-test-design — Test Design with Murat (🧪 Master Test Architect) — Create comprehensive test scenarios ahead of development. Recommended for distributed apps like Beeper.
+
+  Required next:
+  - /bmad-bmm-check-implementation-readiness — Check Implementation Readiness with Winston (🏗️  Architect) — Adversarial validation that PRD, Architecture, UX, and Epics & Stories are aligned and complete before implementation begins.

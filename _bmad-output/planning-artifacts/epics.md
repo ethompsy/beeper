@@ -4,1436 +4,1592 @@ stepsCompleted:
   - step-02-design-epics
   - step-03-create-stories
   - step-04-final-validation
-status: complete
-completedAt: '2026-02-03'
+status: 'complete'
+completedAt: '2026-03-13'
 inputDocuments:
   - prd.md
   - architecture.md
-summary:
+  - ux-design-specification.md
+previousVersion:
+  completedAt: '2026-02-03'
+  context: 'v0.1.0'
   epics: 6
   stories: 39
-  frs_covered: 47
-  nfrs_addressed: 17
 ---
 
 # Beeper - Epic Breakdown
 
 ## Overview
 
-This document provides the complete epic and story breakdown for Beeper, decomposing the requirements from the PRD and Architecture into implementable stories.
+This document provides the complete epic and story breakdown for Beeper v0.2.0, decomposing the requirements from the PRD, Architecture, and UX Design Specification into implementable stories organized by the 4-wave delivery model.
+
+**Context:** Brownfield project. v0.1.0 is fully implemented with 1,032 passing tests (162 Rust + 375 Python investigator + 495 Python UI). v0.2.0 adds 16 net-new FRs and restructures existing FRs into the wave delivery model.
 
 ## Requirements Inventory
 
 ### Functional Requirements
 
-**Investigation Management (FR1-FR12):**
-- FR1: Beeper can continuously monitor incoming log and metric streams for anomalous patterns
-- FR2: Beeper can spawn a dedicated Investigator for each detected suspicious condition
-- FR3: Investigator can assess whether a detected condition has customer impact
-- FR4: Investigator can correlate signals across multiple architectural layers (infrastructure, platform, application, data)
-- FR5: Investigator can query the Knowledge Base for similar past incidents
-- FR6: Investigator can build on prior research when investigating recurring conditions
-- FR7: Investigator can generate a root cause hypothesis with an explicit confidence level
-- FR8: Investigator can recommend resolution actions based on investigation findings
-- FR9: Investigator can document its investigation process and findings to the Knowledge Base
-- FR10: SRE can observe an Investigator's reasoning process in real-time
-- FR11: SRE can confirm or reject an Investigator's resolution recommendation
-- FR12: SRE can mark an investigation as resolved with outcome confirmation
+**SLO & Customer Impact — Wave 1 (FR1-7):**
+- FR1: Admins can define SLIs and SLO targets per service via ServiceLevel CRD
+- FR2: System can calculate SLO burn rates in real-time from ingested metrics
+- FR3: System can trigger investigations when SLO burn rate exceeds configured thresholds
+- FR4: System can score anomalies by customer impact using SLO data rather than static severity labels
+- FR5: Admins can define error budget policies that trigger notifications or deployment freezes
+- FR6: Users can view SLO compliance, burn rate trends, and error budgets on a dashboard
+- FR7: System can prioritize investigations by SLO impact severity
 
-**Knowledge Base (FR13-FR23):**
-- FR13: SRE Lead can import existing runbooks into the Knowledge Base
-- FR14: SRE can search the Knowledge Base using natural language queries (semantic search)
-- FR15: SRE can search the Knowledge Base using structured filters (service, error type, date range)
-- FR16: SRE can view investigation documentation in a human-readable wiki format
-- FR17: SRE Lead can directly edit Knowledge Base entries
-- FR18: SRE Lead can provide conversational corrections to Beeper ("update this entry to reflect X")
-- FR19: Beeper can revise Knowledge Base entries based on conversational corrections
-- FR20: Beeper can learn from the diff between its documentation and human corrections
-- FR21: SRE can view version history of any Knowledge Base entry
-- FR22: SRE can compare versions of a Knowledge Base entry (diff view)
-- FR23: Beeper can publish entries directly as trust is established (graduated authoring)
+**Notification & Integration — Wave 1 (FR8-15):**
+- FR8: Users can configure outbound notification channels via NotificationChannel CRD (Slack, PagerDuty, email, webhook)
+- FR9: Users can define notification routing rules based on severity, service, SLO state, and time of day
+- FR10: System can send rich Slack messages with threads, @mentions, and action buttons
+- FR11: System can create, acknowledge, and auto-resolve PagerDuty incidents bidirectionally
+- FR12: System can send email alert digests and investigation summaries
+- FR13: System can trigger webhooks to external systems (CD pipelines, Jira, status pages)
+- FR14: Users can configure quiet hours and escalation tiers that respect on-call schedules
+- FR15: System can justify every notification with evidence — false pages are tracked as bugs
 
-**Observability Integration (FR24-FR30):**
-- FR24: Admin can configure Prometheus as a metrics data source
-- FR25: Admin can configure Loki as a log data source
-- FR26: Admin can provide read-only credentials for each data source
-- FR27: Beeper can receive pushed log and metric data via streaming connections
-- FR28: Admin can view the status of all configured data sources
-- FR29: Admin can view errors and warnings for misconfigured data sources
-- FR30: Beeper can ingest data without adding latency to the monitored systems
+**Trust & Autonomy — Wave 2 (FR16-22):**
+- FR16: Admins can configure trust levels (1-5) per service, controlling Beeper's autonomy from advisory to fully autonomous
+- FR17: System can gate actions by confidence threshold — only act when evidence meets the configured trust level's requirements
+- FR18: System can adapt alert thresholds based on investigation outcome feedback from SREs
+- FR19: Users can provide one-click investigation feedback (accurate / inaccurate / not-an-issue)
+- FR20: Admins can view a noise report showing signal-to-noise ratio and false page trends
+- FR21: System can weight escalation urgency by confirmed customer impact rather than theoretical severity
+- FR22: Admins can configure confidence gate thresholds per trust level
 
-**User Interface (FR31-FR36):**
-- FR31: SRE can view a list of active investigations
-- FR32: SRE can view the real-time reasoning of any active Investigator (investigation pane)
-- FR33: SRE can view recommended resolutions with confidence levels
-- FR34: SRE can navigate from an investigation to related Knowledge Base entries
-- FR35: SRE Lead can view MTTR trends over time
-- FR36: SRE can access the Knowledge Base wiki interface
+**Auto-Remediation — Wave 2 (FR23-31):**
+- FR23: Admins can register code repositories via Repository CRD with branch policies and coding standards
+- FR24: System can execute human-language runbooks without requiring DSL translation
+- FR25: System can generate auto-PRs with full evidence trails (log correlation, root cause analysis, production conditions)
+- FR26: System can always produce an advisory test plan describing how to verify a hypothesis
+- FR27: System can design sandbox-specific tests and execute them when a sandbox environment is available
+- FR28: System can verify that a fix resolves the issue by monitoring post-fix metrics
+- FR29: System can gate remediation actions to the configured trust level and confidence tier
+- FR30: System can link PRs to investigations with full audit trail (anomaly → investigation → fix → verification)
+- FR31: System can accumulate proven fixes in the KB for future reference
 
-**Deployment & Operations (FR37-FR41):**
-- FR37: Admin can deploy Beeper as a Kubernetes operator
-- FR38: Beeper can spawn Investigator pods within the Kubernetes cluster
-- FR39: Admin can configure Beeper via Kubernetes custom resources
-- FR40: Admin can view Beeper's operational health status
-- FR41: Beeper can operate with all data remaining on customer premises (self-hosted)
+**Collaborative Investigation — Wave 3 (FR32-37):**
+- FR32: Users can interact with Beeper in real-time during active investigations
+- FR33: System can present evidence with references to specific metrics, logs, and prior KB entries
+- FR34: Users can annotate, redirect, and comment on active investigations
+- FR35: Users can approve or reject Beeper-proposed fixes within their permission level
+- FR36: System can generate shift handoff summaries with active investigations, resolved incidents, and items to watch
+- FR37: System can surface relevant past KB entries during live investigations
 
-**LLM Management (FR42-FR47):**
-- FR42: Admin can configure which LLM provider Beeper uses
-- FR43: Beeper can use lightweight models for initial screening tasks
-- FR44: Beeper can escalate to more powerful models for deep RCA
-- FR45: Beeper can cache and memoize results to avoid redundant LLM calls
-- FR46: Admin can set spending caps or rate limits for LLM usage
-- FR47: Beeper can surface environments with excessive investigation costs to the Admin
+**Knowledge Base Enhancement — Wave 3 (FR38-42):**
+- FR38: System can create KB entries automatically from resolved investigations
+- FR39: System can link KB entries bi-directionally to investigations and related entries
+- FR40: System can provide per-service knowledge views through service catalog integration
+- FR41: System can weight KB entries by validation status (human-confirmed, AI-generated, corrected)
+- FR42: Users can review, edit, and correct Beeper's KB entries as a feedback mechanism
 
-### Non-Functional Requirements
+**Signal & Observability — Wave 3 (FR43-46):**
+- FR43: System can display a unified investigation timeline correlating logs, metrics, deploys, and K8s events
+- FR44: System can correlate anomalies with recent deployments ("anomaly started 4 min after deploy #847")
+- FR45: System can discover and display service dependency topology
+- FR46: System can ingest and correlate change events (config changes, scaling, DNS, certs)
 
-**Performance:**
-- NFR-P1: Anomaly detection latency - Seconds from occurrence to detection
-- NFR-P2: Investigation pane updates - Real-time streaming
-- NFR-P3: KB search response - Sub-second
-- NFR-P4: Data ingestion overhead - Zero added latency to monitored systems
+**Developer Experience — Wave 4 (FR47-50):**
+- FR47: Users can navigate the UI via keyboard shortcuts and a command palette (Cmd+K)
+- FR48: System can track investigations through workflow states (detected → investigating → resolved → verified)
+- FR49: Users can track remediation progress from detection through fix verification
+- FR50: Users can view per-service health feeds with recent investigations, SLO status, and trends
 
-**Security:**
-- NFR-S1: Data residency - All data remains on customer premises (MVP)
-- NFR-S2: Credential storage - Use K8s secrets or external secrets operator
-- NFR-S3: Access model - Read-only access to all data sources
-- NFR-S4: UI access control (MVP) - Internal network only (VPN/private network)
-- NFR-S5: UI access control (v1.1) - Role-based access (admin vs user) [DEFERRED]
+**Analytics & Reporting — Wave 4 (FR51-53):**
+- FR51: System can calculate a reliability score per service (composite of SLO compliance, incident frequency, MTTR)
+- FR52: Users can view MTTR trends, customer impact trends, and trust progression dashboards
+- FR53: Diana can view investor-ready reports derived from Beeper's operational data
 
-**Reliability:**
-- NFR-R1: Component independence - Each component operates independently where possible
-- NFR-R2: KB unavailability handling - Investigator buffers findings locally until KB returns
-- NFR-R3: Graceful degradation - SREs can use traditional tools if Beeper fails
-- NFR-R4: Investigation durability - Completed investigations persisted to KB
+**Demo Application — Cross-cutting (FR54-57):**
+- FR54: System can deploy a purpose-built chaotic microservices application in K8s alongside Beeper
+- FR55: Admins can trigger configurable fault injections (memory leak, bad deploy, cascading failure, scale-dependent issues)
+- FR56: System can demonstrate the full lifecycle: healthy → fault → detect → investigate → fix → prove → recover
+- FR57: System can run scripted, repeatable demo scenarios for investor presentations
 
-**Integration:**
-- NFR-I1: Observability stack compatibility - Prometheus and Loki for MVP
-- NFR-I2: LLM provider flexibility - Configurable provider (Claude API default)
-- NFR-I3: K8s native deployment - Operator pattern with CRDs
-- NFR-I4: Streaming data ingestion - Push/stream protocols (not polling)
+**Platform & Security — Foundation (FR58-63):**
+- FR58: System can enforce 2-tier permissions (admin/user) across all APIs and UI routes
+- FR59: System can store integration credentials as K8s Secrets with encryption at rest
+- FR60: System can scrub sensitive information (PII, credentials) from data before sending to LLM providers
+- FR61: System can gracefully degrade if LLM provider is unavailable (queue investigations, escalate to humans)
+- FR62: System can rollback any autonomous action if post-action metrics show degradation
+- FR63: System can operate without becoming a single point of failure — existing alerting continues if Beeper is down
+
+### NonFunctional Requirements
+
+**Performance (NFR1-7):**
+- NFR1: Anomaly-to-investigation latency < 30 seconds from detection to investigation start
+- NFR2: UI response time < 2 seconds for all user interactions
+- NFR3: LLM screening round-trip < 10 seconds
+- NFR4: LLM deep investigation round-trip < 30 seconds per reasoning step
+- NFR5: Real-time collaboration updates < 500ms delivery (WebSocket)
+- NFR6: SLO burn rate calculation < 5 second refresh cycle
+- NFR7: Demo full lifecycle < 5 minutes fault-to-resolution
+
+**Security (NFR8-13):**
+- NFR8: Cluster RBAC — least-privilege per operation, no cluster-admin
+- NFR9: Repository credentials — scoped per-repo tokens, never org-wide
+- NFR10: Secret storage — K8s Secrets with encryption at rest
+- NFR11: PII/credential scrubbing — zero sensitive data sent to LLM providers
+- NFR12: Trust level access control — admin-only for trust level and confidence gate configuration
+- NFR13: Sandbox isolation — network-isolated namespace, provably no production data leakage
+
+**Reliability (NFR14-18):**
+- NFR14: Non-SPOF operation — existing alerting fully functional if Beeper is down
+- NFR15: LLM provider degradation — queue investigations + escalate within 60 seconds
+- NFR16: Autonomous action rollback — any auto-applied fix reversible within 60 seconds
+- NFR17: Data integrity — zero investigation data loss during component restart or upgrade
+- NFR18: Demo reliability — 10 consecutive end-to-end demo runs without failure
+
+**Scalability (NFR19-22):**
+- NFR19: Concurrent investigations — 50+ active without performance degradation
+- NFR20: KB capacity — 10,000+ entries with < 2 second semantic search
+- NFR21: ServiceLevel CRDs — 100+ active CRDs per cluster
+- NFR22: Notification throughput — 1,000+ events/hour processed without drops
 
 ### Additional Requirements
 
-**From Architecture - Technology Stack:**
-- Rust + kube-rs for K8s operator (memory-safe, async, production-ready)
-- Python 3.11+ for investigators and UI (rapid development, LLM ecosystem)
-- Qdrant for vector database (semantic search, metadata filtering)
-- Flask + HTMX + SSE for MVP UI (simple, no JavaScript complexity)
-- LiteLLM for LLM client (provider flexibility, streaming support)
-- OpenAPI 3.1 specification for all APIs
-- RFC 7807 Problem Details for error responses
+**From Architecture:**
+- Brownfield project — all v0.1.0 tests (1,032) must continue passing throughout v0.2.0 development
+- No starter template — extending existing codebase, not scaffolding new
+- Permission model (`@require_role` decorator + middleware) must be implemented before any new API endpoint
+- 3 new CRD schemas (ServiceLevel, NotificationChannel, Repository) must be defined in Rust operator
+- 2 new Qdrant collections (slo_snapshots, notification_outbox) to initialize
+- Existing Qdrant collections (investigations, knowledge, service_trust_levels) require schema extensions
+- Flask-SocketIO integration requires two-channel pattern: SocketIO for collaboration, SSE for everything else
+- Durable notification outbox pattern using Qdrant payload collection (not in-process async)
+- Auto-remediation extends existing 6-step investigation pipeline with conditional remediation steps
+- Tailwind CSS standalone CLI binary — no Node.js in build chain
+- PII scrubber must be applied before every LLM call
+- Sandbox namespace with NetworkPolicy isolation for fix testing
+- Demo application in own `demo/` monorepo directory with pytest harness
+- Architecture spikes must complete before the features they inform (Flask-SocketIO+gunicorn, Qdrant payload perf, Tailwind+Jinja2, Git provider auth, sandbox NetworkPolicy)
+- Implementation sequence: permissions → CRDs → SLO → notifications → trust → WebSocket → remediation → auto-PR → demo → Tailwind (incremental)
 
-**From Architecture - Project Structure:**
-- Monorepo structure with separate deployable components
-- `operator/` - Rust K8s operator
-- `investigator/` - Python investigator agent
-- `ui/` - Flask web UI
-- `openapi/` - Shared API specifications
-- `helm/` - Helm chart for deployment
-
-**From Architecture - Implementation Patterns:**
-- snake_case for all JSON fields, API params, Qdrant fields
-- ISO 8601 UTC for all timestamps
-- Structured JSON logging with required fields (timestamp, level, component, message)
-- API versioning: `/api/v1/` base path
-- Plural nouns for resources (`/investigations`, `/sources`)
-
-**From Architecture - Data Architecture:**
-- Qdrant collections: `investigations` (operational state) + `knowledge` (permanent KB)
-- Read-your-writes consistency for investigator seeing own writes
-- Metadata filtering for structured queries
-
-**From Architecture - Deployment:**
-- Helm chart for single-command install
-- Docker multi-stage builds for all components
-- GitHub Actions for CI/CD
-- K8s resources: Deployment (operator, ui), Job (investigator), StatefulSet (qdrant)
-
-**From Architecture - Critical Path:**
-- OpenAPI spec must be defined first (enables Rust/Python client generation)
-- Qdrant schema must be defined before investigator can write
-- Operator CRDs must be defined before investigator spawning works
+**From UX Design Specification:**
+- Desktop-first responsive strategy: laptop (1024-1440px) primary, desktop (1440px+) secondary, no mobile
+- WCAG 2.1 AA accessibility compliance — axe-core CI gate on every PR
+- Dark-first design system with indigo primary (#6366f1), 5-level surface hierarchy
+- Keyboard-first design: every action has a keyboard shortcut, command palette (Cmd+K)
+- 4-tier component strategy aligned with waves: Tier 1 (investigation core), Tier 2 (navigation), Tier 3 (data display), Tier 4 (config/handoff)
+- Investigation as narrative — streaming evidence timeline with progressive detail
+- Optimistic UI scoped to approve action only; all other HTMX interactions are pessimistic
+- Sidebar navigation: Incident Mode + Learning Mode groups, collapsed (64px) / expanded (240px)
+- `prefers-reduced-motion` support for all streaming animations
+- Screen reader support with ARIA roles (feed, meter, combobox, live regions)
+- Semantic HTML5 elements throughout (nav, main, article, section, time)
+- Component file organization under `ui/beeper_ui/templates/components/` with subdirectories
 
 ### FR Coverage Map
 
 | FR | Epic | Description |
-|----|------|-------------|
-| FR1 | Epic 3 | Monitor streams for anomalies |
-| FR2 | Epic 3 | Spawn dedicated Investigator |
-| FR3 | Epic 3 | Assess customer impact |
-| FR4 | Epic 3 | Correlate across architectural layers |
-| FR5 | Epic 3 | Query KB for similar incidents |
-| FR6 | Epic 3 | Build on prior research |
-| FR7 | Epic 3 | Generate RCA hypothesis with confidence |
-| FR8 | Epic 3 | Recommend resolution actions |
-| FR9 | Epic 3 | Document to KB |
-| FR10 | Epic 4 | Observe investigator reasoning in real-time |
-| FR11 | Epic 4 | Confirm or reject resolution recommendation |
-| FR12 | Epic 4 | Mark investigation resolved with outcome |
-| FR13 | Epic 2 | Import existing runbooks |
-| FR14 | Epic 2 | Search KB using natural language |
-| FR15 | Epic 2 | Search KB using structured filters |
-| FR16 | Epic 2 | View entries in wiki format |
-| FR17 | Epic 2 | Directly edit KB entries |
-| FR18 | Epic 5 | Provide conversational corrections |
-| FR19 | Epic 5 | Beeper revises based on corrections |
-| FR20 | Epic 5 | Learn from diff between original and correction |
-| FR21 | Epic 2 | View version history |
-| FR22 | Epic 2 | Compare versions (diff view) |
-| FR23 | Epic 5 | Publish directly as trust is established |
-| FR24 | Epic 1 | Configure Prometheus data source |
-| FR25 | Epic 1 | Configure Loki data source |
-| FR26 | Epic 1 | Provide read-only credentials |
-| FR27 | Epic 1 | Receive pushed log/metric data |
-| FR28 | Epic 1 | View status of data sources |
-| FR29 | Epic 1 | View errors/warnings for misconfig |
-| FR30 | Epic 1 | Ingest without adding latency |
-| FR31 | Epic 4 | View list of active investigations |
-| FR32 | Epic 4 | View real-time reasoning (investigation pane) |
-| FR33 | Epic 4 | View recommendations with confidence |
-| FR34 | Epic 4 | Navigate to related KB entries |
-| FR35 | Epic 6 | View MTTR trends over time |
-| FR36 | Epic 2 | Access KB wiki interface |
-| FR37 | Epic 1 | Deploy Beeper as K8s operator |
-| FR38 | Epic 1 | Spawn Investigator pods in cluster |
-| FR39 | Epic 1 | Configure via K8s custom resources |
-| FR40 | Epic 1 | View operational health status |
-| FR41 | Epic 1 | Self-hosted operation |
-| FR42 | Epic 1 | Configure LLM provider |
-| FR43 | Epic 3 | Use lightweight models for screening |
-| FR44 | Epic 3 | Escalate to powerful models for RCA |
-| FR45 | Epic 3 | Cache/memoize to avoid redundant calls |
-| FR46 | Epic 6 | Set spending caps/rate limits |
-| FR47 | Epic 6 | Surface environments with excessive costs |
+|----|------|------------|
+| FR1 | Epic 1 | Define SLIs/SLO targets via ServiceLevel CRD |
+| FR2 | Epic 1 | Calculate SLO burn rates in real-time |
+| FR3 | Epic 1 | Trigger investigations on SLO burn rate breach |
+| FR4 | Epic 1 | Score anomalies by customer impact using SLO data |
+| FR5 | Epic 1 | Define error budget policies |
+| FR6 | Epic 1 | SLO compliance dashboard |
+| FR7 | Epic 1 | Prioritize investigations by SLO impact |
+| FR8 | Epic 2 | Configure notification channels via CRD |
+| FR9 | Epic 2 | Define notification routing rules |
+| FR10 | Epic 2 | Rich Slack messages |
+| FR11 | Epic 2 | PagerDuty bidirectional incidents |
+| FR12 | Epic 2 | Email alert digests |
+| FR13 | Epic 2 | Webhook triggers |
+| FR14 | Epic 2 | Quiet hours and escalation tiers |
+| FR15 | Epic 2 | Evidence-justified notifications, false page tracking |
+| FR16 | Epic 3 | Configure trust levels (1-5) per service |
+| FR17 | Epic 3 | Confidence gate actions |
+| FR18 | Epic 3 | Adaptive alert thresholds from feedback |
+| FR19 | Epic 3 | One-click investigation feedback |
+| FR20 | Epic 3 | Noise report |
+| FR21 | Epic 3 | Impact-weighted escalation urgency |
+| FR22 | Epic 3 | Confidence gate threshold config |
+| FR23 | Epic 4 | Register repositories via Repository CRD |
+| FR24 | Epic 4 | Execute human-language runbooks |
+| FR25 | Epic 4 | Auto-PRs with evidence trails |
+| FR26 | Epic 4 | Advisory test plans |
+| FR27 | Epic 4 | Sandbox test execution |
+| FR28 | Epic 4 | Post-fix metric verification |
+| FR29 | Epic 4 | Trust-gated remediation actions |
+| FR30 | Epic 4 | PR-to-investigation audit trail |
+| FR31 | Epic 4 | Accumulate proven fixes in KB |
+| FR32 | Epic 5 | Real-time investigation interaction |
+| FR33 | Epic 5 | Evidence with references |
+| FR34 | Epic 5 | Annotate, redirect, comment on investigations |
+| FR35 | Epic 5 | Approve/reject fixes within permission level |
+| FR36 | Epic 5 | Shift handoff summaries |
+| FR37 | Epic 5 | Surface KB entries during live investigations |
+| FR38 | Epic 6 | Auto-create KB entries from resolved investigations |
+| FR39 | Epic 6 | Bi-directional KB-investigation links |
+| FR40 | Epic 6 | Per-service knowledge views |
+| FR41 | Epic 6 | KB entry validation weighting |
+| FR42 | Epic 6 | Review, edit, correct KB entries |
+| FR43 | Epic 6 | Unified investigation timeline |
+| FR44 | Epic 6 | Deploy correlation |
+| FR45 | Epic 6 | Service dependency topology |
+| FR46 | Epic 6 | Change event ingestion and correlation |
+| FR47 | Epic 7 | Command palette (Cmd+K) |
+| FR48 | Epic 7 | Investigation workflow states |
+| FR49 | Epic 7 | Remediation progress tracking |
+| FR50 | Epic 7 | Per-service health feeds |
+| FR51 | Epic 7 | Reliability score per service |
+| FR52 | Epic 7 | MTTR/impact/trust trend dashboards |
+| FR53 | Epic 7 | Investor-ready reports |
+| FR54 | Epic 8 | Deploy chaotic demo application |
+| FR55 | Epic 8 | Configurable fault injection |
+| FR56 | Epic 8 | Full lifecycle demonstration |
+| FR57 | Epic 8 | Scripted repeatable demo scenarios |
+| FR58 | Epic 1 | 2-tier permissions (admin/user) |
+| FR59 | Epic 1 | K8s Secrets for integration credentials |
+| FR60 | Epic 1 | PII scrubbing before LLM |
+| FR61 | Epic 1 | Graceful LLM degradation |
+| FR62 | Epic 4 | Autonomous action rollback |
+| FR63 | Epic 1 | Non-SPOF operation |
+
+**Coverage: 63/63 FRs mapped. Zero gaps.**
 
 ## Epic List
 
-### Epic 1: Platform Foundation
-Admin can deploy Beeper to a K8s cluster, connect it to Prometheus/Loki, and verify everything is operational.
+### Epic 1: SLO Platform & Permissions Foundation (Wave 1)
+Admins can define SLOs per service, see customer impact scoring and burn rates on a dashboard, all protected by role-based permissions. The platform is resilient — Beeper never becomes a single point of failure.
+**FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR58, FR59, FR60, FR61, FR63
 
-**FRs covered:** FR24-30, FR37-42
+### Epic 2: Intelligent Notification Engine (Wave 1)
+Users receive justified notifications through Slack, PagerDuty, email, and webhooks when things matter — with routing rules, quiet hours, and false page tracking. Every notification carries evidence.
+**FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15
 
-### Epic 2: Knowledge Base
-SRE team has a functional knowledge base wiki where they can import runbooks, search, view, edit, and track version history.
+### Epic 3: Graduated Trust & Autonomy (Wave 2)
+Admins can control how autonomous Beeper is per service (TL1-5), configure confidence gates, and track accuracy over time. SREs provide investigation feedback that tunes Beeper's behavior. Signal-to-noise improves measurably.
+**FRs covered:** FR16, FR17, FR18, FR19, FR20, FR21, FR22
 
-**FRs covered:** FR13-17, FR21-22, FR36
+### Epic 4: Autonomous Remediation Pipeline (Wave 2)
+Beeper can propose fixes, test them in a sandbox, verify resolution, and create auto-PRs with full evidence trails. Actions are trust-gated and reversible. Proven fixes compound in the KB.
+**FRs covered:** FR23, FR24, FR25, FR26, FR27, FR28, FR29, FR30, FR31, FR62
 
-### Epic 3: Investigation Engine
-Beeper can detect anomalies in logs/metrics, spawn investigators, correlate signals across layers, generate root cause hypotheses, and document findings to the KB.
+### Epic 5: Real-Time Investigation Collaboration (Wave 3)
+Teams can interact with Beeper during live investigations — annotating, redirecting, approving fixes in real-time. Shift handoffs happen in 30 seconds instead of 30 minutes.
+**FRs covered:** FR32, FR33, FR34, FR35, FR36, FR37
 
-**FRs covered:** FR1-9, FR43-45
+### Epic 6: Knowledge & Signal Intelligence (Wave 3)
+The KB compounds automatically from resolved investigations with bi-directional links. Beeper correlates anomalies with deploys, config changes, and service topology — building institutional knowledge that gets smarter over time.
+**FRs covered:** FR38, FR39, FR40, FR41, FR42, FR43, FR44, FR45, FR46
 
-### Epic 4: Investigation Experience
-SREs can observe Beeper's investigations in real-time, view recommendations with confidence levels, confirm/reject resolutions, and mark investigations complete.
+### Epic 7: Developer Experience & Analytics (Wave 4)
+Power users navigate with keyboard shortcuts and a command palette. Reliability scores, MTTR trends, and trust progression dashboards give leadership visibility. Diana gets investor-ready reports.
+**FRs covered:** FR47, FR48, FR49, FR50, FR51, FR52, FR53
 
-**FRs covered:** FR10-12, FR31-34
+### Epic 8: Investor Demo Platform (Cross-cutting)
+Diana can run a scripted, repeatable demo that showcases the full detect → investigate → fix → prove lifecycle on a purpose-built chaotic application. 10 consecutive runs without failure.
+**FRs covered:** FR54, FR55, FR56, FR57
 
-### Epic 5: Living Knowledge
-KB becomes a self-improving system where SREs can provide conversational corrections, Beeper learns from feedback, and trust enables direct publishing.
+## Epic 1: SLO Platform & Permissions Foundation
 
-**FRs covered:** FR18-20, FR23
+**Goal:** Admins can define SLOs per service, see customer impact scoring and burn rates on a dashboard, all protected by role-based permissions. The platform is resilient — Beeper never becomes a single point of failure.
 
-### Epic 6: Operations & Insights
-Admins can control LLM costs with spending caps, see which environments drive excessive costs, and team leads can view MTTR trends.
+**FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR58, FR59, FR60, FR61, FR63
+**NFRs addressed:** NFR1, NFR6, NFR8, NFR10, NFR11, NFR14, NFR15, NFR21
 
-**FRs covered:** FR35, FR46-47
+### Story 1.1: Permission Model Enforcement
 
----
-
-## Epic 1: Platform Foundation
-
-Admin can deploy Beeper to a K8s cluster, connect it to Prometheus/Loki, and verify everything is operational.
-
-### Story 1.1: Project Scaffolding
-
-As an **Admin/Developer**,
-I want the Beeper project structure and CI pipeline established,
-So that I have a foundation for building all components.
-
-**Acceptance Criteria:**
-
-**Given** the Beeper repository is initialized
-**When** I clone the repository
-**Then** I see the monorepo structure matching the architecture:
-```
-beeper/
-├── operator/           # Rust K8s operator (Cargo.toml)
-├── investigator/       # Python investigator (pyproject.toml)
-├── ui/                 # Flask web UI (pyproject.toml)
-├── openapi/            # OpenAPI spec scaffold
-├── helm/               # Helm chart scaffold
-├── scripts/            # Dev scripts
-└── docker-compose.yaml # Local dev stack
-```
-**And** each component has a minimal "hello world" entry point
-
-**Given** the CI pipeline is configured
-**When** I push to main branch
-**Then** GitHub Actions runs lint and test jobs for all components
-**And** Docker images can be built for each component
-
-**Given** the OpenAPI specification exists
-**When** I view `openapi/beeper-api.yaml`
-**Then** I see the API structure with placeholder endpoints for:
-- `/api/v1/investigations`
-- `/api/v1/knowledge`
-- `/api/v1/sources`
-**And** the spec follows OpenAPI 3.1 with RFC 7807 error schemas
-
-### Story 1.2: Qdrant Infrastructure
-
-As an **Admin**,
-I want Qdrant deployed with the correct collection schemas,
-So that investigators and the UI have a vector database ready for KB operations.
+As an **admin**,
+I want role-based access control enforced across all UI routes and APIs,
+So that only authorized users can configure trust levels, SLOs, and other safety-critical settings.
 
 **Acceptance Criteria:**
 
-**Given** the Helm chart includes Qdrant
-**When** I deploy Beeper via Helm
-**Then** Qdrant StatefulSet is created with persistent storage
-**And** the `investigations` collection exists with schema:
-- `investigation_id` (keyword)
-- `status` (keyword)
-- `started_at` (datetime)
-- `service` (keyword)
-- `embedding` (vector)
-**And** the `knowledge` collection exists with schema:
-- `entry_id` (keyword)
-- `entry_type` (keyword: investigation, runbook, correction)
-- `service` (keyword)
-- `created_at` (datetime)
-- `embedding` (vector)
+**Given** a Flask route decorated with `@require_role("admin")`
+**When** a user with role "user" attempts to access it
+**Then** the request is rejected with HTTP 403 and an RFC 7807 error response
+**And** the rejection is logged with the user context
 
-**Given** Qdrant is running
-**When** I run `scripts/seed-kb.sh`
-**Then** sample KB entries are created for local development testing
+**Given** the UI application starts up
+**When** the permission middleware initializes
+**Then** user role is determined from K8s ServiceAccount token (production), X-Beeper-Role header (development), or defaults to "user"
+**And** the role is set on Flask `g.user_role` for the request lifecycle
 
-### Story 1.3: K8s Operator Scaffold
+**Given** all existing UI routes (investigations, knowledge, sources, metrics, spending)
+**When** the permission model is applied
+**Then** all existing routes remain accessible to role "user" (no regression)
+**And** all existing tests (495 UI tests) continue passing
 
-As an **Admin**,
-I want to deploy Beeper as a Kubernetes operator,
-So that Beeper runs natively in my K8s cluster with proper RBAC.
+### Story 1.2: Secrets Management & PII Scrubbing
+
+As a **platform operator**,
+I want integration credentials stored securely and sensitive data scrubbed before LLM calls,
+So that Beeper never leaks PII or credentials to external providers.
 
 **Acceptance Criteria:**
 
-**Given** the Helm chart is installed
-**When** I run `helm install beeper ./helm/beeper`
-**Then** the `beeper-operator` Deployment is created
-**And** a ServiceAccount with appropriate RBAC permissions exists
-**And** the operator pod starts successfully and logs "Beeper operator started"
+**Given** a new integration (Slack, PagerDuty, Git) requires credentials
+**When** the credential is configured
+**Then** it is stored as a K8s Secret with encryption at rest
+**And** never stored in Qdrant or application config
+
+**Given** investigation context containing email addresses, IP addresses, tokens, or passwords
+**When** the investigator prepares context for an LLM call
+**Then** the PII scrubber replaces sensitive data with tagged placeholders (e.g., `[SCRUBBED:email]`)
+**And** an audit log of scrubbed content is stored locally (never sent to LLM)
+**And** the scrubber runs before every LLM call regardless of tier
+
+**Given** a configurable scrub rule set
+**When** a new pattern is added
+**Then** it applies to all subsequent LLM calls without restart
+
+### Story 1.3: ServiceLevel CRD & Controller
+
+As an **admin**,
+I want to define SLIs and SLO targets per service via a ServiceLevel custom resource,
+So that Beeper can calculate burn rates and score anomalies by customer impact.
+
+**Acceptance Criteria:**
+
+**Given** a ServiceLevel CRD YAML with service, SLI type (availability/latency/error_rate), metric selectors, objective target, and window
+**When** the CRD is applied to the K8s cluster
+**Then** the operator reconciles it and reports status (healthy/warning/critical)
+**And** the CRD is validated for required fields before acceptance
+
+**Given** a ServiceLevel CRD with burn_rate_alerts configured
+**When** the CRD is reconciled
+**Then** the operator registers the burn rate alert thresholds (severity, short_window, long_window, factor)
 
 **Given** the operator is running
-**When** I check operator health
-**Then** the operator exposes a `/healthz` endpoint returning 200 OK
-**And** the operator watches for Beeper CRDs (Source, Investigation)
+**When** 100+ ServiceLevel CRDs exist in the cluster
+**Then** all CRDs are reconciled without performance degradation (NFR21)
 
-**Given** no external network access is required
-**When** Beeper operates
-**Then** all data remains on customer premises (FR41)
+### Story 1.4: SLO Burn Rate Calculation Engine
 
-### Story 1.4: Source CRD & Prometheus Adapter
-
-As an **Admin**,
-I want to configure Prometheus as a metrics data source via CRD,
-So that Beeper can query metrics for anomaly detection.
+As the **system**,
+I want to calculate SLO burn rates in real-time from ingested Prometheus metrics,
+So that investigations can be triggered when burn rates exceed configured thresholds.
 
 **Acceptance Criteria:**
 
-**Given** the Source CRD is defined
-**When** I apply a Source manifest:
-```yaml
-apiVersion: beeper.dev/v1
-kind: Source
-metadata:
-  name: prometheus-main
-spec:
-  type: prometheus
-  endpoint: http://prometheus:9090
-  credentialsSecret: prometheus-creds
-```
-**Then** the operator reconciles and validates the configuration
-**And** the Source status shows `connected: true` or error details
+**Given** a ServiceLevel CRD with a configured SLI metric and objective target
+**When** Prometheus metrics are ingested by the operator
+**Then** the SLO calculator computes compliance percentage and burn rate within a < 5 second refresh cycle (NFR6)
+**And** burn rate snapshots are written to the `slo_snapshots` Qdrant collection
 
-**Given** a valid Prometheus source is configured
-**When** the operator queries Prometheus
-**Then** it uses read-only credentials from K8s Secret (FR26)
-**And** PromQL queries execute successfully
+**Given** a burn rate that exceeds the configured alert factor for both short and long windows
+**When** the burn rate alerter evaluates
+**Then** an Investigation CRD is created with SLO context (service, burn rate, budget remaining)
+**And** the investigation is triggered within 30 seconds of detection (NFR1)
 
-**Given** invalid credentials are provided
-**When** the operator attempts connection
-**Then** the Source status shows `connected: false`
-**And** error details explain the failure
+**Given** the `slo_snapshots` Qdrant collection does not exist
+**When** the operator starts up
+**Then** the collection is created automatically as payload-only
 
-### Story 1.5: Loki Adapter
-
-As an **Admin**,
-I want to configure Loki as a log data source,
-So that Beeper can query logs for investigation.
-
-**Acceptance Criteria:**
-
-**Given** the Source CRD supports Loki
-**When** I apply a Loki Source manifest:
-```yaml
-apiVersion: beeper.dev/v1
-kind: Source
-metadata:
-  name: loki-main
-spec:
-  type: loki
-  endpoint: http://loki:3100
-  credentialsSecret: loki-creds
-```
-**Then** the operator reconciles and validates the configuration
-**And** the Source status shows connection state
-
-**Given** a valid Loki source is configured
-**When** the operator queries Loki
-**Then** LogQL queries execute successfully
-**And** log streams are accessible for investigation
-
-### Story 1.6: Streaming Data Ingestion
-
-As **Beeper**,
-I want to receive pushed log and metric data via streaming connections,
-So that I can detect anomalies in near-real-time without polling overhead.
-
-**Acceptance Criteria:**
-
-**Given** Prometheus is configured with remote_write to Beeper
-**When** metrics are pushed
-**Then** Beeper receives metrics via streaming connection (FR27)
-**And** no additional latency is added to the monitored systems (FR30)
-
-**Given** Loki is configured to push logs to Beeper
-**When** log events are generated
-**Then** Beeper receives log streams in real-time
-**And** logs are buffered appropriately for processing
-
-**Given** high volume data ingestion
-**When** Beeper processes incoming streams
-**Then** backpressure is handled gracefully
-**And** the operator remains responsive
-
-### Story 1.7: Source Status UI
-
-As an **Admin**,
-I want to view the status of all configured data sources,
-So that I can verify Beeper is receiving data and troubleshoot issues.
-
-**Acceptance Criteria:**
-
-**Given** sources are configured
-**When** I navigate to the Sources page in the UI
-**Then** I see a list of all configured sources (FR28)
-**And** each source shows: name, type, endpoint, connection status
-
-**Given** a source has configuration errors
-**When** I view the Sources page
-**Then** the source shows amber/red status indicator
-**And** error details are displayed (FR29)
-**And** the error message is actionable (e.g., "Missing metric labels for service discovery")
-
-**Given** the operator health endpoint exists
-**When** I view the operator status
-**Then** I see Beeper's operational health (FR40)
-**And** component status (operator running, Qdrant connected)
-
-### Story 1.8: LLM Provider Configuration
-
-As an **Admin**,
-I want to configure which LLM provider Beeper uses,
-So that I can use my preferred AI provider and manage API keys.
-
-**Acceptance Criteria:**
-
-**Given** the Beeper ConfigMap/CRD supports LLM configuration
-**When** I configure the LLM provider:
-```yaml
-llm:
-  provider: anthropic
-  model: claude-sonnet-4
-  apiKeySecret: anthropic-api-key
-```
-**Then** Beeper uses LiteLLM with the specified provider (FR42)
-**And** API keys are read from K8s Secrets (NFR-S2)
-
-**Given** the LLM configuration is invalid
-**When** the operator validates configuration
-**Then** clear error messages indicate the problem
-**And** Beeper does not start investigations without valid LLM config
-
-**Given** a valid LLM is configured
-**When** I view operator status
-**Then** LLM connectivity status is displayed
-
-### Story 1.9: Investigation CRD & Pod Spawning
-
-As **Beeper**,
-I want to spawn Investigator pods for detected conditions,
-So that each investigation runs in isolation with dedicated resources.
-
-**Acceptance Criteria:**
-
-**Given** the Investigation CRD is defined
-**When** the operator detects a suspicious condition
-**Then** it creates an Investigation custom resource
-**And** the Investigation status tracks: `pending`, `running`, `completed`, `failed`
-
-**Given** an Investigation CR is created
-**When** the operator reconciles
-**Then** a K8s Job is spawned with the investigator container (FR38)
-**And** the Job has access to: Qdrant, LLM API, source credentials
-**And** the Job is labeled with `investigation_id` for tracking
-
-**Given** an investigator Job completes
-**When** the operator reconciles
-**Then** the Investigation CR status is updated
-**And** the Job is cleaned up according to retention policy
-
-**Given** an investigator Job fails
-**When** the operator reconciles
-**Then** the Investigation CR shows failure status with error details
-**And** retry policy is applied if configured
-
----
-
-## Epic 2: Knowledge Base
-
-SRE team has a functional knowledge base wiki where they can import runbooks, search, view, edit, and track version history.
-
-### Story 2.1: KB Wiki Interface
+### Story 1.5: Customer Impact Scoring & Investigation Priority
 
 As an **SRE**,
-I want to access a wiki-style interface for the Knowledge Base,
-So that I can browse and read documentation in a human-friendly format.
+I want anomalies scored by customer impact using SLO data rather than static severity labels,
+So that I can focus on issues that actually affect users first.
 
 **Acceptance Criteria:**
 
-**Given** the UI is deployed
-**When** I navigate to `/knowledge`
-**Then** I see the KB wiki index page (FR36)
-**And** I see a list of recent KB entries
-**And** entries are organized by type (investigations, runbooks)
+**Given** an anomaly detected on a service with an active ServiceLevel CRD
+**When** the detection consumer scores the anomaly
+**Then** customer impact is calculated based on SLO breach severity and error budget remaining
+**And** an anomaly affecting a 99.9% SLO with 50% budget remaining scores higher than one affecting a 99% SLO with 90% budget remaining
 
-**Given** KB entries exist
-**When** I click on an entry
-**Then** I see the entry in human-readable wiki format (FR16)
-**And** the entry displays: title, content, metadata (service, date, author)
-**And** markdown content is rendered properly
+**Given** multiple investigations are active simultaneously
+**When** an SRE views the investigation list
+**Then** investigations are sorted by SLO impact severity (highest impact first)
+**And** the impact score is visible on each investigation card
 
-**Given** an entry is linked to a service
-**When** I view the entry
-**Then** I see the service name as a clickable filter
-**And** related entries for that service are suggested
+### Story 1.6: Error Budget Policies
 
-### Story 2.2: Semantic Search
-
-As an **SRE**,
-I want to search the Knowledge Base using natural language queries,
-So that I can find relevant information even without exact keywords.
+As an **admin**,
+I want to define error budget policies that trigger notifications or deployment freezes,
+So that teams are proactively alerted before SLO budgets are exhausted.
 
 **Acceptance Criteria:**
 
-**Given** I am on the KB page
-**When** I enter a natural language query like "database connection timeout errors"
-**Then** semantically similar entries are returned (FR14)
-**And** results are ranked by relevance
-**And** search completes in sub-second time (NFR-P3)
+**Given** a ServiceLevel CRD with error budget policy configuration
+**When** error budget consumption crosses a configured threshold (e.g., 50%, 75%, 90%)
+**Then** a notification event is generated with budget status and recommended action
+**And** the event includes the burn rate trend and projected budget exhaustion time
 
-**Given** search results are displayed
-**When** I view the results
-**Then** each result shows: title, snippet, relevance score, entry type
-**And** the matching context is highlighted
+**Given** an error budget policy with a "freeze" action at 95% consumption
+**When** budget consumption reaches 95%
+**Then** the system records a deployment freeze recommendation visible in the SLO dashboard
+**And** a critical notification is queued (when notification engine is available in Epic 2)
 
-**Given** no exact matches exist
-**When** I search for a concept
-**Then** semantically related entries are still surfaced
-**And** "No exact matches, showing related entries" is indicated
+### Story 1.7: SLO Compliance Dashboard
 
-### Story 2.3: Structured Search & Filtering
-
-As an **SRE**,
-I want to search the KB using structured filters,
-So that I can narrow down results by service, error type, or date range.
+As a **user**,
+I want to view SLO compliance, burn rate trends, and error budgets on a dashboard,
+So that I can understand the reliability posture of all services at a glance.
 
 **Acceptance Criteria:**
 
-**Given** I am on the KB search page
-**When** I apply filters:
-- Service: `payments`
-- Date range: Last 30 days
-- Entry type: `investigation`
-**Then** only matching entries are returned (FR15)
-**And** filters can be combined with semantic search
+**Given** services with active ServiceLevel CRDs
+**When** a user navigates to the SLO dashboard (`/slo`)
+**Then** all services are listed with current compliance percentage, burn rate, and error budget remaining
+**And** the page responds within 2 seconds (NFR2)
 
-**Given** filter options exist
-**When** I view the filter panel
-**Then** I see available filters: service, entry type, date range, severity
-**And** filter values are populated from existing KB metadata
+**Given** a specific service on the SLO dashboard
+**When** a user clicks to view service detail (`/slo/services/{name}`)
+**Then** burn rate trends, compliance history, and error budget consumption are displayed
+**And** active investigations related to SLO breaches are linked
 
-**Given** I apply a filter
-**When** results are displayed
-**Then** active filters are shown as removable chips
-**And** I can clear all filters with one click
+**Given** the SLO dashboard route
+**When** accessed by any authenticated user (admin or user role)
+**Then** the dashboard is visible (read-only — SLO configuration is admin-only via CRD)
 
-### Story 2.4: Runbook Import
+### Story 1.8: Platform Resilience
 
-As an **SRE Lead**,
-I want to import existing runbooks into the Knowledge Base,
-So that Beeper has seed context for investigations.
+As a **platform operator**,
+I want Beeper to gracefully degrade when the LLM provider is unavailable and never become a single point of failure,
+So that existing alerting continues and investigations don't silently stall.
 
 **Acceptance Criteria:**
 
-**Given** I have runbook files (markdown, text, or common formats)
-**When** I navigate to KB → Import
-**Then** I can upload files or paste content (FR13)
-**And** I can specify metadata: service, tags, entry type
+**Given** the LLM provider (via LiteLLM) becomes unavailable
+**When** the investigator attempts an LLM call
+**Then** the investigation is queued for retry and a human escalation notification is generated within 60 seconds (NFR15)
+**And** the investigation status reflects "LLM unavailable — queued for retry"
 
-**Given** I upload a markdown runbook
-**When** the import processes
-**Then** the runbook is parsed and stored in Qdrant
-**And** embeddings are generated for semantic search
-**And** the entry appears in the KB wiki
+**Given** the Beeper operator is down or restarting
+**When** an anomaly occurs in the monitored cluster
+**Then** existing Prometheus alerting and Loki-based alerts continue to function unaffected (NFR14)
+**And** no investigation data is lost during the restart (NFR17)
 
-**Given** I import multiple runbooks
-**When** import completes
-**Then** I see a summary: X entries imported, Y warnings
-**And** any parsing issues are reported with line numbers
+**Given** the Beeper UI is temporarily unavailable
+**When** an SRE checks their existing monitoring tools
+**Then** all pre-Beeper alerting pathways remain operational
 
-**Given** a runbook has formatting issues
-**When** import processes
-**Then** best-effort parsing is applied
-**And** warnings indicate what couldn't be parsed
+## Epic 2: Intelligent Notification Engine
 
-### Story 2.5: KB Entry Editing
+**Goal:** Users receive justified notifications through Slack, PagerDuty, email, and webhooks when things matter — with routing rules, quiet hours, and false page tracking.
 
-As an **SRE Lead**,
-I want to directly edit Knowledge Base entries,
-So that I can correct errors and add context.
+**FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15
+**NFRs addressed:** NFR22, NFR2
 
-**Acceptance Criteria:**
+### Story 2.1: NotificationChannel CRD & Durable Outbox
 
-**Given** I am viewing a KB entry
-**When** I click "Edit"
-**Then** I see a markdown editor with the entry content (FR17)
-**And** I can modify title, content, and metadata
-
-**Given** I am editing an entry
-**When** I save changes
-**Then** the entry is updated in Qdrant
-**And** embeddings are regenerated for the new content
-**And** a new version is created (for history tracking)
-
-**Given** I am editing
-**When** I click "Preview"
-**Then** I see the rendered markdown
-**And** I can toggle between edit and preview modes
-
-**Given** another user is viewing the entry
-**When** I save changes
-**Then** they see the updated content on refresh
-**And** no data is lost
-
-### Story 2.6: Version History
-
-As an **SRE**,
-I want to view the version history of any KB entry,
-So that I can see how documentation evolved and who made changes.
+As a **user**,
+I want to configure outbound notification channels via a NotificationChannel custom resource,
+So that Beeper can send alerts through my team's existing communication tools.
 
 **Acceptance Criteria:**
 
-**Given** I am viewing a KB entry
-**When** I click "History"
-**Then** I see a list of all versions (FR21)
-**And** each version shows: version number, date, author, change summary
+**Given** a NotificationChannel CRD YAML with type (slack/pagerduty/email/webhook), config, credentials_secret, and routing rules
+**When** the CRD is applied to the K8s cluster
+**Then** the operator validates the credentials_secret exists and reports channel status (configured/error)
+**And** the CRD is validated for required fields per channel type
 
-**Given** version history is displayed
-**When** I click on a previous version
-**Then** I can view that version's content
-**And** I see "Viewing version X of Y" indicator
+**Given** the notification system initializes
+**When** the `notification_outbox` Qdrant collection does not exist
+**Then** it is created automatically as payload-only
+**And** the background outbox worker starts processing queued notifications
 
-**Given** I am viewing an old version
-**When** I want to restore it
-**Then** I can click "Restore this version"
-**And** a new version is created with the old content
+**Given** a notification event is generated (investigation started/completed/fix proposed)
+**When** the notification is written to the outbox
+**Then** it persists in Qdrant and survives process restart
+**And** failed deliveries retry with exponential backoff
 
-### Story 2.7: Version Diff View
+### Story 2.2: Notification Routing Rules Engine
 
-As an **SRE**,
-I want to compare versions of a KB entry,
-So that I can see exactly what changed between versions.
-
-**Acceptance Criteria:**
-
-**Given** I am viewing version history
-**When** I select two versions to compare
-**Then** I see a side-by-side or unified diff view (FR22)
-**And** additions are highlighted in green
-**And** deletions are highlighted in red
-
-**Given** I am viewing a diff
-**When** the changes are extensive
-**Then** I can toggle between "changes only" and "full context"
-**And** I can navigate between change hunks
-
-**Given** Beeper made corrections based on human feedback
-**When** I view the diff
-**Then** I can see exactly what Beeper learned
-**And** the diff helps me verify the correction was applied correctly
-
----
-
-## Epic 3: Investigation Engine
-
-Beeper can detect anomalies in logs/metrics, spawn investigators, correlate signals across layers, generate root cause hypotheses, and document findings to the KB.
-
-### Story 3.1: Anomaly Detection Engine
-
-As **Beeper**,
-I want to continuously monitor incoming log and metric streams for anomalous patterns,
-So that suspicious conditions are identified for investigation.
+As a **user**,
+I want to define notification routing rules based on severity, service, SLO state, and time of day,
+So that the right people get the right notifications at the right time.
 
 **Acceptance Criteria:**
 
-**Given** data sources are configured and streaming
-**When** the operator processes incoming data
-**Then** anomaly detection runs continuously (FR1)
-**And** detection latency is in seconds from occurrence (NFR-P1)
+**Given** a NotificationChannel CRD with routing rules (min_severity, services list, quiet_hours)
+**When** a notification event is generated for a service at a given severity
+**Then** the routing engine evaluates all configured channels and routes to matching channels only
+**And** channels with `min_severity: high` do not receive `low` or `medium` events
 
-**Given** metrics show unusual patterns (spike, drop, deviation)
-**When** the anomaly detector evaluates
-**Then** a suspicious condition is flagged
-**And** the condition includes: source, metric/log pattern, timestamp, severity estimate
+**Given** quiet hours are configured (start: "22:00", end: "08:00", timezone)
+**When** a non-critical notification is generated during quiet hours
+**Then** it is suppressed until quiet hours end
+**And** critical notifications with `escalation_override: true` bypass quiet hours
 
-**Given** logs contain error patterns or unusual frequencies
-**When** the anomaly detector evaluates
-**Then** log-based anomalies are detected
-**And** relevant log lines are captured as context
+**Given** a notification event with SLO context from Epic 1
+**When** the routing engine evaluates urgency
+**Then** urgency is weighted by confirmed customer impact (SLO burn rate) rather than static severity
 
-**Given** normal operational patterns
-**When** the detector evaluates
-**Then** no false positives are generated for expected behavior
-**And** baseline learning adapts to environment patterns
+### Story 2.3: Slack Channel Integration
 
-### Story 3.2: Investigator Agent Scaffold
-
-As **Beeper**,
-I want a Python investigator agent that can be spawned for each suspicious condition,
-So that investigations run in isolation with dedicated resources.
+As a **user**,
+I want Beeper to send rich Slack messages with investigation context,
+So that I can assess and act on incidents directly from Slack.
 
 **Acceptance Criteria:**
 
-**Given** the operator creates an Investigation CR
-**When** the investigator Job starts
-**Then** the Python agent initializes with:
-- Investigation ID and condition details
-- Qdrant connection for KB access
-- LLM client (LiteLLM) configuration
-- Source credentials for querying Prometheus/Loki
+**Given** a configured Slack NotificationChannel with a channel and credentials_secret
+**When** an investigation event is routed to the Slack channel
+**Then** a rich block message is sent with investigation summary, evidence highlights, and confidence score
+**And** the message includes action buttons (View Investigation, Approve Fix if applicable)
 
-**Given** the investigator agent starts
-**When** it begins processing
-**Then** it logs structured JSON with `investigation_id` context
-**And** progress updates are written to Investigation CR status
+**Given** a Slack notification for an ongoing investigation
+**When** updates occur (new evidence, confidence change, fix proposed)
+**Then** updates are posted as threaded replies to the original message
+**And** relevant users are @mentioned per channel configuration
 
-**Given** the investigation completes or fails
-**When** the agent exits
-**Then** exit code reflects success/failure
-**And** final status is persisted before termination
+**Given** the notification throughput target
+**When** 1,000+ notification events are generated per hour
+**Then** all Slack deliveries complete without drops (NFR22)
 
-### Story 3.3: Customer Impact Assessment
+### Story 2.4: PagerDuty Bidirectional Integration
 
-As an **Investigator**,
-I want to assess whether a detected condition has customer impact,
-So that I can prioritize appropriately and focus on real issues.
+As a **user**,
+I want Beeper to create, acknowledge, and resolve PagerDuty incidents automatically,
+So that my on-call workflow integrates seamlessly with Beeper's investigation lifecycle.
 
 **Acceptance Criteria:**
 
-**Given** a suspicious condition is detected
-**When** the investigator starts
-**Then** it first assesses customer impact (FR3)
-**And** uses lightweight LLM model for initial screening (FR43)
+**Given** a configured PagerDuty NotificationChannel
+**When** a critical investigation starts
+**Then** a PagerDuty incident is created with investigation context and evidence summary
 
-**Given** the condition affects customer-facing services
-**When** impact assessment completes
-**Then** the investigation is flagged as `customer_impacting: true`
-**And** investigation proceeds with higher priority
+**Given** a PagerDuty incident created by Beeper
+**When** Beeper begins investigating the root cause
+**Then** the PagerDuty incident is acknowledged automatically
 
-**Given** the condition is internal/infrastructure only
-**When** impact assessment completes
-**Then** the investigation is flagged as `customer_impacting: false`
-**And** investigation still proceeds but with appropriate priority
+**Given** a PagerDuty incident created by Beeper
+**When** the investigation resolves (fix verified or manually resolved)
+**Then** the PagerDuty incident is resolved with resolution summary
+**And** the resolution includes a link to the full investigation evidence trail
 
-**Given** impact cannot be determined
-**When** assessment is uncertain
-**Then** `customer_impacting: unknown` is set
-**And** investigation proceeds with default priority
+### Story 2.5: Email & Webhook Channels
 
-### Story 3.4: KB Query & Prior Research
-
-As an **Investigator**,
-I want to query the Knowledge Base for similar past incidents,
-So that I can build on prior research and avoid re-investigating known issues.
+As a **user**,
+I want Beeper to send email digests and trigger webhooks to external systems,
+So that I can integrate Beeper with CI/CD pipelines, Jira, and status pages.
 
 **Acceptance Criteria:**
 
-**Given** an investigation is in progress
-**When** the investigator queries the KB
-**Then** semantically similar past investigations are retrieved (FR5)
-**And** results include: investigation ID, root cause, resolution, confidence
+**Given** a configured email NotificationChannel with SMTP settings
+**When** a critical notification is routed to email
+**Then** an immediate email is sent with investigation summary and evidence links
 
-**Given** similar incidents exist in the KB
-**When** the investigator analyzes them
-**Then** it builds on prior research rather than starting fresh (FR6)
-**And** references to prior investigations are included in findings
+**Given** a configured email channel with digest mode
+**When** the digest interval elapses (e.g., daily)
+**Then** a summary email is sent with all investigations, resolutions, and SLO status for the period
 
-**Given** an exact match is found (same root cause signature)
-**When** the investigator identifies the match
-**Then** confidence level is elevated
-**And** prior resolution is recommended with high confidence
+**Given** a configured webhook NotificationChannel with a target URL
+**When** a notification event matches the webhook routing rules
+**Then** a POST request is sent with the investigation payload (JSON, RFC 7807 error format on failure)
+**And** failed webhook deliveries retry with exponential backoff
 
-**Given** the KB is temporarily unavailable
-**When** the investigator attempts to query
-**Then** the investigation continues without KB context (NFR-R2)
-**And** findings are buffered locally for later KB write
+### Story 2.6: Notification Audit & False Page Tracking
 
-### Story 3.5: Cross-Layer Signal Correlation
-
-As an **Investigator**,
-I want to correlate signals across multiple architectural layers,
-So that I can identify root causes that span infrastructure, platform, application, and data layers.
+As an **admin**,
+I want every notification justified with evidence and false pages tracked as bugs,
+So that I can measure and improve Beeper's notification accuracy over time.
 
 **Acceptance Criteria:**
 
-**Given** an investigation is analyzing a condition
-**When** the investigator gathers signals
-**Then** it queries across architectural layers (FR4):
-- Infrastructure (K8s nodes, resources)
-- Platform (K8s services, deployments)
-- Application (service logs, error rates)
-- Data (database metrics, query patterns)
+**Given** a notification is sent through any channel
+**When** the notification is delivered
+**Then** an audit record is stored with: channel, timestamp, investigation_id, evidence summary, delivery status
 
-**Given** correlated signals are found
-**When** the investigator analyzes them
-**Then** temporal correlation is established (what happened when)
-**And** causal chains are hypothesized (A caused B caused C)
+**Given** an SRE marks an investigation as "not-an-issue" or "inaccurate"
+**When** that investigation had generated notifications
+**Then** those notifications are flagged as false pages in the audit trail
+**And** the false page count is trackable per service and per time period
 
-**Given** signals span multiple services
-**When** correlation completes
-**Then** the service dependency chain is documented
-**And** the originating layer is identified
-
-**Given** signals are ambiguous
-**When** correlation is uncertain
-**Then** multiple hypotheses are generated
-**And** each hypothesis includes confidence level
-
-### Story 3.6: RCA Hypothesis Generation
-
-As an **Investigator**,
-I want to generate a root cause hypothesis with an explicit confidence level,
-So that SREs understand the certainty of my findings.
-
-**Acceptance Criteria:**
-
-**Given** signal correlation is complete
-**When** the investigator synthesizes findings
-**Then** a root cause hypothesis is generated (FR7)
-**And** the hypothesis includes:
-- Root cause description
-- Confidence level (high/medium/low with percentage)
-- Supporting evidence (correlated signals)
-- Alternative hypotheses if confidence < high
-
-**Given** strong signal correlation exists
-**When** generating hypothesis
-**Then** powerful LLM model is used for deep RCA (FR44)
-**And** confidence reflects strength of evidence
-
-**Given** weak or conflicting signals
-**When** generating hypothesis
-**Then** confidence is appropriately low
-**And** the hypothesis explicitly states uncertainty
-**And** additional data needs are identified
-
-**Given** a known issue pattern from KB
-**When** generating hypothesis
-**Then** the KB match boosts confidence
-**And** the prior incident is cited as supporting evidence
-
-### Story 3.7: Resolution Recommendations
-
-As an **Investigator**,
-I want to recommend resolution actions based on investigation findings,
-So that SREs have actionable next steps.
-
-**Acceptance Criteria:**
-
-**Given** a root cause hypothesis is generated
-**When** the investigator generates recommendations
-**Then** resolution actions are suggested (FR8)
-**And** each recommendation includes:
-- Action description
-- Confidence level
-- Expected outcome
-- Risk assessment
-
-**Given** a similar past incident was resolved
-**When** generating recommendations
-**Then** the prior resolution is recommended
-**And** confidence is elevated based on past success
-
-**Given** the root cause is uncertain
-**When** generating recommendations
-**Then** safe diagnostic actions are recommended first
-**And** "gather more information" steps are included
-
-**Given** multiple resolution paths exist
-**When** generating recommendations
-**Then** options are ranked by confidence and risk
-**And** trade-offs are explained
-
-### Story 3.8: Investigation Documentation
-
-As an **Investigator**,
-I want to document my investigation process and findings to the Knowledge Base,
-So that the investigation is preserved for future reference and learning.
-
-**Acceptance Criteria:**
-
-**Given** an investigation completes
-**When** the investigator documents findings
-**Then** a KB entry is created with (FR9):
-- Investigation summary
-- Detected condition
-- Correlated signals
-- Root cause hypothesis
-- Recommended resolution
-- Confidence levels throughout
-
-**Given** the KB is available
-**When** documentation is written
-**Then** the entry is stored in the `knowledge` collection
-**And** embeddings are generated for semantic search
-**And** metadata includes: service, timestamp, investigation_id
-
-**Given** the KB is temporarily unavailable
-**When** documentation is attempted
-**Then** findings are buffered locally (NFR-R2)
-**And** retry logic persists until KB accepts the write
-
-**Given** the investigation builds on prior research
-**When** documenting
-**Then** links to referenced prior investigations are included
-**And** the knowledge graph grows richer
-
-### Story 3.9: Tiered LLM Model Selection
-
-As **Beeper**,
-I want to use lightweight models for screening and powerful models for deep RCA,
-So that I balance cost and capability appropriately.
-
-**Acceptance Criteria:**
-
-**Given** LLM configuration includes tiered models
-**When** the investigator needs LLM assistance
-**Then** model selection is based on task type:
-- Screening/triage: `claude-3-haiku` (FR43)
-- Investigation/correlation: `claude-sonnet-4` (FR44)
-- Deep RCA/complex reasoning: `claude-opus-4` (FR44)
-
-**Given** initial screening is performed
-**When** using lightweight model
-**Then** response latency is fast
-**And** cost per screening is minimal
-
-**Given** deep RCA is required
-**When** escalating to powerful model
-**Then** the escalation is logged with rationale
-**And** the more capable model is used for reasoning
-
-**Given** model routing decisions are made
-**When** the investigation completes
-**Then** model usage is tracked for cost reporting
-
-### Story 3.10: LLM Response Caching
-
-As **Beeper**,
-I want to cache and memoize LLM results to avoid redundant calls,
-So that I reduce costs and improve response times for recurring patterns.
-
-**Acceptance Criteria:**
-
-**Given** an LLM query is made
-**When** a similar query was recently made
-**Then** the cached response is returned (FR45)
-**And** cache hit is logged for metrics
-
-**Given** an investigation encounters a recurring issue
-**When** querying for analysis
-**Then** prior LLM reasoning is retrieved from cache
-**And** only delta analysis requires new LLM calls
-
-**Given** cache entries exist
-**When** the underlying data changes significantly
-**Then** cache is invalidated appropriately
-**And** stale reasoning is not returned
-
-**Given** caching is operational
-**When** reviewing costs
-**Then** cache hit rate is reported
-**And** estimated cost savings are visible
-
----
-
-## Epic 4: Investigation Experience
-
-SREs can observe Beeper's investigations in real-time, view recommendations with confidence levels, confirm/reject resolutions, and mark investigations complete.
-
-### Story 4.1: Investigation List View
-
-As an **SRE**,
-I want to view a list of active investigations,
-So that I can see what Beeper is currently working on and prioritize my attention.
-
-**Acceptance Criteria:**
-
-**Given** I navigate to the Investigations page
+**Given** a user navigates to the notification audit view (`/notifications/audit`)
 **When** the page loads
-**Then** I see a list of all active investigations (FR31)
-**And** each investigation shows: ID, status, service, started time, severity
+**Then** notification history is displayed with delivery status, false page flags, and evidence justification
+**And** filtering by service, channel, and date range is available
 
-**Given** investigations are in various states
-**When** I view the list
-**Then** investigations are grouped/sorted by status:
-- `investigating` (in progress)
-- `awaiting_confirmation` (needs human input)
-- `completed` (recently finished)
+### Story 2.7: Notification Configuration UI
 
-**Given** new investigations start
-**When** I am viewing the list
-**Then** the list updates via SSE without page refresh
-**And** new investigations appear at the top
+As a **user**,
+I want to view and test notification channels from the UI,
+So that I can verify my notification setup works before relying on it during incidents.
 
-**Given** I want to filter investigations
-**When** I use filter controls
-**Then** I can filter by: status, service, severity, date range
+**Acceptance Criteria:**
 
-### Story 4.2: Real-Time Investigation Pane
+**Given** a user navigates to `/notifications`
+**When** the page loads
+**Then** all configured NotificationChannel CRDs are listed with status (configured/error)
+**And** routing rules summary is visible per channel
+
+**Given** a configured notification channel
+**When** a user clicks "Send Test Notification"
+**Then** a test notification is delivered through the channel with sample investigation data
+**And** the test result (success/failure with error detail) is displayed in the UI
+
+**Given** the notification configuration page
+**When** accessed by role "user"
+**Then** channel viewing and test sending are available
+**And** channel creation/deletion requires CRD management (kubectl)
+
+## Epic 3: Graduated Trust & Autonomy
+
+**Goal:** Admins can control how autonomous Beeper is per service (TL1-5), configure confidence gates, and track accuracy over time. SREs provide investigation feedback that tunes Beeper's behavior. Signal-to-noise improves measurably.
+
+**FRs covered:** FR16, FR17, FR18, FR19, FR20, FR21, FR22
+**NFRs addressed:** NFR12, NFR19
+
+### Story 3.1: Trust Level Configuration & Persistence
+
+As an **admin**,
+I want to configure trust levels (1-5) per service controlling Beeper's autonomy,
+So that I can gradually increase Beeper's autonomy as it proves reliable for each service.
+
+**Acceptance Criteria:**
+
+**Given** the existing `service_trust_levels` Qdrant collection
+**When** an admin updates a service's trust level via the API (`PUT /api/services/{name}/trust`)
+**Then** the trust level is stored with the new value (1-5) and an audit timestamp
+**And** the endpoint requires `@require_role("admin")` (NFR12)
+
+**Given** trust level definitions: TL1 (advisory only), TL2 (suggest with evidence), TL3 (act with approval), TL4 (act and notify), TL5 (fully autonomous)
+**When** any component queries a service's trust level
+**Then** the behavior boundary is enforced per the trust level definition
+**And** a service without a configured trust level defaults to TL1 (advisory only)
+
+**Given** the trust level API
+**When** accessed by a user with role "user"
+**Then** read access is allowed but write access is rejected with HTTP 403
+
+### Story 3.2: Confidence Gate Engine
+
+As the **system**,
+I want to gate actions by confidence threshold so only sufficiently confident conclusions trigger actions,
+So that Beeper doesn't act on uncertain evidence.
+
+**Acceptance Criteria:**
+
+**Given** an investigation reaches a conclusion with a confidence score (0.0-1.0)
+**When** the confidence gate evaluates the action
+**Then** the action is permitted only if the confidence score meets or exceeds the gate threshold for the service's trust level
+**And** below-threshold conclusions are presented as advisory recommendations only
+
+**Given** the confidence gate thresholds per trust level (e.g., TL3 requires 0.85, TL4 requires 0.75, TL5 requires 0.60)
+**When** the same conclusion (confidence: 0.80) is evaluated for services at TL3 vs TL4
+**Then** the TL3 service gets an advisory recommendation while the TL4 service gets an automatic action
+
+**Given** an action is blocked by the confidence gate
+**When** the investigation result is displayed
+**Then** the UI shows "Confidence: 80% — below threshold (85%) for auto-action — advisory only"
+**And** the SRE can manually approve the action regardless
+
+### Story 3.3: Confidence Gate Threshold Configuration
+
+As an **admin**,
+I want to configure confidence gate thresholds per trust level,
+So that I can tune how much evidence Beeper needs before acting autonomously.
+
+**Acceptance Criteria:**
+
+**Given** the confidence gate configuration endpoint (`PUT /api/config/confidence-gates`)
+**When** an admin sets thresholds (e.g., TL3: 0.85, TL4: 0.75, TL5: 0.60)
+**Then** the thresholds are persisted and immediately effective for new evaluations
+**And** the endpoint requires `@require_role("admin")` (NFR12)
+
+**Given** the trust configuration UI page (`/settings/trust`)
+**When** an admin views the page
+**Then** current thresholds are displayed per trust level with explanations of each level's behavior
+**And** the admin can adjust thresholds with a slider or input field
+
+**Given** a threshold is set to an unreasonable value (e.g., 0.0 or > 1.0)
+**When** the admin submits the change
+**Then** validation rejects the value with a clear error message
+
+### Story 3.4: One-Click Investigation Feedback
 
 As an **SRE**,
-I want to view the real-time reasoning of any active Investigator,
-So that I can observe Beeper's investigation process as it happens.
+I want to provide one-click feedback on investigation accuracy (accurate / inaccurate / not-an-issue),
+So that Beeper can learn from my expertise and improve over time.
 
 **Acceptance Criteria:**
 
-**Given** I click on an active investigation
-**When** the investigation pane opens
-**Then** I see Beeper's reasoning process in real-time (FR32, FR10)
-**And** updates stream via SSE (NFR-P2)
+**Given** a completed investigation displayed in the UI
+**When** the SRE clicks one of the feedback buttons (accurate / inaccurate / not-an-issue)
+**Then** the feedback is recorded against the investigation in Qdrant with the user, timestamp, and feedback type
+**And** the interaction is a single click — no modal, no form, no confirmation required
 
-**Given** the investigator is working
-**When** I observe the pane
-**Then** I see the current step: "Assessing impact", "Querying KB", "Correlating signals", etc.
-**And** I see evidence being gathered in real-time
-**And** I see the reasoning chain as it develops
+**Given** feedback is submitted
+**When** the investigation detail page refreshes
+**Then** the selected feedback is highlighted and changing feedback is allowed (last feedback wins)
+**And** an SSE event updates other viewers in real-time
 
-**Given** the investigation progresses
-**When** new findings emerge
-**Then** they appear in the pane without refresh
-**And** timestamps show when each finding was made
+**Given** the feedback endpoint (`POST /api/investigations/{id}/feedback`)
+**When** accessed by any authenticated user (admin or user)
+**Then** the feedback is accepted (not admin-only — all SREs should provide feedback)
 
-**Given** the investigation pane is open
-**When** I want to see raw data
-**Then** I can expand sections to see:
-- Raw log snippets
-- Metric values
-- KB matches found
+### Story 3.5: Adaptive Alert Threshold Tuning
 
-### Story 4.3: Recommendations & Confidence Display
-
-As an **SRE**,
-I want to view recommended resolutions with confidence levels,
-So that I understand how certain Beeper is about its findings.
+As the **system**,
+I want to adapt alert thresholds based on investigation outcome feedback from SREs,
+So that Beeper reduces false positives and improves signal quality over time.
 
 **Acceptance Criteria:**
 
-**Given** an investigation has generated recommendations
-**When** I view the investigation
-**Then** I see recommendations with confidence levels (FR33)
-**And** confidence is displayed as: High (>80%), Medium (50-80%), Low (<50%)
+**Given** a service has accumulated 10+ investigation feedback entries
+**When** the adaptive tuning process evaluates the feedback
+**Then** alert thresholds are adjusted: services with high "not-an-issue" rates get higher thresholds, services with high "accurate" rates maintain or lower thresholds
+**And** threshold adjustments are logged with reasoning (e.g., "Raised threshold 15%: 6/10 recent alerts marked not-an-issue")
 
-**Given** recommendations are displayed
-**When** I view them
-**Then** each recommendation shows:
-- Action to take
-- Confidence level with visual indicator
-- Supporting evidence summary
-- Risk assessment
+**Given** an adaptive threshold adjustment is proposed
+**When** the service's trust level is TL1 or TL2
+**Then** the adjustment is presented as a recommendation to the admin (not auto-applied)
+**And** at TL3+ the adjustment is applied automatically with notification to admin
 
-**Given** multiple recommendations exist
-**When** I view the list
-**Then** they are ranked by confidence
-**And** the top recommendation is highlighted
+**Given** an admin views the threshold adjustment history
+**When** navigating to `/settings/trust/history`
+**Then** all adjustments are listed with before/after values, feedback evidence, and timestamp
 
-**Given** confidence is low
-**When** I view recommendations
-**Then** a warning indicates uncertainty
-**And** alternative hypotheses are shown
-**And** "Gather more information" options are suggested
+### Story 3.6: Impact-Weighted Escalation Urgency
 
-### Story 4.4: KB Entry Navigation
-
-As an **SRE**,
-I want to navigate from an investigation to related Knowledge Base entries,
-So that I can see prior context and historical information.
+As the **system**,
+I want to weight escalation urgency by confirmed customer impact rather than theoretical severity,
+So that SREs are interrupted proportionally to actual user impact.
 
 **Acceptance Criteria:**
 
-**Given** an investigation references KB entries
-**When** I view the investigation
-**Then** related KB entries are linked (FR34)
-**And** I can click to open the KB entry
+**Given** an investigation with SLO context (burn rate, budget remaining) from Epic 1
+**When** escalation urgency is calculated
+**Then** urgency = f(burn_rate, budget_remaining, affected_users) rather than static severity mapping
+**And** a fast-burning SLO with 10% budget remaining escalates higher than a slow-burning SLO with 80% budget remaining
 
-**Given** similar past incidents exist
-**When** Beeper found them during investigation
-**Then** they appear in a "Related Incidents" section
-**And** each shows: title, date, root cause summary, similarity score
+**Given** escalation urgency is calculated for a service with investigation feedback history
+**When** the service has a high "accurate" feedback rate (>80%)
+**Then** urgency is preserved as-is (trusted signal)
+**And** a service with a low "accurate" rate (<50%) has urgency dampened with a "low confidence" flag
 
-**Given** I click a related KB entry
-**When** the entry opens
-**Then** I can view it in a side panel or new tab
-**And** I can easily return to the investigation
+**Given** the investigation list view
+**When** sorted by urgency
+**Then** the impact-weighted urgency score is displayed alongside the investigation
+**And** tooltips explain the urgency calculation factors
 
-**Given** the investigation builds on prior research
-**When** I view the investigation
-**Then** I see "Building on investigation KB-XXX" with link
-**And** the connection between old and new is clear
+### Story 3.7: Noise Report Dashboard
 
-### Story 4.5: Resolution Confirmation
-
-As an **SRE**,
-I want to confirm or reject an Investigator's resolution recommendation,
-So that I maintain control over actions taken.
+As an **admin**,
+I want to view a noise report showing signal-to-noise ratio and false page trends,
+So that I can measure whether Beeper's alerting is improving and identify noisy services.
 
 **Acceptance Criteria:**
 
-**Given** an investigation has a recommendation awaiting confirmation
-**When** I view the investigation
-**Then** I see "Confirm" and "Reject" buttons (FR11)
-**And** the recommendation details are clearly displayed
+**Given** accumulated investigation feedback data
+**When** an admin navigates to the noise report (`/reports/noise`)
+**Then** the dashboard shows: signal-to-noise ratio (accurate / total), false page rate trend over time, and per-service breakdown
+**And** the page responds within 2 seconds (NFR2)
 
-**Given** I click "Confirm"
-**When** confirming a resolution
-**Then** I can optionally add a comment
-**And** the confirmation is recorded
-**And** the investigation status updates to reflect confirmation
+**Given** the noise report dashboard
+**When** filtering by service or time period
+**Then** the metrics recalculate for the filtered view
+**And** the worst-performing services (highest false page rate) are highlighted
 
-**Given** I click "Reject"
-**When** rejecting a resolution
-**Then** I must provide a reason (dropdown + free text)
-**And** the rejection is recorded
-**And** the investigation may continue with alternative approaches
+**Given** the noise report page
+**When** accessed by a user with role "user"
+**Then** the page is visible (read-only) — noise metrics benefit all SREs, not just admins
 
-**Given** I reject with correction
-**When** I provide the correct resolution
-**Then** my correction is captured for Beeper learning
-**And** the investigation can be resolved with my correction
+## Epic 4: Autonomous Remediation Pipeline
 
-### Story 4.6: Investigation Resolution
+**Goal:** Beeper can propose fixes, test them in a sandbox, verify resolution, and create auto-PRs with full evidence trails. Actions are trust-gated and reversible. Proven fixes compound in the KB.
 
-As an **SRE**,
-I want to mark an investigation as resolved with outcome confirmation,
-So that the investigation is properly closed and documented.
+**FRs covered:** FR23, FR24, FR25, FR26, FR27, FR28, FR29, FR30, FR31, FR62
+**NFRs addressed:** NFR9, NFR13, NFR16
 
-**Acceptance Criteria:**
+### Story 4.1: Repository CRD & Git Provider Integration
 
-**Given** an investigation is ready to close
-**When** I click "Resolve Investigation"
-**Then** I see a resolution form (FR12)
-**And** I can select outcome: "Resolved", "Not an issue", "Escalated", "Unresolved"
-
-**Given** I select "Resolved"
-**When** completing resolution
-**Then** I confirm the resolution action taken
-**And** I can rate Beeper's accuracy: "Correct", "Partially correct", "Incorrect"
-**And** the KB entry is updated with resolution confirmation
-
-**Given** I select "Not an issue"
-**When** completing resolution
-**Then** I indicate why (false positive, expected behavior, etc.)
-**And** this feedback helps improve anomaly detection
-
-**Given** I select "Escalated"
-**When** completing resolution
-**Then** I indicate escalation target
-**And** the investigation is marked but not closed
-
-**Given** resolution is complete
-**When** the investigation closes
-**Then** final documentation is written to KB
-**And** the investigation appears in "Completed" list
-**And** MTTR is calculated for this investigation
-
----
-
-## Epic 5: Living Knowledge
-
-KB becomes a self-improving system where SREs can provide conversational corrections, Beeper learns from feedback, and trust enables direct publishing.
-
-### Story 5.1: Conversational Corrections Interface
-
-As an **SRE Lead**,
-I want to provide conversational corrections to Beeper,
-So that I can correct entries naturally without manual editing.
+As an **admin**,
+I want to register code repositories via a Repository CRD with branch policies and coding standards,
+So that Beeper knows which repos to target for auto-PRs and how to comply with team conventions.
 
 **Acceptance Criteria:**
 
-**Given** I am viewing a KB entry
-**When** I click "Suggest Correction" or open the correction panel
-**Then** I see a chat-style interface for providing feedback (FR18)
-**And** I can type natural language corrections like:
-- "The root cause wasn't the load balancer - it was a deployment that changed the health check timeout"
-- "Add that this only happens during peak traffic hours"
-- "Remove the section about database - that was a red herring"
+**Given** a Repository CRD YAML with repo_url, provider (github/gitlab), credentials_secret, default_branch, branch_policy, and coding_standards
+**When** the CRD is applied to the K8s cluster
+**Then** the operator validates the credentials_secret exists and tests repository access
+**And** the CRD status reports (connected/auth-error/not-found)
 
-**Given** I submit a conversational correction
-**When** the correction is processed
-**Then** I see "Processing correction..." status
-**And** Beeper acknowledges the correction with a summary of understood changes
+**Given** a Repository CRD with branch_policy configured (e.g., prefix: "beeper/fix-", require_pr: true)
+**When** Beeper creates a fix branch
+**Then** the branch name conforms to the policy and a PR is created against default_branch
+**And** repository credentials are scoped per-repo tokens, never org-wide (NFR9)
 
-**Given** Beeper misunderstands my correction
-**When** I see the proposed changes
-**Then** I can clarify or rephrase my correction
-**And** the conversation continues until the correction is right
+**Given** multiple Repository CRDs across different providers
+**When** the operator reconciles
+**Then** each repository connection is independently managed and failures are isolated
 
-**Given** corrections are submitted
-**When** I view my correction history
-**Then** I see past corrections I've made
-**And** I can see which were applied and their impact
+### Story 4.2: Human-Language Runbook Execution
 
-### Story 5.2: Beeper Revision Processing
-
-As **Beeper**,
-I want to revise Knowledge Base entries based on conversational corrections,
-So that the KB reflects accurate, human-validated information.
+As the **system**,
+I want to execute human-language runbooks without requiring DSL translation,
+So that SREs can write remediation procedures in plain English and Beeper follows them.
 
 **Acceptance Criteria:**
 
-**Given** an SRE submits a conversational correction
-**When** Beeper processes it
-**Then** Beeper understands the intent and generates a revision (FR19)
-**And** the revision is shown to the SRE for approval before applying
+**Given** a KB entry tagged as a runbook with human-language steps (e.g., "1. Check if the pod is OOMKilled. 2. Increase memory limit by 25%. 3. Verify pod restarts successfully.")
+**When** an investigation matches the runbook's trigger conditions
+**Then** the LLM interprets the runbook steps and maps them to executable actions
+**And** each step's interpretation is logged with the original runbook text for audit
 
-**Given** Beeper generates a revision
-**When** the SRE reviews it
-**Then** the SRE sees:
-- Original content
-- Proposed revision
-- Diff highlighting changes
-- "Apply" or "Revise further" options
+**Given** a runbook step that requires a cluster action (e.g., "increase memory limit")
+**When** the action is evaluated
+**Then** it is gated by the service's trust level and confidence threshold (from Epic 3)
+**And** at TL1-2, the interpreted steps are presented as advisory recommendations only
 
-**Given** the SRE approves the revision
-**When** applying the change
-**Then** the KB entry is updated
-**And** a new version is created with attribution
-**And** the correction is logged for learning
+**Given** a runbook execution in progress
+**When** a step fails or produces unexpected results
+**Then** execution halts and the SRE is notified with the failure context and remaining steps
 
-**Given** the revision needs adjustment
-**When** the SRE provides additional feedback
-**Then** Beeper refines the revision
-**And** the cycle continues until approved
+### Story 4.3: Advisory Test Plan Generation
 
-### Story 5.3: Learning from Diffs
-
-As **Beeper**,
-I want to learn from the diff between my documentation and human corrections,
-So that I improve my future investigations and documentation.
+As the **system**,
+I want to always produce an advisory test plan describing how to verify a hypothesis,
+So that even without a sandbox, SREs know exactly how to validate Beeper's conclusions.
 
 **Acceptance Criteria:**
 
-**Given** a human correction is applied
-**When** the diff is recorded
-**Then** Beeper analyzes the pattern of correction (FR20)
-**And** learns categories like:
-- Missing context I should have included
-- Incorrect correlations I made
-- Wrong conclusions from evidence
-- Unnecessary information I added
+**Given** an investigation that reaches a root cause hypothesis
+**When** the investigation conclusion is generated
+**Then** an advisory test plan is included with: hypothesis statement, verification steps, expected outcomes, and metrics to watch
+**And** the test plan is generated regardless of trust level or sandbox availability
 
-**Given** multiple corrections follow a pattern
-**When** Beeper detects the pattern
-**Then** investigation prompts are adjusted to address the gap
-**And** future investigations incorporate the learning
+**Given** an advisory test plan
+**When** displayed in the investigation detail view
+**Then** steps are numbered, actionable, and reference specific metrics/endpoints
+**And** the SRE can mark steps as completed or skipped
 
-**Given** a correction is for a specific service
-**When** learning is applied
-**Then** service-specific context is weighted in future investigations
-**And** the learning is scoped appropriately (not over-generalized)
+**Given** the advisory test plan
+**When** a sandbox environment is available (Story 4.5)
+**Then** the test plan can be promoted to automated sandbox execution
 
-**Given** learning is accumulated
-**When** reviewing Beeper's improvement
-**Then** SRE Leads can see:
-- Correction categories and frequencies
-- Areas where Beeper has improved
-- Remaining gaps in understanding
+### Story 4.4: Auto-PR Generation with Evidence Trail
 
-### Story 5.4: Graduated Authoring Trust
-
-As **Beeper**,
-I want to publish entries directly as trust is established,
-So that validated accurate documentation flows faster while maintaining quality.
+As the **system**,
+I want to generate auto-PRs with full evidence trails linking back to the investigation,
+So that code reviewers have complete context on why the fix is proposed and what evidence supports it.
 
 **Acceptance Criteria:**
 
-**Given** Beeper creates a new KB entry
-**When** trust level is "new" (default)
-**Then** the entry is marked "Draft - Awaiting Review" (FR23)
-**And** SRE must approve before it becomes active
+**Given** an investigation that identifies a code-level fix in a registered Repository
+**When** the fix is generated at TL3+ or manually approved
+**Then** a branch is created per the repository's branch_policy, the fix is committed, and a PR is opened
+**And** the PR description includes: investigation link, root cause analysis, log correlation evidence, production conditions at time of incident
 
-**Given** Beeper's entries for a service have high accuracy
-**When** trust metrics meet threshold (e.g., >90% accuracy over 10+ entries)
-**Then** trust level graduates to "trusted" for that service
-**And** future entries are published directly (still versioned)
+**Given** an auto-PR is created
+**When** the PR is viewed on the Git provider
+**Then** the audit trail is complete: anomaly → investigation → fix → PR
+**And** the PR is linked back to the investigation in Qdrant (FR30)
 
-**Given** trust level is "trusted"
-**When** Beeper publishes directly
-**Then** the entry is immediately visible
-**And** it's flagged as "Auto-published" for transparency
-**And** SREs can still review and correct
+**Given** an auto-PR for a service at TL3 (act with approval)
+**When** the PR is created
+**Then** the PR is marked as draft/WIP and the SRE is notified for review
+**And** at TL4-5, the PR is opened as ready for merge (per branch policy)
 
-**Given** a directly published entry is corrected
-**When** the correction is significant
-**Then** trust level may be re-evaluated
-**And** trust can be downgraded if accuracy drops
+### Story 4.5: Sandbox Test Execution
 
-**Given** trust levels exist
-**When** an SRE Lead views trust settings
-**Then** they see:
-- Per-service trust levels
-- Accuracy metrics backing the trust level
-- Option to manually adjust trust
-
----
-
-## Epic 6: Operations & Insights
-
-Admins can control LLM costs with spending caps, see which environments drive excessive costs, and team leads can view MTTR trends.
-
-### Story 6.1: MTTR Trends Dashboard
-
-As an **SRE Lead**,
-I want to view MTTR trends over time,
-So that I can measure Beeper's impact and report on reliability improvements.
+As the **system**,
+I want to design sandbox-specific tests and execute them in an isolated environment,
+So that fixes are validated before reaching production.
 
 **Acceptance Criteria:**
 
-**Given** investigations have been resolved
-**When** I navigate to the Metrics/Insights page
-**Then** I see MTTR (Mean Time To Resolution) trends (FR35)
-**And** the chart shows MTTR over configurable time periods (week, month, quarter)
+**Given** a sandbox namespace configured with NetworkPolicy isolation (NFR13)
+**When** a fix is ready for testing
+**Then** the fix is deployed to the sandbox namespace and sandbox-specific tests are executed
+**And** the sandbox has no access to production data or services (network-isolated)
 
-**Given** MTTR data is displayed
-**When** I view the dashboard
-**Then** I see:
-- Overall MTTR trend line
-- MTTR by service breakdown
-- MTTR by severity level
-- Comparison to baseline (pre-Beeper if available)
+**Given** sandbox test execution
+**When** the tests run
+**Then** results are captured with pass/fail status, logs, and metric comparisons
+**And** the results are attached to the investigation evidence trail
 
-**Given** I want to drill down
-**When** I click on a data point
-**Then** I see the investigations that contributed to that MTTR
-**And** I can navigate to individual investigations
+**Given** no sandbox environment is configured
+**When** a fix is generated
+**Then** only the advisory test plan (Story 4.3) is produced
+**And** the investigation notes "No sandbox available — manual verification recommended"
 
-**Given** MTTR is improving
-**When** viewing the dashboard
-**Then** improvement percentage is highlighted
-**And** I can export data for leadership reports
+### Story 4.6: Post-Fix Metric Verification
 
-**Given** specific services have different MTTR
-**When** I filter by service
-**Then** I see service-specific MTTR trends
-**And** I can identify services that need attention
-
-### Story 6.2: LLM Spending Caps
-
-As an **Admin**,
-I want to set spending caps and rate limits for LLM usage,
-So that I can control costs and prevent runaway spending.
+As the **system**,
+I want to verify that a fix resolves the issue by monitoring post-fix metrics,
+So that we have evidence-based confirmation that the problem is actually solved.
 
 **Acceptance Criteria:**
 
-**Given** I access the Admin settings
-**When** I configure LLM spending controls
-**Then** I can set (FR46):
-- Daily spending cap (e.g., $50/day)
-- Monthly spending cap (e.g., $500/month)
-- Rate limit (e.g., max 100 investigations/hour)
+**Given** a fix has been applied (either in sandbox or production at TL4-5)
+**When** the post-fix verification window elapses (configurable, default 15 minutes)
+**Then** the system compares pre-fix and post-fix metrics for the affected SLOs
+**And** verification result is: confirmed (metrics improved), inconclusive (no change), degraded (metrics worsened)
 
-**Given** spending caps are configured
-**When** the cap is approached (80% threshold)
-**Then** a warning is logged
-**And** the Admin is notified (via configured channel or UI alert)
+**Given** post-fix metrics show degradation
+**When** the verification result is "degraded"
+**Then** the autonomous action is rolled back within 60 seconds (NFR16, FR62)
+**And** the SRE is immediately notified with pre-fix and post-fix metric comparison
 
-**Given** spending cap is reached
-**When** a new investigation would exceed the cap
-**Then** investigation is queued or deprioritized
-**And** only critical/high-severity investigations proceed
-**And** clear messaging indicates cap enforcement
+**Given** post-fix metrics confirm resolution
+**When** the verification result is "confirmed"
+**Then** the investigation status moves to "verified" and the fix is marked as proven
+**And** the proven fix is eligible for KB accumulation (Story 4.8)
 
-**Given** rate limits are configured
-**When** investigation rate exceeds limit
-**Then** new investigations are throttled
-**And** backpressure is applied gracefully
+### Story 4.7: Trust-Gated Remediation Actions
 
-**Given** caps are enforced
-**When** I view the Admin dashboard
-**Then** I see:
-- Current spend vs. cap (progress bar)
-- Projected spend for period
-- Rate of consumption
-
-### Story 6.3: Cost Visibility & Alerts
-
-As an **Admin**,
-I want to see which environments or services drive excessive investigation costs,
-So that I can identify noisy systems and optimize Beeper's focus.
+As the **system**,
+I want remediation actions gated to the configured trust level and confidence tier,
+So that Beeper never exceeds the autonomy boundary an admin has set.
 
 **Acceptance Criteria:**
 
-**Given** investigations have run with LLM costs
-**When** I view the Cost Insights page
-**Then** I see cost breakdown by (FR47):
-- Service/namespace
-- Investigation type
-- Time period
-- LLM model tier used
+**Given** a remediation action (runbook step, auto-PR, sandbox deploy) for a service at TL1
+**When** the action is evaluated
+**Then** only advisory output is produced — no code changes, no cluster mutations
+**And** the advisory includes what Beeper would do at higher trust levels
 
-**Given** a service generates excessive costs
-**When** viewing the dashboard
-**Then** that service is flagged as "High Cost"
-**And** I see:
-- Total cost for service
-- Investigation count
-- Cost per investigation
-- Trend (increasing/stable/decreasing)
+**Given** a remediation action for a service at TL3 with confidence 0.82 and gate threshold 0.85
+**When** the confidence gate evaluates
+**Then** the action is blocked and presented as "requires manual approval" with confidence explanation
+**And** the SRE can one-click approve to override
 
-**Given** excessive cost is detected
-**When** thresholds are exceeded
-**Then** an alert surfaces in the UI
-**And** recommendation is provided:
-- "payments service generated $45 in LLM costs (3x average) - consider tuning anomaly thresholds"
+**Given** a remediation action for a service at TL5 with confidence above threshold
+**When** the action executes autonomously
+**Then** a notification is sent to the admin with action details
+**And** a rollback path is registered for the action (FR62)
 
-**Given** I identify a noisy environment
-**When** I want to take action
-**Then** I can:
-- Adjust anomaly detection sensitivity for that service
-- Exclude certain log patterns from investigation
-- Set service-specific rate limits
+### Story 4.8: Proven Fix Accumulation in KB
 
-**Given** cost data exists
-**When** I want to report
-**Then** I can export cost reports (CSV, JSON)
-**And** data includes model usage breakdown
+As the **system**,
+I want proven fixes accumulated in the KB for future reference,
+So that Beeper builds a library of verified solutions that compound over time.
+
+**Acceptance Criteria:**
+
+**Given** a fix that has been verified as "confirmed" (Story 4.6)
+**When** the KB accumulation process runs
+**Then** a KB entry is created with: fix description, root cause pattern, verification evidence, and link to the source investigation
+**And** the entry is tagged with validation_status: "proven" and the service name
+
+**Given** a future investigation on the same service with a similar anomaly pattern
+**When** the investigator searches the KB
+**Then** the proven fix entry is surfaced as a high-confidence recommendation
+**And** the recommendation includes the original verification evidence
+
+**Given** a proven fix entry in the KB
+**When** viewed by an SRE
+**Then** the full audit trail is navigable: anomaly → investigation → fix → PR → verification → KB entry
+
+## Epic 5: Real-Time Investigation Collaboration
+
+**Goal:** Teams can interact with Beeper during live investigations — annotating, redirecting, approving fixes in real-time. Shift handoffs happen in 30 seconds instead of 30 minutes.
+
+**FRs covered:** FR32, FR33, FR34, FR35, FR36, FR37
+**NFRs addressed:** NFR5, NFR2
+
+### Story 5.1: WebSocket Collaboration Channel
+
+As a **user**,
+I want to interact with Beeper in real-time during active investigations via WebSocket,
+So that I can collaborate with the AI agent as if it were a team member on a live call.
+
+**Acceptance Criteria:**
+
+**Given** a user opens an active investigation detail page
+**When** the page loads
+**Then** a Flask-SocketIO WebSocket connection is established for that investigation room
+**And** the connection uses the two-channel pattern: SocketIO for collaboration, SSE for all other real-time updates
+
+**Given** an active WebSocket connection to an investigation
+**When** the user sends a message (question, direction, comment)
+**Then** the message is delivered to all connected users within 500ms (NFR5)
+**And** Beeper processes the message and responds with relevant context
+
+**Given** the WebSocket connection drops (network issue, tab close)
+**When** the user reconnects
+**Then** message history is preserved and the user sees all messages since their last connection
+
+### Story 5.2: Evidence Presentation with References
+
+As the **system**,
+I want to present evidence with references to specific metrics, logs, and prior KB entries,
+So that SREs can verify Beeper's reasoning by clicking through to source data.
+
+**Acceptance Criteria:**
+
+**Given** an investigation step produces evidence (metric anomaly, log pattern, KB match)
+**When** the evidence is displayed in the investigation timeline
+**Then** each evidence item includes a clickable reference to the source (Prometheus query, Loki log line, KB entry ID)
+**And** hovering shows a preview; clicking navigates to the full source
+
+**Given** evidence references a prior KB entry
+**When** the KB entry is displayed inline
+**Then** the entry's validation status (proven/AI-generated/human-confirmed) is visible
+**And** the relevance score (semantic similarity) is shown
+
+**Given** an investigation with multiple evidence items
+**When** displayed in the timeline
+**Then** evidence is ordered chronologically with the investigation narrative
+**And** each item is tagged by type (metric, log, deploy, KB, config change)
+
+### Story 5.3: Investigation Annotation & Redirection
+
+As a **user**,
+I want to annotate, redirect, and comment on active investigations,
+So that I can steer Beeper's investigation when I have domain knowledge it lacks.
+
+**Acceptance Criteria:**
+
+**Given** an active investigation
+**When** a user adds an annotation (free-text comment)
+**Then** the annotation is attached to the current investigation step with user, timestamp, and context
+**And** all connected users see the annotation in real-time via WebSocket
+
+**Given** an active investigation heading in a wrong direction
+**When** a user sends a redirect command (e.g., "Focus on the database connection pool, not the API gateway")
+**Then** Beeper acknowledges the redirect, adjusts its investigation focus, and explains what changed
+**And** the redirect is logged in the investigation timeline as a human intervention
+
+**Given** investigation annotations and redirects
+**When** the investigation is later reviewed
+**Then** all human interventions are visible in the timeline, distinguished from Beeper's autonomous steps
+
+### Story 5.4: Fix Approval & Rejection
+
+As a **user**,
+I want to approve or reject Beeper-proposed fixes within my permission level,
+So that I maintain control over what changes are applied to my services.
+
+**Acceptance Criteria:**
+
+**Given** Beeper proposes a fix for a service at TL3 (act with approval)
+**When** the fix is presented in the investigation view
+**Then** "Approve" and "Reject" buttons are displayed with the fix details, evidence, and test plan
+**And** the approve action uses optimistic UI (immediate visual feedback, server confirmation follows)
+
+**Given** a user with role "user" approves a fix
+**When** the approval is submitted
+**Then** the fix proceeds to execution (auto-PR, sandbox test, or direct apply per trust level)
+**And** the approval is logged with user, timestamp, and the fix version approved
+
+**Given** a user rejects a fix
+**When** the rejection is submitted
+**Then** the investigation records the rejection with optional rejection reason
+**And** Beeper can propose an alternative approach if the user provides guidance
+
+### Story 5.5: Shift Handoff Summaries
+
+As a **user**,
+I want Beeper to generate shift handoff summaries with active investigations, resolved incidents, and items to watch,
+So that incoming SREs are productive in 30 seconds instead of spending 30 minutes catching up.
+
+**Acceptance Criteria:**
+
+**Given** a user requests a handoff summary (`/handoff` or via the UI at `/handoff`)
+**When** the summary is generated
+**Then** it includes: active investigations (status, last update, assigned), resolved incidents (past 8 hours), SLO status changes, and items to watch (elevated burn rates, pending fixes)
+**And** the summary is generated within 2 seconds (NFR2)
+
+**Given** the handoff summary
+**When** displayed in the UI
+**Then** each item is clickable to navigate to the full investigation or SLO detail
+**And** the summary can be copied to clipboard or sent to a Slack channel (if configured)
+
+**Given** no active investigations or incidents
+**When** a handoff summary is requested
+**Then** the summary reports "All clear" with current SLO compliance overview
+
+### Story 5.6: KB Entry Surfacing During Live Investigations
+
+As the **system**,
+I want to surface relevant past KB entries during live investigations,
+So that Beeper and the SRE can leverage institutional knowledge in real-time.
+
+**Acceptance Criteria:**
+
+**Given** an active investigation with identified symptoms
+**When** the investigator reaches the analysis phase
+**Then** semantically similar KB entries are retrieved and displayed as "Related Knowledge" in the investigation view
+**And** entries are ranked by relevance score and validation status (proven > human-confirmed > AI-generated)
+
+**Given** a surfaced KB entry during a live investigation
+**When** the SRE clicks on the entry
+**Then** the full KB entry is displayed with its evidence trail and prior investigation links
+**And** the SRE can flag the entry as "relevant" or "not relevant" to improve future surfacing
+
+**Given** no relevant KB entries exist
+**When** the KB search returns empty
+**Then** the investigation notes "No prior knowledge found — this may be a novel issue"
+**And** the investigation outcome is marked as a candidate for new KB entry creation
+
+## Epic 6: Knowledge & Signal Intelligence
+
+**Goal:** The KB compounds automatically from resolved investigations with bi-directional links. Beeper correlates anomalies with deploys, config changes, and service topology — building institutional knowledge that gets smarter over time.
+
+**FRs covered:** FR38, FR39, FR40, FR41, FR42, FR43, FR44, FR45, FR46
+**NFRs addressed:** NFR2, NFR20
+
+### Story 6.1: Automatic KB Entry Creation from Resolved Investigations
+
+As the **system**,
+I want to create KB entries automatically from resolved investigations,
+So that every investigation outcome contributes to Beeper's institutional knowledge without manual effort.
+
+**Acceptance Criteria:**
+
+**Given** an investigation transitions to "resolved" or "verified" status
+**When** the KB auto-creation process triggers
+**Then** a KB entry is created with: root cause summary, symptoms, evidence references, resolution steps, and affected service
+**And** the entry is tagged with validation_status: "AI-generated" and linked to the source investigation
+
+**Given** a resolved investigation that closely matches an existing KB entry
+**When** the auto-creation process evaluates similarity
+**Then** the existing entry is updated/enriched rather than creating a duplicate
+**And** the update is versioned in the `knowledge_versions` collection
+
+**Given** the KB has 10,000+ entries
+**When** semantic search is performed
+**Then** results return within 2 seconds (NFR20)
+
+### Story 6.2: Bi-Directional KB-Investigation Links
+
+As the **system**,
+I want KB entries linked bi-directionally to investigations and related entries,
+So that navigating between knowledge and incidents is seamless in both directions.
+
+**Acceptance Criteria:**
+
+**Given** a KB entry created from investigation #42
+**When** a user views the KB entry
+**Then** a "Source Investigation" link navigates to investigation #42
+**And** a "Related Entries" section lists semantically similar KB entries with relevance scores
+
+**Given** investigation #42 that produced a KB entry
+**When** a user views investigation #42
+**Then** a "Knowledge Created" link navigates to the resulting KB entry
+**And** "Related Knowledge" shows entries that were referenced during the investigation
+
+**Given** a KB entry is updated or corrected
+**When** the update is saved
+**Then** all bi-directional links are preserved and the link metadata includes the relationship type (source, related, supersedes)
+
+### Story 6.3: Per-Service Knowledge Views
+
+As a **user**,
+I want per-service knowledge views through service catalog integration,
+So that I can see all institutional knowledge related to a specific service in one place.
+
+**Acceptance Criteria:**
+
+**Given** a user navigates to a service detail page (`/services/{name}/knowledge`)
+**When** the page loads
+**Then** all KB entries tagged with that service are displayed, sorted by relevance and recency
+**And** entries are grouped by category (root causes, runbooks, proven fixes, patterns)
+
+**Given** the service knowledge view
+**When** filtered by validation status
+**Then** the user can view only "proven" entries, or only "AI-generated" entries needing review
+**And** entry counts per validation status are shown as filter badges
+
+**Given** a service with no KB entries
+**When** the knowledge view loads
+**Then** a helpful empty state is shown: "No knowledge entries yet — entries are created automatically as investigations resolve"
+
+### Story 6.4: KB Entry Validation Weighting
+
+As the **system**,
+I want KB entries weighted by validation status (human-confirmed, AI-generated, corrected),
+So that proven knowledge ranks higher than unverified AI conclusions.
+
+**Acceptance Criteria:**
+
+**Given** KB entries with different validation statuses
+**When** the investigator performs a semantic search for relevant knowledge
+**Then** results are ranked with weighting: proven (1.0x) > human-confirmed (0.9x) > corrected (0.8x) > AI-generated (0.6x)
+**And** the weighting is applied as a multiplier on the semantic similarity score
+
+**Given** an SRE confirms an AI-generated KB entry as accurate
+**When** the confirmation is recorded
+**Then** the entry's validation_status changes from "AI-generated" to "human-confirmed"
+**And** the change is versioned with the confirming user and timestamp
+
+**Given** an SRE corrects a KB entry
+**When** the correction is saved
+**Then** the validation_status changes to "corrected" with the original and corrected content preserved
+**And** future investigations referencing this entry see the corrected version
+
+### Story 6.5: KB Entry Review, Edit & Correction
+
+As a **user**,
+I want to review, edit, and correct Beeper's KB entries as a feedback mechanism,
+So that I can fix errors and improve the quality of Beeper's institutional knowledge.
+
+**Acceptance Criteria:**
+
+**Given** a user views a KB entry detail page (`/knowledge/{id}`)
+**When** the user clicks "Edit"
+**Then** an inline editor allows modifying the entry's content, tags, and category
+**And** the edit is saved as a new version in `knowledge_versions` with the editor and timestamp
+
+**Given** a user edits a KB entry
+**When** the edit is saved
+**Then** the validation_status is updated to "corrected" if content changed, or preserved if only tags changed
+**And** the `corrections` collection records the diff for learning purposes
+
+**Given** a KB entry with version history
+**When** a user clicks "History"
+**Then** all versions are displayed with diffs, authors, and timestamps
+**And** the user can revert to a previous version
+
+### Story 6.6: Unified Investigation Timeline
+
+As a **user**,
+I want a unified investigation timeline correlating logs, metrics, deploys, and K8s events,
+So that I can see the complete picture of what happened around an incident in one view.
+
+**Acceptance Criteria:**
+
+**Given** an investigation detail page
+**When** the timeline view loads
+**Then** events are displayed chronologically: metric anomalies, log patterns, K8s events (pod restarts, OOMs, scaling), deploy events, config changes
+**And** each event type has a distinct visual indicator (icon + color)
+
+**Given** a timeline with multiple event types
+**When** the user filters by event type (e.g., "deploys only")
+**Then** only matching events are shown while maintaining the time axis
+**And** the page responds within 2 seconds (NFR2)
+
+**Given** a timeline event
+**When** the user clicks on it
+**Then** the full event detail is shown inline (log content, metric graph, deploy diff, K8s event details)
+
+### Story 6.7: Deploy Correlation
+
+As the **system**,
+I want to correlate anomalies with recent deployments,
+So that SREs can immediately see if a deploy likely caused the issue.
+
+**Acceptance Criteria:**
+
+**Given** an anomaly detected on a service
+**When** the investigator analyzes the anomaly
+**Then** recent deployments to that service (within a configurable lookback window, default 1 hour) are retrieved
+**And** temporal correlation is calculated (e.g., "anomaly started 4 min after deploy #847")
+
+**Given** a deploy is correlated with an anomaly
+**When** the correlation is displayed in the investigation
+**Then** the deploy details are shown: commit hash, author, changed files, deploy timestamp
+**And** the correlation confidence is rated (strong: <5 min gap, moderate: 5-30 min, weak: 30-60 min)
+
+**Given** no recent deployments exist for the affected service
+**When** the deploy correlation check runs
+**Then** the investigation notes "No recent deployments found — likely not deploy-related"
+
+### Story 6.8: Service Dependency Topology
+
+As the **system**,
+I want to discover and display service dependency topology,
+So that SREs can understand blast radius and identify cascading failure paths.
+
+**Acceptance Criteria:**
+
+**Given** K8s service definitions and network traffic patterns
+**When** the topology discovery process runs
+**Then** service-to-service dependencies are identified and stored
+**And** the topology is refreshable on demand or via periodic background process
+
+**Given** a user navigates to the topology view (`/topology`)
+**When** the page loads
+**Then** services are displayed as a graph with dependency edges
+**And** services with active investigations or SLO breaches are highlighted
+
+**Given** an investigation on a specific service
+**When** the investigation detail shows dependencies
+**Then** upstream and downstream services are listed with their current health status
+**And** potential blast radius is indicated
+
+### Story 6.9: Change Event Ingestion & Correlation
+
+As the **system**,
+I want to ingest and correlate change events (config changes, scaling, DNS, certs),
+So that Beeper can identify non-deploy changes that may have caused anomalies.
+
+**Acceptance Criteria:**
+
+**Given** K8s watch events for ConfigMaps, Secrets, HPA scaling, Ingress/DNS, and cert-manager resources
+**When** a change event occurs
+**Then** the event is stored with: resource type, namespace, name, change diff, timestamp
+**And** the event is available for timeline correlation
+
+**Given** an anomaly under investigation
+**When** the investigator checks for correlated changes
+**Then** all change events within the lookback window for the affected service and its dependencies are surfaced
+**And** temporal correlation is calculated (same as deploy correlation)
+
+**Given** change events are accumulating
+**When** storage grows beyond the retention window (configurable, default 30 days)
+**Then** older events are pruned automatically
+
+## Epic 7: Developer Experience & Analytics
+
+**Goal:** Power users navigate with keyboard shortcuts and a command palette. Reliability scores, MTTR trends, and trust progression dashboards give leadership visibility. Diana gets investor-ready reports.
+
+**FRs covered:** FR47, FR48, FR49, FR50, FR51, FR52, FR53
+**NFRs addressed:** NFR2
+
+### Story 7.1: Command Palette & Keyboard Shortcuts
+
+As a **user**,
+I want to navigate the UI via keyboard shortcuts and a command palette (Cmd+K),
+So that I can work at speed without reaching for the mouse during incidents.
+
+**Acceptance Criteria:**
+
+**Given** a user presses Cmd+K (or Ctrl+K) anywhere in the UI
+**When** the command palette opens
+**Then** a search input with ARIA combobox role is displayed, matching commands and navigation targets as the user types
+**And** the palette closes on Escape or clicking outside
+
+**Given** the command palette is open
+**When** the user types a query (e.g., "inv" or "slo" or "hand")
+**Then** matching items are filtered in real-time: navigation targets, recent investigations, actions (e.g., "Request Handoff", "View SLO Dashboard")
+**And** the user can select with arrow keys + Enter
+
+**Given** keyboard shortcuts are defined for common actions
+**When** a user presses a shortcut (e.g., `g i` for go-to-investigations, `g s` for go-to-SLO, `?` for shortcut help)
+**Then** the action executes immediately
+**And** shortcuts are discoverable via the `?` help overlay and the command palette
+
+### Story 7.2: Investigation Workflow States
+
+As the **system**,
+I want to track investigations through workflow states (detected → investigating → resolved → verified),
+So that every investigation has a clear lifecycle and status is always unambiguous.
+
+**Acceptance Criteria:**
+
+**Given** a new anomaly triggers an investigation
+**When** the Investigation CRD is created
+**Then** the status is set to "detected" with a timestamp
+
+**Given** an investigation in "detected" status
+**When** the investigator begins analysis
+**Then** the status transitions to "investigating" with investigation start timestamp
+**And** invalid transitions (e.g., detected → verified) are rejected
+
+**Given** an investigation reaches a conclusion
+**When** the conclusion is recorded (root cause identified, fix proposed, or no action needed)
+**Then** the status transitions to "resolved" with resolution details
+**And** if post-fix verification confirms the fix (Story 4.6), the status transitions to "verified"
+
+**Given** the investigation list view
+**When** filtered by workflow state
+**Then** users can view investigations grouped by state with counts per state
+**And** state badges are color-coded (detected: yellow, investigating: blue, resolved: green, verified: purple)
+
+### Story 7.3: Remediation Progress Tracking
+
+As a **user**,
+I want to track remediation progress from detection through fix verification,
+So that I can see at a glance where each incident stands in the fix lifecycle.
+
+**Acceptance Criteria:**
+
+**Given** an investigation with an associated remediation action (auto-PR, runbook, sandbox test)
+**When** the user views the investigation detail
+**Then** a progress tracker shows the remediation pipeline: proposed → approved → testing → applied → verifying → verified/rolled-back
+**And** the current stage is highlighted with timestamps for completed stages
+
+**Given** the investigation list view
+**When** investigations have active remediations
+**Then** a remediation status badge is visible (e.g., "PR open", "sandbox testing", "verifying")
+**And** clicking the badge navigates to the remediation detail
+
+**Given** a remediation that was rolled back
+**When** the progress tracker displays
+**Then** the rollback stage is shown with the reason (metric degradation, manual rollback, timeout)
+**And** the pre-rollback and post-rollback metric comparison is accessible
+
+### Story 7.4: Per-Service Health Feeds
+
+As a **user**,
+I want to view per-service health feeds with recent investigations, SLO status, and trends,
+So that I can get a complete picture of any service's operational health in one view.
+
+**Acceptance Criteria:**
+
+**Given** a user navigates to a service health page (`/services/{name}`)
+**When** the page loads
+**Then** the feed shows: current SLO compliance, active investigations, recent resolved investigations (last 7 days), trust level, and reliability trend
+**And** the page responds within 2 seconds (NFR2)
+
+**Given** the service health feed
+**When** new investigation events occur for that service
+**Then** the feed updates via SSE without page reload
+**And** the feed uses ARIA feed role for accessibility
+
+**Given** the service list view (`/services`)
+**When** the page loads
+**Then** all services are listed with health summary badges (healthy/warning/critical based on SLO status)
+**And** services with active investigations are highlighted
+
+### Story 7.5: Reliability Score per Service
+
+As the **system**,
+I want to calculate a reliability score per service as a composite of SLO compliance, incident frequency, and MTTR,
+So that leadership can compare service reliability at a glance.
+
+**Acceptance Criteria:**
+
+**Given** a service with SLO data, investigation history, and resolution timestamps
+**When** the reliability score is calculated
+**Then** the score (0-100) is a weighted composite: SLO compliance (40%), incident frequency trend (30%), MTTR trend (30%)
+**And** the score is recalculated on a configurable interval (default: hourly)
+
+**Given** the service health page
+**When** the reliability score is displayed
+**Then** it includes the composite score, a trend indicator (improving/stable/declining), and a breakdown of contributing factors
+**And** the score uses ARIA meter role for accessibility
+
+**Given** the service list view
+**When** sorted by reliability score
+**Then** services are ranked from lowest to highest reliability
+**And** services below a configurable threshold (default: 70) are flagged with a warning indicator
+
+### Story 7.6: MTTR, Impact & Trust Trend Dashboards
+
+As a **user**,
+I want to view MTTR trends, customer impact trends, and trust progression dashboards,
+So that I can measure whether Beeper is making operations better over time.
+
+**Acceptance Criteria:**
+
+**Given** a user navigates to the analytics dashboard (`/analytics`)
+**When** the page loads
+**Then** three dashboard sections are displayed: MTTR trends, customer impact trends, and trust level progression
+**And** the page responds within 2 seconds (NFR2)
+
+**Given** the MTTR trends section
+**When** the user views the chart
+**Then** MTTR is plotted over time (weekly aggregation) for all services or filtered by service
+**And** the trend line shows improvement or degradation with percentage change
+
+**Given** the trust progression section
+**When** the user views trust level changes
+**Then** a timeline shows when services moved between trust levels (TL1→TL2, TL2→TL3, etc.)
+**And** the dashboard shows the distribution of services across trust levels
+
+### Story 7.7: Investor-Ready Reports
+
+As **Diana** (founder/CEO),
+I want investor-ready reports derived from Beeper's operational data,
+So that I can demonstrate Beeper's value with real metrics during fundraising conversations.
+
+**Acceptance Criteria:**
+
+**Given** Diana navigates to the reports page (`/reports/executive`)
+**When** the page loads
+**Then** a report is displayed with: total investigations resolved, MTTR improvement percentage, SLO compliance across all services, trust level progression, and false page reduction trend
+**And** the report is formatted for presentation (clean layout, exportable)
+
+**Given** the executive report
+**When** Diana clicks "Export PDF"
+**Then** a PDF is generated with the current report data, Beeper branding, and date range
+**And** the PDF is suitable for investor slide decks
+
+**Given** the executive report
+**When** filtered by time period (last 30 days, last 90 days, all time)
+**Then** all metrics recalculate for the selected period
+**And** comparison to previous period is shown (e.g., "MTTR improved 35% vs previous 90 days")
+
+## Epic 8: Investor Demo Platform
+
+**Goal:** Diana can run a scripted, repeatable demo that showcases the full detect → investigate → fix → prove lifecycle on a purpose-built chaotic application. 10 consecutive runs without failure.
+
+**FRs covered:** FR54, FR55, FR56, FR57
+**NFRs addressed:** NFR7, NFR18
+
+### Story 8.1: Chaotic Demo Application Deployment
+
+As an **admin**,
+I want to deploy a purpose-built chaotic microservices application in K8s alongside Beeper,
+So that there is a realistic target environment for demonstrating Beeper's capabilities.
+
+**Acceptance Criteria:**
+
+**Given** the `demo/` directory in the Beeper monorepo
+**When** an admin runs the demo deployment command (Helm install or `make demo-deploy`)
+**Then** a multi-service application is deployed in a dedicated namespace with: API gateway, backend service, database, and worker
+**And** each service has Prometheus metrics, structured logging, and ServiceLevel CRDs pre-configured
+
+**Given** the demo application is deployed
+**When** no faults are injected
+**Then** all services are healthy, SLOs are met, and the application serves synthetic traffic
+**And** the demo app does not interfere with Beeper's monitoring of real workloads
+
+**Given** the demo application
+**When** an admin runs `make demo-teardown`
+**Then** all demo resources are cleanly removed from the cluster with no orphaned resources
+
+### Story 8.2: Configurable Fault Injection
+
+As an **admin**,
+I want to trigger configurable fault injections (memory leak, bad deploy, cascading failure, scale-dependent issues),
+So that I can demonstrate specific failure scenarios during investor presentations.
+
+**Acceptance Criteria:**
+
+**Given** the demo application is running healthy
+**When** an admin triggers a fault via the demo CLI (`make demo-fault TYPE=memory-leak SERVICE=backend`)
+**Then** the specified fault is injected into the target service within 10 seconds
+**And** the fault manifests as observable symptoms (metrics degrade, logs show errors, SLO burn rate increases)
+
+**Given** configurable fault types
+**When** the available faults are listed
+**Then** at minimum: memory leak (gradual OOM), bad deploy (error rate spike), cascading failure (upstream → downstream), and scale-dependent latency (load-triggered)
+**And** each fault type has a description and expected Beeper response
+
+**Given** an active fault injection
+**When** the admin triggers fault recovery (`make demo-recover`)
+**Then** the fault is removed and the service returns to healthy state
+**And** recovery can also happen automatically when Beeper applies a fix (at appropriate trust level)
+
+### Story 8.3: Full Lifecycle Demonstration
+
+As the **system**,
+I want to demonstrate the full lifecycle: healthy → fault → detect → investigate → fix → prove → recover,
+So that investors can see Beeper's complete value proposition in a single continuous flow.
+
+**Acceptance Criteria:**
+
+**Given** the demo application is healthy and Beeper is monitoring it
+**When** a fault is injected
+**Then** Beeper detects the anomaly, starts an investigation, identifies root cause, proposes a fix, verifies resolution, and creates a KB entry
+**And** the full lifecycle completes in under 5 minutes (NFR7)
+
+**Given** the full lifecycle is running
+**When** viewed in the Beeper UI
+**Then** each stage is visible in real-time: detection alert → investigation timeline streaming → fix proposal → verification metrics → KB entry creation
+**And** the narrative is coherent and explainable to a non-technical audience
+
+**Given** the demo application's trust level
+**When** set to TL4 or TL5 for the demo
+**Then** Beeper acts autonomously through the full lifecycle without human intervention
+**And** each autonomous action is logged and visible in the UI for the audience
+
+### Story 8.4: Scripted Repeatable Demo Scenarios
+
+As **Diana**,
+I want scripted, repeatable demo scenarios for investor presentations,
+So that I can run a polished demo confidently without worrying about reliability or setup.
+
+**Acceptance Criteria:**
+
+**Given** a demo scenario script (e.g., `demo/scenarios/memory-leak.yaml`)
+**When** Diana runs `make demo-scenario SCENARIO=memory-leak`
+**Then** the scenario executes end-to-end: deploy (if needed) → healthy baseline → fault inject → wait for Beeper lifecycle → verify → cleanup
+**And** console output narrates each stage with timestamps and status
+
+**Given** a demo scenario
+**When** run 10 consecutive times
+**Then** all 10 runs complete successfully without failure (NFR18)
+**And** each run produces consistent results (same detection time range, same root cause, same fix type)
+
+**Given** multiple demo scenarios
+**When** listed via `make demo-list`
+**Then** available scenarios are shown with: name, description, duration estimate, and fault type
+**And** scenarios can be run in sequence for extended demos (`make demo-all`)
+
+**Given** the demo pytest harness
+**When** CI runs the demo test suite
+**Then** all scenarios pass as integration tests
+**And** failures produce clear diagnostics (which stage failed, logs, metric snapshots)

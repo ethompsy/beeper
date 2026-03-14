@@ -1,0 +1,1882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beeper v0.2.0 — Design Direction Mockups</title>
+<style>
+  :root {
+    --surface-base: #0f0f1a;
+    --surface-raised: #1a1a2e;
+    --surface-elevated: #252540;
+    --surface-hover: #2d2d4a;
+    --border-subtle: #333355;
+    --border-focus: #6366f1;
+    --primary: #6366f1;
+    --primary-hover: #818cf8;
+    --primary-muted: rgba(99,102,241,0.2);
+    --status-healthy: #22c55e;
+    --status-warning: #f59e0b;
+    --status-critical: #ef4444;
+    --status-info: #3b82f6;
+    --status-neutral: #6b7280;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: #060610;
+    color: var(--text-primary);
+    line-height: 1.5;
+  }
+
+  .showcase-header {
+    background: var(--surface-base);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 24px 40px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
+
+  .showcase-header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .showcase-header p {
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  .nav-tab {
+    padding: 8px 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+
+  .nav-tab:hover { background: var(--surface-hover); color: var(--text-primary); }
+  .nav-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+  .direction-section {
+    display: none;
+    padding: 32px 40px;
+  }
+
+  .direction-section.active { display: block; }
+
+  .direction-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .direction-subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  .direction-desc {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 24px;
+    max-width: 700px;
+  }
+
+  .mockup-frame {
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+    min-height: 600px;
+  }
+
+  /* ============================================================
+     SHARED MOCKUP COMPONENTS
+     ============================================================ */
+
+  .mock-topbar {
+    height: 48px;
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    font-size: 13px;
+  }
+
+  .mock-topbar .logo {
+    font-weight: 700;
+    color: var(--primary);
+    font-size: 15px;
+  }
+
+  .mock-topbar .breadcrumb {
+    color: var(--text-muted);
+  }
+
+  .mock-topbar .breadcrumb span { color: var(--text-secondary); }
+
+  .mock-topbar .spacer { flex: 1; }
+
+  .mock-topbar .cmd-k {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 4px 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mock-topbar .cmd-k kbd {
+    background: var(--surface-hover);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 11px;
+    font-family: inherit;
+  }
+
+  .mock-sidebar {
+    width: 220px;
+    background: var(--surface-raised);
+    border-right: 1px solid var(--border-subtle);
+    padding: 12px 8px;
+    font-size: 13px;
+  }
+
+  .mock-sidebar .nav-group-label {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 8px 12px 4px;
+  }
+
+  .mock-sidebar .nav-item {
+    padding: 6px 12px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mock-sidebar .nav-item:hover { background: var(--surface-hover); color: var(--text-primary); }
+  .mock-sidebar .nav-item.active { background: var(--primary-muted); color: var(--primary-hover); }
+
+  .mock-sidebar .nav-item .badge {
+    margin-left: auto;
+    background: var(--status-critical);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
+
+  .mock-statusbar {
+    height: 24px;
+    background: var(--surface-raised);
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+    gap: 16px;
+  }
+
+  .mock-statusbar .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--status-healthy);
+    display: inline-block;
+    margin-right: 4px;
+  }
+
+  .confidence-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    font-weight: 700;
+  }
+
+  .confidence-badge.high { color: var(--status-healthy); }
+  .confidence-badge.medium { color: var(--status-warning); }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .status-pill.awaiting { background: rgba(99,102,241,0.2); color: var(--primary-hover); }
+  .status-pill.investigating { background: rgba(59,130,246,0.2); color: var(--status-info); }
+  .status-pill.resolved { background: rgba(34,197,94,0.2); color: var(--status-healthy); }
+
+  .btn-approve {
+    background: var(--status-healthy);
+    color: #0a1a0a;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-approve:hover { filter: brightness(1.1); }
+
+  .btn-secondary {
+    background: var(--surface-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-secondary:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
+
+  /* ============================================================
+     DIRECTION 1: NARRATIVE FLOW
+     ============================================================ */
+
+  .d1-layout {
+    display: flex;
+    height: calc(100% - 72px);
+  }
+
+  .d1-main {
+    flex: 1;
+    padding: 24px 32px;
+    overflow-y: auto;
+    max-height: 560px;
+  }
+
+  .d1-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .d1-header h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+
+  .d1-header .meta {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  .d1-header .actions { display: flex; gap: 8px; align-items: flex-start; }
+
+  .d1-timeline { position: relative; padding-left: 24px; }
+
+  .d1-timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border-subtle);
+  }
+
+  .d1-step {
+    position: relative;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+  }
+
+  .d1-step::before {
+    content: '';
+    position: absolute;
+    left: -21px;
+    top: 16px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 2px solid var(--surface-base);
+  }
+
+  .d1-step.complete::before { background: var(--status-healthy); }
+  .d1-step.active::before { background: var(--status-info); box-shadow: 0 0 8px rgba(59,130,246,0.5); }
+
+  .d1-step-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .d1-step-title { font-size: 14px; font-weight: 600; }
+  .d1-step-time { font-size: 11px; color: var(--text-muted); }
+
+  .d1-step-body { font-size: 13px; color: var(--text-secondary); }
+
+  .d1-step-evidence {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--surface-base);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    border-left: 3px solid var(--primary);
+  }
+
+  .d1-step-cite {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--primary);
+    cursor: pointer;
+  }
+
+  .d1-action-panel {
+    margin-top: 24px;
+    padding: 16px 20px;
+    background: var(--surface-raised);
+    border: 2px solid var(--status-healthy);
+    border-radius: 8px;
+  }
+
+  .d1-action-panel h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+
+  .d1-action-panel .action-detail {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+
+  .d1-action-panel .action-buttons { display: flex; gap: 8px; }
+
+  /* ============================================================
+     DIRECTION 2: COMMAND CENTER
+     ============================================================ */
+
+  .d2-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr 320px;
+    height: calc(100% - 72px);
+  }
+
+  .d2-list {
+    background: var(--surface-raised);
+    border-right: 1px solid var(--border-subtle);
+    padding: 8px;
+    overflow-y: auto;
+    max-height: 560px;
+  }
+
+  .d2-list-item {
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    border-left: 3px solid transparent;
+  }
+
+  .d2-list-item:hover { background: var(--surface-hover); }
+  .d2-list-item.active { background: var(--surface-elevated); border-left-color: var(--primary); }
+  .d2-list-item.critical { border-left-color: var(--status-critical); }
+
+  .d2-list-item .li-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+  .d2-list-item .li-meta { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; }
+
+  .d2-detail {
+    padding: 20px 24px;
+    overflow-y: auto;
+    max-height: 560px;
+  }
+
+  .d2-detail-header { margin-bottom: 20px; }
+  .d2-detail-header h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+
+  .d2-detail-header .tags { display: flex; gap: 6px; margin-top: 8px; }
+
+  .d2-tag {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--surface-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .d2-evidence-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .d2-evidence-card {
+    padding: 12px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+  }
+
+  .d2-evidence-card .card-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    letter-spacing: 0.05em;
+  }
+
+  .d2-evidence-card .card-value {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .d2-panel {
+    background: var(--surface-raised);
+    border-left: 1px solid var(--border-subtle);
+    padding: 16px;
+    overflow-y: auto;
+    max-height: 560px;
+  }
+
+  .d2-panel h3 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    letter-spacing: 0.05em;
+  }
+
+  .d2-panel-item {
+    padding: 10px 12px;
+    background: var(--surface-base);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+
+  .d2-panel-item .pi-label { color: var(--text-muted); font-size: 11px; margin-bottom: 2px; }
+
+  /* ============================================================
+     DIRECTION 3: FOCUSED INCIDENT
+     ============================================================ */
+
+  .d3-layout {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 24px;
+    max-height: 560px;
+    overflow-y: auto;
+  }
+
+  .d3-hero {
+    text-align: center;
+    padding: 32px 0 24px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 24px;
+  }
+
+  .d3-hero .confidence-score {
+    font-size: 48px;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    color: var(--status-healthy);
+    margin-bottom: 4px;
+  }
+
+  .d3-hero .confidence-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  .d3-hero h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+
+  .d3-hero .service {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .d3-approve-bar {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    background: var(--surface-raised);
+    border-radius: 8px;
+    margin-bottom: 24px;
+    border: 1px solid var(--border-subtle);
+  }
+
+  .d3-approve-bar .approve-context {
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: left;
+    flex: 1;
+  }
+
+  .d3-approve-bar .btn-approve {
+    padding: 12px 32px;
+    font-size: 15px;
+  }
+
+  .d3-section { margin-bottom: 20px; }
+
+  .d3-section h3 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+  }
+
+  .d3-finding {
+    padding: 12px 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+
+  .d3-finding .finding-text { font-size: 14px; margin-bottom: 4px; }
+
+  .d3-finding .finding-cite {
+    font-size: 12px;
+    color: var(--primary);
+    cursor: pointer;
+  }
+
+  /* ============================================================
+     DIRECTION 4: OPERATIONS DASHBOARD
+     ============================================================ */
+
+  .d4-layout {
+    display: flex;
+    height: calc(100% - 72px);
+  }
+
+  .d4-main {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    max-height: 560px;
+  }
+
+  .d4-top-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .d4-stat {
+    padding: 12px 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+  }
+
+  .d4-stat .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .d4-stat .stat-value { font-size: 24px; font-weight: 700; font-family: 'JetBrains Mono', 'SF Mono', monospace; }
+
+  .d4-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .d4-card {
+    padding: 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+  }
+
+  .d4-card h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  .d4-card .mini-timeline-item {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+
+  .d4-card .mini-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+
+  .d4-card .log-line {
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 4px 8px;
+    background: var(--surface-base);
+    border-radius: 3px;
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .d4-sparkline {
+    height: 32px;
+    background: linear-gradient(to right, var(--status-healthy), var(--status-healthy) 60%, var(--status-critical) 65%, var(--status-warning) 80%, var(--status-healthy));
+    border-radius: 4px;
+    opacity: 0.6;
+    margin-top: 8px;
+  }
+
+  /* ============================================================
+     DIRECTION 5: SPLIT EVIDENCE
+     ============================================================ */
+
+  .d5-layout {
+    display: flex;
+    height: calc(100% - 72px);
+  }
+
+  .d5-left {
+    flex: 1;
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .d5-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .d5-pane-header {
+    padding: 12px 16px;
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .d5-pane-content {
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1;
+    max-height: 520px;
+  }
+
+  .d5-narrative-step {
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    background: var(--surface-raised);
+    border-radius: 6px;
+    border-left: 3px solid var(--primary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .d5-narrative-step:hover { background: var(--surface-hover); }
+  .d5-narrative-step.selected { border-left-color: var(--status-healthy); background: var(--surface-elevated); }
+
+  .d5-narrative-step .ns-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+  .d5-narrative-step .ns-summary { font-size: 12px; color: var(--text-secondary); }
+
+  .d5-evidence-detail {
+    padding: 16px;
+    background: var(--surface-raised);
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
+    margin-bottom: 12px;
+  }
+
+  .d5-evidence-detail h4 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+
+  .d5-evidence-detail .raw-data {
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 10px 12px;
+    background: var(--surface-base);
+    border-radius: 4px;
+    margin-top: 8px;
+    white-space: pre-wrap;
+    line-height: 1.6;
+  }
+
+  /* ============================================================
+     DIRECTION 6: PROGRESSIVE CONTEXT
+     ============================================================ */
+
+  .d6-layout {
+    display: flex;
+    height: calc(100% - 72px);
+  }
+
+  .d6-main {
+    flex: 1;
+    padding: 24px;
+    overflow-y: auto;
+    max-height: 560px;
+  }
+
+  .d6-summary-card {
+    padding: 20px 24px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 20px;
+    align-items: center;
+  }
+
+  .d6-confidence-ring {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 4px solid var(--status-healthy);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    color: var(--status-healthy);
+    position: relative;
+  }
+
+  .d6-summary-text h2 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .d6-summary-text p { font-size: 13px; color: var(--text-secondary); }
+
+  .d6-summary-text .summary-meta {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .d6-expand-section {
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .d6-expand-header {
+    padding: 12px 16px;
+    background: var(--surface-raised);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .d6-expand-header:hover { background: var(--surface-hover); }
+
+  .d6-expand-header .expand-icon {
+    color: var(--text-muted);
+    font-size: 12px;
+    transition: transform 0.15s;
+  }
+
+  .d6-expand-body {
+    padding: 16px;
+    border-top: 1px solid var(--border-subtle);
+    background: var(--surface-base);
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: none;
+  }
+
+  .d6-expand-section.open .d6-expand-body { display: block; }
+  .d6-expand-section.open .expand-icon { transform: rotate(90deg); }
+
+  .d6-expand-body .evidence-row {
+    display: flex;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    align-items: flex-start;
+  }
+
+  .d6-expand-body .evidence-row:last-child { border-bottom: none; }
+
+  .d6-expand-body .ev-icon { font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+
+  .pros-cons {
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .pros-cons .col h4 {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--status-healthy);
+  }
+
+  .pros-cons .col.cons h4 { color: var(--status-warning); }
+
+  .pros-cons .col ul {
+    list-style: none;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .pros-cons .col li {
+    padding: 4px 0;
+    padding-left: 16px;
+    position: relative;
+  }
+
+  .pros-cons .col li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--text-muted);
+  }
+
+  /* comparison view */
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    padding: 32px 40px;
+  }
+
+  .comparison-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 20px;
+  }
+
+  .comparison-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .comparison-card .cc-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+
+  .comparison-card .trait {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 13px;
+  }
+
+  .comparison-card .trait:last-child { border-bottom: none; }
+  .comparison-card .trait .trait-label { color: var(--text-secondary); }
+  .comparison-card .trait .trait-value { font-weight: 500; }
+
+  .comparison-card .best-for {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: var(--primary-muted);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--primary-hover);
+  }
+</style>
+</head>
+<body>
+
+<div class="showcase-header">
+  <h1>Beeper v0.2.0 — Design Direction Mockups</h1>
+  <p>Investigation detail view — the make-or-break screen. Each direction explores a different approach to: "Watch Beeper investigate, trust the evidence, approve in one click."</p>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showDirection('d1')">1. Narrative Flow</div>
+    <div class="nav-tab" onclick="showDirection('d2')">2. Command Center</div>
+    <div class="nav-tab" onclick="showDirection('d3')">3. Focused Incident</div>
+    <div class="nav-tab" onclick="showDirection('d4')">4. Ops Dashboard</div>
+    <div class="nav-tab" onclick="showDirection('d5')">5. Split Evidence</div>
+    <div class="nav-tab" onclick="showDirection('d6')">6. Progressive Context</div>
+    <div class="nav-tab" onclick="showDirection('compare')">Compare All</div>
+  </div>
+</div>
+
+<!-- ============================================================
+     DIRECTION 1: NARRATIVE FLOW
+     ============================================================ -->
+<div id="d1" class="direction-section active">
+  <div class="direction-title">Direction 1: Narrative Flow</div>
+  <div class="direction-subtitle">Investigation as a story — vertical timeline, streaming narrative, sidebar navigation</div>
+  <div class="direction-desc">The investigation unfolds as a chronological narrative. Each step is a chapter with findings, evidence citations, and confidence contributions. Inspired by Claude Code's streaming reasoning. The story builds trust progressively.</div>
+
+  <div class="mockup-frame">
+    <div class="mock-topbar">
+      <span class="logo">BEEPER</span>
+      <span class="breadcrumb">Investigations <span>/ payment-service / INV-2847</span></span>
+      <span class="spacer"></span>
+      <span class="cmd-k">Search... <kbd>⌘K</kbd></span>
+    </div>
+    <div class="d1-layout">
+      <div class="mock-sidebar">
+        <div class="nav-group-label">Incident Mode</div>
+        <div class="nav-item active">Investigations <span class="badge">2</span></div>
+        <div class="nav-item">Handoff Summary</div>
+        <div class="nav-group-label">Learning Mode</div>
+        <div class="nav-item">Dashboard</div>
+        <div class="nav-item">Knowledge Base</div>
+        <div class="nav-item">SLO Status</div>
+        <div class="nav-item">Trust Config</div>
+        <div class="nav-item">Notifications</div>
+        <div class="nav-item">Analytics</div>
+        <div class="nav-item">Sources</div>
+      </div>
+      <div class="d1-main">
+        <div class="d1-header">
+          <div>
+            <h2>Memory leak in payment-service pod</h2>
+            <div class="meta">
+              <span class="status-pill awaiting">Awaiting Approval</span>
+              <span>payment-service</span>
+              <span>Started 4m ago</span>
+              <span class="confidence-badge high">94%</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn-approve">Approve Fix</button>
+            <button class="btn-secondary">Reject</button>
+            <button class="btn-secondary">Escalate</button>
+          </div>
+        </div>
+
+        <div class="d1-timeline">
+          <div class="d1-step complete">
+            <div class="d1-step-header">
+              <span class="d1-step-title">Anomaly detected — memory utilization spike</span>
+              <span class="d1-step-time">4m ago</span>
+            </div>
+            <div class="d1-step-body">payment-service pod memory crossed 85% threshold (normal: 45-55%). Rate of increase suggests leak rather than load spike.</div>
+            <div class="d1-step-evidence">container_memory_usage_bytes{pod="payment-svc-7d4f8"} = 1.82GB (limit: 2GB)</div>
+            <div class="d1-step-cite">Source: Prometheus query &bull; payment-service metrics</div>
+          </div>
+
+          <div class="d1-step complete">
+            <div class="d1-step-header">
+              <span class="d1-step-title">Log pattern match — connection pool exhaustion</span>
+              <span class="d1-step-time">3m ago</span>
+            </div>
+            <div class="d1-step-body">Found 847 instances of "connection pool timeout" in last 15 minutes. Pattern matches KB entry KB-0142 (prior incident 2026-02-19).</div>
+            <div class="d1-step-evidence">ERROR [payment.db] Connection pool timeout after 30000ms — active: 50/50</div>
+            <div class="d1-step-cite">Source: Loki LogQL &bull; KB match: KB-0142 (95% similarity)</div>
+          </div>
+
+          <div class="d1-step complete">
+            <div class="d1-step-header">
+              <span class="d1-step-title">Root cause identified — connection leak in retry logic</span>
+              <span class="d1-step-time">2m ago</span>
+            </div>
+            <div class="d1-step-body">Correlating memory growth rate with connection pool errors. Prior KB entry confirms: retry handler creates new connections without releasing failed ones. Fix: restart pod to clear pool, then apply config patch.</div>
+          </div>
+
+          <div class="d1-step active">
+            <div class="d1-step-header">
+              <span class="d1-step-title">Sandbox verification — pod restart resolves</span>
+              <span class="d1-step-time">1m ago</span>
+            </div>
+            <div class="d1-step-body">Sandbox test completed. Pod restart cleared connection pool. Memory returned to 48% within 90 seconds. SLO recovery confirmed.</div>
+            <div class="d1-step-evidence">✓ Memory: 1.82GB → 0.98GB (90s)  ✓ Connections: 50/50 → 12/50  ✓ Error rate: 0</div>
+            <div class="d1-step-cite">Source: Sandbox verification &bull; Test ID: SBX-9981</div>
+          </div>
+        </div>
+
+        <div class="d1-action-panel">
+          <h3>Proposed Action: Rolling restart of payment-service</h3>
+          <div class="action-detail">Restart payment-service pods sequentially (zero-downtime). Connection pool will be cleared, memory will return to baseline. Verified in sandbox — recovery in 90 seconds.</div>
+          <div class="action-buttons">
+            <button class="btn-approve">Approve: Restart pods (94% confidence, sandbox-verified)</button>
+            <button class="btn-secondary">Reject</button>
+            <button class="btn-secondary">Annotate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-statusbar">
+      <span><span class="dot"></span> Connected</span>
+      <span>2 active investigations</span>
+      <span>WebSocket: live</span>
+      <span class="spacer"></span>
+      <span>j/k: scroll &bull; a: approve &bull; r: reject &bull; e: escalate</span>
+    </div>
+  </div>
+
+  <div class="pros-cons">
+    <div class="col">
+      <h4>Strengths</h4>
+      <ul>
+        <li>Investigation story unfolds naturally — trust builds with each step</li>
+        <li>Citations visible inline — evidence is always one glance away</li>
+        <li>Streaming-friendly — new steps append naturally</li>
+        <li>Maps directly to "investigation as narrative" principle</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h4>Trade-offs</h4>
+      <ul>
+        <li>Vertical scrolling for long investigations</li>
+        <li>Less information density than grid layouts</li>
+        <li>Correlation between signals less visually explicit</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     DIRECTION 2: COMMAND CENTER
+     ============================================================ -->
+<div id="d2" class="direction-section">
+  <div class="direction-title">Direction 2: Command Center</div>
+  <div class="direction-subtitle">Three-panel layout — investigation list / detail / context panel</div>
+  <div class="direction-desc">Inspired by VS Code and email clients. Left panel lists investigations, center shows detail, right panel shows contextual information (KB matches, related incidents, metrics). Power users see everything at once.</div>
+
+  <div class="mockup-frame">
+    <div class="mock-topbar">
+      <span class="logo">BEEPER</span>
+      <span class="breadcrumb">Investigations</span>
+      <span class="spacer"></span>
+      <span class="cmd-k">Search... <kbd>⌘K</kbd></span>
+    </div>
+    <div class="d2-layout">
+      <div class="d2-list">
+        <div class="d2-list-item active critical">
+          <div class="li-title">Memory leak — payment-service</div>
+          <div class="li-meta"><span class="confidence-badge high" style="font-size:11px">94%</span> <span>4m</span></div>
+        </div>
+        <div class="d2-list-item">
+          <div class="li-title">Latency spike — auth-service</div>
+          <div class="li-meta"><span class="confidence-badge medium" style="font-size:11px">67%</span> <span>12m</span></div>
+        </div>
+        <div class="d2-list-item">
+          <div class="li-title">Error rate — api-gateway</div>
+          <div class="li-meta"><span style="font-size:11px;color:var(--status-healthy)">Resolved</span> <span>2h</span></div>
+        </div>
+        <div class="d2-list-item">
+          <div class="li-title">CPU throttling — worker-pool</div>
+          <div class="li-meta"><span style="font-size:11px;color:var(--status-healthy)">Resolved</span> <span>6h</span></div>
+        </div>
+      </div>
+      <div class="d2-detail">
+        <div class="d2-detail-header">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <h2>Memory leak in payment-service pod</h2>
+              <div class="tags">
+                <span class="status-pill awaiting">Awaiting Approval</span>
+                <span class="d2-tag">payment-service</span>
+                <span class="d2-tag">memory</span>
+                <span class="d2-tag">TL3</span>
+              </div>
+            </div>
+            <span class="confidence-badge high" style="font-size:28px">94%</span>
+          </div>
+        </div>
+
+        <div class="d2-evidence-grid">
+          <div class="d2-evidence-card">
+            <div class="card-label">Root Cause</div>
+            <div class="card-value">Connection pool leak in retry handler</div>
+          </div>
+          <div class="d2-evidence-card">
+            <div class="card-label">Proposed Fix</div>
+            <div class="card-value">Rolling pod restart</div>
+          </div>
+          <div class="d2-evidence-card">
+            <div class="card-label">Sandbox Result</div>
+            <div class="card-value" style="color:var(--status-healthy)">Verified — 90s recovery</div>
+          </div>
+          <div class="d2-evidence-card">
+            <div class="card-label">SLO Impact</div>
+            <div class="card-value" style="color:var(--status-warning)">99.9% → 99.7% (at risk)</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <button class="btn-approve">Approve: Restart pods</button>
+          <button class="btn-secondary">Reject</button>
+          <button class="btn-secondary">Escalate</button>
+          <button class="btn-secondary">Annotate</button>
+        </div>
+
+        <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:8px;letter-spacing:0.05em">Evidence Timeline</div>
+        <div class="d2-panel-item">
+          <div class="pi-label">4m ago — Anomaly Detection</div>
+          Memory utilization 85% (threshold: 80%). Rate: +2.1%/min.
+        </div>
+        <div class="d2-panel-item">
+          <div class="pi-label">3m ago — Log Pattern Match</div>
+          847x "connection pool timeout" in 15m. KB-0142 match (95%).
+        </div>
+        <div class="d2-panel-item">
+          <div class="pi-label">2m ago — Root Cause Analysis</div>
+          Retry handler connection leak confirmed via correlation.
+        </div>
+      </div>
+      <div class="d2-panel">
+        <h3>KB Matches</h3>
+        <div class="d2-panel-item">
+          <div class="pi-label">KB-0142 (95% match)</div>
+          Connection pool exhaustion — payment-service. Resolved 2026-02-19 via pod restart + config patch.
+        </div>
+        <div class="d2-panel-item">
+          <div class="pi-label">KB-0089 (72% match)</div>
+          Memory leak pattern — generic. Retry handlers creating orphaned connections.
+        </div>
+
+        <h3 style="margin-top:16px">Related Metrics</h3>
+        <div class="d2-panel-item">
+          <div class="pi-label">Memory Usage</div>
+          <div class="d4-sparkline" style="height:24px"></div>
+        </div>
+        <div class="d2-panel-item">
+          <div class="pi-label">Connection Pool</div>
+          <div style="font-family:monospace;font-size:12px">50/50 (saturated)</div>
+        </div>
+
+        <h3 style="margin-top:16px">Service Info</h3>
+        <div class="d2-panel-item">
+          <div class="pi-label">Trust Level</div>
+          TL3 — Act with Approval
+        </div>
+        <div class="d2-panel-item">
+          <div class="pi-label">SLO Target</div>
+          99.9% availability
+        </div>
+      </div>
+    </div>
+    <div class="mock-statusbar">
+      <span><span class="dot"></span> Connected</span>
+      <span>2 active investigations</span>
+      <span class="spacer"></span>
+      <span>↑↓: select &bull; Enter: view &bull; a: approve &bull; ⌘K: search</span>
+    </div>
+  </div>
+
+  <div class="pros-cons">
+    <div class="col">
+      <h4>Strengths</h4>
+      <ul>
+        <li>Maximum information density — everything visible simultaneously</li>
+        <li>Quick switching between investigations via list panel</li>
+        <li>Context panel provides KB/metrics without leaving the view</li>
+        <li>Familiar to VS Code / email client users</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h4>Trade-offs</h4>
+      <ul>
+        <li>Three panels may feel crowded on smaller laptops</li>
+        <li>Investigation narrative is compressed — less story, more data</li>
+        <li>More cognitive load upfront than progressive disclosure</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     DIRECTION 3: FOCUSED INCIDENT
+     ============================================================ -->
+<div id="d3" class="direction-section">
+  <div class="direction-title">Direction 3: Focused Incident</div>
+  <div class="direction-subtitle">Confidence-first, single column, maximum clarity — the PagerDuty-meets-evidence approach</div>
+  <div class="direction-desc">Strip away everything except what matters. Giant confidence score at top, clear proposed action, evidence sections below. No sidebar, no panels — just the decision. Designed for Sam at 3am: open, scan, approve, close.</div>
+
+  <div class="mockup-frame">
+    <div class="mock-topbar">
+      <span class="logo">BEEPER</span>
+      <span class="breadcrumb">Investigations <span>/ INV-2847</span></span>
+      <span class="spacer"></span>
+      <span class="cmd-k">Search... <kbd>⌘K</kbd></span>
+      <button class="btn-secondary" style="padding:4px 12px;font-size:12px">Back to list</button>
+    </div>
+    <div class="d3-layout">
+      <div class="d3-hero">
+        <div class="confidence-score">94%</div>
+        <div class="confidence-label">Confidence Score &bull; Sandbox Verified</div>
+        <h2>Memory leak in payment-service pod</h2>
+        <div class="service">payment-service &bull; TL3 &bull; Started 4 minutes ago</div>
+      </div>
+
+      <div class="d3-approve-bar">
+        <div class="approve-context">
+          <strong>Proposed: Rolling restart of payment-service</strong><br>
+          Sandbox verified — memory recovered to 48% in 90s. Zero-downtime restart.
+        </div>
+        <button class="btn-approve">Approve</button>
+        <button class="btn-secondary">Reject</button>
+      </div>
+
+      <div class="d3-section">
+        <h3>Evidence (4 findings)</h3>
+        <div class="d3-finding">
+          <div class="finding-text">Memory utilization at 85%, crossing 80% threshold. Growth rate +2.1%/min indicates leak, not load.</div>
+          <div class="finding-cite">Prometheus: container_memory_usage_bytes &bull; 4m ago</div>
+        </div>
+        <div class="d3-finding">
+          <div class="finding-text">847 "connection pool timeout" errors in 15 minutes. Pool saturated at 50/50 connections.</div>
+          <div class="finding-cite">Loki LogQL: payment-service errors &bull; 3m ago</div>
+        </div>
+        <div class="d3-finding">
+          <div class="finding-text">Pattern matches KB-0142: connection pool exhaustion caused by retry handler leak. Prior resolution: pod restart + config patch.</div>
+          <div class="finding-cite">Knowledge Base: KB-0142 (95% similarity) &bull; 2m ago</div>
+        </div>
+        <div class="d3-finding">
+          <div class="finding-text">Sandbox test passed. Pod restart cleared pool, memory dropped from 1.82GB to 0.98GB in 90 seconds.</div>
+          <div class="finding-cite">Sandbox: SBX-9981 &bull; 1m ago</div>
+        </div>
+      </div>
+
+      <div class="d3-section">
+        <h3>Confidence Breakdown</h3>
+        <div class="d3-finding" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
+          <span>Metric correlation</span>
+          <span style="color:var(--status-healthy);font-weight:600">High</span>
+        </div>
+        <div class="d3-finding" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
+          <span>Log pattern match</span>
+          <span style="color:var(--status-healthy);font-weight:600">High</span>
+        </div>
+        <div class="d3-finding" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
+          <span>KB precedent</span>
+          <span style="color:var(--status-warning);font-weight:600">Medium</span>
+        </div>
+        <div class="d3-finding" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
+          <span>Sandbox verification</span>
+          <span style="color:var(--status-healthy);font-weight:600">Pass</span>
+        </div>
+      </div>
+    </div>
+    <div class="mock-statusbar">
+      <span><span class="dot"></span> Connected</span>
+      <span class="spacer"></span>
+      <span>a: approve &bull; r: reject &bull; e: escalate &bull; ⌘K: search</span>
+    </div>
+  </div>
+
+  <div class="pros-cons">
+    <div class="col">
+      <h4>Strengths</h4>
+      <ul>
+        <li>Absolute clarity — decision is immediate and unambiguous</li>
+        <li>Confidence score is the first thing you see — trust at a glance</li>
+        <li>Minimal cognitive load — perfect for 3am urgent response</li>
+        <li>Clean, cinematic — great for demo mode</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h4>Trade-offs</h4>
+      <ul>
+        <li>No investigation list — requires separate navigation to switch</li>
+        <li>Streaming narrative less visible — findings feel static</li>
+        <li>Less context (no KB panel, no related metrics sidebar)</li>
+        <li>May feel too simple for Alex's deep analysis sessions</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     DIRECTION 4: OPERATIONS DASHBOARD
+     ============================================================ -->
+<div id="d4" class="direction-section">
+  <div class="direction-title">Direction 4: Operations Dashboard</div>
+  <div class="direction-subtitle">Datadog-inspired — metrics-dense, grid layout, sparklines and status tiles</div>
+  <div class="direction-desc">Everything on one screen. Stat tiles at top, evidence and timeline in a grid below. Maximizes information density for users who want all the data visible at once. Best for Alex's deep analysis sessions and Priya's SLO monitoring.</div>
+
+  <div class="mockup-frame">
+    <div class="mock-topbar">
+      <span class="logo">BEEPER</span>
+      <span class="breadcrumb">Investigations <span>/ INV-2847</span></span>
+      <span class="spacer"></span>
+      <span class="cmd-k">Search... <kbd>⌘K</kbd></span>
+    </div>
+    <div class="d4-layout">
+      <div class="mock-sidebar">
+        <div class="nav-group-label">Incident Mode</div>
+        <div class="nav-item active">Investigations <span class="badge">2</span></div>
+        <div class="nav-item">Handoff</div>
+        <div class="nav-group-label">Learning Mode</div>
+        <div class="nav-item">SLO Dashboard</div>
+        <div class="nav-item">Knowledge Base</div>
+        <div class="nav-item">Trust Config</div>
+        <div class="nav-item">Analytics</div>
+        <div class="nav-item">Sources</div>
+        <div class="nav-item">Notifications</div>
+      </div>
+      <div class="d4-main">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div>
+            <span style="font-size:16px;font-weight:600">Memory leak — payment-service</span>
+            <span class="status-pill awaiting" style="margin-left:8px">Awaiting Approval</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-approve">Approve: Restart pods</button>
+            <button class="btn-secondary">Reject</button>
+          </div>
+        </div>
+
+        <div class="d4-top-row">
+          <div class="d4-stat">
+            <div class="stat-label">Confidence</div>
+            <div class="stat-value" style="color:var(--status-healthy)">94%</div>
+          </div>
+          <div class="d4-stat">
+            <div class="stat-label">Memory</div>
+            <div class="stat-value" style="color:var(--status-critical)">85%</div>
+          </div>
+          <div class="d4-stat">
+            <div class="stat-label">Pool Usage</div>
+            <div class="stat-value" style="color:var(--status-critical)">50/50</div>
+          </div>
+          <div class="d4-stat">
+            <div class="stat-label">Error Rate</div>
+            <div class="stat-value" style="color:var(--status-warning)">4.2%</div>
+          </div>
+        </div>
+
+        <div class="d4-grid">
+          <div class="d4-card">
+            <h3>Investigation Timeline</h3>
+            <div class="mini-timeline-item">
+              <div class="mini-dot" style="background:var(--status-healthy)"></div>
+              <div>
+                <div>Anomaly detected — memory spike</div>
+                <div style="font-size:11px;color:var(--text-muted)">4m ago</div>
+              </div>
+            </div>
+            <div class="mini-timeline-item">
+              <div class="mini-dot" style="background:var(--status-healthy)"></div>
+              <div>
+                <div>Log pattern match — pool exhaustion</div>
+                <div style="font-size:11px;color:var(--text-muted)">3m ago</div>
+              </div>
+            </div>
+            <div class="mini-timeline-item">
+              <div class="mini-dot" style="background:var(--status-healthy)"></div>
+              <div>
+                <div>Root cause — retry handler leak</div>
+                <div style="font-size:11px;color:var(--text-muted)">2m ago</div>
+              </div>
+            </div>
+            <div class="mini-timeline-item">
+              <div class="mini-dot" style="background:var(--status-info)"></div>
+              <div>
+                <div>Sandbox verified — 90s recovery</div>
+                <div style="font-size:11px;color:var(--text-muted)">1m ago</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d4-card">
+            <h3>Memory Utilization</h3>
+            <div class="d4-sparkline" style="height:40px"></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:4px">
+              <span>-30m</span><span>anomaly window</span><span>now</span>
+            </div>
+          </div>
+
+          <div class="d4-card">
+            <h3>Matching Log Lines</h3>
+            <div class="log-line">ERROR [payment.db] Connection pool timeout after 30000ms</div>
+            <div class="log-line">ERROR [payment.db] Connection pool timeout after 30000ms</div>
+            <div class="log-line">WARN [payment.retry] Creating new connection (attempt 3/5)</div>
+            <div class="log-line">ERROR [payment.db] Connection pool exhausted — 50/50</div>
+            <div style="font-size:11px;color:var(--primary);margin-top:8px;cursor:pointer">View all 847 matches →</div>
+          </div>
+
+          <div class="d4-card">
+            <h3>KB Match: KB-0142</h3>
+            <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Connection pool exhaustion — payment-service. Same root cause resolved 2026-02-19.</div>
+            <div style="font-size:12px;color:var(--text-muted)">Similarity: 95% &bull; Resolution: pod restart + config patch</div>
+            <div style="font-size:12px;color:var(--primary);margin-top:8px;cursor:pointer">View full KB entry →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-statusbar">
+      <span><span class="dot"></span> Connected</span>
+      <span>2 active</span>
+      <span class="spacer"></span>
+      <span>a: approve &bull; r: reject &bull; ⌘K: search</span>
+    </div>
+  </div>
+
+  <div class="pros-cons">
+    <div class="col">
+      <h4>Strengths</h4>
+      <ul>
+        <li>Maximum data density — metrics, logs, timeline all visible</li>
+        <li>Sparklines and metrics feel native to SRE workflows</li>
+        <li>Familiar Datadog-like layout for observability users</li>
+        <li>Great for Alex's deep analysis sessions</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h4>Trade-offs</h4>
+      <ul>
+        <li>High cognitive load — may overwhelm at 3am</li>
+        <li>Investigation narrative is compressed into a small panel</li>
+        <li>Less focus on the decision — approve button competes for attention</li>
+        <li>Grid layout harder to scan quickly than linear flow</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     DIRECTION 5: SPLIT EVIDENCE
+     ============================================================ -->
+<div id="d5" class="direction-section">
+  <div class="direction-title">Direction 5: Split Evidence</div>
+  <div class="direction-subtitle">Left: narrative steps. Right: selected evidence detail. Click a step to see its raw data.</div>
+  <div class="direction-desc">Two-pane layout where the investigation narrative lives on the left and the detailed evidence for the selected step appears on the right. Click any step to see its raw data — PromQL results, log lines, KB entries. Progressive disclosure without modal popups.</div>
+
+  <div class="mockup-frame">
+    <div class="mock-topbar">
+      <span class="logo">BEEPER</span>
+      <span class="breadcrumb">Investigations <span>/ INV-2847 &bull; payment-service</span></span>
+      <span class="spacer"></span>
+      <span class="confidence-badge high" style="font-size:16px">94%</span>
+      <button class="btn-approve" style="font-size:12px;padding:6px 16px">Approve: Restart pods</button>
+      <button class="btn-secondary" style="padding:6px 12px;font-size:12px">Reject</button>
+      <span class="cmd-k">⌘K</span>
+    </div>
+    <div class="d5-layout">
+      <div class="d5-left">
+        <div class="d5-pane-header">
+          <span>Investigation Narrative</span>
+          <span class="status-pill awaiting" style="font-size:10px">Awaiting Approval</span>
+        </div>
+        <div class="d5-pane-content">
+          <div class="d5-narrative-step">
+            <div class="ns-title">1. Anomaly detected — memory spike</div>
+            <div class="ns-summary">85% utilization, +2.1%/min growth rate. Leak suspected.</div>
+          </div>
+          <div class="d5-narrative-step selected">
+            <div class="ns-title">2. Log pattern — connection pool exhaustion</div>
+            <div class="ns-summary">847 timeout errors in 15m. Pool saturated at 50/50. KB-0142 match.</div>
+          </div>
+          <div class="d5-narrative-step">
+            <div class="ns-title">3. Root cause — retry handler leak</div>
+            <div class="ns-summary">Retry handler creates connections without releasing failed ones.</div>
+          </div>
+          <div class="d5-narrative-step">
+            <div class="ns-title">4. Sandbox — pod restart verified</div>
+            <div class="ns-summary">Memory 1.82GB → 0.98GB in 90s. Connections cleared. SLO recovered.</div>
+          </div>
+
+          <div style="padding:16px;margin-top:8px;background:var(--surface-raised);border-radius:8px;border:2px solid var(--status-healthy)">
+            <div style="font-size:14px;font-weight:600;margin-bottom:4px">Proposed: Rolling restart</div>
+            <div style="font-size:12px;color:var(--text-secondary)">Zero-downtime sequential pod restart. Sandbox-verified recovery in 90s.</div>
+          </div>
+        </div>
+      </div>
+      <div class="d5-right">
+        <div class="d5-pane-header">
+          <span>Evidence Detail — Step 2</span>
+          <span style="font-size:11px;color:var(--primary);cursor:pointer">Copy raw data</span>
+        </div>
+        <div class="d5-pane-content">
+          <div class="d5-evidence-detail">
+            <h4>Log Query Results</h4>
+            <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">847 matches for connection pool errors in payment-service (last 15 minutes)</div>
+            <div class="raw-data">2026-03-12T03:14:22Z ERROR [payment.db] Connection pool timeout after 30000ms — active: 50/50, waiting: 23
+2026-03-12T03:14:19Z ERROR [payment.db] Connection pool timeout after 30000ms — active: 50/50, waiting: 21
+2026-03-12T03:14:15Z WARN  [payment.retry] Creating new connection for retry attempt 3/5 — pool: 50/50
+2026-03-12T03:14:12Z ERROR [payment.db] Connection pool exhausted — cannot acquire connection
+2026-03-12T03:14:08Z WARN  [payment.retry] Previous connection not released — leak suspected</div>
+          </div>
+          <div class="d5-evidence-detail">
+            <h4>KB Match: KB-0142</h4>
+            <div style="font-size:13px;color:var(--text-secondary)">
+              <strong>Title:</strong> Connection pool exhaustion in payment-service<br>
+              <strong>Date:</strong> 2026-02-19<br>
+              <strong>Similarity:</strong> 95%<br>
+              <strong>Resolution:</strong> Pod restart cleared pool. Config patch applied to set max connection age to 5 minutes, preventing stale connections from accumulating.<br>
+              <strong>Root cause:</strong> Retry handler in payment-service creates new database connections on each retry attempt without closing the failed connection handle.
+            </div>
+          </div>
+          <div class="d5-evidence-detail">
+            <h4>Loki Query</h4>
+            <div class="raw-data" style="font-size:11px">{namespace="production", app="payment-service"} |~ "connection pool (timeout|exhausted)" | rate[15m]</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-statusbar">
+      <span><span class="dot"></span> Connected</span>
+      <span>Step 2 of 4 selected</span>
+      <span class="spacer"></span>
+      <span>↑↓: steps &bull; Enter: select &bull; a: approve &bull; ⌘K: search</span>
+    </div>
+  </div>
+
+  <div class="pros-cons">
+    <div class="col">
+      <h4>Strengths</h4>
+      <ul>
+        <li>Progressive disclosure without modals — click to drill down</li>
+        <li>Raw data always visible alongside the narrative</li>
+        <li>Natural for verification — see finding + evidence side by side</li>
+        <li>Good balance of narrative and data density</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h4>Trade-offs</h4>
+      <ul>
+        <li>Requires wider screen — may not work on narrow laptops</li>
+        <li>Approve button in top bar may feel less prominent</li>
+        <li>Two-pane interaction model less familiar than scrolling</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     DIRECTION 6: PROGRESSIVE CONTEXT
+     ============================================================ -->
+<div id="d6" class="direction-section">
+  <div class="direction-title">Direction 6: Progressive Context</div>
+  <div class="direction-subtitle">Expandable sections — summary card at top, evidence in collapsible sections below</div>
+  <div class="direction-desc">Start with a clear summary (confidence ring + proposed action), then expand sections for evidence, confidence breakdown, KB matches, and raw data. Diana sees a clean summary. Sam expands what he needs. Alex expands everything. Same page, different depth.</div>
+
+  <div class="mockup-frame">
+    <div class="mock-topbar">
+      <span class="logo">BEEPER</span>
+      <span class="breadcrumb">Investigations <span>/ INV-2847</span></span>
+      <span class="spacer"></span>
+      <span class="cmd-k">Search... <kbd>⌘K</kbd></span>
+    </div>
+    <div class="d6-layout">
+      <div class="mock-sidebar">
+        <div class="nav-group-label">Incident Mode</div>
+        <div class="nav-item active">Investigations <span class="badge">2</span></div>
+        <div class="nav-item">Handoff</div>
+        <div class="nav-group-label">Learning Mode</div>
+        <div class="nav-item">Dashboard</div>
+        <div class="nav-item">Knowledge Base</div>
+        <div class="nav-item">SLO Status</div>
+        <div class="nav-item">Trust Config</div>
+        <div class="nav-item">Analytics</div>
+      </div>
+      <div class="d6-main">
+        <div class="d6-summary-card">
+          <div class="d6-confidence-ring">94%</div>
+          <div class="d6-summary-text">
+            <h2>Memory leak in payment-service pod</h2>
+            <p>Root cause: connection pool leak in retry handler. Proposed fix: rolling pod restart (sandbox-verified, 90s recovery).</p>
+            <div class="summary-meta">
+              <span class="status-pill awaiting">Awaiting Approval</span>
+              <span>payment-service</span>
+              <span>TL3</span>
+              <span>4m ago</span>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn-approve">Approve</button>
+            <button class="btn-secondary">Reject</button>
+          </div>
+        </div>
+
+        <div class="d6-expand-section open" onclick="this.classList.toggle('open')">
+          <div class="d6-expand-header">
+            Evidence Trail (4 findings)
+            <span class="expand-icon">▶</span>
+          </div>
+          <div class="d6-expand-body">
+            <div class="evidence-row">
+              <span class="ev-icon">📊</span>
+              <div>
+                <div style="font-weight:500">Memory utilization at 85%</div>
+                <div style="font-size:12px;color:var(--text-muted)">Growth rate +2.1%/min — leak pattern, not load. Source: Prometheus</div>
+              </div>
+            </div>
+            <div class="evidence-row">
+              <span class="ev-icon">📋</span>
+              <div>
+                <div style="font-weight:500">847 connection pool timeout errors</div>
+                <div style="font-size:12px;color:var(--text-muted)">Pool saturated at 50/50 connections. Source: Loki</div>
+              </div>
+            </div>
+            <div class="evidence-row">
+              <span class="ev-icon">🔍</span>
+              <div>
+                <div style="font-weight:500">Root cause: retry handler connection leak</div>
+                <div style="font-size:12px;color:var(--text-muted)">Confirmed via correlation analysis. Matches KB-0142 (95%)</div>
+              </div>
+            </div>
+            <div class="evidence-row">
+              <span class="ev-icon">✅</span>
+              <div>
+                <div style="font-weight:500">Sandbox verified: restart resolves in 90s</div>
+                <div style="font-size:12px;color:var(--text-muted)">Memory 1.82GB → 0.98GB. Connections 50 → 12. Error rate: 0%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d6-expand-section" onclick="this.classList.toggle('open')">
+          <div class="d6-expand-header">
+            Confidence Breakdown
+            <span class="expand-icon">▶</span>
+          </div>
+          <div class="d6-expand-body">
+            <div class="evidence-row">
+              <div style="flex:1">Metric correlation</div>
+              <div style="color:var(--status-healthy);font-weight:600">High</div>
+            </div>
+            <div class="evidence-row">
+              <div style="flex:1">Log pattern match</div>
+              <div style="color:var(--status-healthy);font-weight:600">High</div>
+            </div>
+            <div class="evidence-row">
+              <div style="flex:1">KB precedent (KB-0142)</div>
+              <div style="color:var(--status-warning);font-weight:600">Medium</div>
+            </div>
+            <div class="evidence-row">
+              <div style="flex:1">Sandbox verification</div>
+              <div style="color:var(--status-healthy);font-weight:600">Pass</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d6-expand-section" onclick="this.classList.toggle('open')">
+          <div class="d6-expand-header">
+            KB Matches (2 entries)
+            <span class="expand-icon">▶</span>
+          </div>
+          <div class="d6-expand-body">
+            <div class="evidence-row">
+              <div>
+                <div style="font-weight:500">KB-0142: Connection pool exhaustion (95% match)</div>
+                <div style="font-size:12px;color:var(--text-muted)">Resolved 2026-02-19 via pod restart + max connection age config patch.</div>
+              </div>
+            </div>
+            <div class="evidence-row">
+              <div>
+                <div style="font-weight:500">KB-0089: Memory leak pattern (72% match)</div>
+                <div style="font-size:12px;color:var(--text-muted)">Generic pattern: retry handlers creating orphaned connections.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d6-expand-section" onclick="this.classList.toggle('open')">
+          <div class="d6-expand-header">
+            Raw Data & Queries
+            <span class="expand-icon">▶</span>
+          </div>
+          <div class="d6-expand-body">
+            <div style="font-family:monospace;font-size:12px;padding:8px;background:var(--surface-raised);border-radius:4px;margin-bottom:8px;white-space:pre-wrap">container_memory_usage_bytes{pod="payment-svc-7d4f8"} = 1.82GB</div>
+            <div style="font-family:monospace;font-size:12px;padding:8px;background:var(--surface-raised);border-radius:4px;white-space:pre-wrap">{namespace="production", app="payment-service"} |~ "connection pool"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-statusbar">
+      <span><span class="dot"></span> Connected</span>
+      <span>2 active investigations</span>
+      <span class="spacer"></span>
+      <span>a: approve &bull; r: reject &bull; ⌘K: search &bull; 1-4: toggle sections</span>
+    </div>
+  </div>
+
+  <div class="pros-cons">
+    <div class="col">
+      <h4>Strengths</h4>
+      <ul>
+        <li>True progressive disclosure — every persona gets their depth level</li>
+        <li>Summary card is instantly scannable — decision in 5 seconds</li>
+        <li>Expandable sections mean no page navigation for details</li>
+        <li>Works well for both incident mode and demo mode</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h4>Trade-offs</h4>
+      <ul>
+        <li>Streaming narrative less visible when sections are collapsed</li>
+        <li>Expand/collapse interaction adds clicks for power users who want everything open</li>
+        <li>Less visual drama than the confidence-first approach</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     COMPARISON VIEW
+     ============================================================ -->
+<div id="compare" class="direction-section">
+  <div class="direction-title">Design Direction Comparison</div>
+  <div class="direction-subtitle">Side-by-side evaluation of all 6 directions</div>
+  <div class="direction-desc">Each direction serves different personas and contexts differently. The recommendation is to combine elements — not pick one direction wholesale.</div>
+
+  <div class="comparison-grid">
+    <div class="comparison-card">
+      <h3>1. Narrative Flow</h3>
+      <div class="cc-sub">Investigation as a story</div>
+      <div class="trait"><span class="trait-label">Density</span><span class="trait-value">Medium</span></div>
+      <div class="trait"><span class="trait-label">3am Urgency</span><span class="trait-value" style="color:var(--status-warning)">Good</span></div>
+      <div class="trait"><span class="trait-label">Streaming</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="trait"><span class="trait-label">Deep Analysis</span><span class="trait-value" style="color:var(--status-warning)">Fair</span></div>
+      <div class="trait"><span class="trait-label">Demo Mode</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="best-for">Best for: Sam (reviewing), Jordan (learning), Diana (demo)</div>
+    </div>
+
+    <div class="comparison-card">
+      <h3>2. Command Center</h3>
+      <div class="cc-sub">Three-panel power view</div>
+      <div class="trait"><span class="trait-label">Density</span><span class="trait-value">High</span></div>
+      <div class="trait"><span class="trait-label">3am Urgency</span><span class="trait-value" style="color:var(--status-warning)">Fair</span></div>
+      <div class="trait"><span class="trait-label">Streaming</span><span class="trait-value" style="color:var(--status-warning)">Good</span></div>
+      <div class="trait"><span class="trait-label">Deep Analysis</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="trait"><span class="trait-label">Demo Mode</span><span class="trait-value" style="color:var(--status-warning)">Fair</span></div>
+      <div class="best-for">Best for: Alex (analysis), Priya (multi-investigation)</div>
+    </div>
+
+    <div class="comparison-card">
+      <h3>3. Focused Incident</h3>
+      <div class="cc-sub">Confidence-first clarity</div>
+      <div class="trait"><span class="trait-label">Density</span><span class="trait-value">Low</span></div>
+      <div class="trait"><span class="trait-label">3am Urgency</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="trait"><span class="trait-label">Streaming</span><span class="trait-value" style="color:var(--status-warning)">Fair</span></div>
+      <div class="trait"><span class="trait-label">Deep Analysis</span><span class="trait-value" style="color:var(--status-critical)">Poor</span></div>
+      <div class="trait"><span class="trait-label">Demo Mode</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="best-for">Best for: Sam (3am approve), Diana (demo)</div>
+    </div>
+
+    <div class="comparison-card">
+      <h3>4. Ops Dashboard</h3>
+      <div class="cc-sub">Metrics-dense grid</div>
+      <div class="trait"><span class="trait-label">Density</span><span class="trait-value">Very High</span></div>
+      <div class="trait"><span class="trait-label">3am Urgency</span><span class="trait-value" style="color:var(--status-critical)">Poor</span></div>
+      <div class="trait"><span class="trait-label">Streaming</span><span class="trait-value" style="color:var(--status-warning)">Fair</span></div>
+      <div class="trait"><span class="trait-label">Deep Analysis</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="trait"><span class="trait-label">Demo Mode</span><span class="trait-value" style="color:var(--status-warning)">Fair</span></div>
+      <div class="best-for">Best for: Alex (deep analysis), Priya (SLO monitoring)</div>
+    </div>
+
+    <div class="comparison-card">
+      <h3>5. Split Evidence</h3>
+      <div class="cc-sub">Narrative + detail side by side</div>
+      <div class="trait"><span class="trait-label">Density</span><span class="trait-value">Medium-High</span></div>
+      <div class="trait"><span class="trait-label">3am Urgency</span><span class="trait-value" style="color:var(--status-warning)">Good</span></div>
+      <div class="trait"><span class="trait-label">Streaming</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="trait"><span class="trait-label">Deep Analysis</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="trait"><span class="trait-label">Demo Mode</span><span class="trait-value" style="color:var(--status-warning)">Good</span></div>
+      <div class="best-for">Best for: Sam (verification), Alex (raw data), Marcus (PR review)</div>
+    </div>
+
+    <div class="comparison-card">
+      <h3>6. Progressive Context</h3>
+      <div class="cc-sub">Expandable summary + sections</div>
+      <div class="trait"><span class="trait-label">Density</span><span class="trait-value">Adaptive</span></div>
+      <div class="trait"><span class="trait-label">3am Urgency</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="trait"><span class="trait-label">Streaming</span><span class="trait-value" style="color:var(--status-warning)">Good</span></div>
+      <div class="trait"><span class="trait-label">Deep Analysis</span><span class="trait-value" style="color:var(--status-healthy)">Good</span></div>
+      <div class="trait"><span class="trait-label">Demo Mode</span><span class="trait-value" style="color:var(--status-healthy)">Excellent</span></div>
+      <div class="best-for">Best for: All personas — adapts to user's depth needs</div>
+    </div>
+  </div>
+
+  <div style="padding:16px 40px 40px;max-width:800px">
+    <h3 style="font-size:16px;margin-bottom:12px">Recommended Hybrid Approach</h3>
+    <div style="font-size:14px;color:var(--text-secondary);line-height:1.7">
+      <p style="margin-bottom:12px"><strong>Primary:</strong> Direction 1 (Narrative Flow) as the investigation detail base — the streaming timeline is Beeper's signature UX and the strongest trust-building mechanism.</p>
+      <p style="margin-bottom:12px"><strong>Incorporate from D6:</strong> The confidence ring summary card at the top for instant assessment. Expandable sections for evidence depth (progressive disclosure).</p>
+      <p style="margin-bottom:12px"><strong>Incorporate from D5:</strong> Optional split-pane mode (toggle) for users who want raw data alongside the narrative. Sam scrolls the timeline; Alex splits the view.</p>
+      <p style="margin-bottom:12px"><strong>Incorporate from D3:</strong> The approve button with inline context — always visible, always carrying confidence + sandbox status.</p>
+      <p><strong>Navigation:</strong> Direction 1/6 sidebar with Incident Mode / Learning Mode grouping + Cmd+K palette.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showDirection(id) {
+    document.querySelectorAll('.direction-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    event.target.classList.add('active');
+  }
+</script>
+
+</body>
+</html>
