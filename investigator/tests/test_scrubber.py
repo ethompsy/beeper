@@ -1,8 +1,14 @@
 """Comprehensive tests for PII scrubber module."""
 
+from __future__ import annotations
+
 import json
 import os
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    from beeper_investigator.llm.client import LlmClient
 
 import pytest
 
@@ -503,12 +509,20 @@ class TestPiiScrubberNoFalsePositives:
         result = self.scrubber.scrub_text(text)
         assert result.scrubbed_text == text
 
+    def test_kubernetes_secret_ref_not_scrubbed(self) -> None:
+        """Verify K8s resource names with 'secret' prefix are not falsely scrubbed."""
+        text = "secretName: my-app-credentials secretRef: db-secret"
+        result = self.scrubber.scrub_text(text)
+        # secretName and secretRef should NOT match — the password regex requires
+        # 'secret' followed by optional whitespace then ':' or '=', not 'N' or 'R'.
+        assert result.scrubbed_text == text
+
 
 class TestLlmClientScrubberIntegration:
     """Tests for scrubber integration in LlmClient methods."""
 
     @staticmethod
-    def _make_client():  # type: ignore[no-untyped-def]
+    def _make_client() -> "LlmClient":
         from beeper_investigator.llm.client import LlmClient, LlmConfig
 
         config = LlmConfig(
@@ -538,11 +552,6 @@ class TestLlmClientScrubberIntegration:
         client.complete_sync(messages)
 
         # Verify LiteLLM received scrubbed messages
-        call_args = mock_completion.call_args
-        sent_messages = call_args.kwargs.get("messages") or call_args[1].get("messages")
-        if sent_messages is None:
-            sent_messages = call_args[0][0] if call_args[0] else None
-        # Check via keyword arg
         actual_messages = mock_completion.call_args[1]["messages"]
         assert "[SCRUBBED:email]" in actual_messages[0]["content"]
         assert "user@test.com" not in actual_messages[0]["content"]
@@ -650,6 +659,25 @@ class TestPiiScrubberAuditLogging:
             scrubber.log_audit(entries, method="test")
             # DEBUG log should be called for each entry
             mock_logger.debug.assert_called_once()
+
+    def test_log_audit_includes_investigation_id(self) -> None:
+        """Verify investigation_id appears in the structured log output."""
+        scrubber = PiiScrubber()
+        entries = [
+            ScrubAuditEntry(
+                original_value="user@test.com",
+                scrub_type="email",
+                field_location="test",
+                timestamp="2026-01-01T00:00:00+00:00",
+            )
+        ]
+        with patch("beeper_investigator.llm.scrubber.logger") as mock_logger:
+            scrubber.log_audit(
+                entries, method="complete_sync", investigation_id="inv-abc123"
+            )
+            log_msg = mock_logger.info.call_args[0][0]
+            parsed = json.loads(log_msg)
+            assert parsed["context"]["investigation_id"] == "inv-abc123"
 
 
 class TestCredentialNonPersistence:

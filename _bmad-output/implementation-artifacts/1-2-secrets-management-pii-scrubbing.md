@@ -1,6 +1,6 @@
 # Story 1.2: Secrets Management & PII Scrubbing
 
-Status: review
+Status: done
 
 ## Story
 

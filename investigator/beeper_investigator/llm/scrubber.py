@@ -281,8 +281,8 @@ class PiiScrubber:
             if not matches:
                 continue
 
-            # Process matches in reverse order to preserve indices
-            for match in reversed(matches):
+            # Collect original values for audit trail
+            for match in matches:
                 original_value = match.group(0)
                 audit_entries.append(
                     ScrubAuditEntry(
