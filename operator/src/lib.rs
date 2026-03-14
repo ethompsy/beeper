@@ -48,7 +48,7 @@ pub use crds::{
     NotificationChannelSpec, NotificationChannelStatus, ServiceLevel, ServiceLevelSpec,
     ServiceLevelStatus, Source, SourceSpec, SourceStatus,
 };
-pub use notifications::{OutboxWorker, OutboxError};
+pub use notifications::{NotificationRouter, OutboxError, OutboxWorker, RouterError, RoutingDecision, Severity, SloContext};
 pub use health::{health_router, start_health_server};
 pub use ingestion::{ingestion_router, IngestionBuffer, IngestionData};
 pub use investigator_job::{
