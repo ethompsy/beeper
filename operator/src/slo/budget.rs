@@ -547,14 +547,59 @@ mod tests {
         assert!((projected - 207360.0).abs() < 1.0);
     }
 
-    #[test]
-    fn test_new_budget_policy_state_is_empty() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+    #[tokio::test]
+    async fn test_new_budget_policy_state_is_empty() {
         let state = new_budget_policy_state();
-        rt.block_on(async {
-            let inner = state.read().await;
-            assert!(inner.is_empty());
-        });
+        let inner = state.read().await;
+        assert!(inner.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_evaluator_partial_recovery_multi_policy() {
+        let state = new_budget_policy_state();
+        let evaluator = ErrorBudgetEvaluator::new(state.clone());
+
+        let policies = vec![
+            ErrorBudgetPolicy {
+                threshold: 0.50,
+                action: BudgetPolicyAction::Notify,
+            },
+            ErrorBudgetPolicy {
+                threshold: 0.75,
+                action: BudgetPolicyAction::Notify,
+            },
+            ErrorBudgetPolicy {
+                threshold: 0.95,
+                action: BudgetPolicyAction::Freeze,
+            },
+        ];
+
+        // 96% consumed — triggers all three
+        let result_high = sample_result(0.04, 10.0);
+        evaluator
+            .evaluate("payments-slo", "payment-service", &policies, &result_high, "30d")
+            .await;
+
+        {
+            let guard = state.read().await;
+            let status = guard.get("payments-slo").unwrap();
+            assert_eq!(status.triggered_events.len(), 3);
+            assert!(status.is_frozen);
+        }
+
+        // 60% consumed — recovers below 0.75 and 0.95, still exceeds 0.50
+        let result_mid = sample_result(0.4, 2.0);
+        evaluator
+            .evaluate("payments-slo", "payment-service", &policies, &result_mid, "30d")
+            .await;
+
+        let guard = state.read().await;
+        let status = guard.get("payments-slo").unwrap();
+        assert_eq!(status.triggered_events.len(), 1); // Only 0.50 remains
+        assert_eq!(status.triggered_events[0].threshold, 0.5);
+        assert!(!status.is_frozen); // Freeze threshold recovered
+        assert_eq!(status.triggered_thresholds.len(), 1);
+        assert!(status.triggered_thresholds.contains(&threshold_fingerprint(0.5)));
     }
 
     #[tokio::test]

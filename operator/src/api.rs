@@ -20,7 +20,6 @@ use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
 use crate::llm::LlmManager;
 use crate::slo::budget::BudgetPolicyState;
-use crate::slo::calculator::parse_window_duration;
 use crate::slo::SloCache;
 
 /// Shared state for API endpoints
@@ -1236,6 +1235,7 @@ async fn get_servicelevel(
 /// Response for error budget status of a ServiceLevel
 #[derive(Debug, Serialize)]
 pub struct ErrorBudgetResponse {
+    pub name: String,
     pub service: String,
     pub target: f64,
     pub error_budget_total: f64,
@@ -1270,31 +1270,27 @@ async fn get_servicelevel_budget(
             let spec = sl.spec;
 
             // Get live SLO data
-            let (compliance, burn_rate, error_budget_remaining) =
+            let (burn_rate, error_budget_remaining) =
                 if let Some(ref cache) = state.slo_cache {
                     let guard = cache.read().await;
                     if let Some(calc) = guard.get(&sl_name) {
-                        (calc.compliance, calc.burn_rate, calc.error_budget_remaining)
+                        (calc.burn_rate, calc.error_budget_remaining)
                     } else {
-                        (spec.objective.target, 0.0, 1.0) // Defaults when no data
+                        (0.0, 1.0) // Defaults when no data
                     }
                 } else {
-                    (spec.objective.target, 0.0, 1.0)
+                    (0.0, 1.0)
                 };
 
             let error_budget_total = 1.0 - spec.objective.target;
             let error_budget_consumed = 1.0 - error_budget_remaining;
 
-            // Calculate projected exhaustion
-            let projected_exhaustion_secs = if burn_rate > 0.0 && error_budget_remaining > 0.0 {
-                parse_window_duration(&spec.objective.window)
-                    .ok()
-                    .map(|window_secs| {
-                        (error_budget_remaining * window_secs as f64) / burn_rate
-                    })
-            } else {
-                None
-            };
+            // Calculate projected exhaustion (reuse budget module function)
+            let projected_exhaustion_secs = crate::slo::budget::projected_exhaustion_secs(
+                error_budget_remaining,
+                burn_rate,
+                &spec.objective.window,
+            );
 
             // Get budget policy state
             let (is_frozen, triggered_policies) =
@@ -1320,6 +1316,7 @@ async fn get_servicelevel_budget(
                 };
 
             let response = ErrorBudgetResponse {
+                name: sl_name.clone(),
                 service: spec.service,
                 target: spec.objective.target,
                 error_budget_total,
@@ -2209,6 +2206,7 @@ mod tests {
     #[test]
     fn test_error_budget_response_serialization() {
         let response = ErrorBudgetResponse {
+            name: "payments-slo".to_string(),
             service: "payment-service".to_string(),
             target: 0.999,
             error_budget_total: 0.001,
@@ -2221,6 +2219,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"name\":\"payments-slo\""));
         assert!(json.contains("\"service\":\"payment-service\""));
         assert!(json.contains("\"target\":0.999"));
         assert!(json.contains("\"error_budget_total\":0.001"));
@@ -2233,6 +2232,7 @@ mod tests {
     #[test]
     fn test_error_budget_response_with_triggered_policies() {
         let response = ErrorBudgetResponse {
+            name: "auth-slo".to_string(),
             service: "auth-service".to_string(),
             target: 0.999,
             error_budget_total: 0.001,
@@ -2269,6 +2269,7 @@ mod tests {
     #[test]
     fn test_error_budget_response_no_projected_exhaustion() {
         let response = ErrorBudgetResponse {
+            name: "gateway-slo".to_string(),
             service: "api-gateway".to_string(),
             target: 0.99,
             error_budget_total: 0.01,

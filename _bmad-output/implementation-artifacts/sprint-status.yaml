@@ -49,7 +49,7 @@ development_status:
   1-3-servicelevel-crd-controller: done
   1-4-slo-burn-rate-calculation-engine: done
   1-5-customer-impact-scoring-investigation-priority: done
-  1-6-error-budget-policies: review
+  1-6-error-budget-policies: done
   1-7-slo-compliance-dashboard: backlog
   1-8-platform-resilience: backlog
   epic-1-retrospective: optional

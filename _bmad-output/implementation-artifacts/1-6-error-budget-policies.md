@@ -1,6 +1,6 @@
 # Story 1.6: Error Budget Policies
 
-Status: review
+Status: done
 
 ## Story
 
