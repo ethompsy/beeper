@@ -29,6 +29,17 @@ def _make_entry(**overrides: Any) -> dict[str, Any]:
     return base
 
 
+def _make_pagerduty_channel_config(**overrides: Any) -> dict[str, Any]:
+    """Create a sample PagerDuty channel config."""
+    base: dict[str, Any] = {
+        "channel_type": "pagerduty",
+        "config": {"routing_key": "test-routing-key-123", "base_url": "https://beeper.test"},
+        "credentials_secret": "pagerduty-credentials",
+    }
+    base.update(overrides)
+    return base
+
+
 def _make_slack_channel_config(**overrides: Any) -> dict[str, Any]:
     """Create a sample Slack channel config."""
     base: dict[str, Any] = {
@@ -63,11 +74,31 @@ class TestProcessOutboxEntry:
         assert result["status"] == "delivered"
         mock_notifier.send_investigation_message.assert_called_once()
 
+    @patch("beeper_ui.services.notification_service.PagerDutyNotifier")
+    def test_dispatches_to_pagerduty(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.trigger_incident.return_value = {
+            "status": "success",
+            "dedup_key": "inv-001",
+        }
+        mock_notifier.map_event_type.return_value = "trigger"
+        mock_notifier_class.return_value = mock_notifier
+        mock_notifier_class.map_event_type = MagicMock(return_value="trigger")
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.process_outbox_entry(
+            _make_entry(),
+            _make_pagerduty_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+        assert result["pagerduty_dedup_key"] == "inv-001"
+
     def test_unsupported_channel_type_returns_skipped(self) -> None:
         svc = NotificationDeliveryService("http://operator:8080")
         result = svc.process_outbox_entry(
             _make_entry(),
-            {"channel_type": "pagerduty", "config": {}, "credentials_secret": "pd-token"},
+            {"channel_type": "email", "config": {}, "credentials_secret": "email-creds"},
         )
         assert result["status"] == "skipped"
         assert not result["retryable"]
@@ -281,3 +312,163 @@ class TestFetchCredential:
         value, error = svc._fetch_credential("my-secret", "bot_token")
         assert value == ""
         assert "operator API error" in error
+
+
+class TestDeliverToPagerDuty:
+    """Tests for deliver_to_pagerduty() PagerDuty-specific delivery."""
+
+    @patch("beeper_ui.services.notification_service.PagerDutyNotifier")
+    def test_successful_trigger(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.trigger_incident.return_value = {
+            "status": "success",
+            "dedup_key": "inv-001",
+        }
+        mock_notifier_class.return_value = mock_notifier
+        mock_notifier_class.map_event_type = MagicMock(return_value="trigger")
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_pagerduty(
+            _make_entry(event_type="investigation_started"),
+            _make_pagerduty_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+        assert result["pagerduty_dedup_key"] == "inv-001"
+        mock_notifier.trigger_incident.assert_called_once()
+
+    @patch("beeper_ui.services.notification_service.PagerDutyNotifier")
+    def test_acknowledge_event(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.acknowledge_incident.return_value = {
+            "status": "success",
+            "dedup_key": "inv-001",
+        }
+        mock_notifier_class.return_value = mock_notifier
+        mock_notifier_class.map_event_type = MagicMock(return_value="acknowledge")
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_pagerduty(
+            _make_entry(
+                event_type="investigating",
+                payload={"pagerduty_dedup_key": "inv-001"},
+            ),
+            _make_pagerduty_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+        mock_notifier.acknowledge_incident.assert_called_once_with(dedup_key="inv-001")
+
+    @patch("beeper_ui.services.notification_service.PagerDutyNotifier")
+    def test_resolve_event(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.resolve_incident.return_value = {
+            "status": "success",
+            "dedup_key": "inv-001",
+        }
+        mock_notifier_class.return_value = mock_notifier
+        mock_notifier_class.map_event_type = MagicMock(return_value="resolve")
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_pagerduty(
+            _make_entry(
+                event_type="resolved",
+                payload={"pagerduty_dedup_key": "inv-001"},
+            ),
+            _make_pagerduty_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+        mock_notifier.resolve_incident.assert_called_once()
+
+    def test_raises_when_no_routing_key(self) -> None:
+        svc = NotificationDeliveryService("http://operator:8080")
+        config = _make_pagerduty_channel_config()
+        config["config"]["routing_key"] = ""
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_pagerduty(_make_entry(), config)
+
+        assert not exc_info.value.retryable
+        assert "routing_key" in str(exc_info.value)
+
+    @patch("beeper_ui.services.notification_service.PagerDutyNotifier")
+    def test_propagates_retryable_error(self, mock_notifier_class: MagicMock) -> None:
+        from beeper_ui.notifications.pagerduty import PagerDutyNotifierError
+
+        mock_notifier = MagicMock()
+        mock_notifier.trigger_incident.side_effect = PagerDutyNotifierError(
+            "Rate limited", retryable=True
+        )
+        mock_notifier_class.return_value = mock_notifier
+        mock_notifier_class.map_event_type = MagicMock(return_value="trigger")
+
+        svc = NotificationDeliveryService("http://operator:8080")
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_pagerduty(
+                _make_entry(),
+                _make_pagerduty_channel_config(),
+            )
+
+        assert exc_info.value.retryable
+
+    @patch("beeper_ui.services.notification_service.PagerDutyNotifier")
+    def test_propagates_non_retryable_error(self, mock_notifier_class: MagicMock) -> None:
+        from beeper_ui.notifications.pagerduty import PagerDutyNotifierError
+
+        mock_notifier = MagicMock()
+        mock_notifier.trigger_incident.side_effect = PagerDutyNotifierError(
+            "Invalid routing key", retryable=False
+        )
+        mock_notifier_class.return_value = mock_notifier
+        mock_notifier_class.map_event_type = MagicMock(return_value="trigger")
+
+        svc = NotificationDeliveryService("http://operator:8080")
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_pagerduty(
+                _make_entry(),
+                _make_pagerduty_channel_config(),
+            )
+
+        assert not exc_info.value.retryable
+
+    @patch("beeper_ui.services.notification_service.PagerDutyNotifier")
+    def test_uses_investigation_id_as_dedup_key_when_no_stored_key(
+        self, mock_notifier_class: MagicMock
+    ) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.acknowledge_incident.return_value = {
+            "status": "success",
+            "dedup_key": "inv-001",
+        }
+        mock_notifier_class.return_value = mock_notifier
+        mock_notifier_class.map_event_type = MagicMock(return_value="acknowledge")
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        svc.deliver_to_pagerduty(
+            _make_entry(event_type="investigating", payload={}),
+            _make_pagerduty_channel_config(),
+        )
+
+        # Should fall back to investigation_id when no pagerduty_dedup_key in payload
+        mock_notifier.acknowledge_incident.assert_called_once_with(dedup_key="inv-001")
+
+    @patch("beeper_ui.services.notification_service.PagerDutyNotifier")
+    def test_string_payload_is_parsed(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.trigger_incident.return_value = {
+            "status": "success",
+            "dedup_key": "inv-001",
+        }
+        mock_notifier_class.return_value = mock_notifier
+        mock_notifier_class.map_event_type = MagicMock(return_value="trigger")
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_pagerduty(
+            _make_entry(payload="plain text payload"),
+            _make_pagerduty_channel_config(),
+        )
+
+        assert result["status"] == "delivered"

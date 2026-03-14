@@ -1,8 +1,8 @@
 """Notification delivery service.
 
-Orchestrates notification delivery to configured channels. Currently supports
-Slack delivery; PagerDuty, email, and webhook channels are placeholders for
-Stories 2-4 and 2-5.
+Orchestrates notification delivery to configured channels. Supports Slack
+and PagerDuty delivery; email and webhook channels are placeholders for
+Story 2-5.
 """
 
 import json
@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 
+from beeper_ui.notifications.pagerduty import PagerDutyNotifier, PagerDutyNotifierError
 from beeper_ui.notifications.slack import SlackNotifier, SlackNotifierError
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,9 @@ class NotificationDeliveryService:
         if channel_type == "slack":
             return self.deliver_to_slack(entry, channel_config, bot_token)
 
-        # TODO: Story 2-4 — PagerDuty delivery
+        if channel_type == "pagerduty":
+            return self.deliver_to_pagerduty(entry, channel_config)
+
         # TODO: Story 2-5 — Email and webhook delivery
         logger.warning(
             "Unsupported channel type '%s' — delivery skipped (future stories)",
@@ -193,6 +196,92 @@ class NotificationDeliveryService:
             )
             raise NotificationServiceError(
                 f"Slack delivery failed: {e}", retryable=e.retryable
+            ) from e
+
+    def deliver_to_pagerduty(
+        self,
+        entry: dict[str, Any],
+        channel_config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Deliver a notification to PagerDuty via Events API v2.
+
+        Determines the appropriate PagerDuty action (trigger/acknowledge/resolve)
+        from the event_type and manages dedup_key lifecycle through the outbox payload.
+
+        Args:
+            entry: Outbox entry dict.
+            channel_config: PagerDuty channel configuration with 'config' containing
+                           'routing_key'.
+
+        Returns:
+            Delivery result dict with status, dedup_key, pagerduty_dedup_key.
+
+        Raises:
+            NotificationServiceError: If PagerDuty delivery fails.
+        """
+        config = channel_config.get("config", {})
+        routing_key = config.get("routing_key", "")
+        if not routing_key:
+            raise NotificationServiceError(
+                "PagerDuty routing_key not configured", retryable=False
+            )
+
+        investigation_id = entry.get("investigation_id", "")
+        event_type = entry.get("event_type", "investigation_started")
+        payload = entry.get("payload", {})
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except (json.JSONDecodeError, TypeError):
+                payload = {"summary": payload}
+
+        base_url = config.get("base_url", "")
+
+        # Merge entry-level fields into payload for PagerDuty payload building
+        merged_payload = {
+            "severity": entry.get("severity", "low"),
+            "service": entry.get("service", "unknown"),
+            **payload,
+        }
+
+        notifier = PagerDutyNotifier(routing_key)
+        action = PagerDutyNotifier.map_event_type(event_type)
+
+        try:
+            # Determine dedup_key: use stored one for ack/resolve, investigation_id for trigger
+            stored_dedup_key = payload.get("pagerduty_dedup_key", "")
+
+            if action == "acknowledge":
+                dedup_key = stored_dedup_key or investigation_id
+                result = notifier.acknowledge_incident(dedup_key=dedup_key)
+            elif action == "resolve":
+                dedup_key = stored_dedup_key or investigation_id
+                result = notifier.resolve_incident(
+                    dedup_key=dedup_key,
+                    payload=merged_payload,
+                    base_url=base_url,
+                )
+            else:
+                # trigger
+                result = notifier.trigger_incident(
+                    investigation_id=investigation_id,
+                    payload=merged_payload,
+                    base_url=base_url,
+                )
+
+            return {
+                "status": "delivered",
+                "dedup_key": result.get("dedup_key", investigation_id),
+                "pagerduty_dedup_key": result.get("dedup_key", investigation_id),
+            }
+        except PagerDutyNotifierError as e:
+            logger.error(
+                "PagerDuty delivery failed for investigation %s: %s",
+                investigation_id,
+                str(e),
+            )
+            raise NotificationServiceError(
+                f"PagerDuty delivery failed: {e}", retryable=e.retryable
             ) from e
 
     def _fetch_credential(self, secret_name: str, key: str) -> tuple[str, str]:
