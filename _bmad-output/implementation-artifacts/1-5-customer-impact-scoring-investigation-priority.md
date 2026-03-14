@@ -1,6 +1,6 @@
 # Story 1.5: Customer Impact Scoring & Investigation Priority
 
-Status: review
+Status: done
 
 ## Story
 

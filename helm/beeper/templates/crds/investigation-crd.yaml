@@ -62,6 +62,7 @@ spec:
                   enum:
                     - pending
                     - running
+                    - awaiting_confirmation
                     - completed
                     - failed
                 started_at:

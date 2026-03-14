@@ -1789,6 +1789,56 @@ mod tests {
     }
 
     #[test]
+    fn test_investigation_sort_started_at_fallback() {
+        // When status and impact_score are identical, sort by started_at descending
+        let earlier = InvestigationResponse {
+            id: "inv-earlier".to_string(),
+            status: "investigating".to_string(),
+            service: "svc-a".to_string(),
+            severity: "high".to_string(),
+            condition: "Alert".to_string(),
+            started_at: Some("2026-03-14T10:00:00Z".to_string()),
+            completed_at: None,
+            triggered_at: None,
+            impact_score: Some(0.5),
+        };
+        let later = InvestigationResponse {
+            id: "inv-later".to_string(),
+            status: "investigating".to_string(),
+            service: "svc-b".to_string(),
+            severity: "high".to_string(),
+            condition: "Alert".to_string(),
+            started_at: Some("2026-03-14T12:00:00Z".to_string()),
+            completed_at: None,
+            triggered_at: None,
+            impact_score: Some(0.5),
+        };
+
+        let mut investigations = vec![earlier, later];
+
+        investigations.sort_by(|a, b| {
+            let order_cmp = status_sort_order(&a.status).cmp(&status_sort_order(&b.status));
+            if order_cmp != std::cmp::Ordering::Equal {
+                return order_cmp;
+            }
+            let impact_cmp = match (a.impact_score, b.impact_score) {
+                (Some(a_s), Some(b_s)) => b_s.partial_cmp(&a_s).unwrap_or(std::cmp::Ordering::Equal),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            };
+            if impact_cmp != std::cmp::Ordering::Equal {
+                return impact_cmp;
+            }
+            b.started_at.as_deref().unwrap_or("").cmp(a.started_at.as_deref().unwrap_or(""))
+        });
+
+        // Later started_at should come first (descending)
+        assert_eq!(investigations[0].id, "inv-later");
+        assert_eq!(investigations[1].id, "inv-earlier");
+    }
+
+    #[test]
     fn test_investigation_detail_404_problem_details() {
         let problem = ProblemDetails {
             error_type: "https://beeper.io/errors/investigation-not-found".to_string(),

@@ -270,21 +270,24 @@ mod tests {
     #[test]
     fn test_impact_score_high_impact() {
         // 99.9% SLO target, 5x burn rate, 50% budget remaining
-        // target_factor ≈ 0.99, burn_factor = 0.5, budget_factor = 0.5
+        // infer_target: 1.0 - (1.0 - 0.995) / 5.0 = 1.0 - 0.001 = 0.999
+        // target_factor = (0.999 - 0.9) / 0.1 = 0.99
+        // burn_factor = 5.0 / 10.0 = 0.5
+        // budget_factor = 1.0 - 0.5 = 0.5
         // score = 0.3*0.99 + 0.4*0.5 + 0.3*0.5 = 0.297 + 0.2 + 0.15 = 0.647
         let result = SloCalculationResult {
             service: "payment-service".to_string(),
             sli_type: "availability".to_string(),
-            compliance: 0.9995, // Will infer ~99.9% target with 5x burn
+            compliance: 0.995, // infer_target → 0.999 (99.9% SLO)
             burn_rate: 5.0,
             error_budget_remaining: 0.5,
-            good_count: 9995.0,
+            good_count: 9950.0,
             total_count: 10000.0,
             timestamp: "2026-03-14T12:00:00Z".to_string(),
         };
         let score = compute_impact_score(&result);
-        // Burn factor = 0.5, budget factor = 0.5 — these are dominant
-        assert!(score > 0.4, "High impact should score > 0.4, got {}", score);
+        let expected = 0.3 * 0.99 + 0.4 * 0.5 + 0.3 * 0.5;
+        assert!((score - expected).abs() < 1e-10, "High impact: expected {:.4}, got {:.4}", expected, score);
         assert!(score <= 1.0);
     }
 
@@ -304,14 +307,15 @@ mod tests {
             timestamp: "2026-03-14T12:00:00Z".to_string(),
         };
         let score = compute_impact_score(&result);
-        assert!(score < 0.5, "Low impact should score < 0.5, got {}", score);
+        let expected = 0.3 * 0.9 + 0.4 * 0.1 + 0.3 * 0.1;
+        assert!((score - expected).abs() < 1e-10, "Low impact: expected {:.4}, got {:.4}", expected, score);
         assert!(score > 0.0);
     }
 
     #[test]
     fn test_ac1_ordering_999_50_higher_than_99_90() {
         // AC1: 99.9% SLO with 50% budget > 99% SLO with 90% budget
-        let high_impact = make_result("critical-svc", 0.9995, 5.0, 0.5);
+        let high_impact = make_result("critical-svc", 0.995, 5.0, 0.5);
         let low_impact = make_result("internal-svc", 0.99, 1.0, 0.9);
 
         let high_score = compute_impact_score(&high_impact);
@@ -402,7 +406,7 @@ mod tests {
         // Two SLOs for the same service — availability (high impact) and latency (low impact)
         map.insert(
             "payments-avail".to_string(),
-            make_result("payment-service", 0.9995, 5.0, 0.5),
+            make_result("payment-service", 0.995, 5.0, 0.5),
         );
         map.insert(
             "payments-latency".to_string(),
@@ -416,7 +420,7 @@ mod tests {
         assert!(score.is_some());
 
         // Should be the higher of the two
-        let avail_score = compute_impact_score(&make_result("payment-service", 0.9995, 5.0, 0.5));
+        let avail_score = compute_impact_score(&make_result("payment-service", 0.995, 5.0, 0.5));
         let latency_score = compute_impact_score(&make_result("payment-service", 0.99, 1.0, 0.9));
         assert!(avail_score > latency_score);
         assert!((score.unwrap() - avail_score).abs() < f64::EPSILON);
