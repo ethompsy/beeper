@@ -2,6 +2,7 @@
 
 import json
 import os
+import pathlib
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -363,7 +364,7 @@ class TestKBUnavailableBuffering:
         ".investigation_documentation.time.sleep"
     )
     def test_kb_failure_triggers_buffer(
-        self, mock_sleep, tmp_path
+        self, mock_sleep: Any, tmp_path: pathlib.Path
     ) -> None:
         """When KB is down, findings are buffered."""
         step, _, _, _ = _make_step(
@@ -385,7 +386,7 @@ class TestKBUnavailableBuffering:
         ".investigation_documentation.time.sleep"
     )
     def test_buffer_file_contains_payload(
-        self, mock_sleep, tmp_path
+        self, mock_sleep: Any, tmp_path: pathlib.Path
     ) -> None:
         """Buffer file contains valid JSON with payload."""
         step, _, _, _ = _make_step(
@@ -421,7 +422,7 @@ class TestRetrySuccess:
         ".investigation_documentation.time.sleep"
     )
     def test_retry_succeeds_on_second_attempt(
-        self, mock_sleep
+        self, mock_sleep: Any
     ) -> None:
         """KB write succeeds on retry after failure."""
         step, _, mock_kb, _ = _make_step()
@@ -441,7 +442,7 @@ class TestRetrySuccess:
         ".investigation_documentation.time.sleep"
     )
     def test_retry_cleans_up_existing_buffer(
-        self, mock_sleep, tmp_path
+        self, mock_sleep: Any, tmp_path: pathlib.Path
     ) -> None:
         """Successful retry removes existing buffer file."""
         buf_dir = str(tmp_path / "buffer")
@@ -473,7 +474,7 @@ class TestRetryExhausted:
         ".investigation_documentation.time.sleep"
     )
     def test_all_retries_fail_buffers(
-        self, mock_sleep, tmp_path
+        self, mock_sleep: Any, tmp_path: pathlib.Path
     ) -> None:
         """3 retry failures result in buffer file."""
         step, _, mock_kb, _ = _make_step(
@@ -495,7 +496,7 @@ class TestRetryExhausted:
         ".investigation_documentation.time.sleep"
     )
     def test_retry_delays_exponential(
-        self, mock_sleep
+        self, mock_sleep: Any
     ) -> None:
         """Retry delays follow 1s, 2s pattern."""
         step, _, _, _ = _make_step(
@@ -525,7 +526,7 @@ class TestBufferWriteFailure:
         ".investigation_documentation.time.sleep"
     )
     def test_buffer_write_failure_returns_not_buffered(
-        self, mock_sleep
+        self, mock_sleep: Any
     ) -> None:
         """When KB and buffer both fail, buffered=False."""
         step, _, _, _ = _make_step(
@@ -862,7 +863,7 @@ class TestStepResultSchema:
         ".investigation_documentation.time.sleep"
     )
     def test_schema_on_kb_failure(
-        self, mock_sleep, tmp_path
+        self, mock_sleep: Any, tmp_path: pathlib.Path
     ) -> None:
         step, _, _, _ = _make_step(
             kb_error=ConnectionError("down")

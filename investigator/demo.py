@@ -7,12 +7,13 @@ showing each step's output as the agent works through the investigation.
 
 import json
 import logging
-import sys
 import textwrap
+from typing import Any
 from unittest.mock import MagicMock
 
-from beeper_investigator.agent import InvestigatorAgent, SourceClients
+from beeper_investigator.agent import InvestigationResult, InvestigatorAgent, SourceClients
 from beeper_investigator.context import InvestigationContext
+from beeper_investigator.kb.schemas import SearchResult
 from beeper_investigator.llm.cache import LlmResponseCache
 from beeper_investigator.llm.client import LlmClient, LlmConfig
 
@@ -211,7 +212,10 @@ def make_mock_llm() -> LlmClient:
         DOCUMENTATION_RESPONSE,  # Investigation documentation (standard model, 3rd call)
     ]
 
-    def fake_complete_sync(messages, max_tokens=4096, temperature=0.0, *, model=None, **kw):
+    def fake_complete_sync(
+        messages: Any, max_tokens: int = 4096, temperature: float = 0.0,
+        *, model: str | None = None, **kw: Any,
+    ) -> str:
         effective = model or config.get_litellm_model()
         client._model_usage[effective] = client._model_usage.get(effective, 0) + 1
 
@@ -228,19 +232,17 @@ def make_mock_llm() -> LlmClient:
             standard_calls["n"] += 1
             return standard_responses[idx]
 
-    client.complete_sync = fake_complete_sync
-    client.embed_sync = lambda text: [0.01] * 1536
-    client.test_connection = lambda: True
+    client.complete_sync = fake_complete_sync  # type: ignore[method-assign]
+    client.embed_sync = lambda text: [0.01] * 1536  # type: ignore[method-assign]
+    client.test_connection = lambda: True  # type: ignore[method-assign,assignment,return-value]
     return client
 
 
 # ── Build mock KB client ─────────────────────────────────────────────────────
 
 
-def make_mock_kb():
+def make_mock_kb() -> MagicMock:
     """Create a mock KB client that returns prior incident data."""
-    from beeper_investigator.kb.client import SearchResult
-
     kb = MagicMock()
     kb.health_check.return_value = True
 
@@ -283,7 +285,7 @@ class DemoStatusUpdater:
         print(f"    {RED}[failed]{RESET} {error}")
 
 
-def display_result(result) -> None:
+def display_result(result: InvestigationResult) -> None:
     """Pretty-print the investigation result."""
     banner("INVESTIGATION RESULT")
 
@@ -386,7 +388,7 @@ def main() -> None:
         kb_client=kb_client,
         llm_client=llm_client,
         sources=SourceClients(),
-        status_updater=status,
+        status_updater=status,  # type: ignore[arg-type]
     )
 
     banner("RUNNING INVESTIGATION PIPELINE")
