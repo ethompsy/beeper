@@ -28,6 +28,9 @@ pub mod investigator_job;
 /// LLM provider configuration and management
 pub mod llm;
 
+/// SLO engine — burn rate calculation and alerting
+pub mod slo;
+
 /// Data source adapters (Prometheus, Loki)
 pub mod sources;
 
@@ -50,3 +53,4 @@ pub use investigator_job::{
 pub use llm::{LlmConfig, LlmConfigError, LlmManager, LlmProvider};
 pub use sources::{LokiClient, LokiError, PrometheusClient, PrometheusError};
 pub use detection::{DetectionConfig, DetectionConsumer, DetectionStats};
+pub use slo::{new_slo_cache, run_slo_engine, SloCache, SloCalculationResult};

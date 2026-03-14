@@ -21,6 +21,7 @@ use beeper_operator::{
     detection::{DetectionConfig, DetectionConsumer, DetectionStats},
     health::health_router,
     ingestion::{ingestion_router, IngestionBuffer},
+    slo::{new_slo_cache, run_slo_engine},
     InvestigatorConfig,
 };
 
@@ -141,6 +142,25 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Start SLO engine in background
+    let slo_client = (*client).clone();
+    let slo_namespace = detection_config.namespace.clone();
+    let prometheus_endpoint = env::var("PROMETHEUS_URL")
+        .unwrap_or_else(|_| "http://prometheus:9090".to_string());
+    let qdrant_endpoint = env::var("QDRANT_URL")
+        .unwrap_or_else(|_| "http://qdrant:6333".to_string());
+    let slo_cache = new_slo_cache();
+    let slo_handle = tokio::spawn(async move {
+        run_slo_engine(
+            slo_client,
+            prometheus_endpoint,
+            qdrant_endpoint,
+            slo_namespace,
+            slo_cache,
+        )
+        .await;
+    });
+
     // Start detection consumer in background (if enabled)
     let detection_handle = if detection_config.enabled {
         let detection_buffer = Arc::clone(&buffer);
@@ -170,6 +190,7 @@ async fn main() -> anyhow::Result<()> {
     source_handle.abort();
     investigation_handle.abort();
     servicelevel_handle.abort();
+    slo_handle.abort();
     if let Some(handle) = detection_handle {
         handle.abort();
     }

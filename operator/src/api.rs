@@ -19,6 +19,7 @@ use crate::crds::{Investigation, InvestigationPhase, ServiceLevel, ServiceLevelC
 use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
 use crate::llm::LlmManager;
+use crate::slo::SloCache;
 
 /// Shared state for API endpoints
 #[derive(Clone)]
@@ -27,6 +28,7 @@ pub struct ApiState {
     pub buffer: Arc<IngestionBuffer>,
     pub llm_manager: Option<Arc<LlmManager>>,
     pub detection_stats: Option<Arc<DetectionStats>>,
+    pub slo_cache: Option<SloCache>,
 }
 
 /// Create the API router
@@ -55,6 +57,7 @@ pub fn api_router_with_detection(
         buffer,
         llm_manager,
         detection_stats,
+        slo_cache: None,
     };
 
     Router::new()
@@ -909,6 +912,12 @@ pub struct ServiceLevelResponse {
     pub condition: String,
     pub alerts_registered: Option<u32>,
     pub last_evaluated: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compliance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub burn_rate: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_budget_remaining: Option<f64>,
 }
 
 /// Response for ServiceLevel detail view
@@ -923,6 +932,12 @@ pub struct ServiceLevelDetailResponse {
     pub alerts_registered: Option<u32>,
     pub last_evaluated: Option<String>,
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compliance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub burn_rate: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_budget_remaining: Option<f64>,
 }
 
 /// SLI detail for ServiceLevel response
@@ -980,6 +995,14 @@ fn condition_to_string(condition: &Option<ServiceLevelCondition>) -> String {
 async fn list_servicelevels(State(state): State<ApiState>) -> impl IntoResponse {
     let servicelevels_api: Api<ServiceLevel> = Api::all((*state.client).clone());
 
+    // Load SLO cache snapshot for burn rate data
+    let slo_data = if let Some(ref cache) = state.slo_cache {
+        let guard = cache.read().await;
+        Some(guard.clone())
+    } else {
+        None
+    };
+
     match servicelevels_api.list(&ListParams::default()).await {
         Ok(sl_list) => {
             let service_levels: Vec<ServiceLevelResponse> = sl_list
@@ -992,6 +1015,22 @@ async fn list_servicelevels(State(state): State<ApiState>) -> impl IntoResponse 
 
                     let sli_type = sli_type_to_string(&spec.sli.sli_type);
 
+                    // Look up latest burn rate data from SLO cache
+                    let (compliance, burn_rate, error_budget_remaining) =
+                        if let Some(ref data) = slo_data {
+                            if let Some(calc) = data.get(&name) {
+                                (
+                                    Some(calc.compliance),
+                                    Some(calc.burn_rate),
+                                    Some(calc.error_budget_remaining),
+                                )
+                            } else {
+                                (None, None, None)
+                            }
+                        } else {
+                            (None, None, None)
+                        };
+
                     ServiceLevelResponse {
                         name,
                         service: spec.service,
@@ -1001,6 +1040,9 @@ async fn list_servicelevels(State(state): State<ApiState>) -> impl IntoResponse 
                         condition: condition_to_string(&status.condition),
                         alerts_registered: status.alerts_registered,
                         last_evaluated: status.last_evaluated,
+                        compliance,
+                        burn_rate,
+                        error_budget_remaining,
                     }
                 })
                 .collect();
@@ -1037,6 +1079,7 @@ async fn get_servicelevel(
 
     match servicelevels_api.get(&name).await {
         Ok(sl) => {
+            let sl_name = sl.metadata.name.clone().unwrap_or_default();
             let spec = sl.spec;
             let status = sl.status.unwrap_or_default();
 
@@ -1054,8 +1097,25 @@ async fn get_servicelevel(
                 })
                 .collect();
 
+            // Look up latest burn rate data from SLO cache
+            let (compliance, burn_rate, error_budget_remaining) =
+                if let Some(ref cache) = state.slo_cache {
+                    let guard = cache.read().await;
+                    if let Some(calc) = guard.get(&sl_name) {
+                        (
+                            Some(calc.compliance),
+                            Some(calc.burn_rate),
+                            Some(calc.error_budget_remaining),
+                        )
+                    } else {
+                        (None, None, None)
+                    }
+                } else {
+                    (None, None, None)
+                };
+
             let response = ServiceLevelDetailResponse {
-                name: sl.metadata.name.unwrap_or_default(),
+                name: sl_name,
                 service: spec.service,
                 sli: SliDetailResponse {
                     sli_type,
@@ -1072,6 +1132,9 @@ async fn get_servicelevel(
                 alerts_registered: status.alerts_registered,
                 last_evaluated: status.last_evaluated,
                 error: status.error,
+                compliance,
+                burn_rate,
+                error_budget_remaining,
             };
 
             debug!(servicelevel_name = %response.name, "Got ServiceLevel detail");
@@ -1326,6 +1389,9 @@ mod tests {
             condition: "healthy".to_string(),
             alerts_registered: Some(2),
             last_evaluated: Some("2026-03-14T12:00:00Z".to_string()),
+            compliance: Some(0.9995),
+            burn_rate: Some(0.5),
+            error_budget_remaining: Some(0.5),
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1334,6 +1400,31 @@ mod tests {
         assert!(json.contains("\"target\":0.999"));
         assert!(json.contains("\"condition\":\"healthy\""));
         assert!(json.contains("\"alerts_registered\":2"));
+        assert!(json.contains("\"compliance\":0.9995"));
+        assert!(json.contains("\"burn_rate\":0.5"));
+        assert!(json.contains("\"error_budget_remaining\":0.5"));
+    }
+
+    #[test]
+    fn test_servicelevel_response_no_burn_rate_data() {
+        let response = ServiceLevelResponse {
+            name: "auth-slo".to_string(),
+            service: "auth-service".to_string(),
+            sli_type: "availability".to_string(),
+            target: 0.999,
+            window: "30d".to_string(),
+            condition: "healthy".to_string(),
+            alerts_registered: Some(1),
+            last_evaluated: None,
+            compliance: None,
+            burn_rate: None,
+            error_budget_remaining: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(!json.contains("\"compliance\""));
+        assert!(!json.contains("\"burn_rate\""));
+        assert!(!json.contains("\"error_budget_remaining\""));
     }
 
     #[test]
@@ -1361,6 +1452,9 @@ mod tests {
             alerts_registered: Some(1),
             last_evaluated: Some("2026-03-14T12:00:00Z".to_string()),
             error: None,
+            compliance: Some(0.998),
+            burn_rate: Some(2.0),
+            error_budget_remaining: Some(0.0),
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1370,6 +1464,8 @@ mod tests {
         assert!(json.contains("\"target\":0.999"));
         assert!(json.contains("\"factor\":6.0"));
         assert!(json.contains("\"condition\":\"healthy\""));
+        assert!(json.contains("\"compliance\":0.998"));
+        assert!(json.contains("\"burn_rate\":2.0"));
     }
 
     #[test]
@@ -1384,6 +1480,9 @@ mod tests {
                 condition: "warning".to_string(),
                 alerts_registered: None,
                 last_evaluated: None,
+                compliance: None,
+                burn_rate: None,
+                error_budget_remaining: None,
             }],
         };
 
