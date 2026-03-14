@@ -5,6 +5,7 @@ Slack delivery; PagerDuty, email, and webhook channels are placeholders for
 Stories 2-4 and 2-5.
 """
 
+import json
 import logging
 from typing import Any
 
@@ -117,13 +118,15 @@ class NotificationDeliveryService:
                 "Slack channel not configured", retryable=False
             )
 
+        fetch_error = ""
         if bot_token is None:
             credentials_secret = channel_config.get("credentials_secret", "")
-            bot_token = self._fetch_credential(credentials_secret, "bot_token")
+            bot_token, fetch_error = self._fetch_credential(credentials_secret, "bot_token")
 
         if not bot_token:
+            error_detail = f" ({fetch_error})" if fetch_error else ""
             raise NotificationServiceError(
-                "Slack bot token not available", retryable=False
+                f"Slack bot token not available{error_detail}", retryable=False
             )
 
         # Parse mention users from config
@@ -136,8 +139,6 @@ class NotificationDeliveryService:
         investigation_id = entry.get("investigation_id", "")
         payload = entry.get("payload", {})
         if isinstance(payload, str):
-            import json
-
             try:
                 payload = json.loads(payload)
             except (json.JSONDecodeError, TypeError):
@@ -194,7 +195,7 @@ class NotificationDeliveryService:
                 f"Slack delivery failed: {e}", retryable=e.retryable
             ) from e
 
-    def _fetch_credential(self, secret_name: str, key: str) -> str:
+    def _fetch_credential(self, secret_name: str, key: str) -> tuple[str, str]:
         """Fetch a credential value from the operator API.
 
         Args:
@@ -202,10 +203,10 @@ class NotificationDeliveryService:
             key: Key within the Secret data.
 
         Returns:
-            Credential value as string, or empty string on failure.
+            Tuple of (credential_value, error_reason). Error reason is empty on success.
         """
         if not secret_name:
-            return ""
+            return "", "no secret name configured"
         try:
             response = self.client.get(
                 f"{self.operator_url}/api/v1/secrets/{secret_name}/keys/{key}"
@@ -213,19 +214,21 @@ class NotificationDeliveryService:
             if response.status_code == 200:
                 data: dict[str, Any] = response.json()
                 result: str = data.get("value", "")
-                return result
+                return result, ""
+            reason = f"HTTP {response.status_code} from operator API"
             logger.warning(
-                "Failed to fetch credential %s/%s: HTTP %d",
+                "Failed to fetch credential %s/%s: %s",
                 secret_name,
                 key,
-                response.status_code,
+                reason,
             )
-            return ""
+            return "", reason
         except httpx.HTTPError as e:
+            reason = f"operator API error: {e}"
             logger.warning(
                 "Error fetching credential %s/%s: %s",
                 secret_name,
                 key,
-                str(e),
+                reason,
             )
-            return ""
+            return "", reason

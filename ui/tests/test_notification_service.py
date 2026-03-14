@@ -149,6 +149,17 @@ class TestDeliverToSlack:
             )
 
         assert not exc_info.value.retryable
+        assert "not available" in str(exc_info.value)
+
+    def test_raises_with_error_detail_when_no_credential(self) -> None:
+        config = _make_slack_channel_config()
+        config["credentials_secret"] = ""
+        svc = NotificationDeliveryService("http://operator:8080")
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_slack(_make_entry(), config, bot_token=None)
+
+        assert "no secret name" in str(exc_info.value)
 
     @patch("beeper_ui.services.notification_service.SlackNotifier")
     def test_propagates_retryable_error(self, mock_notifier_class: MagicMock) -> None:
@@ -261,10 +272,12 @@ class TestFetchCredential:
         self, mock_client_class: MagicMock
     ) -> None:
         svc = NotificationDeliveryService("http://operator:8080")
-        result = svc._fetch_credential("", "bot_token")
-        assert result == ""
+        value, error = svc._fetch_credential("", "bot_token")
+        assert value == ""
+        assert "no secret name" in error
 
     def test_returns_empty_string_on_http_error(self) -> None:
         svc = NotificationDeliveryService("http://nonexistent-host:9999", timeout=0.1)
-        result = svc._fetch_credential("my-secret", "bot_token")
-        assert result == ""
+        value, error = svc._fetch_credential("my-secret", "bot_token")
+        assert value == ""
+        assert "operator API error" in error

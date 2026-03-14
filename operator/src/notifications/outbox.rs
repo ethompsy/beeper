@@ -424,7 +424,21 @@ impl OutboxWorker {
         Ok(points)
     }
 
-    /// Deliver a notification via the UI service delivery endpoint
+    /// Deliver a notification via the UI service delivery endpoint.
+    ///
+    /// Expected payload schema (fields read from outbox entry payload):
+    /// - `investigation_id`: String — investigation that triggered the notification
+    /// - `event_type`: String — notification event type
+    /// - `severity`: String — severity level (defaults to "low")
+    /// - `service`: String — service name
+    /// - `payload`: Object — nested notification payload (evidence, summary, etc.)
+    /// - `channel_type`: String — delivery channel type (defaults to "slack")
+    /// - `channel_config`: Object — channel-specific config (e.g., `{"channel": "#sre-alerts"}`)
+    /// - `credentials_secret`: String — K8s Secret name for channel credentials
+    ///
+    /// NOTE: Channel config and routing are currently passed through from the outbox
+    /// entry payload. Future work should query K8s NotificationChannel CRDs and call
+    /// `NotificationRouter::route()` here to determine target channels dynamically.
     async fn deliver_via_ui(
         &self,
         payload: &serde_json::Value,

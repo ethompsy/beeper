@@ -13,9 +13,9 @@ def register_blueprints(app: Flask) -> None:
     from beeper_ui.routes.investigations import investigations_bp
     from beeper_ui.routes.knowledge import knowledge_bp
     from beeper_ui.routes.metrics import metrics_bp
+    from beeper_ui.routes.notifications import notifications_bp
     from beeper_ui.routes.slo import slo_bp
     from beeper_ui.routes.sources import sources_bp
-    from beeper_ui.routes.notifications import notifications_bp
     from beeper_ui.routes.spending import spending_bp
 
     app.register_blueprint(sources_bp)
