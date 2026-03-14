@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use crate::crds::{Investigation, InvestigationPhase, Severity, Source};
+use crate::crds::{Investigation, InvestigationPhase, ServiceLevel, ServiceLevelCondition, Severity, Source};
 use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
 use crate::llm::LlmManager;
@@ -73,6 +73,8 @@ pub fn api_router_with_detection(
             "/api/v1/investigations/:id/resolve",
             post(resolve_investigation),
         )
+        .route("/api/v1/slo/services", get(list_servicelevels))
+        .route("/api/v1/slo/services/:name", get(get_servicelevel))
         .route("/api/v1/health/components", get(health_components))
         .route("/api/v1/ingestion/stats", get(ingestion_stats))
         .route("/api/v1/detection/stats", get(detection_stats_handler))
@@ -893,6 +895,207 @@ async fn detection_stats_handler(State(state): State<ApiState>) -> impl IntoResp
 }
 
 // ----- RFC 7807 Problem Details -----
+
+// ----- ServiceLevel (SLO) API -----
+
+/// Response for a single ServiceLevel in list view
+#[derive(Debug, Serialize)]
+pub struct ServiceLevelResponse {
+    pub name: String,
+    pub service: String,
+    pub sli_type: String,
+    pub target: f64,
+    pub window: String,
+    pub condition: String,
+    pub alerts_registered: Option<u32>,
+    pub last_evaluated: Option<String>,
+}
+
+/// Response for ServiceLevel detail view
+#[derive(Debug, Serialize)]
+pub struct ServiceLevelDetailResponse {
+    pub name: String,
+    pub service: String,
+    pub sli: SliDetailResponse,
+    pub objective: ObjectiveDetailResponse,
+    pub burn_rate_alerts: Vec<BurnRateAlertResponse>,
+    pub condition: String,
+    pub alerts_registered: Option<u32>,
+    pub last_evaluated: Option<String>,
+    pub error: Option<String>,
+}
+
+/// SLI detail for ServiceLevel response
+#[derive(Debug, Serialize)]
+pub struct SliDetailResponse {
+    #[serde(rename = "type")]
+    pub sli_type: String,
+    pub metric: String,
+    pub good_selector: String,
+    pub total_selector: String,
+}
+
+/// Objective detail for ServiceLevel response
+#[derive(Debug, Serialize)]
+pub struct ObjectiveDetailResponse {
+    pub target: f64,
+    pub window: String,
+}
+
+/// Burn rate alert detail for ServiceLevel response
+#[derive(Debug, Serialize)]
+pub struct BurnRateAlertResponse {
+    pub severity: String,
+    pub short_window: String,
+    pub long_window: String,
+    pub factor: f64,
+}
+
+/// Response for listing all ServiceLevels
+#[derive(Debug, Serialize)]
+pub struct ServiceLevelListResponse {
+    pub service_levels: Vec<ServiceLevelResponse>,
+}
+
+/// Map ServiceLevelCondition to string
+fn condition_to_string(condition: &Option<ServiceLevelCondition>) -> String {
+    match condition {
+        Some(ServiceLevelCondition::Healthy) => "healthy".to_string(),
+        Some(ServiceLevelCondition::Warning) => "warning".to_string(),
+        Some(ServiceLevelCondition::Critical) => "critical".to_string(),
+        None => "unknown".to_string(),
+    }
+}
+
+/// List all ServiceLevel CRDs with their status
+async fn list_servicelevels(State(state): State<ApiState>) -> impl IntoResponse {
+    let servicelevels_api: Api<ServiceLevel> = Api::all((*state.client).clone());
+
+    match servicelevels_api.list(&ListParams::default()).await {
+        Ok(sl_list) => {
+            let service_levels: Vec<ServiceLevelResponse> = sl_list
+                .items
+                .into_iter()
+                .map(|sl| {
+                    let name = sl.metadata.name.unwrap_or_default();
+                    let spec = sl.spec;
+                    let status = sl.status.unwrap_or_default();
+
+                    let sli_type = format!("{:?}", spec.sli.sli_type).to_lowercase();
+
+                    ServiceLevelResponse {
+                        name,
+                        service: spec.service,
+                        sli_type,
+                        target: spec.objective.target,
+                        window: spec.objective.window,
+                        condition: condition_to_string(&status.condition),
+                        alerts_registered: status.alerts_registered,
+                        last_evaluated: status.last_evaluated,
+                    }
+                })
+                .collect();
+
+            debug!(count = service_levels.len(), "Listed ServiceLevels");
+            (
+                StatusCode::OK,
+                Json(ServiceLevelListResponse { service_levels }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, "Failed to list ServiceLevels");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/servicelevel-list-failed".to_string(),
+                    title: "Failed to list ServiceLevels".to_string(),
+                    status: 500,
+                    detail: format!("Could not retrieve ServiceLevel list: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Get a single ServiceLevel by name
+async fn get_servicelevel(
+    State(state): State<ApiState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let servicelevels_api: Api<ServiceLevel> = Api::all((*state.client).clone());
+
+    match servicelevels_api.get(&name).await {
+        Ok(sl) => {
+            let spec = sl.spec;
+            let status = sl.status.unwrap_or_default();
+
+            let sli_type = format!("{:?}", spec.sli.sli_type).to_lowercase();
+
+            let burn_rate_alerts = spec
+                .burn_rate_alerts
+                .unwrap_or_default()
+                .into_iter()
+                .map(|a| BurnRateAlertResponse {
+                    severity: a.severity,
+                    short_window: a.short_window,
+                    long_window: a.long_window,
+                    factor: a.factor,
+                })
+                .collect();
+
+            let response = ServiceLevelDetailResponse {
+                name: sl.metadata.name.unwrap_or_default(),
+                service: spec.service,
+                sli: SliDetailResponse {
+                    sli_type,
+                    metric: spec.sli.metric,
+                    good_selector: spec.sli.good_selector,
+                    total_selector: spec.sli.total_selector,
+                },
+                objective: ObjectiveDetailResponse {
+                    target: spec.objective.target,
+                    window: spec.objective.window,
+                },
+                burn_rate_alerts,
+                condition: condition_to_string(&status.condition),
+                alerts_registered: status.alerts_registered,
+                last_evaluated: status.last_evaluated,
+                error: status.error,
+            };
+
+            debug!(servicelevel_name = %response.name, "Got ServiceLevel detail");
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(kube::Error::Api(err)) if err.code == 404 => {
+            warn!(servicelevel_name = %name, "ServiceLevel not found");
+            (
+                StatusCode::NOT_FOUND,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/servicelevel-not-found".to_string(),
+                    title: "ServiceLevel not found".to_string(),
+                    status: 404,
+                    detail: format!("No ServiceLevel found with name: {}", name),
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, servicelevel_name = %name, "Failed to get ServiceLevel");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/servicelevel-get-failed".to_string(),
+                    title: "Failed to get ServiceLevel".to_string(),
+                    status: 500,
+                    detail: format!("Could not retrieve ServiceLevel: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
 
 /// RFC 7807 Problem Details response
 #[derive(Debug, Serialize)]

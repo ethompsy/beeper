@@ -14,7 +14,10 @@ use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use beeper_operator::{
-    controllers::{run_investigation_controller_with_config, run_source_controller},
+    controllers::{
+        run_investigation_controller_with_config, run_servicelevel_controller,
+        run_source_controller,
+    },
     detection::{DetectionConfig, DetectionConsumer, DetectionStats},
     health::health_router,
     ingestion::{ingestion_router, IngestionBuffer},
@@ -130,6 +133,14 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Start ServiceLevel controller in background
+    let servicelevel_client = (*client).clone();
+    let servicelevel_handle = tokio::spawn(async move {
+        if let Err(e) = run_servicelevel_controller(servicelevel_client).await {
+            error!(error = %e, "ServiceLevel controller failed");
+        }
+    });
+
     // Start detection consumer in background (if enabled)
     let detection_handle = if detection_config.enabled {
         let detection_buffer = Arc::clone(&buffer);
@@ -158,6 +169,7 @@ async fn main() -> anyhow::Result<()> {
     ingestion_handle.abort();
     source_handle.abort();
     investigation_handle.abort();
+    servicelevel_handle.abort();
     if let Some(handle) = detection_handle {
         handle.abort();
     }

@@ -1,0 +1,139 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: servicelevels.beeper.dev
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+spec:
+  group: beeper.dev
+  names:
+    kind: ServiceLevel
+    listKind: ServiceLevelList
+    plural: servicelevels
+    singular: servicelevel
+    shortNames:
+      - slo
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - service
+                - sli
+                - objective
+              properties:
+                service:
+                  type: string
+                  description: Name of the service this SLO applies to
+                sli:
+                  type: object
+                  required:
+                    - type
+                    - metric
+                    - good_selector
+                    - total_selector
+                  properties:
+                    type:
+                      type: string
+                      description: Type of SLI (availability, latency, or error_rate)
+                      enum:
+                        - availability
+                        - latency
+                        - error_rate
+                    metric:
+                      type: string
+                      description: Prometheus metric name to query
+                    good_selector:
+                      type: string
+                      description: PromQL selector for good events
+                    total_selector:
+                      type: string
+                      description: PromQL selector for total events
+                objective:
+                  type: object
+                  required:
+                    - target
+                    - window
+                  properties:
+                    target:
+                      type: number
+                      format: double
+                      description: Target ratio (0.0 to 1.0, e.g., 0.999 for 99.9%)
+                      minimum: 0.0
+                      maximum: 1.0
+                    window:
+                      type: string
+                      description: Measurement window (e.g., 30d, 7d)
+                burn_rate_alerts:
+                  type: array
+                  description: Burn rate alert threshold configurations
+                  items:
+                    type: object
+                    required:
+                      - severity
+                      - short_window
+                      - long_window
+                      - factor
+                    properties:
+                      severity:
+                        type: string
+                        description: Alert severity level (e.g., warning, critical)
+                      short_window:
+                        type: string
+                        description: Short observation window (e.g., 5m)
+                      long_window:
+                        type: string
+                        description: Long observation window (e.g., 1h, 6h)
+                      factor:
+                        type: number
+                        format: double
+                        description: Burn rate factor threshold
+                        exclusiveMinimum: true
+                        minimum: 0
+            status:
+              type: object
+              properties:
+                condition:
+                  type: string
+                  description: Current condition of the SLO
+                  enum:
+                    - healthy
+                    - warning
+                    - critical
+                last_evaluated:
+                  type: string
+                  format: date-time
+                  description: Last time the ServiceLevel was evaluated (ISO 8601)
+                alerts_registered:
+                  type: integer
+                  description: Number of burn rate alert thresholds registered
+                error:
+                  type: string
+                  description: Error message if validation or reconciliation failed
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Service
+          type: string
+          jsonPath: .spec.service
+        - name: SLI Type
+          type: string
+          jsonPath: .spec.sli.type
+        - name: Target
+          type: number
+          jsonPath: .spec.objective.target
+        - name: Condition
+          type: string
+          jsonPath: .status.condition
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
