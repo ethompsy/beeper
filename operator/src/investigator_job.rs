@@ -459,6 +459,7 @@ mod tests {
                 service: "payments".to_string(),
                 severity: Severity::High,
                 triggered_at: Some("2026-02-12T10:00:00Z".to_string()),
+                impact_score: None,
             },
             status: None,
         }
@@ -644,6 +645,7 @@ mod tests {
                 service: "test".to_string(),
                 severity: Severity::Medium,
                 triggered_at: None,
+                impact_score: None,
             },
             status: None,
         };
@@ -666,6 +668,7 @@ mod tests {
                 service: "test".to_string(),
                 severity: Severity::Medium,
                 triggered_at: None,
+                impact_score: None,
             },
             status: None,
         };

@@ -15,6 +15,8 @@ use tracing::{debug, error, info, warn};
 use crate::crds::investigation::{Investigation, InvestigationSpec, Severity};
 use crate::ingestion::buffer::IngestionData;
 use crate::ingestion::IngestionBuffer;
+use crate::slo::impact::CustomerImpactScorer;
+use crate::slo::SloCache;
 
 use super::logs::LogDetector;
 use super::metrics::MetricDetector;
@@ -84,7 +86,10 @@ impl DetectionConsumer {
         buffer: Arc<IngestionBuffer>,
         client: Client,
         namespace: String,
+        slo_cache: Option<SloCache>,
     ) {
+        // Create impact scorer if SLO cache is available
+        let impact_scorer = slo_cache.map(CustomerImpactScorer::new);
         let mut metric_detector = MetricDetector::new(
             self.config.metric_alpha,
             self.config.metric_threshold,
@@ -178,6 +183,13 @@ impl DetectionConsumer {
                 let investigation_name =
                     format!("anomaly-{:x}-{:04x}", chrono::Utc::now().timestamp(), seq);
 
+                // Compute customer impact score from SLO data (if available)
+                let impact_score = if let Some(ref scorer) = impact_scorer {
+                    scorer.score_service(&event.service).await
+                } else {
+                    None
+                };
+
                 let investigation = Investigation::new(
                     &investigation_name,
                     InvestigationSpec {
@@ -185,6 +197,7 @@ impl DetectionConsumer {
                         service: event.service.clone(),
                         severity,
                         triggered_at: Some(chrono::Utc::now().to_rfc3339()),
+                        impact_score,
                     },
                 );
 

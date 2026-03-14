@@ -159,6 +159,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "http://prometheus:9090".to_string());
     let qdrant_endpoint = env::var("QDRANT_URL")
         .unwrap_or_else(|_| "http://qdrant:6333".to_string());
+    let detection_slo_cache = slo_cache.clone();
     let slo_handle = tokio::spawn(async move {
         run_slo_engine(
             slo_client,
@@ -178,7 +179,12 @@ async fn main() -> anyhow::Result<()> {
         let consumer = DetectionConsumer::new(detection_config, detection_stats);
         Some(tokio::spawn(async move {
             consumer
-                .run(detection_buffer, detection_client, detection_namespace)
+                .run(
+                    detection_buffer,
+                    detection_client,
+                    detection_namespace,
+                    Some(detection_slo_cache),
+                )
                 .await;
         }))
     } else {

@@ -15,6 +15,8 @@ use crate::crds::{
 };
 
 use super::calculator::SloCalculator;
+use super::impact::CustomerImpactScorer;
+use super::SloCache;
 
 /// Default cooldown in seconds between duplicate alerts for the same SLO + alert
 const DEFAULT_ALERT_COOLDOWN_SECS: i64 = 600;
@@ -29,6 +31,7 @@ pub struct BurnRateAlerter {
     cooldown: HashMap<String, i64>,
     cooldown_secs: i64,
     alert_seq: u16,
+    impact_scorer: Option<CustomerImpactScorer>,
 }
 
 impl BurnRateAlerter {
@@ -45,7 +48,15 @@ impl BurnRateAlerter {
             cooldown: HashMap::new(),
             cooldown_secs,
             alert_seq: 0,
+            impact_scorer: None,
         }
+    }
+
+    /// Create a new BurnRateAlerter with SLO cache for impact scoring
+    pub fn with_slo_cache(client: Client, namespace: String, slo_cache: SloCache) -> Self {
+        let mut alerter = Self::new(client, namespace);
+        alerter.impact_scorer = Some(CustomerImpactScorer::new(slo_cache));
+        alerter
     }
 
     /// Evaluate burn rate alerts for a ServiceLevel
@@ -192,6 +203,13 @@ impl BurnRateAlerter {
             budget_remaining * 100.0
         );
 
+        // Compute customer impact score from SLO data (if available)
+        let impact_score = if let Some(ref scorer) = self.impact_scorer {
+            scorer.score_service(&spec.service).await
+        } else {
+            None
+        };
+
         let investigation = Investigation::new(
             &investigation_name,
             InvestigationSpec {
@@ -199,6 +217,7 @@ impl BurnRateAlerter {
                 service: spec.service.clone(),
                 severity,
                 triggered_at: Some(Utc::now().to_rfc3339()),
+                impact_score,
             },
         );
 

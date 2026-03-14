@@ -6,6 +6,7 @@
 
 pub mod burn_rate;
 pub mod calculator;
+pub mod impact;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -263,7 +264,7 @@ pub async fn run_slo_engine(
     };
 
     let calculator = SloCalculator::new(prom_client);
-    let mut alerter = BurnRateAlerter::new(client.clone(), namespace);
+    let mut alerter = BurnRateAlerter::with_slo_cache(client.clone(), namespace, slo_cache.clone());
     let mut qdrant = QdrantWriter::new(qdrant_endpoint);
 
     // Ensure slo_snapshots collection exists on first iteration

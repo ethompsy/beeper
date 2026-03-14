@@ -208,6 +208,8 @@ pub struct InvestigationResponse {
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
     pub triggered_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub impact_score: Option<f64>,
 }
 
 /// Response for a single investigation detail (extends list response)
@@ -224,6 +226,8 @@ pub struct InvestigationDetailResponse {
     pub message: Option<String>,
     pub error: Option<String>,
     pub job_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub impact_score: Option<f64>,
 }
 
 /// Map InvestigationPhase to UI-friendly status string
@@ -289,6 +293,7 @@ async fn list_investigations(
                         started_at: status.started_at,
                         completed_at: status.completed_at,
                         triggered_at: spec.triggered_at,
+                        impact_score: spec.impact_score,
                     }
                 })
                 .collect();
@@ -304,14 +309,23 @@ async fn list_investigations(
                 investigations.retain(|inv| inv.severity == *severity_filter);
             }
 
-            // Sort: awaiting_confirmation first, then investigating, then completed
-            // Within each group, most recent first (by started_at descending)
+            // Sort: status priority → impact_score descending → started_at descending
             investigations.sort_by(|a, b| {
                 let order_cmp = status_sort_order(&a.status).cmp(&status_sort_order(&b.status));
                 if order_cmp != std::cmp::Ordering::Equal {
                     return order_cmp;
                 }
-                // Within same status, sort by started_at descending (most recent first)
+                // Within same status, sort by impact_score descending (highest first, None last)
+                let impact_cmp = match (a.impact_score, b.impact_score) {
+                    (Some(a_score), Some(b_score)) => b_score.partial_cmp(&a_score).unwrap_or(std::cmp::Ordering::Equal),
+                    (Some(_), None) => std::cmp::Ordering::Less,    // a (Some) before b (None)
+                    (None, Some(_)) => std::cmp::Ordering::Greater, // a (None) after b (Some)
+                    (None, None) => std::cmp::Ordering::Equal,
+                };
+                if impact_cmp != std::cmp::Ordering::Equal {
+                    return impact_cmp;
+                }
+                // Tertiary: by started_at descending (most recent first)
                 b.started_at
                     .as_deref()
                     .unwrap_or("")
@@ -364,6 +378,7 @@ async fn get_investigation(
                 message: status.message,
                 error: status.error,
                 job_name: status.job_name,
+                impact_score: spec.impact_score,
             };
 
             debug!(investigation_id = %response.id, "Got investigation detail");
@@ -1528,6 +1543,7 @@ mod tests {
             started_at: Some("2026-02-09T12:00:00Z".to_string()),
             completed_at: None,
             triggered_at: Some("2026-02-09T11:55:00Z".to_string()),
+            impact_score: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1540,6 +1556,8 @@ mod tests {
         assert!(json.contains("\"triggered_at\":\"2026-02-09T11:55:00Z\""));
         // completed_at should be null
         assert!(json.contains("\"completed_at\":null"));
+        // impact_score is None, should be absent
+        assert!(!json.contains("impact_score"));
     }
 
     #[test]
@@ -1553,11 +1571,91 @@ mod tests {
             started_at: Some("2026-02-09T10:00:00Z".to_string()),
             completed_at: Some("2026-02-09T10:15:00Z".to_string()),
             triggered_at: Some("2026-02-09T09:55:00Z".to_string()),
+            impact_score: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"status\":\"completed\""));
         assert!(json.contains("\"completed_at\":\"2026-02-09T10:15:00Z\""));
+    }
+
+    #[test]
+    fn test_investigation_response_with_impact_score() {
+        let response = InvestigationResponse {
+            id: "inv-impact-001".to_string(),
+            status: "investigating".to_string(),
+            service: "payment-service".to_string(),
+            severity: "critical".to_string(),
+            condition: "SLO burn rate alert".to_string(),
+            started_at: Some("2026-03-14T12:00:00Z".to_string()),
+            completed_at: None,
+            triggered_at: Some("2026-03-14T11:55:00Z".to_string()),
+            impact_score: Some(0.85),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"impact_score\":0.85"));
+    }
+
+    #[test]
+    fn test_investigation_sort_by_impact_score() {
+        let high_impact = InvestigationResponse {
+            id: "inv-high".to_string(),
+            status: "investigating".to_string(),
+            service: "payments".to_string(),
+            severity: "critical".to_string(),
+            condition: "SLO alert".to_string(),
+            started_at: Some("2026-03-14T12:00:00Z".to_string()),
+            completed_at: None,
+            triggered_at: None,
+            impact_score: Some(0.85),
+        };
+        let low_impact = InvestigationResponse {
+            id: "inv-low".to_string(),
+            status: "investigating".to_string(),
+            service: "internal".to_string(),
+            severity: "medium".to_string(),
+            condition: "Latency".to_string(),
+            started_at: Some("2026-03-14T12:01:00Z".to_string()),
+            completed_at: None,
+            triggered_at: None,
+            impact_score: Some(0.34),
+        };
+        let no_impact = InvestigationResponse {
+            id: "inv-none".to_string(),
+            status: "investigating".to_string(),
+            service: "legacy".to_string(),
+            severity: "low".to_string(),
+            condition: "Spike".to_string(),
+            started_at: Some("2026-03-14T12:02:00Z".to_string()),
+            completed_at: None,
+            triggered_at: None,
+            impact_score: None,
+        };
+
+        let mut investigations = vec![no_impact, low_impact, high_impact];
+
+        // Apply the same sort logic as list_investigations
+        investigations.sort_by(|a, b| {
+            let order_cmp = status_sort_order(&a.status).cmp(&status_sort_order(&b.status));
+            if order_cmp != std::cmp::Ordering::Equal {
+                return order_cmp;
+            }
+            let impact_cmp = match (a.impact_score, b.impact_score) {
+                (Some(a_s), Some(b_s)) => b_s.partial_cmp(&a_s).unwrap_or(std::cmp::Ordering::Equal),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            };
+            if impact_cmp != std::cmp::Ordering::Equal {
+                return impact_cmp;
+            }
+            b.started_at.as_deref().unwrap_or("").cmp(a.started_at.as_deref().unwrap_or(""))
+        });
+
+        assert_eq!(investigations[0].id, "inv-high");  // Highest impact first
+        assert_eq!(investigations[1].id, "inv-low");    // Lower impact second
+        assert_eq!(investigations[2].id, "inv-none");   // No impact last
     }
 
     #[test]
@@ -1628,6 +1726,7 @@ mod tests {
             message: Some("Correlating signals across architectural layers".to_string()),
             error: None,
             job_name: Some("inv-detail-001-job".to_string()),
+            impact_score: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1656,6 +1755,7 @@ mod tests {
             message: Some("Generating root cause hypothesis".to_string()),
             error: Some("LLM provider timeout".to_string()),
             job_name: None,
+            impact_score: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1679,6 +1779,7 @@ mod tests {
             message: Some("Documenting investigation findings".to_string()),
             error: None,
             job_name: Some("inv-done-001-job".to_string()),
+            impact_score: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
