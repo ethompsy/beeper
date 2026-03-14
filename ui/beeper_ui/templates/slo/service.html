@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}{{ service.name if service else 'Not Found' }} SLO - Beeper{% endblock %}
+
+{% block content %}
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to load SLO data</h3>
+    <p>{{ error_message }}</p>
+</div>
+{% elif service %}
+<div class="card">
+    <p><a href="{{ url_for('slo.slo_dashboard') }}">&larr; Back to SLO Dashboard</a></p>
+    <h2>{{ service.name }}</h2>
+    <p>
+        Service: <strong>{{ service.service or 'N/A' }}</strong> |
+        SLI Type: <strong>{{ service.sli.type if service.sli else 'N/A' }}</strong> |
+        <span class="status-badge {{ condition_css_class(service.condition or 'unknown') }}">
+            {{ (service.condition or 'unknown') | title }}
+        </span>
+    </p>
+</div>
+
+<div class="slo-summary-cards">
+    <div class="slo-summary-card">
+        <div class="slo-summary-value">{{ format_compliance(service.compliance) }}</div>
+        <div class="slo-summary-label">Compliance</div>
+    </div>
+    <div class="slo-summary-card">
+        <div class="slo-summary-value">{{ format_burn_rate(service.burn_rate) }}</div>
+        <div class="slo-summary-label">Burn Rate</div>
+    </div>
+    <div class="slo-summary-card">
+        <div class="slo-summary-value">{{ format_budget_remaining(service.error_budget_remaining) }}</div>
+        <div class="slo-summary-label">Budget Remaining</div>
+    </div>
+    <div class="slo-summary-card">
+        <div class="slo-summary-value">{{ format_projected_exhaustion(budget.projected_exhaustion_secs if budget else None) }}</div>
+        <div class="slo-summary-label">Projected Exhaustion</div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>SLO Configuration</h3>
+    <table class="slo-table">
+        <tr>
+            <td><strong>Target</strong></td>
+            <td>{{ format_compliance(service.objective.target if service.objective else None) }}</td>
+        </tr>
+        <tr>
+            <td><strong>Window</strong></td>
+            <td>{{ service.objective.window if service.objective else 'N/A' }}</td>
+        </tr>
+        {% if service.sli %}
+        <tr>
+            <td><strong>Metric</strong></td>
+            <td><code>{{ service.sli.metric or 'N/A' }}</code></td>
+        </tr>
+        <tr>
+            <td><strong>Good Selector</strong></td>
+            <td><code>{{ service.sli.good_selector or 'N/A' }}</code></td>
+        </tr>
+        <tr>
+            <td><strong>Total Selector</strong></td>
+            <td><code>{{ service.sli.total_selector or 'N/A' }}</code></td>
+        </tr>
+        {% endif %}
+    </table>
+
+    {% if service.burn_rate_alerts %}
+    <h4>Burn Rate Alerts</h4>
+    <table class="slo-table">
+        <thead>
+            <tr>
+                <th>Severity</th>
+                <th>Short Window</th>
+                <th>Long Window</th>
+                <th>Factor</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for alert in service.burn_rate_alerts %}
+            <tr>
+                <td>{{ alert.severity }}</td>
+                <td>{{ alert.short_window }}</td>
+                <td>{{ alert.long_window }}</td>
+                <td>{{ alert.factor }}x</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
+{% if budget %}
+<div class="card">
+    <h3>Error Budget</h3>
+    <div class="budget-overview">
+        <div class="budget-bar-container">
+            <div class="budget-bar-track">
+                {% set consumed_pct = ((budget.error_budget_consumed or 0) * 100) | round(1) %}
+                <div class="budget-bar-fill {% if consumed_pct > 80 %}budget-critical{% elif consumed_pct > 50 %}budget-warning{% else %}budget-healthy{% endif %}"
+                     style="width: {{ consumed_pct }}%"></div>
+            </div>
+            <p>{{ consumed_pct }}% consumed | {{ format_budget_remaining(budget.error_budget_remaining) }} remaining</p>
+        </div>
+    </div>
+
+    {% if budget.is_frozen %}
+    <p><span class="frozen-badge">Deployment Freeze Recommended</span></p>
+    {% endif %}
+
+    {% if budget.triggered_policies and budget.triggered_policies|length > 0 %}
+    <h4>Triggered Policies</h4>
+    <table class="slo-table">
+        <thead>
+            <tr>
+                <th>Threshold</th>
+                <th>Action</th>
+                <th>Triggered At</th>
+                <th>Consumption</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for policy in budget.triggered_policies %}
+            <tr>
+                <td>{{ format_budget_remaining(policy.threshold) }}</td>
+                <td>{{ policy.action | title }}</td>
+                <td>{{ policy.triggered_at }}</td>
+                <td>{{ format_budget_remaining(policy.consumption_at_trigger) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+    <h3>Related Investigations</h3>
+    <p class="empty-state">Related investigations will be linked when investigation-SLO correlation is implemented.</p>
+</div>
+{% else %}
+<div class="card error-card">
+    <h3>Service Not Found</h3>
+    <p>The requested ServiceLevel was not found.</p>
+    <p><a href="{{ url_for('slo.slo_dashboard') }}">&larr; Back to SLO Dashboard</a></p>
+</div>
+{% endif %}
+{% endblock %}

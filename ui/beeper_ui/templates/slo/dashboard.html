@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}SLO Compliance - Beeper{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>SLO Compliance Dashboard</h2>
+    <p>Service reliability posture across all monitored services.</p>
+</div>
+
+<div id="slo-content">
+    {% include "slo/_content.html" %}
+</div>
+{% endblock %}

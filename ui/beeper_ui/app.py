@@ -43,6 +43,21 @@ def create_app(config_class: type | None = None) -> Flask:
     app.jinja_env.globals["ACCURACY_LABELS"] = ACCURACY_LABELS
     app.jinja_env.globals["NOT_AN_ISSUE_LABELS"] = NOT_AN_ISSUE_LABELS
 
+    # Register SLO template helpers
+    from beeper_ui.services.slo_service import (
+        condition_css_class,
+        format_budget_remaining,
+        format_burn_rate,
+        format_compliance,
+        format_projected_exhaustion,
+    )
+
+    app.jinja_env.globals["format_compliance"] = format_compliance
+    app.jinja_env.globals["format_burn_rate"] = format_burn_rate
+    app.jinja_env.globals["format_budget_remaining"] = format_budget_remaining
+    app.jinja_env.globals["format_projected_exhaustion"] = format_projected_exhaustion
+    app.jinja_env.globals["condition_css_class"] = condition_css_class
+
     # Register blueprints
     from beeper_ui.routes import register_blueprints
 

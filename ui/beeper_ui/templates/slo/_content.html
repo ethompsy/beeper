@@ -1,0 +1,74 @@
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to fetch SLO data</h3>
+    <p>{{ error_message }}</p>
+    <p>Make sure the Beeper operator is running and accessible.</p>
+</div>
+{% elif services is defined and services|length > 0 %}
+<div class="slo-summary-cards">
+    <div class="slo-summary-card">
+        <div class="slo-summary-value">{{ total_services }}</div>
+        <div class="slo-summary-label">Total Services</div>
+    </div>
+    <div class="slo-summary-card">
+        <div class="slo-summary-value status-healthy">{{ healthy_count }}</div>
+        <div class="slo-summary-label">Meeting SLO</div>
+    </div>
+    <div class="slo-summary-card">
+        <div class="slo-summary-value status-warning">{{ at_risk_count }}</div>
+        <div class="slo-summary-label">At Risk</div>
+    </div>
+    <div class="slo-summary-card">
+        <div class="slo-summary-value status-critical">{{ frozen_count }}</div>
+        <div class="slo-summary-label">Budget Frozen</div>
+    </div>
+</div>
+
+<div class="card">
+    <table class="slo-table">
+        <thead>
+            <tr>
+                <th>Service</th>
+                <th>SLI Type</th>
+                <th>Target</th>
+                <th>Compliance</th>
+                <th>Burn Rate</th>
+                <th>Budget Remaining</th>
+                <th>Status</th>
+                <th>Frozen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for svc in services %}
+            <tr>
+                <td>
+                    <a href="{{ url_for('slo.slo_service_detail', name=svc.name) }}">{{ svc.name }}</a>
+                </td>
+                <td>{{ svc.sli_type or 'N/A' }}</td>
+                <td>{{ format_compliance(svc.target) }}</td>
+                <td>{{ format_compliance(svc.compliance) }}</td>
+                <td>{{ format_burn_rate(svc.burn_rate) }}</td>
+                <td>{{ format_budget_remaining(svc.error_budget_remaining) }}</td>
+                <td>
+                    <span class="status-badge {{ condition_css_class(svc.condition or 'unknown') }}">
+                        {{ (svc.condition or 'unknown') | title }}
+                    </span>
+                </td>
+                <td>
+                    {% if svc.is_frozen %}
+                    <span class="frozen-badge">Frozen</span>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card empty-state">
+    <p>No ServiceLevel CRDs configured.</p>
+    <p>Create ServiceLevel custom resources in your Kubernetes cluster to start monitoring SLOs.</p>
+</div>
+{% endif %}
