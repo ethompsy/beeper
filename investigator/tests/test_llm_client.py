@@ -343,3 +343,132 @@ class TestLlmClient:
             with pytest.raises(LlmClientError, match="Authentication failed"):
                 await client.test_connection()
 
+
+class TestLlmClientRetry:
+    """Tests for retry integration in LlmClient."""
+
+    @patch("beeper_investigator.llm.retry.time.sleep")
+    def test_complete_sync_retries_on_connection_error(self, mock_sleep: MagicMock) -> None:
+        """Test that complete_sync retries on transient connection errors."""
+        import litellm.exceptions
+
+        from beeper_investigator.llm.retry import RetryConfig
+
+        config = LlmConfig(
+            provider="anthropic",
+            model="claude-sonnet-4",
+            api_key="test-key",
+            retry_config=RetryConfig(max_retries=2, jitter_fraction=0.0),
+        )
+        client = LlmClient(config)
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_response.usage = None
+
+        with patch("litellm.completion") as mock_completion:
+            mock_completion.side_effect = [
+                litellm.exceptions.APIConnectionError("down", "model", "provider"),
+                mock_response,
+            ]
+            result = client.complete_sync(
+                messages=[{"role": "user", "content": "test"}],
+            )
+
+        assert result == "ok"
+        assert mock_completion.call_count == 2
+        assert mock_sleep.call_count == 1
+
+    @patch("beeper_investigator.llm.retry.time.sleep")
+    def test_complete_sync_no_retry_on_auth_error(self, mock_sleep: MagicMock) -> None:
+        """Test that AuthenticationError is not retried."""
+        import litellm.exceptions
+
+        from beeper_investigator.llm.retry import RetryConfig
+
+        config = LlmConfig(
+            provider="anthropic",
+            model="claude-sonnet-4",
+            api_key="test-key",
+            retry_config=RetryConfig(max_retries=3, jitter_fraction=0.0),
+        )
+        client = LlmClient(config)
+
+        with patch("litellm.completion") as mock_completion:
+            mock_completion.side_effect = litellm.exceptions.AuthenticationError(
+                "bad key", "model", "provider"
+            )
+            with pytest.raises(LlmClientError, match="Authentication failed"):
+                client.complete_sync(
+                    messages=[{"role": "user", "content": "test"}],
+                )
+
+        assert mock_completion.call_count == 1
+        mock_sleep.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("beeper_investigator.llm.retry.asyncio.sleep")
+    async def test_complete_retries_on_connection_error(self, mock_sleep: MagicMock) -> None:
+        """Test that async complete() retries on transient errors."""
+        import litellm.exceptions
+
+        from beeper_investigator.llm.retry import RetryConfig
+
+        mock_sleep.return_value = None
+
+        config = LlmConfig(
+            provider="anthropic",
+            model="claude-sonnet-4",
+            api_key="test-key",
+            retry_config=RetryConfig(max_retries=2, jitter_fraction=0.0),
+        )
+        client = LlmClient(config)
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_response.usage = None
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+            mock_completion.side_effect = [
+                litellm.exceptions.APIConnectionError("down", "model", "provider"),
+                mock_response,
+            ]
+            result = await client.complete(
+                messages=[{"role": "user", "content": "test"}],
+            )
+
+        assert result == "ok"
+        assert mock_completion.call_count == 2
+
+    @patch("beeper_investigator.llm.retry.time.sleep")
+    def test_embed_sync_retries_on_connection_error(self, mock_sleep: MagicMock) -> None:
+        """Test that embed_sync retries on transient errors."""
+        import litellm.exceptions
+
+        from beeper_investigator.llm.retry import RetryConfig
+
+        config = LlmConfig(
+            provider="anthropic",
+            model="claude-sonnet-4",
+            api_key="test-key",
+            embedding_model="text-embedding-ada-002",
+            retry_config=RetryConfig(max_retries=2, jitter_fraction=0.0),
+        )
+        client = LlmClient(config)
+
+        mock_response = MagicMock()
+        mock_response.data = [{"embedding": [0.1, 0.2, 0.3]}]
+
+        with patch("litellm.embedding") as mock_embedding:
+            mock_embedding.side_effect = [
+                litellm.exceptions.APIConnectionError("down", "model", "provider"),
+                mock_response,
+            ]
+            result = client.embed_sync("test text")
+
+        assert result == [0.1, 0.2, 0.3]
+        assert mock_embedding.call_count == 2
+        assert mock_sleep.call_count == 1
+

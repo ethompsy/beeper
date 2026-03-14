@@ -8,9 +8,10 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime, timezone
 from typing import Any
 
-from beeper_investigator.agent import InvestigatorAgent, SourceClients
+from beeper_investigator.agent import InvestigatorAgent, LlmUnavailableError, SourceClients
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.kb.client import KBClient
@@ -121,7 +122,8 @@ def main() -> None:
 
     Exit codes:
     - 0: Investigation completed successfully
-    - 1: Investigation failed
+    - 1: Investigation failed (permanent — non-retryable)
+    - 2: Investigation failed (retryable — LLM unavailable, K8s Job will retry)
     """
     # Build investigation context from environment
     context = InvestigationContext.from_env()
@@ -186,6 +188,19 @@ def main() -> None:
             logger.error("Investigation failed: %s", result.error or result.summary)
             sys.exit(1)
 
+    except LlmUnavailableError as e:
+        # Emit structured escalation event (NFR15: human escalation within 60s)
+        logger.error(
+            json.dumps({
+                "event": "llm_escalation",
+                "investigation_id": context.investigation_id,
+                "error": str(e),
+                "escalation_type": "human_required",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        )
+        # Exit code 2 = retryable failure — K8s Job controller will retry
+        sys.exit(2)
     except LlmClientError as e:
         logger.error("LLM client error: %s", e)
         sys.exit(1)

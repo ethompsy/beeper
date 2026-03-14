@@ -173,21 +173,67 @@ async fn reconcile(
     }
 }
 
-/// Error policy for handling reconciliation failures
+/// Base delay for exponential backoff on reconciliation errors
+const BACKOFF_BASE_SECS: u64 = 5;
+
+/// Maximum delay cap for exponential backoff
+const BACKOFF_MAX_SECS: u64 = 60;
+
+/// Compute exponential backoff duration with jitter for a given attempt.
+///
+/// Formula: min(base * 2^attempt, max) ± 25% jitter.
+/// Attempt 0 gives ~5s, attempt 1 gives ~10s, attempt 2 gives ~20s, etc.
+pub fn backoff_duration(attempt: u32) -> Duration {
+    let delay = std::cmp::min(
+        BACKOFF_BASE_SECS.saturating_mul(1u64.wrapping_shl(attempt)),
+        BACKOFF_MAX_SECS,
+    );
+    // Simple deterministic jitter: use attempt as seed for ±25% variation
+    // This avoids adding rand crate as a dependency.
+    let jitter_factor = match attempt % 4 {
+        0 => 100u64,   // +0%
+        1 => 125u64,   // +25%
+        2 => 75u64,    // -25%
+        _ => 110u64,   // +10%
+    };
+    let jittered = delay.saturating_mul(jitter_factor) / 100;
+    Duration::from_secs(std::cmp::max(1, jittered))
+}
+
+/// Error policy for handling reconciliation failures with exponential backoff.
+///
+/// Uses exponential backoff with jitter to avoid thundering herd on repeated
+/// reconciliation failures. Attempt count is derived from the investigation's
+/// status.message retry prefix when available.
 fn error_policy(
     investigation: Arc<Investigation>,
     error: &InvestigationError,
     _ctx: Arc<InvestigationContext>,
 ) -> Action {
     let name = investigation.name_any();
+
+    // Extract retry count from status message if available (format: "[retry:N] ...")
+    let attempt = investigation
+        .status
+        .as_ref()
+        .and_then(|s| s.message.as_ref())
+        .and_then(|msg| {
+            msg.strip_prefix("[retry:")
+                .and_then(|rest| rest.split(']').next())
+                .and_then(|n| n.parse::<u32>().ok())
+        })
+        .unwrap_or(0);
+
+    let delay = backoff_duration(attempt);
     error!(
         investigation_name = %name,
         error = %error,
-        "Investigation reconciliation failed"
+        attempt = attempt,
+        retry_delay_secs = delay.as_secs(),
+        "Investigation reconciliation failed — retrying with backoff"
     );
 
-    // Retry after 5 seconds (exponential backoff can be added in future story)
-    Action::requeue(Duration::from_secs(5))
+    Action::requeue(delay)
 }
 
 /// Run the Investigation controller
@@ -255,5 +301,41 @@ mod tests {
     fn test_investigation_error_missing_key() {
         let err = InvestigationError::MissingObjectKey("test_key");
         assert_eq!(err.to_string(), "Missing object key: test_key");
+    }
+
+    #[test]
+    fn test_backoff_duration_first_attempt() {
+        let d = backoff_duration(0);
+        // attempt 0: base=5, jitter_factor=100 → 5s
+        assert_eq!(d.as_secs(), 5);
+    }
+
+    #[test]
+    fn test_backoff_duration_second_attempt() {
+        let d = backoff_duration(1);
+        // attempt 1: base=5*2=10, jitter_factor=125 → 12s
+        assert_eq!(d.as_secs(), 12);
+    }
+
+    #[test]
+    fn test_backoff_duration_third_attempt() {
+        let d = backoff_duration(2);
+        // attempt 2: base=5*4=20, jitter_factor=75 → 15s
+        assert_eq!(d.as_secs(), 15);
+    }
+
+    #[test]
+    fn test_backoff_duration_capped_at_max() {
+        let d = backoff_duration(10);
+        // attempt 10: base would be 5*1024=5120, capped at 60, jitter_factor=75 → 45s
+        assert!(d.as_secs() <= BACKOFF_MAX_SECS * 125 / 100);
+    }
+
+    #[test]
+    fn test_backoff_duration_never_zero() {
+        for attempt in 0..20 {
+            let d = backoff_duration(attempt);
+            assert!(d.as_secs() >= 1, "Duration must be at least 1 second, got {} for attempt {}", d.as_secs(), attempt);
+        }
     }
 }

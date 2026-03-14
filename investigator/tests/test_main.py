@@ -246,15 +246,15 @@ class TestMain:
         mock_status_cls: MagicMock,
         env_vars: dict[str, str],
     ) -> None:
-        """Test that main exits with code 1 when agent fails."""
+        """Test that main exits with code 1 when agent fails (non-LLM error)."""
         mock_llm = MagicMock()
         mock_llm.provider = "anthropic"
         mock_llm.model = "claude-sonnet-4"
-        mock_llm.test_connection.return_value = False  # fail LLM check
+        mock_llm.test_connection.return_value = True
         mock_llm_cls.from_env.return_value = mock_llm
 
         mock_kb = MagicMock()
-        mock_kb.health_check.return_value = True
+        mock_kb.health_check.return_value = False  # KB failure → permanent error
         mock_kb_cls.return_value = mock_kb
 
         mock_status = MagicMock()

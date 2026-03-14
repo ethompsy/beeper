@@ -85,3 +85,14 @@ class InvestigationStatusUpdater:
             error: Human-readable error description.
         """
         self.update_message(f"Failed: {error}")
+
+    def set_llm_unavailable(self, error: str) -> None:
+        """Mark investigation as stalled due to LLM provider unavailability.
+
+        Sets a status message indicating the investigation is queued for
+        retry because the LLM provider cannot be reached (NFR15).
+
+        Args:
+            error: Description of the LLM error.
+        """
+        self.update_message(f"LLM unavailable — queued for retry: {error}")

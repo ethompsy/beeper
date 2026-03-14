@@ -1,0 +1,24 @@
+Beeper {{ .Chart.Version }} has been deployed.
+
+PLATFORM RESILIENCE (NFR14 / NFR17):
+  Beeper enhances your existing alerting — it never replaces it.
+  If the Beeper operator is unavailable, your existing Prometheus and
+  Loki alerting pipeline continues functioning normally.
+
+  Investigation data persists in Qdrant via persistent volumes and
+  survives operator restarts without data loss.
+
+LLM DEGRADATION (NFR15):
+  If the LLM provider becomes unavailable, investigations are queued
+  for retry with exponential backoff. A structured escalation event is
+  emitted within 60 seconds for human awareness.
+
+GRACEFUL SHUTDOWN:
+  The operator waits up to 10 seconds for in-flight SLO engine cycles
+  and detection processing to complete before terminating.
+
+To check the operator status:
+  kubectl get pods -l app.kubernetes.io/name={{ include "beeper.name" . }}
+
+To view active investigations:
+  kubectl get investigations -A

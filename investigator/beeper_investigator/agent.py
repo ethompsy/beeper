@@ -14,7 +14,7 @@ from qdrant_client.models import PointStruct
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.kb.client import INVESTIGATIONS_COLLECTION, KBClient
-from beeper_investigator.llm.client import LlmClient
+from beeper_investigator.llm.client import LlmClient, LlmClientError
 from beeper_investigator.llm.spending_cap import SpendingCapConfig, SpendingCapEnforcer
 from beeper_investigator.sources.loki import LokiClient
 from beeper_investigator.sources.prometheus import PrometheusClient
@@ -43,6 +43,12 @@ class InvestigationResult:
     findings: list[str] = field(default_factory=list)
     error: Optional[str] = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class LlmUnavailableError(RuntimeError):
+    """Raised when the LLM provider is unavailable (retryable failure)."""
+
+    pass
 
 
 class InvestigatorAgent:
@@ -96,6 +102,9 @@ class InvestigatorAgent:
                 self.spending_enforcer.update_spend(cost_cents)
             self._finalize(result)
             return result
+        except LlmUnavailableError:
+            # Let LLM unavailability propagate to main() for retryable exit code
+            raise
         except Exception as exc:
             error_msg = f"Investigation failed: {exc}"
             logger.exception(error_msg)
@@ -123,8 +132,13 @@ class InvestigatorAgent:
             raise RuntimeError("KB health check failed")
 
         # Validate LLM connectivity
-        if not self.llm_client.test_connection():
-            raise RuntimeError("LLM connection test failed")
+        try:
+            if not self.llm_client.test_connection():
+                self.status_updater.set_llm_unavailable("LLM connection test returned False")
+                raise LlmUnavailableError("LLM connection test failed")
+        except LlmClientError as exc:
+            self.status_updater.set_llm_unavailable(str(exc))
+            raise LlmUnavailableError(str(exc)) from exc
 
         # Log source availability (not required)
         if self.sources.prometheus:

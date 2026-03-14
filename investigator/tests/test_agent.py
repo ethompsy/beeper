@@ -2,8 +2,11 @@
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from beeper_investigator.agent import (
     InvestigatorAgent,
+    LlmUnavailableError,
     SourceClients,
 )
 from beeper_investigator.context import InvestigationContext
@@ -103,16 +106,14 @@ class TestInvestigatorAgentRun:
         assert "KB health check failed" in result.error
         mock_status.set_failed.assert_called_once()
 
-    def test_llm_failure_returns_error_result(self) -> None:
-        """LLM connection test failure returns error result."""
+    def test_llm_failure_raises_unavailable(self) -> None:
+        """LLM connection test failure raises LlmUnavailableError."""
         agent, _, _, mock_status = _make_agent(llm_healthy=False)
 
-        result = agent.run()
+        with pytest.raises(LlmUnavailableError):
+            agent.run()
 
-        assert result.success is False
-        assert result.error is not None
-        assert "LLM connection test failed" in result.error
-        mock_status.set_failed.assert_called_once()
+        mock_status.set_llm_unavailable.assert_called_once()
 
     def test_unexpected_exception_caught(self) -> None:
         """Unexpected exceptions are caught and reported."""
@@ -134,16 +135,14 @@ class TestInvestigatorAgentRun:
         result = agent.run()
         assert result.success is True
 
-    def test_failed_result_persisted_with_failed_status(self) -> None:
-        """Failed investigation persists with status='failed'."""
+    def test_llm_unavailable_skips_persistence(self) -> None:
+        """LLM unavailable propagates without persisting to Qdrant."""
         agent, mock_kb, _, _ = _make_agent(llm_healthy=False)
 
-        agent.run()
+        with pytest.raises(LlmUnavailableError):
+            agent.run()
 
-        # The agent catches the RuntimeError from _initialize and returns.
-        # _finalize is NOT called on exception path — persist happens before
-        # status update in _finalize, but the try/except in run() catches
-        # before _finalize. So no upsert call.
+        # LlmUnavailableError propagates — _finalize never called, no upsert.
         mock_kb.client.upsert.assert_not_called()
 
     def test_persist_failure_warns_in_status(self) -> None:

@@ -17,6 +17,11 @@ import litellm
 
 from beeper_investigator.llm.cache import LlmResponseCache
 from beeper_investigator.llm.cost import CostTracker
+from beeper_investigator.llm.retry import (
+    RetryConfig,
+    retry_with_backoff_async,
+    retry_with_backoff_sync,
+)
 from beeper_investigator.llm.scrubber import PiiScrubber
 
 logger = logging.getLogger(__name__)
@@ -38,6 +43,8 @@ class LlmConfig:
     cache_ttl_seconds: int = 3600
     cache_max_entries: int = 256
     cache_enabled: bool = True
+    retry_enabled: bool = True
+    retry_config: RetryConfig | None = None
 
     def validate_model(self) -> None:
         """Validate the model name format for the configured provider.
@@ -88,6 +95,8 @@ class LlmConfig:
         cache_enabled = os.environ.get("BEEPER_LLM_CACHE_ENABLED", "true").lower() != "false"
         cache_ttl_seconds = int(os.environ.get("BEEPER_LLM_CACHE_TTL_SECONDS", "3600"))
         cache_max_entries = int(os.environ.get("BEEPER_LLM_CACHE_MAX_ENTRIES", "256"))
+        retry_enabled = os.environ.get("BEEPER_LLM_RETRY_ENABLED", "true").lower() != "false"
+        retry_config = RetryConfig.from_env() if retry_enabled else None
 
         if not provider:
             raise LlmClientError("BEEPER_LLM_PROVIDER environment variable is required")
@@ -123,6 +132,8 @@ class LlmConfig:
             cache_ttl_seconds=cache_ttl_seconds,
             cache_max_entries=cache_max_entries,
             cache_enabled=cache_enabled,
+            retry_enabled=retry_enabled,
+            retry_config=retry_config,
         )
         config.validate_model()
         return config
@@ -168,6 +179,25 @@ def _handle_litellm_error(e: Exception) -> LlmClientError:
         return LlmClientError(f"LLM request failed: {e}")
 
 
+def is_retryable(e: Exception) -> bool:
+    """Classify whether a LiteLLM exception is retryable.
+
+    Retryable: APIConnectionError, RateLimitError, generic errors (timeouts).
+    Non-retryable: AuthenticationError, BadRequestError.
+
+    Args:
+        e: The exception to classify.
+
+    Returns:
+        True if the error is transient and retrying may succeed.
+    """
+    if isinstance(e, litellm.exceptions.AuthenticationError):
+        return False
+    if isinstance(e, litellm.exceptions.BadRequestError):
+        return False
+    return True
+
+
 class LlmClient:
     """Client for interacting with LLM providers via LiteLLM."""
 
@@ -185,6 +215,7 @@ class LlmClient:
         )
         self.cost_tracker = CostTracker()
         self.scrubber = PiiScrubber.from_env()
+        self._retry_config = config.retry_config
         self._configure_litellm()
 
     def _configure_litellm(self) -> None:
@@ -269,7 +300,7 @@ class LlmClient:
         if audit_entries:
             self.scrubber.log_audit(audit_entries, method="complete")
 
-        try:
+        async def _do_acompletion() -> str:
             response = await litellm.acompletion(
                 model=effective_model,
                 messages=scrubbed_messages,
@@ -277,13 +308,10 @@ class LlmClient:
                 temperature=temperature,
                 **kwargs,
             )
-            # Extract the response text
             content: str | None = response.choices[0].message.content
             self._model_usage[effective_model] = (
                 self._model_usage.get(effective_model, 0) + 1
             )
-
-            # Track token costs
             usage = getattr(response, "usage", None)
             if usage:
                 self.cost_tracker.record_call(
@@ -291,14 +319,19 @@ class LlmClient:
                     prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
                     completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
                 )
-
-            # Cache store (only non-empty, deterministic responses)
             if self.config.cache_enabled and temperature == 0.0 and content:
                 self._cache.put(messages, effective_model, max_tokens, temperature, content)
-
             if content is None:
                 return ""
             return content
+
+        try:
+            if self._retry_config:
+                result: str = await retry_with_backoff_async(
+                    _do_acompletion, self._retry_config, is_retryable,
+                )
+                return result
+            return await _do_acompletion()
         except Exception as e:
             raise _handle_litellm_error(e) from e
 
@@ -343,7 +376,7 @@ class LlmClient:
         if audit_entries:
             self.scrubber.log_audit(audit_entries, method="complete_sync")
 
-        try:
+        def _do_completion() -> str:
             response = litellm.completion(
                 model=effective_model,
                 messages=scrubbed_messages,
@@ -351,13 +384,10 @@ class LlmClient:
                 temperature=temperature,
                 **kwargs,
             )
-            # Extract the response text
             content: str | None = response.choices[0].message.content
             self._model_usage[effective_model] = (
                 self._model_usage.get(effective_model, 0) + 1
             )
-
-            # Track token costs
             usage = getattr(response, "usage", None)
             if usage:
                 self.cost_tracker.record_call(
@@ -365,14 +395,18 @@ class LlmClient:
                     prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
                     completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
                 )
-
-            # Cache store (only non-empty, deterministic responses)
             if self.config.cache_enabled and temperature == 0.0 and content:
                 self._cache.put(messages, effective_model, max_tokens, temperature, content)
-
             if content is None:
                 return ""
             return content
+
+        try:
+            if self._retry_config:
+                return retry_with_backoff_sync(
+                    _do_completion, self._retry_config, is_retryable,
+                )
+            return _do_completion()
         except Exception as e:
             raise _handle_litellm_error(e) from e
 
@@ -427,13 +461,20 @@ class LlmClient:
         if scrub_result.audit_entries:
             self.scrubber.log_audit(scrub_result.audit_entries, method="embed_sync")
 
-        try:
+        def _do_embedding() -> list[float]:
             response = litellm.embedding(
                 model=self.config.embedding_model,
                 input=[scrubbed_text],
             )
             embedding: list[float] = response.data[0]["embedding"]
             return embedding
+
+        try:
+            if self._retry_config:
+                return retry_with_backoff_sync(
+                    _do_embedding, self._retry_config, is_retryable,
+                )
+            return _do_embedding()
         except LlmClientError:
             raise
         except Exception as e:
