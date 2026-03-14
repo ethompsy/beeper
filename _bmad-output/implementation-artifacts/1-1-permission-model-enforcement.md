@@ -1,6 +1,6 @@
 # Story 1.1: Permission Model Enforcement
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -30,34 +30,34 @@ so that only authorized users can configure trust levels, SLOs, and other safety
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create permission middleware module (AC: #2)
-  - [ ] 1.1: Create `ui/beeper_ui/middleware/__init__.py` package
-  - [ ] 1.2: Create `ui/beeper_ui/middleware/permissions.py` with `require_role()` decorator and `before_request` role resolver
-  - [ ] 1.3: Implement role resolution chain: K8s ServiceAccount token → `X-Beeper-Role` header → default "user"
-  - [ ] 1.4: Set `g.user_role` in `before_request` handler
+- [x] Task 1: Create permission middleware module (AC: #2)
+  - [x] 1.1: Create `ui/beeper_ui/middleware/__init__.py` package
+  - [x] 1.2: Create `ui/beeper_ui/middleware/permissions.py` with `require_role()` decorator and `before_request` role resolver
+  - [x] 1.3: Implement role resolution chain: K8s ServiceAccount token → `X-Beeper-Role` header → default "user"
+  - [x] 1.4: Set `g.user_role` in `before_request` handler
 
-- [ ] Task 2: Create RFC 7807 error response for 403 (AC: #1)
-  - [ ] 2.1: Implement `permission_denied()` helper returning RFC 7807 JSON with type, title, status=403, detail
-  - [ ] 2.2: Log rejection with user context (role, path, method) using structured format
+- [x] Task 2: Create RFC 7807 error response for 403 (AC: #1)
+  - [x] 2.1: Implement `permission_denied()` helper returning RFC 7807 JSON with type, title, status=403, detail
+  - [x] 2.2: Log rejection with user context (role, path, method) using structured format
 
-- [ ] Task 3: Register middleware in app factory (AC: #2)
-  - [ ] 3.1: Add `before_request` handler registration in `create_app()` in `app.py`
-  - [ ] 3.2: Ensure middleware runs before all route handlers
+- [x] Task 3: Register middleware in app factory (AC: #2)
+  - [x] 3.1: Add `before_request` handler registration in `create_app()` in `app.py`
+  - [x] 3.2: Ensure middleware runs before all route handlers
 
-- [ ] Task 4: Verify existing routes remain unprotected (AC: #3)
-  - [ ] 4.1: Verify all existing blueprints (investigations, knowledge, sources, metrics, spending, health) do NOT have `@require_role` — they are accessible to all authenticated users by default
-  - [ ] 4.2: Run full existing test suite (626 tests) to confirm zero regressions
+- [x] Task 4: Verify existing routes remain unprotected (AC: #3)
+  - [x] 4.1: Verify all existing blueprints (investigations, knowledge, sources, metrics, spending, health) do NOT have `@require_role` — they are accessible to all authenticated users by default
+  - [x] 4.2: Run full existing test suite (626 tests) to confirm zero regressions
 
-- [ ] Task 5: Write comprehensive tests (AC: #1, #2, #3)
-  - [ ] 5.1: Add auth fixtures to `conftest.py` — `admin_client` and `user_client` with appropriate headers
-  - [ ] 5.2: Test `@require_role("admin")` rejects role "user" with 403 + RFC 7807
-  - [ ] 5.3: Test `@require_role("admin")` allows role "admin"
-  - [ ] 5.4: Test `@require_role("user")` allows both roles
-  - [ ] 5.5: Test default role is "user" when no header/token present
-  - [ ] 5.6: Test `X-Beeper-Role` header sets role in development mode
-  - [ ] 5.7: Test `g.user_role` is available in request context
-  - [ ] 5.8: Test RFC 7807 error response format (type, title, status, detail, instance fields)
-  - [ ] 5.9: Test all existing routes still accessible without role header (defaults to "user", all current routes are user-accessible)
+- [x] Task 5: Write comprehensive tests (AC: #1, #2, #3)
+  - [x] 5.1: Add auth fixtures to `conftest.py` — `admin_client` and `user_client` with appropriate headers
+  - [x] 5.2: Test `@require_role("admin")` rejects role "user" with 403 + RFC 7807
+  - [x] 5.3: Test `@require_role("admin")` allows role "admin"
+  - [x] 5.4: Test `@require_role("user")` allows both roles
+  - [x] 5.5: Test default role is "user" when no header/token present
+  - [x] 5.6: Test `X-Beeper-Role` header sets role in development mode
+  - [x] 5.7: Test `g.user_role` is available in request context
+  - [x] 5.8: Test RFC 7807 error response format (type, title, status, detail, instance fields)
+  - [x] 5.9: Test all existing routes still accessible without role header (defaults to "user", all current routes are user-accessible)
 
 ## Dev Notes
 
@@ -203,8 +203,32 @@ ui/tests/test_permissions.py  # Comprehensive permission tests
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+N/A — clean implementation with no debugging required.
 
 ### Completion Notes List
 
+- Created `middleware/permissions.py` with two-tier (admin/user) role-based access control
+- `resolve_user_role()` before_request handler implements 3-step role resolution: K8s JWT token → X-Beeper-Role header → default "user"
+- `require_role()` decorator enforces role requirements on individual routes with RFC 7807 error responses (application/problem+json)
+- K8s token parsing decodes JWT payload and checks for "beeper-admin" group, with graceful fallback on parse failure
+- Structured logging on permission denial includes user_role, required_role, path, method
+- Registered middleware in `create_app()` before blueprint registration
+- Added `admin_client` and `user_client` fixtures to `conftest.py` via `_RoleClient` wrapper
+- 28 new tests covering all 3 acceptance criteria across 10 test classes
+- All 654 tests pass (626 existing + 28 new), zero regressions
+- Ruff clean, mypy clean on all new files
+- No new dependencies introduced — uses only Flask/Werkzeug built-ins
+
 ### File List
+
+- `ui/beeper_ui/middleware/__init__.py` (new)
+- `ui/beeper_ui/middleware/permissions.py` (new)
+- `ui/beeper_ui/app.py` (modified — added init_permissions import and registration)
+- `ui/tests/conftest.py` (modified — added _RoleClient, admin_client, user_client fixtures)
+- `ui/tests/test_permissions.py` (new)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified)
+- `_bmad-output/implementation-artifacts/1-1-permission-model-enforcement.md` (modified)

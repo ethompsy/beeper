@@ -3,6 +3,7 @@
 from flask import Flask, render_template
 
 from beeper_ui.config import get_config
+from beeper_ui.middleware.permissions import init_permissions
 from beeper_ui.utils import setup_markdown_filter
 
 
@@ -22,6 +23,9 @@ def create_app(config_class: type | None = None) -> Flask:
     if config_class is None:
         config_class = get_config()
     app.config.from_object(config_class)
+
+    # Register permission middleware (before_request role resolver)
+    init_permissions(app)
 
     # Register markdown template filter
     setup_markdown_filter(app)
