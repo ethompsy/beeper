@@ -1,6 +1,6 @@
 # Story 1.8: Platform Resilience
 
-Status: review
+Status: done
 
 ## Story
 

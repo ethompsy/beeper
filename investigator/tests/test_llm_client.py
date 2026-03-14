@@ -472,3 +472,47 @@ class TestLlmClientRetry:
         assert mock_embedding.call_count == 2
         assert mock_sleep.call_count == 1
 
+
+class TestIsRetryable:
+    """Tests for is_retryable() exception classification."""
+
+    def test_connection_error_is_retryable(self) -> None:
+        import litellm.exceptions
+
+        from beeper_investigator.llm.client import is_retryable
+
+        err = litellm.exceptions.APIConnectionError("down", "model", "provider")
+        assert is_retryable(err) is True
+
+    def test_rate_limit_is_retryable(self) -> None:
+        import litellm.exceptions
+
+        from beeper_investigator.llm.client import is_retryable
+
+        err = litellm.exceptions.RateLimitError("limited", "model", "provider")
+        assert is_retryable(err) is True
+
+    def test_auth_error_not_retryable(self) -> None:
+        import litellm.exceptions
+
+        from beeper_investigator.llm.client import is_retryable
+
+        err = litellm.exceptions.AuthenticationError("bad key", "model", "provider")
+        assert is_retryable(err) is False
+
+    def test_bad_request_not_retryable(self) -> None:
+        import litellm.exceptions
+
+        from beeper_investigator.llm.client import is_retryable
+
+        err = litellm.exceptions.BadRequestError("invalid", "model", "provider")
+        assert is_retryable(err) is False
+
+    def test_non_litellm_exception_not_retryable(self) -> None:
+        """Programming errors should not be retried."""
+        from beeper_investigator.llm.client import is_retryable
+
+        assert is_retryable(TypeError("unexpected type")) is False
+        assert is_retryable(KeyError("missing key")) is False
+        assert is_retryable(ValueError("bad value")) is False
+

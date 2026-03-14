@@ -24,7 +24,14 @@ class TestLlmUnavailableError:
 class TestAgentLlmUnavailability:
     """Tests for agent handling of LLM unavailability."""
 
-    def _make_agent(self) -> InvestigatorAgent:
+    def _make_agent(
+        self,
+    ) -> tuple[InvestigatorAgent, MagicMock, MagicMock]:
+        """Build agent with mocked dependencies.
+
+        Returns:
+            (agent, mock_llm, mock_status_updater)
+        """
         context = MagicMock()
         context.investigation_id = "test-inv-001"
         context.service = "test-service"
@@ -42,34 +49,34 @@ class TestAgentLlmUnavailability:
             sources=sources,
             status_updater=status_updater,
         )
-        return agent
+        return agent, llm_client, status_updater
 
     def test_llm_unavailable_sets_status(self) -> None:
-        agent = self._make_agent()
-        agent.llm_client.test_connection.side_effect = LlmClientError("Connection refused")
+        agent, mock_llm, mock_status = self._make_agent()
+        mock_llm.test_connection.side_effect = LlmClientError("Connection refused")
         with pytest.raises(LlmUnavailableError):
             agent._initialize()
-        agent.status_updater.set_llm_unavailable.assert_called_once()
-        call_arg = agent.status_updater.set_llm_unavailable.call_args[0][0]
+        mock_status.set_llm_unavailable.assert_called_once()
+        call_arg = mock_status.set_llm_unavailable.call_args[0][0]
         assert "Connection refused" in call_arg
 
     def test_llm_unavailable_raises_correct_type(self) -> None:
-        agent = self._make_agent()
-        agent.llm_client.test_connection.side_effect = LlmClientError("timeout")
+        agent, mock_llm, _ = self._make_agent()
+        mock_llm.test_connection.side_effect = LlmClientError("timeout")
         with pytest.raises(LlmUnavailableError) as exc_info:
             agent._initialize()
         assert "timeout" in str(exc_info.value)
 
     def test_llm_test_returns_false_triggers_unavailable(self) -> None:
-        agent = self._make_agent()
-        agent.llm_client.test_connection.return_value = False
+        agent, mock_llm, mock_status = self._make_agent()
+        mock_llm.test_connection.return_value = False
         with pytest.raises(LlmUnavailableError):
             agent._initialize()
-        agent.status_updater.set_llm_unavailable.assert_called_once()
+        mock_status.set_llm_unavailable.assert_called_once()
 
     def test_agent_run_propagates_llm_unavailable(self) -> None:
-        agent = self._make_agent()
-        agent.llm_client.test_connection.side_effect = LlmClientError("down")
+        agent, mock_llm, _ = self._make_agent()
+        mock_llm.test_connection.side_effect = LlmClientError("down")
         with pytest.raises(LlmUnavailableError):
             agent.run()
 
@@ -117,6 +124,16 @@ class TestEscalationEvent:
 
         # Exit code 2 = retryable
         assert exc_info.value.code == 2
+
+        # Verify escalation event fields are present in log records
+        escalation_records = [
+            r for r in caplog.records
+            if getattr(r, "event", None) == "llm_escalation"
+        ]
+        assert len(escalation_records) == 1, "Expected exactly one llm_escalation event"
+        record = escalation_records[0]
+        assert getattr(record, "escalation_type") == "human_required"
+        assert "provider unreachable" in getattr(record, "error_detail")
 
     @patch("beeper_investigator.main.InvestigationStatusUpdater")
     @patch("beeper_investigator.main.KBClient")

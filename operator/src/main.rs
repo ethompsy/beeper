@@ -174,7 +174,6 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "http://qdrant:6333".to_string());
     let detection_slo_cache = slo_cache.clone();
     let slo_budget_policy_state = budget_policy_state.clone();
-    let slo_shutdown_rx = shutdown_tx.subscribe();
     let slo_handle = tokio::spawn(async move {
         run_slo_engine(
             slo_client,
@@ -185,9 +184,6 @@ async fn main() -> anyhow::Result<()> {
             slo_budget_policy_state,
         )
         .await;
-        // SLO engine loop will check shutdown_rx internally in a future iteration;
-        // for now the abort-with-grace-period pattern handles clean shutdown.
-        drop(slo_shutdown_rx);
     });
 
     // Start detection consumer in background (if enabled)

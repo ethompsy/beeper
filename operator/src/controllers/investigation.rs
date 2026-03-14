@@ -188,8 +188,10 @@ pub fn backoff_duration(attempt: u32) -> Duration {
         BACKOFF_BASE_SECS.saturating_mul(1u64.wrapping_shl(attempt)),
         BACKOFF_MAX_SECS,
     );
-    // Simple deterministic jitter: use attempt as seed for ±25% variation
-    // This avoids adding rand crate as a dependency.
+    // Deterministic jitter: use attempt as seed for ±25% variation.
+    // Avoids adding rand crate. Note: all operator instances with the same
+    // attempt count get the same delay — provides varied spacing per attempt,
+    // not true anti-thundering-herd randomization (acceptable for single-operator).
     let jitter_factor = match attempt % 4 {
         0 => 100u64,   // +0%
         1 => 125u64,   // +25%

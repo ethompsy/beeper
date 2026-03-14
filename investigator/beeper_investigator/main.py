@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
 from typing import Any
 
 from beeper_investigator.agent import InvestigatorAgent, LlmUnavailableError, SourceClients
@@ -32,6 +31,9 @@ class JsonFormatter(logging.Formatter):
         super().__init__()
         self.investigation_id = investigation_id
 
+    # Extra fields promoted to top-level JSON keys for structured events
+    _EXTRA_FIELDS = ("event", "escalation_type", "error_detail")
+
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON.
 
@@ -52,6 +54,12 @@ class JsonFormatter(logging.Formatter):
         # Include exception info if present
         if record.exc_info:
             log_entry["exception"] = self.formatException(record.exc_info)
+
+        # Promote structured event fields from logging extra dict
+        for key in self._EXTRA_FIELDS:
+            value = getattr(record, key, None)
+            if value is not None:
+                log_entry[key] = value
 
         return json.dumps(log_entry)
 
@@ -190,14 +198,15 @@ def main() -> None:
 
     except LlmUnavailableError as e:
         # Emit structured escalation event (NFR15: human escalation within 60s)
+        # Fields are promoted to top-level JSON keys by JsonFormatter
         logger.error(
-            json.dumps({
+            "LLM provider unavailable — human escalation required: %s",
+            e,
+            extra={
                 "event": "llm_escalation",
-                "investigation_id": context.investigation_id,
-                "error": str(e),
                 "escalation_type": "human_required",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
+                "error_detail": str(e),
+            },
         )
         # Exit code 2 = retryable failure — K8s Job controller will retry
         sys.exit(2)

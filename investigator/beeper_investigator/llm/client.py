@@ -182,8 +182,10 @@ def _handle_litellm_error(e: Exception) -> LlmClientError:
 def is_retryable(e: Exception) -> bool:
     """Classify whether a LiteLLM exception is retryable.
 
-    Retryable: APIConnectionError, RateLimitError, generic errors (timeouts).
-    Non-retryable: AuthenticationError, BadRequestError.
+    Retryable: APIConnectionError, RateLimitError, Timeout, ServiceUnavailableError,
+    InternalServerError (transient server/network issues).
+    Non-retryable: AuthenticationError, BadRequestError, and non-LiteLLM exceptions
+    (programming errors like TypeError/KeyError should not be retried).
 
     Args:
         e: The exception to classify.
@@ -191,11 +193,17 @@ def is_retryable(e: Exception) -> bool:
     Returns:
         True if the error is transient and retrying may succeed.
     """
-    if isinstance(e, litellm.exceptions.AuthenticationError):
+    if isinstance(e, (litellm.exceptions.AuthenticationError, litellm.exceptions.BadRequestError)):
         return False
-    if isinstance(e, litellm.exceptions.BadRequestError):
-        return False
-    return True
+    if isinstance(e, (
+        litellm.exceptions.APIConnectionError,
+        litellm.exceptions.RateLimitError,
+        litellm.exceptions.Timeout,
+        litellm.exceptions.ServiceUnavailableError,
+        litellm.exceptions.InternalServerError,
+    )):
+        return True
+    return False
 
 
 class LlmClient:
