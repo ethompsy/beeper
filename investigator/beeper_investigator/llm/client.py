@@ -17,6 +17,7 @@ import litellm
 
 from beeper_investigator.llm.cache import LlmResponseCache
 from beeper_investigator.llm.cost import CostTracker
+from beeper_investigator.llm.scrubber import PiiScrubber
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +184,7 @@ class LlmClient:
             max_entries=config.cache_max_entries,
         )
         self.cost_tracker = CostTracker()
+        self.scrubber = PiiScrubber.from_env()
         self._configure_litellm()
 
     def _configure_litellm(self) -> None:
@@ -191,6 +193,11 @@ class LlmClient:
         Note: LiteLLM requires API keys to be set as environment variables.
         This is by design - LiteLLM reads credentials from specific env vars
         per provider. The keys are set here for the process lifetime.
+
+        Security: All credentials (LLM API keys, Slack tokens, PagerDuty keys,
+        Git tokens) are stored as K8s Secrets with encryption at rest and
+        injected as environment variables via the Helm chart. Credentials are
+        NEVER stored in Qdrant, config files, or application databases (NFR10).
         """
         # Set API keys based on provider
         if self.config.provider == "anthropic" and self.config.api_key:
@@ -257,10 +264,15 @@ class LlmClient:
                 )
                 return cached
 
+        # PII scrub messages before sending to LLM (deep copy — original unmodified)
+        scrubbed_messages, audit_entries = self.scrubber.scrub_messages(messages)
+        if audit_entries:
+            self.scrubber.log_audit(audit_entries, method="complete")
+
         try:
             response = await litellm.acompletion(
                 model=effective_model,
-                messages=messages,
+                messages=scrubbed_messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 **kwargs,
@@ -326,10 +338,15 @@ class LlmClient:
                 )
                 return cached
 
+        # PII scrub messages before sending to LLM (deep copy — original unmodified)
+        scrubbed_messages, audit_entries = self.scrubber.scrub_messages(messages)
+        if audit_entries:
+            self.scrubber.log_audit(audit_entries, method="complete_sync")
+
         try:
             response = litellm.completion(
                 model=effective_model,
-                messages=messages,
+                messages=scrubbed_messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 **kwargs,
@@ -404,10 +421,16 @@ class LlmClient:
                 "Embedding model not configured (set BEEPER_LLM_EMBEDDING_MODEL)"
             )
 
+        # PII scrub text before sending to embedding provider
+        scrub_result = self.scrubber.scrub_text(text, field_location="embed_sync.input")
+        scrubbed_text = scrub_result.scrubbed_text
+        if scrub_result.audit_entries:
+            self.scrubber.log_audit(scrub_result.audit_entries, method="embed_sync")
+
         try:
             response = litellm.embedding(
                 model=self.config.embedding_model,
-                input=[text],
+                input=[scrubbed_text],
             )
             embedding: list[float] = response.data[0]["embedding"]
             return embedding

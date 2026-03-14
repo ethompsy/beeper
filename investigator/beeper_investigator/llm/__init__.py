@@ -5,5 +5,14 @@ Supported providers: anthropic, openai, azure, ollama
 """
 
 from .client import LlmClient, LlmClientError, LlmConfig
+from .scrubber import PiiScrubber, ScrubAuditEntry, ScrubResult, ScrubRule
 
-__all__ = ["LlmClient", "LlmClientError", "LlmConfig"]
+__all__ = [
+    "LlmClient",
+    "LlmClientError",
+    "LlmConfig",
+    "PiiScrubber",
+    "ScrubAuditEntry",
+    "ScrubResult",
+    "ScrubRule",
+]
