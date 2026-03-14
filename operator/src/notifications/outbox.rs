@@ -184,13 +184,18 @@ impl OutboxWorker {
             self.endpoint
         );
 
-        // Query for pending notifications
+        // Query for pending notifications whose next_retry_at has passed
+        let now = chrono::Utc::now().to_rfc3339();
         let body = serde_json::json!({
             "filter": {
                 "must": [
                     {
                         "key": "status",
                         "match": { "value": "pending" }
+                    },
+                    {
+                        "key": "next_retry_at",
+                        "range": { "lte": now }
                     }
                 ]
             },

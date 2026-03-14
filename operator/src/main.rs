@@ -101,7 +101,11 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Create shutdown signal channel for graceful shutdown (NFR17)
-    let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+    // Load Qdrant endpoint early (needed by API server and outbox worker)
+    let qdrant_endpoint = env::var("QDRANT_URL")
+        .unwrap_or_else(|_| "http://qdrant:6333".to_string());
 
     // Create SLO cache (shared between SLO engine and API server)
     let slo_cache = new_slo_cache();
@@ -115,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
     let api_detection_stats = Arc::clone(&detection_stats);
     let api_slo_cache = slo_cache.clone();
     let api_budget_policy_state = budget_policy_state.clone();
+    let api_qdrant_endpoint = qdrant_endpoint.clone();
     let health_handle = tokio::spawn(async move {
         if let Err(e) =
             start_health_api_server(
@@ -123,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
                 api_detection_stats,
                 api_slo_cache,
                 api_budget_policy_state,
+                api_qdrant_endpoint,
                 health_port,
             )
                 .await
@@ -179,8 +185,6 @@ async fn main() -> anyhow::Result<()> {
     let slo_namespace = detection_config.namespace.clone();
     let prometheus_endpoint = env::var("PROMETHEUS_URL")
         .unwrap_or_else(|_| "http://prometheus:9090".to_string());
-    let qdrant_endpoint = env::var("QDRANT_URL")
-        .unwrap_or_else(|_| "http://qdrant:6333".to_string());
     let detection_slo_cache = slo_cache.clone();
     let slo_budget_policy_state = budget_policy_state.clone();
     let slo_handle = tokio::spawn(async move {
@@ -197,7 +201,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Start notification outbox worker in background
     let outbox_qdrant_endpoint = qdrant_endpoint.clone();
-    let outbox_shutdown_rx = _shutdown_rx.clone();
+    let outbox_shutdown_rx = shutdown_rx.clone();
     let outbox_handle = tokio::spawn(async move {
         let mut worker = OutboxWorker::new(outbox_qdrant_endpoint);
         if let Err(e) = worker.run(outbox_shutdown_rx).await {
@@ -245,9 +249,11 @@ async fn main() -> anyhow::Result<()> {
             warn!("Graceful shutdown: grace period expired, aborting remaining tasks");
         }
         _ = async {
-            // Wait for SLO engine and detection consumer to finish gracefully
+            // Wait for SLO engine, outbox worker, and detection consumer to finish gracefully
             let _ = (&slo_handle).await;
             info!("Graceful shutdown: SLO engine stopped");
+            let _ = (&outbox_handle).await;
+            info!("Graceful shutdown: outbox worker stopped");
             if let Some(ref handle) = detection_handle {
                 let _ = handle.await;
                 info!("Graceful shutdown: detection consumer stopped");
@@ -282,12 +288,13 @@ async fn start_health_api_server(
     detection_stats: Arc<DetectionStats>,
     slo_cache: beeper_operator::slo::SloCache,
     budget_policy_state: beeper_operator::slo::budget::BudgetPolicyState,
+    qdrant_endpoint: String,
     port: u16,
 ) -> anyhow::Result<()> {
     use beeper_operator::api::api_router_full;
     // Combine health and API routers
     let health = health_router(Arc::clone(&client));
-    let api = api_router_full(client, buffer, None, Some(detection_stats), Some(slo_cache), Some(budget_policy_state));
+    let api = api_router_full(client, buffer, None, Some(detection_stats), Some(slo_cache), Some(budget_policy_state), Some(qdrant_endpoint));
     let app: Router = health.merge(api);
 
     let addr = format!("0.0.0.0:{}", port);

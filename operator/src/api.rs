@@ -22,6 +22,8 @@ use crate::crds::{
 use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
 use crate::llm::LlmManager;
+use crate::notifications::outbox::OutboxEntry;
+use crate::notifications::OutboxWorker;
 use crate::slo::budget::BudgetPolicyState;
 use crate::slo::SloCache;
 
@@ -34,6 +36,7 @@ pub struct ApiState {
     pub detection_stats: Option<Arc<DetectionStats>>,
     pub slo_cache: Option<SloCache>,
     pub budget_policy_state: Option<BudgetPolicyState>,
+    pub qdrant_endpoint: Option<String>,
 }
 
 /// Create the API router
@@ -58,7 +61,7 @@ pub fn api_router_with_detection(
     llm_manager: Option<Arc<LlmManager>>,
     detection_stats: Option<Arc<DetectionStats>>,
 ) -> Router {
-    api_router_full(client, buffer, llm_manager, detection_stats, None, None)
+    api_router_full(client, buffer, llm_manager, detection_stats, None, None, None)
 }
 
 /// Create the API router with all optional components including SLO cache
@@ -69,6 +72,7 @@ pub fn api_router_full(
     detection_stats: Option<Arc<DetectionStats>>,
     slo_cache: Option<SloCache>,
     budget_policy_state: Option<BudgetPolicyState>,
+    qdrant_endpoint: Option<String>,
 ) -> Router {
     let state = ApiState {
         client,
@@ -77,6 +81,7 @@ pub fn api_router_full(
         detection_stats,
         slo_cache,
         budget_policy_state,
+        qdrant_endpoint,
     };
 
     Router::new()
@@ -104,6 +109,10 @@ pub fn api_router_full(
         .route(
             "/api/v1/notifications/channels",
             get(list_notification_channels),
+        )
+        .route(
+            "/api/v1/notifications/outbox",
+            post(write_notification_outbox),
         )
         .route("/api/v1/health/components", get(health_components))
         .route("/api/v1/ingestion/stats", get(ingestion_stats))
@@ -1445,6 +1454,66 @@ async fn list_notification_channels(
     Ok(Json(responses))
 }
 
+// ----- Notification Outbox API -----
+
+/// Request to write a notification to the outbox
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OutboxWriteRequest {
+    pub investigation_id: String,
+    pub event_type: String,
+    pub severity: String,
+    pub service: String,
+    pub payload: serde_json::Value,
+}
+
+/// Response after writing a notification to the outbox
+#[derive(Debug, Serialize)]
+pub struct OutboxWriteResponse {
+    pub status: String,
+    pub message: String,
+}
+
+/// Write a notification event to the outbox collection
+async fn write_notification_outbox(
+    State(state): State<ApiState>,
+    Json(req): Json<OutboxWriteRequest>,
+) -> Result<Json<OutboxWriteResponse>, StatusCode> {
+    let qdrant_endpoint = state.qdrant_endpoint.as_deref().ok_or_else(|| {
+        warn!("Qdrant endpoint not configured for outbox writes");
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let entry = OutboxEntry {
+        investigation_id: req.investigation_id,
+        event_type: req.event_type,
+        severity: req.severity,
+        service: req.service,
+        payload: req.payload,
+        status: "pending".to_string(),
+        retry_count: 0,
+        created_at: now.clone(),
+        next_retry_at: now,
+        last_error: None,
+    };
+
+    let worker = OutboxWorker::new(qdrant_endpoint.to_string());
+    worker.write_notification(&entry).await.map_err(|e| {
+        warn!(error = %e, "Failed to write notification to outbox");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    debug!(
+        investigation_id = %entry.investigation_id,
+        "Notification queued in outbox"
+    );
+
+    Ok(Json(OutboxWriteResponse {
+        status: "queued".to_string(),
+        message: "Notification queued in outbox".to_string(),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2395,6 +2464,105 @@ mod tests {
         assert!(json.contains("\"is_frozen\":true"));
         assert!(json.contains("\"name\":\"frozen-slo\""));
         assert!(json.contains("\"burn_rate\":5.0"));
+    }
+
+    // ----- Outbox Write API tests -----
+
+    #[test]
+    fn test_outbox_write_request_deserialization() {
+        let json = r#"{
+            "investigation_id": "inv-001",
+            "event_type": "investigation_started",
+            "severity": "high",
+            "service": "payment-service",
+            "payload": {"summary": "High error rate detected"}
+        }"#;
+
+        let req: OutboxWriteRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.investigation_id, "inv-001");
+        assert_eq!(req.event_type, "investigation_started");
+        assert_eq!(req.severity, "high");
+        assert_eq!(req.service, "payment-service");
+        assert_eq!(req.payload["summary"], "High error rate detected");
+    }
+
+    #[test]
+    fn test_outbox_write_request_serialization() {
+        let req = OutboxWriteRequest {
+            investigation_id: "inv-002".to_string(),
+            event_type: "investigation_completed".to_string(),
+            severity: "medium".to_string(),
+            service: "auth-service".to_string(),
+            payload: serde_json::json!({"rca": "Memory leak in auth module"}),
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"investigation_id\":\"inv-002\""));
+        assert!(json.contains("\"event_type\":\"investigation_completed\""));
+        assert!(json.contains("\"severity\":\"medium\""));
+        assert!(json.contains("\"service\":\"auth-service\""));
+    }
+
+    #[test]
+    fn test_outbox_write_request_fix_proposed() {
+        let json = r#"{
+            "investigation_id": "inv-003",
+            "event_type": "fix_proposed",
+            "severity": "critical",
+            "service": "api-gateway",
+            "payload": {"fix": "Restart pod", "confidence": 0.92}
+        }"#;
+
+        let req: OutboxWriteRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.event_type, "fix_proposed");
+        assert_eq!(req.severity, "critical");
+        assert_eq!(req.payload["confidence"], 0.92);
+    }
+
+    #[test]
+    fn test_outbox_write_response_serialization() {
+        let resp = OutboxWriteResponse {
+            status: "queued".to_string(),
+            message: "Notification queued in outbox".to_string(),
+        };
+
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"status\":\"queued\""));
+        assert!(json.contains("\"message\":\"Notification queued in outbox\""));
+    }
+
+    #[test]
+    fn test_notification_channel_response_serialization() {
+        let resp = NotificationChannelResponse {
+            name: "slack-sre".to_string(),
+            channel_type: "slack".to_string(),
+            credentials_secret: "slack-token".to_string(),
+            condition: "configured".to_string(),
+            last_validated: Some("2026-03-14T12:00:00Z".to_string()),
+            error: None,
+        };
+
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"name\":\"slack-sre\""));
+        assert!(json.contains("\"type\":\"slack\""));
+        assert!(json.contains("\"condition\":\"configured\""));
+        assert!(!json.contains("\"error\""));
+    }
+
+    #[test]
+    fn test_notification_channel_response_with_error() {
+        let resp = NotificationChannelResponse {
+            name: "pd-oncall".to_string(),
+            channel_type: "pagerduty".to_string(),
+            credentials_secret: "pd-token".to_string(),
+            condition: "error".to_string(),
+            last_validated: Some("2026-03-14T12:00:00Z".to_string()),
+            error: Some("Secret not found".to_string()),
+        };
+
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"condition\":\"error\""));
+        assert!(json.contains("\"error\":\"Secret not found\""));
     }
 }
 

@@ -1,6 +1,6 @@
 # Story 2.1: NotificationChannel CRD & Durable Outbox
 
-Status: review
+Status: done
 
 ## Story
 
@@ -272,4 +272,26 @@ Claude Opus 4.6
 
 ### Completion Notes List
 
+- Code review found 6 issues (2 CRITICAL, 3 MEDIUM, 1 LOW). All auto-fixed.
+- CRITICAL: `POST /api/v1/notifications/outbox` endpoint was missing (Task 6.1). Added endpoint with `OutboxWriteRequest`/`OutboxWriteResponse` types and tests.
+- CRITICAL: Tests for outbox/channel endpoints were missing (Task 6.3). Added serialization/deserialization tests for both endpoint types.
+- MEDIUM: `process_pending` was not filtering by `next_retry_at`. Added range filter to Qdrant scroll query.
+- MEDIUM: Outbox worker was not awaited during graceful shutdown. Added to grace period block alongside SLO engine.
+- MEDIUM: Story File List was empty. Populated below.
+- LOW: `_shutdown_rx` renamed to `shutdown_rx` (was misleadingly prefixed with underscore despite being used).
+
 ### File List
+
+**New files:**
+- `operator/src/crds/notification_channel.rs` — NotificationChannel CRD definition, validation, tests
+- `operator/src/controllers/notification_channel.rs` — NotificationChannel controller, error policy, tests
+- `operator/src/notifications/mod.rs` — Notification engine module declaration
+- `operator/src/notifications/outbox.rs` — Durable outbox worker, backoff, retry logic, tests
+- `helm/beeper/templates/crds/notification-channel-crd.yaml` — Helm CRD template
+
+**Modified files:**
+- `operator/src/crds/mod.rs` — Export NotificationChannel types
+- `operator/src/controllers/mod.rs` — Export run_notificationchannel_controller
+- `operator/src/lib.rs` — Add notifications module, re-export types
+- `operator/src/main.rs` — Spawn controller + outbox worker, graceful shutdown
+- `operator/src/api.rs` — Add POST /api/v1/notifications/outbox + GET /api/v1/notifications/channels endpoints
