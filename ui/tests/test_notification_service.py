@@ -363,20 +363,20 @@ class TestDeliverToSlack:
 
 
 class TestFetchCredential:
-    """Tests for _fetch_credential() helper."""
+    """Tests for fetch_credential() helper."""
 
     @patch("beeper_ui.services.notification_service.httpx.Client")
     def test_returns_empty_string_on_missing_secret_name(
         self, mock_client_class: MagicMock
     ) -> None:
         svc = NotificationDeliveryService("http://operator:8080")
-        value, error = svc._fetch_credential("", "bot_token")
+        value, error = svc.fetch_credential("", "bot_token")
         assert value == ""
         assert "no secret name" in error
 
     def test_returns_empty_string_on_http_error(self) -> None:
         svc = NotificationDeliveryService("http://nonexistent-host:9999", timeout=0.1)
-        value, error = svc._fetch_credential("my-secret", "bot_token")
+        value, error = svc.fetch_credential("my-secret", "bot_token")
         assert value == ""
         assert "operator API error" in error
 

@@ -130,7 +130,7 @@ class NotificationDeliveryService:
         fetch_error = ""
         if bot_token is None:
             credentials_secret = channel_config.get("credentials_secret", "")
-            bot_token, fetch_error = self._fetch_credential(credentials_secret, "bot_token")
+            bot_token, fetch_error = self.fetch_credential(credentials_secret, "bot_token")
 
         if not bot_token:
             error_detail = f" ({fetch_error})" if fetch_error else ""
@@ -353,8 +353,11 @@ class NotificationDeliveryService:
             }
 
         # Immediate mode or critical severity: send now
-        smtp_port = int(config.get("smtp_port", "587"))
-        use_tls = config.get("use_tls", "true").lower() != "false"
+        try:
+            smtp_port = int(config.get("smtp_port", 587))
+        except (ValueError, TypeError):
+            smtp_port = 587
+        use_tls = str(config.get("use_tls", True)).lower() != "false"
         from_addr = config.get("from_addr", "")
         base_url = config.get("base_url", "")
 
@@ -363,8 +366,8 @@ class NotificationDeliveryService:
         username = ""
         password = ""
         if credentials_secret:
-            username, _ = self._fetch_credential(credentials_secret, "username")
-            password, _ = self._fetch_credential(credentials_secret, "password")
+            username, _ = self.fetch_credential(credentials_secret, "username")
+            password, _ = self.fetch_credential(credentials_secret, "password")
 
         investigation_id = entry.get("investigation_id", "")
         payload = entry.get("payload", {})
@@ -451,7 +454,7 @@ class NotificationDeliveryService:
         secret = ""
         credentials_secret = channel_config.get("credentials_secret", "")
         if credentials_secret:
-            secret, _ = self._fetch_credential(credentials_secret, "secret")
+            secret, _ = self.fetch_credential(credentials_secret, "secret")
 
         investigation_id = entry.get("investigation_id", "")
         event_type = entry.get("event_type", "investigation_started")
@@ -497,7 +500,7 @@ class NotificationDeliveryService:
                 f"Webhook delivery failed: {e}", retryable=e.retryable
             ) from e
 
-    def _fetch_credential(self, secret_name: str, key: str) -> tuple[str, str]:
+    def fetch_credential(self, secret_name: str, key: str) -> tuple[str, str]:
         """Fetch a credential value from the operator API.
 
         Args:

@@ -545,10 +545,9 @@ class TestHelpers:
     def test_escape_html(self) -> None:
         assert _escape_html("<script>alert('xss')</script>") == (
             "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
-            if "&#x27;" in _escape_html("'")
-            else "&lt;script&gt;alert('xss')&lt;/script&gt;"
         )
         assert "&amp;" in _escape_html("a & b")
         assert "&lt;" in _escape_html("<tag>")
         assert "&gt;" in _escape_html("</tag>")
         assert "&quot;" in _escape_html('"quoted"')
+        assert "&#x27;" in _escape_html("it's")

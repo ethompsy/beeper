@@ -134,8 +134,11 @@ def flush_email_digest() -> tuple[Any, int]:
     recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
     period_label = data.get("period_label", "Daily")
 
-    smtp_port = int(config.get("smtp_port", "587"))
-    use_tls = config.get("use_tls", "true").lower() != "false"
+    try:
+        smtp_port = int(config.get("smtp_port", 587))
+    except (ValueError, TypeError):
+        smtp_port = 587
+    use_tls = str(config.get("use_tls", True)).lower() != "false"
     from_addr = config.get("from_addr", "")
     base_url = config.get("base_url", "")
 
@@ -149,8 +152,8 @@ def flush_email_digest() -> tuple[Any, int]:
     credentials_secret = channel_config.get("credentials_secret", "")
     try:
         if credentials_secret:
-            username, _ = svc._fetch_credential(credentials_secret, "username")
-            password, _ = svc._fetch_credential(credentials_secret, "password")
+            username, _ = svc.fetch_credential(credentials_secret, "username")
+            password, _ = svc.fetch_credential(credentials_secret, "password")
 
         from beeper_ui.notifications.email import EmailNotifier, EmailNotifierError
 

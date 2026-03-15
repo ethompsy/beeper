@@ -143,6 +143,11 @@ class WebhookNotifier:
             raise WebhookNotifierError(
                 f"Webhook timeout: {e}", retryable=True
             ) from e
+        except httpx.HTTPError as e:
+            logger.error("Webhook HTTP error: %s → %s", self._target_url, e)
+            raise WebhookNotifierError(
+                f"Webhook error: {e}", retryable=True
+            ) from e
 
 
 def _build_webhook_payload(

@@ -1,6 +1,6 @@
 # Story 2.5: Email & Webhook Channels
 
-Status: review
+Status: done
 
 ## Story
 
@@ -353,6 +353,7 @@ Claude Opus 4.6
 ### Change Log
 
 - 2026-03-14: Story created, implemented all 6 tasks, 79 tests passing, ready for review
+- 2026-03-14: Code review found 6 issues (1 CRITICAL, 4 MEDIUM, 1 LOW), all auto-fixed: added missing digest flush endpoint route tests (8 tests), fixed `use_tls` config type safety (handle bool values), added `smtp_port` ValueError handling, added catch-all `httpx.HTTPError` handler in webhook, renamed `_fetch_credential` to public `fetch_credential`, added single-quote escaping to `_escape_html`. Tests: 505 investigator (12 pre-existing async failures) + 899 UI passed (no regressions). Removed duplicate `_RoleClient` from test_notification_routes.py.
 
 ### File List
 
@@ -364,8 +365,11 @@ Claude Opus 4.6
 
 **Modified files:**
 - `ui/beeper_ui/notifications/__init__.py` — Added EmailNotifier, EmailNotifierError, WebhookNotifier, WebhookNotifierError exports
-- `ui/beeper_ui/services/notification_service.py` — Added deliver_to_email(), deliver_to_webhook(), replaced TODO placeholder
-- `ui/beeper_ui/routes/notifications.py` — Added POST /api/v1/notifications/digest/flush endpoint
-- `ui/tests/test_notification_service.py` — Added 14 email/webhook dispatch tests, updated unsupported channel test
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` — Updated 2-5 status
+- `ui/beeper_ui/services/notification_service.py` — Added deliver_to_email(), deliver_to_webhook(), replaced TODO placeholder; renamed `_fetch_credential` to `fetch_credential` (public); type-safe `use_tls`/`smtp_port` parsing
+- `ui/beeper_ui/routes/notifications.py` — Added POST /api/v1/notifications/digest/flush endpoint; type-safe config parsing; updated to use public `fetch_credential()`
+- `ui/beeper_ui/notifications/webhook.py` — Added catch-all `httpx.HTTPError` handler for transport errors
+- `ui/beeper_ui/notifications/email.py` — Added single-quote escaping to `_escape_html()`
+- `ui/tests/test_notification_service.py` — Added 14 email/webhook dispatch tests, updated unsupported channel test, updated `fetch_credential` references
+- `ui/tests/test_notification_routes.py` — Added 8 digest flush endpoint route tests, removed duplicate `_RoleClient` class
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — Updated 2-5 status to done
 - `_bmad-output/implementation-artifacts/2-5-email-webhook-channels.md` — Story file updates
