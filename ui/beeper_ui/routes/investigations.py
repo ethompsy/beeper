@@ -676,6 +676,26 @@ def resolve_investigation_route(investigation_id: str) -> str | tuple[str, int]:
         }
         svc.save_resolution_feedback(investigation_id, resolution_feedback)
 
+        # Flag false pages in notification audit trail
+        if outcome == "not_an_issue" or accuracy_rating == "incorrect":
+            try:
+                from beeper_ui.services.notification_audit_service import (
+                    NotificationAuditService,
+                )
+
+                false_page_reason = not_an_issue_reason or "incorrect_accuracy"
+                audit_svc = NotificationAuditService()
+                try:
+                    audit_svc.flag_false_pages(investigation_id, false_page_reason)
+                finally:
+                    audit_svc.close()
+            except Exception as e:
+                logger.warning(
+                    "False page flagging failed for %s (non-blocking): %s",
+                    investigation_id,
+                    e,
+                )
+
         # Update KB entry with resolution for non-escalated
         kb_updated = False
         if outcome != "escalated":
