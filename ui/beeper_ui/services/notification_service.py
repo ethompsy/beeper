@@ -1,8 +1,7 @@
 """Notification delivery service.
 
-Orchestrates notification delivery to configured channels. Supports Slack
-and PagerDuty delivery; email and webhook channels are placeholders for
-Story 2-5.
+Orchestrates notification delivery to configured channels. Supports Slack,
+PagerDuty, email, and webhook delivery.
 """
 
 import json
@@ -11,8 +10,10 @@ from typing import Any
 
 import httpx
 
+from beeper_ui.notifications.email import EmailNotifier, EmailNotifierError
 from beeper_ui.notifications.pagerduty import PagerDutyNotifier, PagerDutyNotifierError
 from beeper_ui.notifications.slack import SlackNotifier, SlackNotifierError
+from beeper_ui.notifications.webhook import WebhookNotifier, WebhookNotifierError
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +84,14 @@ class NotificationDeliveryService:
         if channel_type == "pagerduty":
             return self.deliver_to_pagerduty(entry, channel_config)
 
-        # TODO: Story 2-5 — Email and webhook delivery
+        if channel_type == "email":
+            return self.deliver_to_email(entry, channel_config)
+
+        if channel_type == "webhook":
+            return self.deliver_to_webhook(entry, channel_config)
+
         logger.warning(
-            "Unsupported channel type '%s' — delivery skipped (future stories)",
+            "Unsupported channel type '%s' — delivery skipped",
             channel_type,
         )
         return {
@@ -292,6 +298,203 @@ class NotificationDeliveryService:
             )
             raise NotificationServiceError(
                 f"PagerDuty delivery failed: {e}", retryable=e.retryable
+            ) from e
+
+    def deliver_to_email(
+        self,
+        entry: dict[str, Any],
+        channel_config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Deliver a notification via email.
+
+        Checks the channel mode: immediate sends right away, digest mode
+        for non-critical severity defers sending (marks as delivered for
+        outbox consumption; actual digest compiled separately).
+
+        Args:
+            entry: Outbox entry dict.
+            channel_config: Email channel configuration with 'config' containing
+                           'smtp_host', 'recipients', and optional 'smtp_port',
+                           'from_addr', 'mode'.
+
+        Returns:
+            Delivery result dict.
+
+        Raises:
+            NotificationServiceError: If email delivery fails.
+        """
+        config = channel_config.get("config", {})
+        smtp_host = config.get("smtp_host", "")
+        if not smtp_host:
+            raise NotificationServiceError(
+                "Email smtp_host not configured", retryable=False
+            )
+
+        recipients_str = config.get("recipients", "")
+        if not recipients_str:
+            raise NotificationServiceError(
+                "Email recipients not configured", retryable=False
+            )
+        recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
+
+        mode = config.get("mode", "immediate")
+        severity = entry.get("severity", "low")
+
+        # Digest mode: defer non-critical emails
+        if mode == "digest" and severity != "critical":
+            logger.info(
+                "Email digest mode: deferring non-critical notification for investigation %s",
+                entry.get("investigation_id", ""),
+            )
+            return {
+                "status": "delivered",
+                "mode": "digest_deferred",
+                "message": "Deferred for digest compilation",
+            }
+
+        # Immediate mode or critical severity: send now
+        smtp_port = int(config.get("smtp_port", "587"))
+        use_tls = config.get("use_tls", "true").lower() != "false"
+        from_addr = config.get("from_addr", "")
+        base_url = config.get("base_url", "")
+
+        # Fetch SMTP credentials
+        credentials_secret = channel_config.get("credentials_secret", "")
+        username = ""
+        password = ""
+        if credentials_secret:
+            username, _ = self._fetch_credential(credentials_secret, "username")
+            password, _ = self._fetch_credential(credentials_secret, "password")
+
+        investigation_id = entry.get("investigation_id", "")
+        payload = entry.get("payload", {})
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except (json.JSONDecodeError, TypeError):
+                payload = {"summary": payload}
+
+        merged_payload = {
+            "severity": severity,
+            "service": entry.get("service", "unknown"),
+            "event_type": entry.get("event_type", "investigation_started"),
+            **payload,
+        }
+
+        notifier = EmailNotifier(
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            username=username,
+            password=password,
+            use_tls=use_tls,
+            from_addr=from_addr,
+        )
+
+        try:
+            result = notifier.send_investigation_email(
+                recipients=recipients,
+                investigation_id=investigation_id,
+                payload=merged_payload,
+                base_url=base_url,
+            )
+            return {
+                "status": "delivered",
+                "message_id": result.get("message_id", ""),
+            }
+        except EmailNotifierError as e:
+            logger.error(
+                "Email delivery failed for investigation %s: %s",
+                investigation_id,
+                str(e),
+            )
+            raise NotificationServiceError(
+                f"Email delivery failed: {e}", retryable=e.retryable
+            ) from e
+
+    def deliver_to_webhook(
+        self,
+        entry: dict[str, Any],
+        channel_config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Deliver a notification via webhook POST.
+
+        Args:
+            entry: Outbox entry dict.
+            channel_config: Webhook channel configuration with 'config' containing
+                           'url' and optional 'headers', 'secret'.
+
+        Returns:
+            Delivery result dict.
+
+        Raises:
+            NotificationServiceError: If webhook delivery fails.
+        """
+        config = channel_config.get("config", {})
+        target_url = config.get("url", "")
+        if not target_url:
+            raise NotificationServiceError(
+                "Webhook URL not configured", retryable=False
+            )
+
+        # Parse custom headers from config
+        custom_headers: dict[str, str] = {}
+        headers_str = config.get("headers", "")
+        if headers_str:
+            try:
+                parsed = json.loads(headers_str)
+                if isinstance(parsed, dict):
+                    custom_headers = {str(k): str(v) for k, v in parsed.items()}
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Invalid headers JSON in webhook config, ignoring")
+
+        # Fetch webhook secret if credentials_secret is configured
+        secret = ""
+        credentials_secret = channel_config.get("credentials_secret", "")
+        if credentials_secret:
+            secret, _ = self._fetch_credential(credentials_secret, "secret")
+
+        investigation_id = entry.get("investigation_id", "")
+        event_type = entry.get("event_type", "investigation_started")
+        payload = entry.get("payload", {})
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except (json.JSONDecodeError, TypeError):
+                payload = {"summary": payload}
+
+        merged_payload = {
+            "severity": entry.get("severity", "low"),
+            "service": entry.get("service", "unknown"),
+            **payload,
+        }
+
+        base_url = config.get("base_url", "")
+
+        notifier = WebhookNotifier(
+            target_url=target_url,
+            headers=custom_headers,
+            secret=secret,
+        )
+
+        try:
+            result = notifier.send_webhook(
+                investigation_id=investigation_id,
+                event_type=event_type,
+                payload=merged_payload,
+                base_url=base_url,
+            )
+            return {
+                "status": "delivered",
+                "status_code": result.get("status_code", 0),
+            }
+        except WebhookNotifierError as e:
+            logger.error(
+                "Webhook delivery failed for investigation %s: %s",
+                investigation_id,
+                str(e),
+            )
+            raise NotificationServiceError(
+                f"Webhook delivery failed: {e}", retryable=e.retryable
             ) from e
 
     def _fetch_credential(self, secret_name: str, key: str) -> tuple[str, str]:

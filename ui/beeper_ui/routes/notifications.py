@@ -1,7 +1,8 @@
 """Notification delivery API routes.
 
 Provides the delivery endpoint called by the operator's outbox worker
-to deliver notifications through configured channels (Slack, etc.).
+to deliver notifications through configured channels (Slack, PagerDuty,
+email, webhooks) and a digest flush endpoint for email digest compilation.
 """
 
 import logging
@@ -87,5 +88,104 @@ def deliver_notification() -> tuple[Any, int]:
             ),
             500,
         )
+    finally:
+        svc.close()
+
+
+@notifications_bp.route("/digest/flush", methods=["POST"])
+@require_role("user")
+def flush_email_digest() -> tuple[Any, int]:
+    """Trigger email digest compilation and sending.
+
+    Accepts a list of investigations and email channel config, compiles
+    a digest email, and sends it to configured recipients.
+
+    Request body:
+        {
+            "investigations": [ { investigation summaries } ],
+            "channel_config": { email channel configuration },
+            "period_label": "Daily"  (optional, defaults to "Daily")
+        }
+
+    Returns:
+        JSON with digest delivery status.
+    """
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"status": "error", "error": "Request body is required"}), 400
+
+    investigations = data.get("investigations", [])
+    if not investigations:
+        return jsonify({"status": "error", "error": "investigations list is required"}), 400
+
+    channel_config = data.get("channel_config")
+    if not channel_config:
+        return jsonify({"status": "error", "error": "channel_config is required"}), 400
+
+    config = channel_config.get("config", {})
+    smtp_host = config.get("smtp_host", "")
+    if not smtp_host:
+        return jsonify({"status": "error", "error": "smtp_host is required"}), 400
+
+    recipients_str = config.get("recipients", "")
+    if not recipients_str:
+        return jsonify({"status": "error", "error": "recipients is required"}), 400
+
+    recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
+    period_label = data.get("period_label", "Daily")
+
+    smtp_port = int(config.get("smtp_port", "587"))
+    use_tls = config.get("use_tls", "true").lower() != "false"
+    from_addr = config.get("from_addr", "")
+    base_url = config.get("base_url", "")
+
+    # Fetch SMTP credentials
+    svc = NotificationDeliveryService(
+        operator_url=current_app.config["OPERATOR_URL"],
+        timeout=current_app.config["OPERATOR_TIMEOUT"],
+    )
+    username = ""
+    password = ""
+    credentials_secret = channel_config.get("credentials_secret", "")
+    try:
+        if credentials_secret:
+            username, _ = svc._fetch_credential(credentials_secret, "username")
+            password, _ = svc._fetch_credential(credentials_secret, "password")
+
+        from beeper_ui.notifications.email import EmailNotifier, EmailNotifierError
+
+        notifier = EmailNotifier(
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            username=username,
+            password=password,
+            use_tls=use_tls,
+            from_addr=from_addr,
+        )
+        result = notifier.send_digest(
+            recipients=recipients,
+            investigations=investigations,
+            period_label=period_label,
+            base_url=base_url,
+        )
+        return jsonify({
+            "status": "delivered",
+            "message_id": result.get("message_id", ""),
+            "investigation_count": result.get("investigation_count", 0),
+        }), 200
+    except EmailNotifierError as e:
+        logger.error("Digest email delivery failed: %s", str(e))
+        return jsonify({
+            "status": "failed",
+            "error": str(e),
+            "retryable": e.retryable,
+        }), 502 if e.retryable else 422
+    except Exception as e:
+        logger.exception("Unexpected error in digest flush: %s", str(e))
+        return jsonify({
+            "status": "failed",
+            "error": "Internal server error",
+            "retryable": True,
+        }), 500
     finally:
         svc.close()

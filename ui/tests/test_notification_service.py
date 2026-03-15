@@ -51,6 +51,37 @@ def _make_slack_channel_config(**overrides: Any) -> dict[str, Any]:
     return base
 
 
+def _make_email_channel_config(**overrides: Any) -> dict[str, Any]:
+    """Create a sample email channel config."""
+    base: dict[str, Any] = {
+        "channel_type": "email",
+        "config": {
+            "smtp_host": "smtp.example.com",
+            "recipients": "sre@example.com",
+            "smtp_port": "587",
+            "from_addr": "beeper@example.com",
+            "base_url": "https://beeper.test",
+        },
+        "credentials_secret": "smtp-credentials",
+    }
+    base.update(overrides)
+    return base
+
+
+def _make_webhook_channel_config(**overrides: Any) -> dict[str, Any]:
+    """Create a sample webhook channel config."""
+    base: dict[str, Any] = {
+        "channel_type": "webhook",
+        "config": {
+            "url": "https://hooks.example.com/notify",
+            "base_url": "https://beeper.test",
+        },
+        "credentials_secret": "webhook-secret",
+    }
+    base.update(overrides)
+    return base
+
+
 class TestProcessOutboxEntry:
     """Tests for process_outbox_entry() dispatch."""
 
@@ -94,11 +125,47 @@ class TestProcessOutboxEntry:
         assert result["status"] == "delivered"
         assert result["pagerduty_dedup_key"] == "inv-001"
 
+    @patch("beeper_ui.services.notification_service.EmailNotifier")
+    def test_dispatches_to_email(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.send_investigation_email.return_value = {
+            "status": "sent",
+            "message_id": "<beeper-abc@smtp.test>",
+        }
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.process_outbox_entry(
+            _make_entry(severity="critical"),
+            _make_email_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+        assert "message_id" in result
+
+    @patch("beeper_ui.services.notification_service.WebhookNotifier")
+    def test_dispatches_to_webhook(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.send_webhook.return_value = {
+            "status": "sent",
+            "status_code": 200,
+        }
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.process_outbox_entry(
+            _make_entry(),
+            _make_webhook_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+        assert result["status_code"] == 200
+
     def test_unsupported_channel_type_returns_skipped(self) -> None:
         svc = NotificationDeliveryService("http://operator:8080")
         result = svc.process_outbox_entry(
             _make_entry(),
-            {"channel_type": "email", "config": {}, "credentials_secret": "email-creds"},
+            {"channel_type": "sms", "config": {}, "credentials_secret": "sms-creds"},
         )
         assert result["status"] == "skipped"
         assert not result["retryable"]
@@ -470,6 +537,263 @@ class TestDeliverToPagerDuty:
         result = svc.deliver_to_pagerduty(
             _make_entry(payload="plain text payload"),
             _make_pagerduty_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+
+
+class TestDeliverToEmail:
+    """Tests for deliver_to_email() email-specific delivery."""
+
+    @patch("beeper_ui.services.notification_service.EmailNotifier")
+    def test_successful_immediate_delivery(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.send_investigation_email.return_value = {
+            "status": "sent",
+            "message_id": "<beeper-abc@smtp.test>",
+        }
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_email(
+            _make_entry(severity="critical"),
+            _make_email_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+        assert result["message_id"] == "<beeper-abc@smtp.test>"
+        mock_notifier.send_investigation_email.assert_called_once()
+
+    @patch("beeper_ui.services.notification_service.EmailNotifier")
+    def test_digest_mode_defers_non_critical(self, mock_notifier_class: MagicMock) -> None:
+        config = _make_email_channel_config()
+        config["config"]["mode"] = "digest"
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_email(
+            _make_entry(severity="medium"),
+            config,
+        )
+
+        assert result["status"] == "delivered"
+        assert result["mode"] == "digest_deferred"
+        mock_notifier_class.assert_not_called()
+
+    @patch("beeper_ui.services.notification_service.EmailNotifier")
+    def test_digest_mode_sends_critical_immediately(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.send_investigation_email.return_value = {
+            "status": "sent",
+            "message_id": "<beeper-xyz@smtp.test>",
+        }
+        mock_notifier_class.return_value = mock_notifier
+
+        config = _make_email_channel_config()
+        config["config"]["mode"] = "digest"
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_email(
+            _make_entry(severity="critical"),
+            config,
+        )
+
+        assert result["status"] == "delivered"
+        assert result["message_id"] == "<beeper-xyz@smtp.test>"
+        mock_notifier.send_investigation_email.assert_called_once()
+
+    def test_raises_when_no_smtp_host(self) -> None:
+        svc = NotificationDeliveryService("http://operator:8080")
+        config = _make_email_channel_config()
+        config["config"]["smtp_host"] = ""
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_email(_make_entry(), config)
+
+        assert not exc_info.value.retryable
+        assert "smtp_host" in str(exc_info.value)
+
+    def test_raises_when_no_recipients(self) -> None:
+        svc = NotificationDeliveryService("http://operator:8080")
+        config = _make_email_channel_config()
+        config["config"]["recipients"] = ""
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_email(_make_entry(), config)
+
+        assert not exc_info.value.retryable
+        assert "recipients" in str(exc_info.value)
+
+    @patch("beeper_ui.services.notification_service.EmailNotifier")
+    def test_propagates_retryable_error(self, mock_notifier_class: MagicMock) -> None:
+        from beeper_ui.notifications.email import EmailNotifierError
+
+        mock_notifier = MagicMock()
+        mock_notifier.send_investigation_email.side_effect = EmailNotifierError(
+            "Connection lost", retryable=True
+        )
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_email(
+                _make_entry(severity="critical"),
+                _make_email_channel_config(),
+            )
+
+        assert exc_info.value.retryable
+
+    @patch("beeper_ui.services.notification_service.EmailNotifier")
+    def test_propagates_non_retryable_error(self, mock_notifier_class: MagicMock) -> None:
+        from beeper_ui.notifications.email import EmailNotifierError
+
+        mock_notifier = MagicMock()
+        mock_notifier.send_investigation_email.side_effect = EmailNotifierError(
+            "Auth failed", retryable=False
+        )
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_email(
+                _make_entry(severity="critical"),
+                _make_email_channel_config(),
+            )
+
+        assert not exc_info.value.retryable
+
+    @patch("beeper_ui.services.notification_service.EmailNotifier")
+    def test_string_payload_is_parsed(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.send_investigation_email.return_value = {
+            "status": "sent",
+            "message_id": "<beeper@test>",
+        }
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_email(
+            _make_entry(severity="critical", payload="plain text"),
+            _make_email_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+
+
+class TestDeliverToWebhook:
+    """Tests for deliver_to_webhook() webhook-specific delivery."""
+
+    @patch("beeper_ui.services.notification_service.WebhookNotifier")
+    def test_successful_webhook(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.send_webhook.return_value = {
+            "status": "sent",
+            "status_code": 200,
+        }
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_webhook(
+            _make_entry(),
+            _make_webhook_channel_config(),
+        )
+
+        assert result["status"] == "delivered"
+        assert result["status_code"] == 200
+        mock_notifier.send_webhook.assert_called_once()
+
+    def test_raises_when_no_url(self) -> None:
+        svc = NotificationDeliveryService("http://operator:8080")
+        config = _make_webhook_channel_config()
+        config["config"]["url"] = ""
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_webhook(_make_entry(), config)
+
+        assert not exc_info.value.retryable
+        assert "URL" in str(exc_info.value)
+
+    @patch("beeper_ui.services.notification_service.WebhookNotifier")
+    def test_propagates_retryable_error(self, mock_notifier_class: MagicMock) -> None:
+        from beeper_ui.notifications.webhook import WebhookNotifierError
+
+        mock_notifier = MagicMock()
+        mock_notifier.send_webhook.side_effect = WebhookNotifierError(
+            "Server error", retryable=True
+        )
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_webhook(
+                _make_entry(),
+                _make_webhook_channel_config(),
+            )
+
+        assert exc_info.value.retryable
+
+    @patch("beeper_ui.services.notification_service.WebhookNotifier")
+    def test_propagates_non_retryable_error(self, mock_notifier_class: MagicMock) -> None:
+        from beeper_ui.notifications.webhook import WebhookNotifierError
+
+        mock_notifier = MagicMock()
+        mock_notifier.send_webhook.side_effect = WebhookNotifierError(
+            "Bad request", retryable=False
+        )
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+
+        with pytest.raises(NotificationServiceError) as exc_info:
+            svc.deliver_to_webhook(
+                _make_entry(),
+                _make_webhook_channel_config(),
+            )
+
+        assert not exc_info.value.retryable
+
+    @patch("beeper_ui.services.notification_service.WebhookNotifier")
+    def test_custom_headers_parsed_from_json(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.send_webhook.return_value = {"status": "sent", "status_code": 200}
+        mock_notifier_class.return_value = mock_notifier
+
+        config = _make_webhook_channel_config()
+        config["config"]["headers"] = '{"Authorization": "Bearer tok123"}'
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        svc.deliver_to_webhook(_make_entry(), config)
+
+        call_kwargs = mock_notifier_class.call_args
+        assert call_kwargs.kwargs.get("headers", {}).get("Authorization") == "Bearer tok123"
+
+    @patch("beeper_ui.services.notification_service.WebhookNotifier")
+    def test_invalid_headers_json_ignored(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.send_webhook.return_value = {"status": "sent", "status_code": 200}
+        mock_notifier_class.return_value = mock_notifier
+
+        config = _make_webhook_channel_config()
+        config["config"]["headers"] = "not-valid-json"
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        svc.deliver_to_webhook(_make_entry(), config)
+
+        call_kwargs = mock_notifier_class.call_args
+        assert call_kwargs.kwargs.get("headers", {}) == {}
+
+    @patch("beeper_ui.services.notification_service.WebhookNotifier")
+    def test_string_payload_is_parsed(self, mock_notifier_class: MagicMock) -> None:
+        mock_notifier = MagicMock()
+        mock_notifier.send_webhook.return_value = {"status": "sent", "status_code": 200}
+        mock_notifier_class.return_value = mock_notifier
+
+        svc = NotificationDeliveryService("http://operator:8080")
+        result = svc.deliver_to_webhook(
+            _make_entry(payload="plain text payload"),
+            _make_webhook_channel_config(),
         )
 
         assert result["status"] == "delivered"
