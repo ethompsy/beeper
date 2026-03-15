@@ -387,6 +387,29 @@ class TestErrorHandling:
         assert "timeout" in str(exc_info.value).lower()
 
 
+class TestMalformedResponse:
+    """Tests for handling malformed API responses."""
+
+    @patch("beeper_ui.notifications.pagerduty.httpx.Client")
+    def test_malformed_json_on_success_still_returns(self, mock_client_class: MagicMock) -> None:
+        """Malformed 202 JSON still returns result using dedup_key from event."""
+        mock_client = MagicMock()
+        # Create a response that raises on .json()
+        mock_response = MagicMock()
+        mock_response.status_code = 202
+        mock_response.json.side_effect = ValueError("Invalid JSON")
+        mock_client.post.return_value = mock_response
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client_class.return_value = mock_client
+
+        notifier = PagerDutyNotifier("test-key")
+        result = notifier.trigger_incident("inv-001", _make_payload())
+
+        assert result["status"] == "success"
+        assert result["dedup_key"] == "inv-001"
+
+
 class TestEventLifecycle:
     """Tests for the full trigger → acknowledge → resolve lifecycle."""
 

@@ -253,14 +253,24 @@ class NotificationDeliveryService:
 
             if action == "acknowledge":
                 dedup_key = stored_dedup_key or investigation_id
+                if not stored_dedup_key:
+                    logger.warning(
+                        "No stored pagerduty_dedup_key for %s action on investigation %s, "
+                        "falling back to investigation_id",
+                        action,
+                        investigation_id,
+                    )
                 result = notifier.acknowledge_incident(dedup_key=dedup_key)
             elif action == "resolve":
                 dedup_key = stored_dedup_key or investigation_id
-                result = notifier.resolve_incident(
-                    dedup_key=dedup_key,
-                    payload=merged_payload,
-                    base_url=base_url,
-                )
+                if not stored_dedup_key:
+                    logger.warning(
+                        "No stored pagerduty_dedup_key for %s action on investigation %s, "
+                        "falling back to investigation_id",
+                        action,
+                        investigation_id,
+                    )
+                result = notifier.resolve_incident(dedup_key=dedup_key)
             else:
                 # trigger
                 result = notifier.trigger_incident(

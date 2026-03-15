@@ -126,15 +126,11 @@ class PagerDutyNotifier:
     def resolve_incident(
         self,
         dedup_key: str,
-        payload: dict[str, Any] | None = None,
-        base_url: str = "",
     ) -> dict[str, Any]:
         """Resolve a PagerDuty incident.
 
         Args:
             dedup_key: Dedup key from the original trigger event.
-            payload: Optional payload with resolution details.
-            base_url: Base URL for Beeper UI links.
 
         Returns:
             Dict with 'status', 'dedup_key'.
@@ -166,11 +162,13 @@ class PagerDutyNotifier:
                 response = client.post(
                     PAGERDUTY_EVENTS_URL,
                     json=event,
-                    headers={"Content-Type": "application/json"},
                 )
 
             if response.status_code in (200, 201, 202):
-                data = response.json()
+                try:
+                    data = response.json()
+                except Exception:
+                    data = {}
                 dedup_key = data.get("dedup_key", event.get("dedup_key", ""))
                 logger.info(
                     "PagerDuty event sent: action=%s dedup_key=%s status=%s",

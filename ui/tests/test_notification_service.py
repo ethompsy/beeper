@@ -335,6 +335,7 @@ class TestDeliverToPagerDuty:
 
         assert result["status"] == "delivered"
         assert result["pagerduty_dedup_key"] == "inv-001"
+        mock_notifier_class.assert_called_once_with("test-routing-key-123")
         mock_notifier.trigger_incident.assert_called_once()
 
     @patch("beeper_ui.services.notification_service.PagerDutyNotifier")
@@ -379,7 +380,7 @@ class TestDeliverToPagerDuty:
         )
 
         assert result["status"] == "delivered"
-        mock_notifier.resolve_incident.assert_called_once()
+        mock_notifier.resolve_incident.assert_called_once_with(dedup_key="inv-001")
 
     def test_raises_when_no_routing_key(self) -> None:
         svc = NotificationDeliveryService("http://operator:8080")
