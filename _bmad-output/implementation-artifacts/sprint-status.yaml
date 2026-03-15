@@ -55,7 +55,7 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: Intelligent Notification Engine (Wave 1)
-  epic-2: in-progress
+  epic-2: done
   2-1-notificationchannel-crd-durable-outbox: done
   2-2-notification-routing-rules-engine: done
   2-3-slack-channel-integration: done
@@ -63,7 +63,7 @@ development_status:
   2-5-email-webhook-channels: done
   2-6-notification-audit-false-page-tracking: done
   2-7-notification-configuration-ui: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # Epic 3: Graduated Trust & Autonomy (Wave 2)
   epic-3: backlog
