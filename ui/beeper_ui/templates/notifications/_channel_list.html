@@ -1,0 +1,63 @@
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to fetch notification channels</h3>
+    <p>{{ error_message }}</p>
+    <p>Make sure the Beeper operator is running and accessible.</p>
+</div>
+{% elif channels %}
+<div class="channels-grid">
+    {% for channel in channels %}
+    <div class="card channel-card" id="channel-{{ channel.name }}">
+        <div class="channel-header">
+            <h3>{{ channel.name }}</h3>
+            <span class="badge channel-type-badge">{{ channel.type }}</span>
+            {% if channel.condition == "configured" %}
+            <span class="status-indicator status-healthy" role="img" aria-label="configured"></span>
+            <span class="status-text status-healthy-text">Configured</span>
+            {% else %}
+            <span class="status-indicator status-critical" role="img" aria-label="error"></span>
+            <span class="status-text status-critical-text">Error</span>
+            {% endif %}
+        </div>
+
+        {% if channel.error %}
+        <div class="channel-error">
+            <strong>Error:</strong> {{ channel.error }}
+        </div>
+        {% endif %}
+
+        {% if channel.last_validated %}
+        <div class="channel-meta">
+            <span class="meta-label">Last validated:</span>
+            <span>{{ channel.last_validated }}</span>
+        </div>
+        {% endif %}
+
+        <div class="channel-meta">
+            <span class="meta-label">Routing:</span>
+            <span>Managed via CRD routing rules</span>
+        </div>
+
+        <div class="channel-actions" id="test-area-{{ channel.name }}">
+            <button class="btn btn-sm btn-secondary"
+                    hx-post="/notifications/test"
+                    hx-target="#test-result-{{ channel.name }}"
+                    hx-swap="innerHTML"
+                    hx-vals='{"channel_name": "{{ channel.name }}", "channel_type": "{{ channel.type }}"}'
+                    hx-headers='{"Content-Type": "application/json"}'
+                    hx-indicator="#loading-{{ channel.name }}"
+                    {% if channel.condition != "configured" %}disabled title="Channel has errors"{% endif %}>
+                Send Test Notification
+            </button>
+            <span id="loading-{{ channel.name }}" class="htmx-indicator">Sending...</span>
+            <div id="test-result-{{ channel.name }}"></div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+    <p>No notification channels configured.</p>
+    <p>Create a NotificationChannel custom resource in your Kubernetes cluster to get started.</p>
+</div>
+{% endif %}

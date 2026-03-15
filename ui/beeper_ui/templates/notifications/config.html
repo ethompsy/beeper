@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Notification Channels - Beeper{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Notification Channels</h2>
+    <p>Configured notification channels and their status. Channels are managed via NotificationChannel CRDs in Kubernetes.</p>
+</div>
+
+<div id="channel-list">
+    {% include "notifications/_channel_list.html" %}
+</div>
+{% endblock %}

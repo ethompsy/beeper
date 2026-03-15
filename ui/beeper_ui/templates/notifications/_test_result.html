@@ -1,0 +1,11 @@
+{% if result.success %}
+<div class="test-result test-success">
+    <span class="status-indicator status-healthy" role="img" aria-label="success"></span>
+    <span>{{ result.message }}</span>
+</div>
+{% else %}
+<div class="test-result test-failure">
+    <span class="status-indicator status-critical" role="img" aria-label="failure"></span>
+    <span>{{ result.error or result.message or "Test notification failed" }}</span>
+</div>
+{% endif %}

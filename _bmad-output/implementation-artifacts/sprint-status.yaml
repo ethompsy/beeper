@@ -62,7 +62,7 @@ development_status:
   2-4-pagerduty-bidirectional-integration: done
   2-5-email-webhook-channels: done
   2-6-notification-audit-false-page-tracking: done
-  2-7-notification-configuration-ui: backlog
+  2-7-notification-configuration-ui: review
   epic-2-retrospective: optional
 
   # Epic 3: Graduated Trust & Autonomy (Wave 2)
