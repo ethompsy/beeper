@@ -1,6 +1,6 @@
 # Story 2.7: Notification Configuration UI
 
-Status: review
+Status: done
 
 ## Story
 

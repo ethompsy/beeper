@@ -278,6 +278,38 @@ class TestSendTestNotification:
         assert "evidence" in entry["payload"]
 
 
+    def test_send_test_success_malformed_json_body(self) -> None:
+        """Verify graceful handling when operator returns 200 with non-JSON body."""
+        svc = NotificationChannelService(operator_url="http://localhost:8080")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/plain"}
+        mock_response.json.side_effect = ValueError("No JSON")
+        mock_response.text = "OK"
+        svc._client = MagicMock()
+        svc._client.is_closed = False
+        svc._client.post.return_value = mock_response
+
+        result = svc.send_test_notification("sre-slack", "slack")
+        assert result["success"] is True
+        assert result["details"] == {"raw": "OK"}
+
+    def test_send_test_error_malformed_json_body(self) -> None:
+        """Verify graceful handling when operator returns error with malformed JSON."""
+        svc = NotificationChannelService(operator_url="http://localhost:8080")
+        mock_response = MagicMock()
+        mock_response.status_code = 502
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.json.side_effect = ValueError("Bad JSON")
+        svc._client = MagicMock()
+        svc._client.is_closed = False
+        svc._client.post.return_value = mock_response
+
+        result = svc.send_test_notification("sre-slack", "slack")
+        assert result["success"] is False
+        assert "HTTP 502" in result["error"]
+
+
 class TestNotificationChannelServiceError:
     """Test error class."""
 

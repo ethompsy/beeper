@@ -43,7 +43,7 @@
                     hx-post="/notifications/test"
                     hx-target="#test-result-{{ channel.name }}"
                     hx-swap="innerHTML"
-                    hx-vals='{"channel_name": "{{ channel.name }}", "channel_type": "{{ channel.type }}"}'
+                    hx-vals='{"channel_name": {{ channel.name|tojson }}, "channel_type": {{ channel.type|tojson }}}'
                     hx-headers='{"Content-Type": "application/json"}'
                     hx-indicator="#loading-{{ channel.name }}"
                     {% if channel.condition != "configured" %}disabled title="Channel has errors"{% endif %}>

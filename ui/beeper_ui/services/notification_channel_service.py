@@ -4,6 +4,7 @@ Fetches notification channel configuration from the operator API
 and supports sending test notifications through configured channels.
 """
 
+import json
 import logging
 import uuid
 from typing import Any
@@ -113,14 +114,23 @@ class NotificationChannelService:
                 json={"entry": entry, "channel_config": channel_config},
             )
             if response.status_code in (200, 202):
+                try:
+                    details = response.json()
+                except (json.JSONDecodeError, ValueError):
+                    details = {"raw": response.text}
                 return {
                     "success": True,
                     "message": f"Test notification delivered to {channel_name}",
-                    "details": response.json(),
+                    "details": details,
                 }
             content_type = response.headers.get("content-type", "")
-            error_data = response.json() if content_type.startswith("application/json") else {}
-            error_msg = error_data.get("error", f"HTTP {response.status_code}")
+            error_msg = f"HTTP {response.status_code}"
+            if content_type.startswith("application/json"):
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", error_msg)
+                except (json.JSONDecodeError, ValueError):
+                    pass
             return {
                 "success": False,
                 "message": f"Test notification failed for {channel_name}",

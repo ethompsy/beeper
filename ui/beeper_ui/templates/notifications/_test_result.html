@@ -6,6 +6,6 @@
 {% else %}
 <div class="test-result test-failure">
     <span class="status-indicator status-critical" role="img" aria-label="failure"></span>
-    <span>{{ result.error or result.message or "Test notification failed" }}</span>
+    <span>{{ result.error if result.error is defined and result.error else (result.message if result.message else "Test notification failed") }}</span>
 </div>
 {% endif %}

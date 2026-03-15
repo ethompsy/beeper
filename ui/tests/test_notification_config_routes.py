@@ -1,54 +1,16 @@
-"""Tests for notification configuration UI routes."""
+"""Tests for notification configuration UI routes.
 
-from collections.abc import Generator
+Uses shared fixtures from conftest.py: app, user_client, admin_client, _RoleClient.
+"""
+
 from typing import Any
 from unittest.mock import patch
 
-import pytest
 from flask import Flask
-from flask.testing import FlaskClient
 
-from beeper_ui.app import create_app
-from beeper_ui.config import TestingConfig
 from beeper_ui.services.notification_channel_service import (
     NotificationChannelServiceError,
 )
-
-
-class _RoleClient:
-    """Wrapper that injects X-Beeper-Role header on every request."""
-
-    def __init__(self, client: FlaskClient, role: str) -> None:
-        self._client = client
-        self._role = role
-
-    def get(self, *args: Any, **kwargs: Any) -> Any:
-        headers = dict(kwargs.pop("headers", {}) or {})
-        headers["X-Beeper-Role"] = self._role
-        return self._client.get(*args, headers=headers, **kwargs)
-
-    def post(self, *args: Any, **kwargs: Any) -> Any:
-        headers = dict(kwargs.pop("headers", {}) or {})
-        headers["X-Beeper-Role"] = self._role
-        return self._client.post(*args, headers=headers, **kwargs)
-
-
-@pytest.fixture
-def app() -> Generator[Flask, None, None]:
-    app = create_app(TestingConfig)
-    yield app
-
-
-@pytest.fixture
-def user_client(app: Flask) -> Generator[_RoleClient, None, None]:
-    with app.test_client() as test_client:
-        yield _RoleClient(test_client, "user")
-
-
-@pytest.fixture
-def admin_client(app: Flask) -> Generator[_RoleClient, None, None]:
-    with app.test_client() as test_client:
-        yield _RoleClient(test_client, "admin")
 
 
 SAMPLE_CHANNELS = [
@@ -171,12 +133,17 @@ class TestListChannelsPage:
         assert "Timeout" in html
         assert "<!DOCTYPE html>" not in html
 
-    def test_list_channels_requires_role(self, app: Flask) -> None:
+    @patch("beeper_ui.routes.notification_config.NotificationChannelService")
+    def test_list_channels_requires_role(
+        self, mock_svc_class: Any, app: Flask
+    ) -> None:
         """No role header defaults to user, which has access."""
+        mock_svc = mock_svc_class.return_value
+        mock_svc.list_channels.return_value = []
+
         with app.test_client() as client:
             resp = client.get("/notifications/")
-            # Default role is "user" which has access
-            assert resp.status_code == 200 or resp.status_code == 500
+            assert resp.status_code == 200
 
     @patch("beeper_ui.routes.notification_config.NotificationChannelService")
     def test_list_channels_admin_access(
