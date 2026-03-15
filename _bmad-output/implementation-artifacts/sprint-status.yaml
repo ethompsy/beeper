@@ -61,7 +61,7 @@ development_status:
   2-3-slack-channel-integration: done
   2-4-pagerduty-bidirectional-integration: done
   2-5-email-webhook-channels: done
-  2-6-notification-audit-false-page-tracking: review
+  2-6-notification-audit-false-page-tracking: done
   2-7-notification-configuration-ui: backlog
   epic-2-retrospective: optional
 

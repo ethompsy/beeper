@@ -233,6 +233,9 @@ class TestGetNotificationAudit:
 
         call_args = mock_audit.query_audit.call_args
         assert call_args.kwargs["channel_type"] == "slack"
+        # Verify channel_type is also passed to statistics
+        stats_args = mock_audit.get_audit_statistics.call_args
+        assert stats_args.kwargs["channel_type"] == "slack"
 
     @patch("beeper_ui.routes.notifications.NotificationAuditService")
     def test_passes_date_range_filters(
@@ -425,7 +428,7 @@ class TestFalsePageFlaggingIntegration:
     """Tests that false pages are flagged during investigation resolution."""
 
     @respx.mock
-    @patch("beeper_ui.services.notification_audit_service.NotificationAuditService")
+    @patch("beeper_ui.routes.investigations.NotificationAuditService")
     def test_false_page_flagged_on_not_an_issue(
         self, mock_audit_class: Any, client: FlaskClient
     ) -> None:
@@ -459,7 +462,7 @@ class TestFalsePageFlaggingIntegration:
             mock_audit.close.assert_called_once()
 
     @respx.mock
-    @patch("beeper_ui.services.notification_audit_service.NotificationAuditService")
+    @patch("beeper_ui.routes.investigations.NotificationAuditService")
     def test_false_page_flagged_on_incorrect_accuracy(
         self, mock_audit_class: Any, client: FlaskClient
     ) -> None:
@@ -492,7 +495,7 @@ class TestFalsePageFlaggingIntegration:
             mock_audit.flag_false_pages.assert_called_once_with("inv-002", "incorrect_accuracy")
 
     @respx.mock
-    @patch("beeper_ui.services.notification_audit_service.NotificationAuditService")
+    @patch("beeper_ui.routes.investigations.NotificationAuditService")
     def test_no_flagging_on_resolved_correct(
         self, mock_audit_class: Any, client: FlaskClient
     ) -> None:
@@ -524,7 +527,7 @@ class TestFalsePageFlaggingIntegration:
             mock_audit_class.assert_not_called()
 
     @respx.mock
-    @patch("beeper_ui.services.notification_audit_service.NotificationAuditService")
+    @patch("beeper_ui.routes.investigations.NotificationAuditService")
     def test_flagging_error_does_not_fail_resolution(
         self, mock_audit_class: Any, client: FlaskClient
     ) -> None:
@@ -558,7 +561,7 @@ class TestFalsePageFlaggingIntegration:
             assert response.status_code == 200
 
     @respx.mock
-    @patch("beeper_ui.services.notification_audit_service.NotificationAuditService")
+    @patch("beeper_ui.routes.investigations.NotificationAuditService")
     def test_not_an_issue_with_expected_behavior_reason(
         self, mock_audit_class: Any, client: FlaskClient
     ) -> None:
@@ -591,7 +594,7 @@ class TestFalsePageFlaggingIntegration:
             mock_audit.flag_false_pages.assert_called_once_with("inv-005", "expected_behavior")
 
     @respx.mock
-    @patch("beeper_ui.services.notification_audit_service.NotificationAuditService")
+    @patch("beeper_ui.routes.investigations.NotificationAuditService")
     def test_no_flagging_on_escalated(
         self, mock_audit_class: Any, client: FlaskClient
     ) -> None:

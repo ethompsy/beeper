@@ -567,6 +567,25 @@ class TestGetAuditStatistics:
             for c in first_filter.must
         )
 
+    def test_statistics_with_channel_type_filter(self, audit_service):
+        """Applies channel_type filter to statistics query."""
+        total_mock = MagicMock()
+        total_mock.count = 20
+        fp_mock = MagicMock()
+        fp_mock.count = 2
+
+        audit_service.qdrant_client.count.side_effect = [total_mock, fp_mock]
+
+        stats = audit_service.get_audit_statistics(channel_type="slack")
+
+        assert stats["total_notifications"] == 20
+        assert audit_service.qdrant_client.count.call_count == 2
+        first_filter = audit_service.qdrant_client.count.call_args_list[0].kwargs["count_filter"]
+        assert any(
+            c.key == "channel_type" and c.match.value == "slack"
+            for c in first_filter.must
+        )
+
     def test_statistics_with_date_range(self, audit_service):
         """Applies date range filter to statistics query using timestamp_epoch."""
         total_mock = MagicMock()

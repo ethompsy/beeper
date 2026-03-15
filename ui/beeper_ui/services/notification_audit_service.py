@@ -4,6 +4,7 @@ Records audit trails for notification deliveries and tracks false pages
 when investigations are marked as not-an-issue or inaccurate.
 """
 
+import json
 import logging
 import os
 import uuid
@@ -11,7 +12,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import (
     Distance,
     FieldCondition,
@@ -71,7 +71,7 @@ class NotificationAuditService:
         try:
             self.qdrant_client.get_collection(AUDIT_COLLECTION)
             self._collection_ensured = True
-        except (UnexpectedResponse, Exception):
+        except Exception:
             try:
                 self.qdrant_client.create_collection(
                     collection_name=AUDIT_COLLECTION,
@@ -110,8 +110,6 @@ class NotificationAuditService:
 
         payload = entry.get("payload", {})
         if isinstance(payload, str):
-            import json
-
             try:
                 payload = json.loads(payload)
             except (json.JSONDecodeError, TypeError):
@@ -315,6 +313,7 @@ class NotificationAuditService:
     def get_audit_statistics(
         self,
         service: str | None = None,
+        channel_type: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
     ) -> dict[str, Any]:
@@ -322,6 +321,7 @@ class NotificationAuditService:
 
         Args:
             service: Filter by service name.
+            channel_type: Filter by channel type (slack, pagerduty, email, webhook).
             date_from: ISO 8601 start date (inclusive).
             date_to: ISO 8601 end date (inclusive).
 
@@ -335,6 +335,10 @@ class NotificationAuditService:
         if service is not None:
             conditions.append(
                 FieldCondition(key="service", match=MatchValue(value=service))
+            )
+        if channel_type is not None:
+            conditions.append(
+                FieldCondition(key="channel_type", match=MatchValue(value=channel_type))
             )
         if date_from is not None or date_to is not None:
             range_params: dict[str, Any] = {}

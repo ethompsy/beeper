@@ -256,6 +256,7 @@ def get_notification_audit() -> tuple[Any, int]:
         )
         statistics = audit_svc.get_audit_statistics(
             service=service,
+            channel_type=channel_type,
             date_from=date_from,
             date_to=date_to,
         )

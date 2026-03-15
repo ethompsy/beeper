@@ -23,6 +23,7 @@ from beeper_ui.services.investigation_service import (
     InvestigationServiceError,
 )
 from beeper_ui.services.kb_service import KBEntry, KBService, KBServiceError
+from beeper_ui.services.notification_audit_service import NotificationAuditService
 
 logger = logging.getLogger(__name__)
 
@@ -679,10 +680,6 @@ def resolve_investigation_route(investigation_id: str) -> str | tuple[str, int]:
         # Flag false pages in notification audit trail
         if outcome == "not_an_issue" or accuracy_rating == "incorrect":
             try:
-                from beeper_ui.services.notification_audit_service import (
-                    NotificationAuditService,
-                )
-
                 false_page_reason = not_an_issue_reason or "incorrect_accuracy"
                 audit_svc = NotificationAuditService()
                 try:
