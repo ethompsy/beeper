@@ -847,6 +847,13 @@ def submit_investigation_feedback(investigation_id: str) -> str | tuple[str, int
             "investigation_feedback_by": user,
             "investigation_feedback_at": now,
         })
+    except InvestigationServiceError:
+        return render_template(
+            "investigations/_feedback_result.html",
+            error_message="Unable to save feedback. Please try again.",
+            current_feedback="",
+            investigation_id=investigation_id,
+        ), 503
     finally:
         svc.close()
 

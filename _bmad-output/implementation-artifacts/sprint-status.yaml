@@ -70,7 +70,7 @@ development_status:
   3-1-trust-level-configuration-persistence: done
   3-2-confidence-gate-engine: done
   3-3-confidence-gate-threshold-configuration: done
-  3-4-one-click-investigation-feedback: review
+  3-4-one-click-investigation-feedback: done
   3-5-adaptive-alert-threshold-tuning: backlog
   3-6-impact-weighted-escalation-urgency: backlog
   3-7-noise-report-dashboard: backlog

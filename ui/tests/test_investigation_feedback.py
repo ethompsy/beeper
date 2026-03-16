@@ -1,5 +1,6 @@
 """Tests for one-click investigation feedback (Story 3-4)."""
 
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import respx
@@ -261,8 +262,31 @@ class TestSubmitFeedbackRoute:
             assert response.status_code == 200
             call_args = mock_svc.save_resolution_feedback.call_args
             feedback_at = call_args[0][1]["investigation_feedback_at"]
-            assert "T" in feedback_at  # ISO 8601 format
-            assert "+" in feedback_at or "Z" in feedback_at  # timezone-aware
+            # Validate proper ISO 8601 format by parsing
+            parsed = datetime.fromisoformat(feedback_at)
+            assert parsed.tzinfo is not None  # timezone-aware
+
+    @respx.mock
+    def test_feedback_qdrant_failure_returns_503(self, client: FlaskClient) -> None:
+        """Test feedback returns 503 when Qdrant/service is unavailable."""
+        from beeper_ui.services.investigation_service import InvestigationServiceError
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService"
+        ) as MockService:
+            mock_svc = MagicMock()
+            MockService.return_value = mock_svc
+            mock_svc.save_resolution_feedback.side_effect = InvestigationServiceError(
+                "Connection refused"
+            )
+
+            response = client.post(
+                "/investigations/inv-feedback-001/feedback",
+                data={"feedback_type": "accurate"},
+            )
+            assert response.status_code == 503
+            assert b"Unable to save feedback" in response.data
+            mock_svc.close.assert_called_once()
 
     @respx.mock
     def test_feedback_change_overwrites_previous(
