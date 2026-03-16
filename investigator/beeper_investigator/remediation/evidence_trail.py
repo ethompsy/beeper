@@ -255,7 +255,10 @@ class EvidenceTrailFormatter:
 
             sections.append("\n".join(trust_lines) + "\n")
 
-        # Proven fix KB entry (if created)
+        # Proven fix KB entry (if created).
+        # NOTE: In the current pipeline, PRGeneratorStep (step 11) calls
+        # format_pr_body() before ProvenFixAccumulatorStep (step 13) runs,
+        # so this section only renders when PRs are updated post-accumulation.
         if pipeline_metadata.get("kb_entry_created"):
             entry_id = pipeline_metadata.get("proven_fix_entry_id", "?")
             kb_lines = [

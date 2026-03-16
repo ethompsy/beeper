@@ -367,6 +367,41 @@ class TestBufferToFileOnPersistenceFailure:
         assert buffer_data["collection"] == "knowledge"
 
 
+class TestNonDictRecommendationHandled:
+    """Non-dict recommendation entries don't crash payload building."""
+
+    def test_non_dict_recommendation(self):
+        metadata = _proven_fix_metadata()
+        metadata["recommendations"] = ["not a dict", {"action": "valid"}]
+        step, _, kb, _, _ = _make_step(pipeline_metadata=metadata)
+        step.execute()
+        payload = kb.client.upsert.call_args[0][1][0].payload
+        # Should safely skip the non-dict entry
+        assert payload["resolution"] == ""
+
+    def test_empty_recommendations(self):
+        metadata = _proven_fix_metadata()
+        metadata["recommendations"] = []
+        step, _, kb, _, _ = _make_step(pipeline_metadata=metadata)
+        step.execute()
+        payload = kb.client.upsert.call_args[0][1][0].payload
+        assert payload["resolution"] == ""
+
+
+class TestEntryIdAlwaysReturned:
+    """proven_fix_entry_id is always returned, even on failure."""
+
+    def test_entry_id_on_persistence_failure(self):
+        metadata = _proven_fix_metadata()
+        step, _, kb, _, _ = _make_step(pipeline_metadata=metadata)
+        kb.client.upsert.side_effect = RuntimeError("Qdrant down")
+        with patch.object(step, "_buffer_to_file", return_value=None):
+            with patch("beeper_investigator.remediation.proven_fix_accumulator.time.sleep"):
+                result = step.execute()
+        assert result.data["proven_fix_entry_id"] is not None
+        assert result.data["kb_entry_created"] is False
+
+
 class TestPayloadTitle:
     """title format is 'Proven Fix: {documentation_title}'."""
 

@@ -106,7 +106,7 @@ class ProvenFixAccumulatorStep:
             summary=summary,
             data={
                 "kb_entry_created": persisted,
-                "proven_fix_entry_id": entry_id if persisted else None,
+                "proven_fix_entry_id": entry_id,
                 "proven_fix_skip_reason": skip_reason,
                 "proven_fix_buffered": buffered,
                 "proven_fix_buffer_path": buffer_path,
@@ -132,7 +132,9 @@ class ProvenFixAccumulatorStep:
         recommendations = self.pipeline_metadata.get("recommendations", [])
         if recommendations:
             actions = [
-                r.get("action", "") for r in recommendations if r.get("action")
+                r.get("action", "")
+                for r in recommendations
+                if isinstance(r, dict) and r.get("action")
             ]
             if actions:
                 parts.append(f"Resolution: {actions[0]}.")
@@ -170,8 +172,8 @@ class ProvenFixAccumulatorStep:
 
         recommendations = self.pipeline_metadata.get("recommendations", [])
         first_action = ""
-        if recommendations:
-            first_action = recommendations[0].get("action", "") if recommendations[0] else ""
+        if recommendations and isinstance(recommendations[0], dict):
+            first_action = recommendations[0].get("action", "")
 
         verification_results = self.pipeline_metadata.get("verification_results", [])
         verification_evidence = {
@@ -258,6 +260,7 @@ class ProvenFixAccumulatorStep:
                     "Persisted proven fix to knowledge collection: %s",
                     entry_id,
                 )
+                self._cleanup_buffer()
                 return True, False, None
             except Exception as exc:
                 logger.warning(
@@ -304,3 +307,23 @@ class ProvenFixAccumulatorStep:
                 "Failed to buffer proven fix entry: %s", exc
             )
             return None
+
+    def _cleanup_buffer(self) -> None:
+        """Remove buffer file if it exists after successful persistence."""
+        buffer_dir = os.environ.get(
+            "BEEPER_BUFFER_DIR", _DEFAULT_BUFFER_DIR
+        )
+        buffer_path = os.path.join(
+            buffer_dir,
+            f"{self.context.investigation_id}-proven-fix.json",
+        )
+        try:
+            if os.path.exists(buffer_path):
+                os.remove(buffer_path)
+                logger.info(
+                    "Cleaned up proven fix buffer file %s", buffer_path
+                )
+        except Exception as exc:
+            logger.warning(
+                "Failed to clean up proven fix buffer file: %s", exc
+            )
