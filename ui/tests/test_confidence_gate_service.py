@@ -54,14 +54,6 @@ def _make_service(mock_client: MagicMock | None = None) -> ConfidenceGateService
     return service
 
 
-def _mock_trust_service(mock_client: MagicMock, effective_level: int = 1) -> MagicMock:
-    """Create a mock TrustLevelService and attach to gate service."""
-
-    trust_svc = MagicMock()
-    trust_svc.get_effective_trust_level.return_value = effective_level
-    return trust_svc
-
-
 # ---------- Test evaluate_gate ----------
 
 

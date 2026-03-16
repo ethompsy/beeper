@@ -120,6 +120,17 @@ class TestEvaluateGate:
 
         assert response.status_code == 400
 
+    @patch("beeper_ui.routes.confidence_gates._get_gate_service")
+    def test_evaluate_boolean_confidence_score_rejected(self, mock_get_svc, client):
+        """Boolean confidence_score is rejected as invalid."""
+        response = client.post(
+            "/api/v1/trust/gates/evaluate",
+            json={"service_name": "payment-api", "confidence_score": True},
+            headers={"X-Beeper-Role": "user"},
+        )
+
+        assert response.status_code == 400
+
 
 # ---------- GET /api/v1/trust/gates ----------
 
@@ -263,6 +274,17 @@ class TestUpdateGateThreshold:
         response = client.put(
             "/api/v1/trust/gates/3",
             json={},
+            headers={"X-Beeper-Role": "admin"},
+        )
+
+        assert response.status_code == 400
+
+    @patch("beeper_ui.routes.confidence_gates._get_gate_service")
+    def test_update_boolean_threshold_rejected(self, mock_get_svc, client):
+        """Boolean threshold value is rejected as invalid."""
+        response = client.put(
+            "/api/v1/trust/gates/3",
+            json={"threshold": True},
             headers={"X-Beeper-Role": "admin"},
         )
 

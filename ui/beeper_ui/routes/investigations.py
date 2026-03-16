@@ -1,6 +1,7 @@
 """Investigation routes for Beeper UI."""
 
 import logging
+import os
 import re
 import time
 from collections.abc import Generator
@@ -17,6 +18,7 @@ from flask import (
 )
 
 from beeper_ui.services.confidence_gate_service import (
+    ConfidenceGateError,
     ConfidenceGateService,
     format_gate_message,
     normalize_confidence_score,
@@ -475,8 +477,6 @@ def investigation_gate_status(investigation_id: str) -> str:
         findings = svc.get_investigation_findings(investigation_id)
         confidence_score = normalize_confidence_score(findings)
 
-        import os
-
         gate_svc = ConfidenceGateService(
             host=os.getenv("QDRANT_HOST", "localhost"),
             port=int(os.getenv("QDRANT_PORT", "6333")),
@@ -487,7 +487,11 @@ def investigation_gate_status(investigation_id: str) -> str:
                 confidence_score=confidence_score,
             )
             gate_message = format_gate_message(gate_decision)
-        except Exception:
+        except ConfidenceGateError as e:
+            logger.warning("Failed to evaluate confidence gate: %s", e)
+            gate_error = True
+        except Exception as e:
+            logger.warning("Unexpected error evaluating confidence gate: %s", e)
             gate_error = True
         finally:
             gate_svc.close()
