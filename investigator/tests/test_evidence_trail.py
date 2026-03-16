@@ -182,3 +182,95 @@ class TestFormatCommitMessage:
 
         assert "Condition: oom_kill" in msg
         assert "Severity: critical" in msg
+
+
+# ── Sandbox Results Section ─────────────────────────────
+
+
+class TestSandboxResultsSection:
+    def test_sandbox_executed_renders_table(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["sandbox_executed"] = True
+        metadata["sandbox_overall_status"] = "pass"
+        metadata["sandbox_namespace"] = "beeper-sandbox"
+        metadata["sandbox_test_results"] = [
+            {
+                "step_number": 1,
+                "title": "Check memory",
+                "status": "pass",
+                "expected_outcome": "Memory < 512MB",
+                "actual_value": "256MB",
+                "duration_seconds": 2.5,
+            },
+        ]
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Sandbox Test Results" in body
+        assert "PASS" in body
+        assert "beeper-sandbox" in body
+        assert "Check memory" in body
+
+    def test_sandbox_not_executed_shows_skip_reason(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["sandbox_executed"] = False
+        metadata["skip_reason"] = "no_sandbox_configured"
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Sandbox Test Results" in body
+        assert "Skipped: no_sandbox_configured" in body
+
+    def test_no_sandbox_data_gracefully_omitted(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        # No sandbox_executed key at all
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Sandbox Test Results" not in body
+
+    def test_sandbox_results_in_audit_trail(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["sandbox_executed"] = True
+        metadata["sandbox_overall_status"] = "pass"
+        metadata["sandbox_namespace"] = "beeper-sandbox"
+        metadata["sandbox_test_results"] = []
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "verification (pass)" in body
+
+    def test_audit_trail_pending_when_no_sandbox(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "verification (pending)" in body
+
+    def test_non_dict_sandbox_results_skipped(self, caplog):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["sandbox_executed"] = True
+        metadata["sandbox_overall_status"] = "pass"
+        metadata["sandbox_namespace"] = "beeper-sandbox"
+        metadata["sandbox_test_results"] = [
+            "not a dict",
+            {
+                "step_number": 1,
+                "title": "Valid",
+                "status": "pass",
+                "expected_outcome": "ok",
+                "actual_value": "ok",
+                "duration_seconds": 1.0,
+            },
+        ]
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "Valid" in body
+        assert "Skipping non-dict sandbox result" in caplog.text

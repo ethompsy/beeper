@@ -111,11 +111,54 @@ class EvidenceTrailFormatter:
                     "### Advisory Test Plan\n" + "\n".join(step_lines) + "\n"
                 )
 
+        # Sandbox test results (if executed)
+        if pipeline_metadata.get("sandbox_executed"):
+            overall = pipeline_metadata.get("sandbox_overall_status", "unknown")
+            sandbox_results = pipeline_metadata.get("sandbox_test_results", [])
+            sandbox_ns = pipeline_metadata.get("sandbox_namespace", "unknown")
+            sandbox_lines = [
+                "### Sandbox Test Results\n"
+                f"**Overall: {overall.upper()}** (namespace: `{sandbox_ns}`)\n"
+            ]
+            if sandbox_results:
+                sandbox_lines.append(
+                    "| Step | Title | Status | Expected | Actual | Duration |"
+                )
+                sandbox_lines.append(
+                    "|------|-------|--------|----------|--------|----------|"
+                )
+                for sr in sandbox_results:
+                    if isinstance(sr, dict):
+                        sandbox_lines.append(
+                            f"| {sr.get('step_number', '?')} "
+                            f"| {sr.get('title', '')} "
+                            f"| {sr.get('status', '?')} "
+                            f"| {sr.get('expected_outcome', '')[:40]} "
+                            f"| {sr.get('actual_value', '')[:40]} "
+                            f"| {sr.get('duration_seconds', 0):.1f}s |"
+                        )
+                    else:
+                        logger.warning(
+                            "Skipping non-dict sandbox result: %s",
+                            type(sr).__name__,
+                        )
+            sections.append("\n".join(sandbox_lines) + "\n")
+        elif pipeline_metadata.get("sandbox_executed") is False:
+            skip_reason = pipeline_metadata.get("skip_reason", "unknown")
+            sections.append(
+                f"### Sandbox Test Results\n*Skipped: {skip_reason}*\n"
+            )
+
         # Audit trail
+        verification_status = "pending"
+        if pipeline_metadata.get("sandbox_executed"):
+            verification_status = pipeline_metadata.get(
+                "sandbox_overall_status", "pending"
+            )
         sections.append(
             "### Audit Trail\n"
             f"anomaly ({context.condition}) → investigation ({context.investigation_id})"
-            f" → fix (this PR) → verification (pending)\n"
+            f" → fix (this PR) → verification ({verification_status})\n"
         )
 
         # Footer
