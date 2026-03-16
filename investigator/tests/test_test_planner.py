@@ -532,3 +532,57 @@ class TestDataclasses:
 
         model = step._get_model_name()
         assert model == "deep-rca-model"
+
+    def test_non_dict_step_entries_skipped(self):
+        """Non-dict entries in verification_steps are skipped with logging."""
+        metadata = _hypothesis_metadata()
+        step, deps = _make_step(pipeline_metadata=metadata)
+        mixed_steps = [
+            "not a dict",
+            {
+                "step_number": 1,
+                "title": "Valid step",
+                "description": "A valid step",
+                "action": "check something",
+                "expected_outcome": "pass",
+                "metric_or_endpoint": "some_metric",
+                "verification_type": "metric_check",
+            },
+            42,
+            None,
+        ]
+        deps["llm_client"].complete_sync.return_value = _llm_plan_response(steps=mixed_steps)
+        deps["llm_client"].select_model.return_value = "test-model"
+
+        result = step.execute()
+
+        assert result.success is True
+        assert result.data["test_plan_generated"] is True
+        # Only the valid dict entry should survive
+        assert result.data["steps_total"] == 1
+        assert result.data["verification_steps"][0]["title"] == "Valid step"
+
+    def test_all_model_tiers_none_returns_none(self):
+        """When all model tiers return None, _get_model_name returns None."""
+        step, deps = _make_step(pipeline_metadata=_hypothesis_metadata())
+        deps["llm_client"].select_model.return_value = None
+
+        model = step._get_model_name()
+        assert model is None
+
+    def test_model_none_passed_to_llm(self):
+        """When _get_model_name returns None, complete_sync is called with model=None."""
+        metadata = _hypothesis_metadata()
+        step, deps = _make_step(pipeline_metadata=metadata)
+        deps["llm_client"].select_model.return_value = None
+        deps["llm_client"].complete_sync.return_value = _llm_plan_response()
+
+        result = step.execute()
+
+        # Should still work — LLM client handles None model gracefully
+        assert result.success is True
+        assert result.data["test_plan_generated"] is True
+        assert result.data["test_plan_model_used"] is None
+        # Verify complete_sync was called with model=None
+        call_kwargs = deps["llm_client"].complete_sync.call_args
+        assert call_kwargs[1]["model"] is None

@@ -146,10 +146,13 @@ class TestPlannerStep:
                 },
             )
 
+        # Resolve model name once for both LLM call and result metadata
+        model_name = self._get_model_name()
+
         # Generate test plan via LLM
         self.status_updater.update_message("Designing verification steps")
         try:
-            plan = self._generate_test_plan(hypothesis_context)
+            plan = self._generate_test_plan(hypothesis_context, model_name)
         except Exception as exc:
             logger.warning("Test plan generation failed: %s", exc)
             return StepResult(
@@ -159,7 +162,7 @@ class TestPlannerStep:
                     "test_plan_generated": False,
                     "skip_reason": "generation_failed",
                     "test_plan_model_tier": "remediation",
-                    "test_plan_model_used": None,
+                    "test_plan_model_used": model_name,
                 },
             )
 
@@ -207,7 +210,7 @@ class TestPlannerStep:
                 "promotable_to_sandbox": plan.promotable_to_sandbox,
                 "steps_total": len(plan.verification_steps),
                 "test_plan_model_tier": "remediation",
-                "test_plan_model_used": self._get_model_name(),
+                "test_plan_model_used": model_name,
             },
         )
 
@@ -233,10 +236,11 @@ class TestPlannerStep:
 
     # ── LLM test plan generation ───────────────────────────
 
-    def _generate_test_plan(self, hypothesis_context: dict[str, Any]) -> AdvisoryTestPlan:
+    def _generate_test_plan(
+        self, hypothesis_context: dict[str, Any], model_name: str | None = None,
+    ) -> AdvisoryTestPlan:
         """Use LLM to generate an advisory test plan."""
         messages = self._build_plan_messages(hypothesis_context)
-        model_name = self._get_model_name()
 
         raw = self.llm_client.complete_sync(
             messages,
@@ -331,6 +335,10 @@ class TestPlannerStep:
         steps: list[TestPlanStep] = []
         for i, s in enumerate(raw_steps):
             if not isinstance(s, dict):
+                logger.warning(
+                    "Skipping non-dict verification step at index %d: %s",
+                    i, type(s).__name__,
+                )
                 continue
 
             vtype = str(s.get("verification_type", "manual_verification")).lower()
