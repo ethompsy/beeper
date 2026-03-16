@@ -183,6 +183,7 @@ class InvestigatorAgent:
         specific step implementations.
         """
         from beeper_investigator.remediation.runbook_executor import RunbookExecutorStep
+        from beeper_investigator.remediation.test_planner import TestPlannerStep
         from beeper_investigator.steps.impact_assessment import CustomerImpactStep
         from beeper_investigator.steps.investigation_documentation import (
             InvestigationDocumentationStep,
@@ -234,6 +235,12 @@ class InvestigatorAgent:
             RunbookExecutorStep(
                 llm_client=self.llm_client,
                 kb_client=self.kb_client,
+                context=self.context,
+                status_updater=self.status_updater,
+                pipeline_metadata=self._pipeline_metadata,
+            ),
+            TestPlannerStep(
+                llm_client=self.llm_client,
                 context=self.context,
                 status_updater=self.status_updater,
                 pipeline_metadata=self._pipeline_metadata,
