@@ -70,6 +70,102 @@ class TestInvestigationContextFromEnv:
                 InvestigationContext.from_env()
             assert exc_info.value.code == 1
 
+    def test_trust_level_defaults_to_1(self) -> None:
+        """Trust level defaults to 1 (advisory) when not set."""
+        env = {
+            "INVESTIGATION_ID": "inv-tl",
+            "INVESTIGATION_NAMESPACE": "default",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.trust_level == 1
+
+    def test_trust_level_reads_from_env(self) -> None:
+        """Trust level reads from INVESTIGATION_TRUST_LEVEL."""
+        env = {
+            "INVESTIGATION_ID": "inv-tl",
+            "INVESTIGATION_NAMESPACE": "default",
+            "INVESTIGATION_TRUST_LEVEL": "3",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.trust_level == 3
+
+    def test_trust_level_clamped_to_range(self) -> None:
+        """Trust level is clamped between 1 and 5."""
+        env = {
+            "INVESTIGATION_ID": "inv-tl",
+            "INVESTIGATION_NAMESPACE": "default",
+            "INVESTIGATION_TRUST_LEVEL": "10",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.trust_level == 5
+
+        env["INVESTIGATION_TRUST_LEVEL"] = "0"
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.trust_level == 1
+
+    def test_trust_level_invalid_defaults_to_1(self) -> None:
+        """Invalid trust level value defaults to 1."""
+        env = {
+            "INVESTIGATION_ID": "inv-tl",
+            "INVESTIGATION_NAMESPACE": "default",
+            "INVESTIGATION_TRUST_LEVEL": "not_a_number",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.trust_level == 1
+
+    def test_confidence_threshold_defaults_to_0_9(self) -> None:
+        """Confidence threshold defaults to 0.9 when not set."""
+        env = {
+            "INVESTIGATION_ID": "inv-ct",
+            "INVESTIGATION_NAMESPACE": "default",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.confidence_threshold == 0.9
+
+    def test_confidence_threshold_reads_from_env(self) -> None:
+        """Confidence threshold reads from INVESTIGATION_CONFIDENCE_THRESHOLD."""
+        env = {
+            "INVESTIGATION_ID": "inv-ct",
+            "INVESTIGATION_NAMESPACE": "default",
+            "INVESTIGATION_CONFIDENCE_THRESHOLD": "0.85",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.confidence_threshold == 0.85
+
+    def test_confidence_threshold_clamped_to_range(self) -> None:
+        """Confidence threshold is clamped between 0.0 and 1.0."""
+        env = {
+            "INVESTIGATION_ID": "inv-ct",
+            "INVESTIGATION_NAMESPACE": "default",
+            "INVESTIGATION_CONFIDENCE_THRESHOLD": "1.5",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.confidence_threshold == 1.0
+
+        env["INVESTIGATION_CONFIDENCE_THRESHOLD"] = "-0.5"
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.confidence_threshold == 0.0
+
+    def test_confidence_threshold_invalid_defaults_to_0_9(self) -> None:
+        """Invalid confidence threshold defaults to 0.9."""
+        env = {
+            "INVESTIGATION_ID": "inv-ct",
+            "INVESTIGATION_NAMESPACE": "default",
+            "INVESTIGATION_CONFIDENCE_THRESHOLD": "abc",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            ctx = InvestigationContext.from_env()
+        assert ctx.confidence_threshold == 0.9
+
     def test_context_is_immutable(self, full_env: dict[str, str]) -> None:
         """InvestigationContext is frozen (immutable)."""
         with patch.dict(os.environ, full_env, clear=True):
