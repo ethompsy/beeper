@@ -17,7 +17,7 @@ from beeper_investigator.k8s.repository import (
     RepositoryLookup,
 )
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
-from beeper_investigator.llm.client import LlmClient
+from beeper_investigator.llm.client import LlmClient, ModelTier
 from beeper_investigator.remediation.evidence_trail import EvidenceTrailFormatter
 from beeper_investigator.remediation.git_provider import create_git_provider
 from beeper_investigator.steps import StepResult
@@ -320,6 +320,7 @@ class PRGeneratorStep:
 
     def _get_model_name(self) -> str | None:
         """Get the model name for remediation tier, with fallback to deep_rca."""
+        tier: ModelTier
         for tier in ("remediation", "deep_rca"):
             try:
                 model = self.llm_client.select_model(tier)

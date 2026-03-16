@@ -13,7 +13,7 @@ from typing import Any
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
-from beeper_investigator.llm.client import LlmClient
+from beeper_investigator.llm.client import LlmClient, ModelTier
 from beeper_investigator.steps import StepResult
 
 logger = logging.getLogger(__name__)
@@ -420,6 +420,7 @@ class TestPlannerStep:
 
     def _get_model_name(self) -> str | None:
         """Get the model name for remediation tier, with fallback to deep_rca."""
+        tier: ModelTier
         for tier in ("remediation", "deep_rca"):
             try:
                 model = self.llm_client.select_model(tier)

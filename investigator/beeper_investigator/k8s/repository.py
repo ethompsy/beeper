@@ -8,8 +8,8 @@ import base64
 import logging
 from dataclasses import dataclass
 
-from kubernetes import client, config  # type: ignore[import-untyped]
-from kubernetes.client.rest import ApiException  # type: ignore[import-untyped]
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 
 logger = logging.getLogger(__name__)
 

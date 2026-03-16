@@ -131,7 +131,7 @@ class GitHubProvider(GitProvider):
     """GitHub provider using PyGithub."""
 
     def __init__(self, repo_url: str, token: str) -> None:
-        from github import Github  # type: ignore[import-untyped]
+        from github import Github
 
         self._owner, self._repo_name = _parse_github_url(repo_url)
         self._gh = Github(token)
@@ -151,16 +151,16 @@ class GitHubProvider(GitProvider):
         self, branch: str, files: dict[str, str], message: str
     ) -> str:
         try:
-            from github import UnknownObjectException  # type: ignore[import-untyped]
+            from github import UnknownObjectException
         except ImportError:
-            UnknownObjectException = Exception  # type: ignore[misc, assignment]
+            UnknownObjectException = Exception
 
         last_sha = ""
         for filepath, content in files.items():
             try:
                 existing = self._repo.get_contents(filepath, ref=branch)
                 result = self._repo.update_file(
-                    filepath, message, content, existing.sha, branch=branch  # type: ignore[union-attr]
+                    filepath, message, content, existing.sha, branch=branch
                 )
             except UnknownObjectException:
                 result = self._repo.create_file(filepath, message, content, branch=branch)
@@ -195,14 +195,14 @@ class GitHubProvider(GitProvider):
         )
 
     def get_default_branch(self) -> str:
-        return self._repo.default_branch
+        return str(self._repo.default_branch)
 
 
 class GitLabProvider(GitProvider):
     """GitLab provider using python-gitlab."""
 
     def __init__(self, repo_url: str, token: str) -> None:
-        import gitlab  # type: ignore[import-untyped]
+        import gitlab
 
         self._base_url, self._project_path = _parse_gitlab_url(repo_url)
         self._gl = gitlab.Gitlab(self._base_url, private_token=token)
@@ -218,9 +218,9 @@ class GitLabProvider(GitProvider):
         self, branch: str, files: dict[str, str], message: str
     ) -> str:
         try:
-            from gitlab.exceptions import GitlabGetError  # type: ignore[import-untyped]
+            from gitlab.exceptions import GitlabGetError
         except ImportError:
-            GitlabGetError = Exception  # type: ignore[misc, assignment]
+            GitlabGetError = Exception
 
         actions: list[dict[str, Any]] = []
         for filepath, content in files.items():
@@ -240,7 +240,7 @@ class GitLabProvider(GitProvider):
             "actions": actions,
         })
         logger.info("Committed %d file(s) to %s", len(files), branch)
-        return commit.id
+        return str(commit.id)
 
     def create_pr(
         self,
@@ -270,7 +270,7 @@ class GitLabProvider(GitProvider):
         )
 
     def get_default_branch(self) -> str:
-        return self._project.default_branch
+        return str(self._project.default_branch)
 
 
 def create_git_provider(provider_type: str, repo_url: str, token: str) -> GitProvider:

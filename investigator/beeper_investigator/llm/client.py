@@ -26,7 +26,7 @@ from beeper_investigator.llm.scrubber import PiiScrubber
 
 logger = logging.getLogger(__name__)
 
-ModelTier = Literal["screening", "standard", "deep_rca"]
+ModelTier = Literal["screening", "standard", "deep_rca", "remediation"]
 
 
 @dataclass
@@ -523,6 +523,8 @@ class LlmClient:
         elif tier == "standard":
             model = self.config.get_litellm_model()
         elif tier == "deep_rca":
+            model = self.deep_rca_model
+        elif tier == "remediation":
             model = self.deep_rca_model
         else:
             raise ValueError(f"Unknown model tier: {tier!r}")
