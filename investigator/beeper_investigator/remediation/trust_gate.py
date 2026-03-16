@@ -29,13 +29,15 @@ class TrustGateDecision:
     """Result of evaluating a single action against trust configuration."""
 
     allowed: bool
-    action_type: str  # "executed" | "advisory" | "blocked" | "requires_approval"
+    action_type: str  # "executed" | "advisory" | "requires_approval"
     trust_level: int
     confidence: float | None
     confidence_threshold: float
     reason: str
     advisory_message: str | None
     rollback_registered: bool
+    action_name: str = ""
+    action_category: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for pipeline_metadata storage."""
@@ -48,6 +50,8 @@ class TrustGateDecision:
             "reason": self.reason,
             "advisory_message": self.advisory_message,
             "rollback_registered": self.rollback_registered,
+            "action_name": self.action_name,
+            "action_category": self.action_category,
         }
 
 
@@ -58,7 +62,6 @@ class TrustGateSummary:
     total_actions: int
     executed: int
     advisory: int
-    blocked: int
     requires_approval: int
     rollback_paths: list[dict[str, Any]] = field(default_factory=list)
     decisions: list[dict[str, Any]] = field(default_factory=list)
@@ -98,6 +101,15 @@ class TrustGateEvaluator:
         tl = self.context.trust_level
         threshold = self.context.confidence_threshold
 
+        _VALID_CATEGORIES = ("read_only", "cluster_mutation", "code_change", "notification")
+        if action_category not in _VALID_CATEGORIES:
+            logger.warning(
+                "Unrecognized action_category '%s' for action '%s'; "
+                "treating as gated action",
+                action_category,
+                action_name,
+            )
+
         # Read-only and notification actions always allowed
         if action_category in ("read_only", "notification"):
             decision = TrustGateDecision(
@@ -109,6 +121,8 @@ class TrustGateEvaluator:
                 reason="Always permitted",
                 advisory_message=None,
                 rollback_registered=False,
+                action_name=action_name,
+                action_category=action_category,
             )
             self._decisions.append(decision)
             return decision
@@ -126,6 +140,8 @@ class TrustGateEvaluator:
                     action_name, action_category
                 ),
                 rollback_registered=False,
+                action_name=action_name,
+                action_category=action_category,
             )
             self._decisions.append(decision)
             return decision
@@ -144,6 +160,8 @@ class TrustGateEvaluator:
                 ),
                 advisory_message=None,
                 rollback_registered=False,
+                action_name=action_name,
+                action_category=action_category,
             )
             self._decisions.append(decision)
             return decision
@@ -161,6 +179,8 @@ class TrustGateEvaluator:
             ),
             advisory_message=None,
             rollback_registered=False,
+            action_name=action_name,
+            action_category=action_category,
         )
         self._decisions.append(decision)
         return decision
@@ -210,7 +230,6 @@ class TrustGateEvaluator:
         """Aggregate all decisions made during the pipeline run."""
         executed = sum(1 for d in self._decisions if d.action_type == "executed")
         advisory = sum(1 for d in self._decisions if d.action_type == "advisory")
-        blocked = sum(1 for d in self._decisions if d.action_type == "blocked")
         requires_approval = sum(
             1 for d in self._decisions if d.action_type == "requires_approval"
         )
@@ -218,7 +237,6 @@ class TrustGateEvaluator:
             total_actions=len(self._decisions),
             executed=executed,
             advisory=advisory,
-            blocked=blocked,
             requires_approval=requires_approval,
             rollback_paths=list(self._rollback_paths),
             decisions=[d.to_dict() for d in self._decisions],
@@ -272,18 +290,12 @@ class TrustGateStep:
 
         logger.info(
             "Trust gate evaluation complete: total=%d executed=%d "
-            "advisory=%d blocked=%d requires_approval=%d",
+            "advisory=%d requires_approval=%d",
             summary.total_actions,
             summary.executed,
             summary.advisory,
-            summary.blocked,
             summary.requires_approval,
         )
-
-        # Serialize decisions with action_name and action_category
-        serialized_decisions = []
-        for decision_dict in summary.decisions:
-            serialized_decisions.append(decision_dict)
 
         return StepResult(
             success=True,
@@ -299,9 +311,8 @@ class TrustGateStep:
                 "trust_gate_total_actions": summary.total_actions,
                 "trust_gate_executed": summary.executed,
                 "trust_gate_advisory": summary.advisory,
-                "trust_gate_blocked": summary.blocked,
                 "trust_gate_requires_approval": summary.requires_approval,
-                "trust_gate_decisions": serialized_decisions,
+                "trust_gate_decisions": summary.decisions,
                 "trust_gate_rollback_paths": summary.rollback_paths,
                 "trust_gate_approval_required": approval_required,
             },

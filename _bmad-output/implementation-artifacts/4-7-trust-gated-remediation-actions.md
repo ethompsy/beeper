@@ -1,6 +1,6 @@
 # Story 4.7: Trust-Gated Remediation Actions
 
-Status: review
+Status: done
 
 ## Story
 

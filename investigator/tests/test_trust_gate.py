@@ -85,6 +85,8 @@ class TestTrustGateDecision:
             reason="TL1 advisory",
             advisory_message="At TL3+, Beeper would: restart pod",
             rollback_registered=False,
+            action_name="restart pod",
+            action_category="cluster_mutation",
         )
         result = d.to_dict()
         assert isinstance(result, dict)
@@ -92,6 +94,23 @@ class TestTrustGateDecision:
         assert result["action_type"] == "advisory"
         assert result["confidence"] is None
         assert result["advisory_message"] == "At TL3+, Beeper would: restart pod"
+
+    def test_to_dict_includes_action_name_and_category(self):
+        d = TrustGateDecision(
+            allowed=True,
+            action_type="executed",
+            trust_level=3,
+            confidence=0.95,
+            confidence_threshold=0.9,
+            reason="OK",
+            advisory_message=None,
+            rollback_registered=False,
+            action_name="Restart pod",
+            action_category="cluster_mutation",
+        )
+        result = d.to_dict()
+        assert result["action_name"] == "Restart pod"
+        assert result["action_category"] == "cluster_mutation"
 
 
 # ── Evaluate: read_only ──────────────────────────────────
@@ -104,6 +123,12 @@ class TestEvaluateReadOnly:
         assert decision.allowed is True
         assert decision.action_type == "executed"
         assert decision.reason == "Always permitted"
+
+    def test_evaluate_populates_action_name_and_category(self):
+        evaluator, _, _ = _make_evaluator(trust_level=1)
+        decision = evaluator.evaluate("Check logs", "read_only")
+        assert decision.action_name == "Check logs"
+        assert decision.action_category == "read_only"
 
     def test_read_only_allowed_at_tl3(self):
         evaluator, _, _ = _make_evaluator(trust_level=3)
@@ -260,6 +285,19 @@ class TestEvaluateCodeChangeTL3:
         )
         assert decision.allowed is False
         assert decision.action_type == "requires_approval"
+
+
+# ── Unrecognized action_category ─────────────────────────
+
+
+class TestUnrecognizedActionCategory:
+    def test_unrecognized_category_logs_warning(self, caplog):
+        evaluator, _, _ = _make_evaluator(trust_level=1)
+        decision = evaluator.evaluate("Unknown action", "unknown_category")
+        assert decision.allowed is False
+        assert decision.action_type == "advisory"
+        assert "Unrecognized action_category" in caplog.text
+        assert "unknown_category" in caplog.text
 
 
 # ── Advisory message ─────────────────────────────────────
