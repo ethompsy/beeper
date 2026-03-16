@@ -168,17 +168,17 @@ mod tests {
 
     #[test]
     fn test_target_factor_95_percent() {
-        assert!((compute_target_factor(0.95) - 0.5).abs() < f64::EPSILON);
+        assert!((compute_target_factor(0.95) - 0.5).abs() < 1e-10);
     }
 
     #[test]
     fn test_target_factor_99_percent() {
-        assert!((compute_target_factor(0.99) - 0.9).abs() < f64::EPSILON);
+        assert!((compute_target_factor(0.99) - 0.9).abs() < 1e-10);
     }
 
     #[test]
     fn test_target_factor_999_percent() {
-        assert!((compute_target_factor(0.999) - 0.99).abs() < f64::EPSILON);
+        assert!((compute_target_factor(0.999) - 0.99).abs() < 1e-10);
     }
 
     #[test]

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use chrono::Utc;
 use kube::api::PostParams;
 use kube::{Api, Client};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::crds::{
     BurnRateAlert, Investigation, InvestigationSpec, ServiceLevelSpec, Severity,

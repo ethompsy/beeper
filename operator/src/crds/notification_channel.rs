@@ -317,7 +317,8 @@ mod tests {
     fn test_spec_without_routing_omits_field() {
         let spec = sample_pagerduty_spec();
         let json = serde_json::to_string(&spec).unwrap();
-        assert!(!json.contains("routing"));
+        // Check that the "routing" field key is absent (not a substring like "routing_key" in config)
+        assert!(!json.contains("\"routing\":"));
     }
 
     #[test]

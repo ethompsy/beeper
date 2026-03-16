@@ -4,7 +4,7 @@
 //! compliance percentage and burn rate using the Google SRE model.
 
 use chrono::Utc;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::crds::ServiceLevelSpec;
 use crate::sources::PrometheusClient;
