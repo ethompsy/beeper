@@ -10,6 +10,7 @@ from beeper_ui.services.noise_report_service import (
     NoiseReportServiceError,
     ServiceNoiseStats,
     _compute_signal_to_noise,
+    _iso_to_epoch,
     _mark_worst_performers,
 )
 
@@ -160,15 +161,16 @@ class TestGetFalsePageStats:
         result = self.service.get_false_page_stats()
         assert result == {}
 
-    def test_handles_none_payload(self) -> None:
+    def test_skips_records_without_service(self) -> None:
         p1 = MagicMock()
         p1.payload = None
+        p2 = MagicMock()
+        p2.payload = {"is_false_page": True}  # no service field
 
-        self.mock_client.scroll.return_value = ([p1], None)
+        self.mock_client.scroll.return_value = ([p1, p2], None)
 
         result = self.service.get_false_page_stats()
-        assert result["unknown"]["total_notifications"] == 1
-        assert result["unknown"]["false_page_count"] == 0
+        assert result == {}  # both skipped, matching get_all_service_feedback behavior
 
     def test_qdrant_failure_raises_error(self) -> None:
         self.mock_client.scroll.side_effect = Exception("qdrant down")
@@ -365,7 +367,7 @@ class TestComputeSignalToNoise:
 class TestMarkWorstPerformers:
     """Tests for _mark_worst_performers helper."""
 
-    def test_marks_services_above_threshold(self) -> None:
+    def test_does_not_mark_when_below_2x_average(self) -> None:
         stats = [
             ServiceNoiseStats(
                 service_name="good", total_investigations=10,
@@ -382,11 +384,10 @@ class TestMarkWorstPerformers:
         ]
         _mark_worst_performers(stats)
 
-        # avg rate = 0.45, threshold = 0.9 — "bad" at 0.8 is below 2x avg
-        # Actually avg = (0.1 + 0.8) / 2 = 0.45, threshold = 0.9
-        # 0.8 < 0.9 so bad is NOT marked
-        # Let's adjust: need rate > 2x average
+        # avg rate = (0.1 + 0.8) / 2 = 0.45, threshold = 0.9
+        # "bad" at 0.8 < 0.9 — NOT marked (below 2x average)
         assert stats[0].is_worst_performer is False
+        assert stats[1].is_worst_performer is False
 
     def test_no_services_with_notifications(self) -> None:
         stats = [
@@ -433,6 +434,26 @@ class TestMarkWorstPerformers:
     def test_empty_list(self) -> None:
         stats: list[ServiceNoiseStats] = []
         _mark_worst_performers(stats)  # should not raise
+
+
+class TestIsoToEpoch:
+    """Tests for _iso_to_epoch helper."""
+
+    def test_valid_iso_string(self) -> None:
+        result = _iso_to_epoch("2026-03-01T00:00:00+00:00")
+        assert result > 0.0
+
+    def test_valid_iso_with_z(self) -> None:
+        result = _iso_to_epoch("2026-03-01T00:00:00Z")
+        assert result > 0.0
+
+    def test_invalid_string_returns_zero(self) -> None:
+        result = _iso_to_epoch("not-a-date")
+        assert result == 0.0
+
+    def test_empty_string_returns_zero(self) -> None:
+        result = _iso_to_epoch("")
+        assert result == 0.0
 
 
 class TestServiceLifecycle:

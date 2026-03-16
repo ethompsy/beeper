@@ -90,33 +90,26 @@ def noise_report() -> str:
         return render_template("reports/noise.html", **template_data)
     except NoiseReportServiceError as e:
         logger.warning("Noise report service error: %s", e)
-        error_data = _error_template_data(service_filter, period)
-        if request.headers.get("HX-Request"):
-            return render_template(
-                "reports/_noise_content.html", **error_data
-            )
-        return render_template("reports/noise.html", **error_data)
+        return _render_error_response(service_filter, period)
     except Exception as e:
         logger.exception("Failed to load noise report: %s", e)
-        error_data = _error_template_data(service_filter, period)
-        if request.headers.get("HX-Request"):
-            return render_template(
-                "reports/_noise_content.html", **error_data
-            )
-        return render_template("reports/noise.html", **error_data)
+        return _render_error_response(service_filter, period)
     finally:
         svc.close()
 
 
-def _error_template_data(
+def _render_error_response(
     service_filter: str | None,
     period: str,
-) -> dict[str, Any]:
-    """Build error template context."""
-    return {
+) -> str:
+    """Render error page (full or HTMX partial)."""
+    error_data = {
         "error_message": "Unable to load noise report data",
         "report": None,
         "selected_service": service_filter,
         "selected_period": period,
         "available_services": [],
     }
+    if request.headers.get("HX-Request"):
+        return render_template("reports/_noise_content.html", **error_data)
+    return render_template("reports/noise.html", **error_data)

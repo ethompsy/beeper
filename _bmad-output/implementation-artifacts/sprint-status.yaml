@@ -73,7 +73,7 @@ development_status:
   3-4-one-click-investigation-feedback: done
   3-5-adaptive-alert-threshold-tuning: done
   3-6-impact-weighted-escalation-urgency: done
-  3-7-noise-report-dashboard: review
+  3-7-noise-report-dashboard: done
   epic-3-retrospective: optional
 
   # Epic 4: Autonomous Remediation Pipeline (Wave 2)

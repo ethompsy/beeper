@@ -1,6 +1,6 @@
 # Story 3.7: Noise Report Dashboard
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

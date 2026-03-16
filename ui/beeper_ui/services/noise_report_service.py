@@ -216,7 +216,9 @@ class NoiseReportService:
                 )
                 for point in results:
                     payload = point.payload or {}
-                    svc_name = payload.get("service", "unknown")
+                    svc_name = payload.get("service")
+                    if not svc_name:
+                        continue
                     if svc_name not in per_service:
                         per_service[svc_name] = {
                             "total_notifications": 0,
@@ -466,4 +468,5 @@ def _iso_to_epoch(iso_str: str) -> float:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
         return dt.timestamp()
     except (ValueError, AttributeError):
+        logger.warning("Failed to parse ISO timestamp: %s", iso_str)
         return 0.0
