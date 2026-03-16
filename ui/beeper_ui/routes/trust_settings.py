@@ -183,6 +183,14 @@ def update_gate_threshold(trust_level: int) -> str:
 
     threshold_str = request.form.get("threshold", "")
 
+    # Form data is always strings; check for boolean-like values before conversion
+    if threshold_str.strip().lower() in ("true", "false"):
+        return render_template(
+            "trust/_gate_update_result.html",
+            error_message="Threshold must be a number",
+            trust_level=trust_level,
+        )
+
     try:
         threshold = float(threshold_str)
     except (ValueError, TypeError):
@@ -192,7 +200,7 @@ def update_gate_threshold(trust_level: int) -> str:
             trust_level=trust_level,
         )
 
-    if isinstance(threshold_str, bool) or threshold < 0.0 or threshold > 1.0:
+    if threshold < 0.0 or threshold > 1.0:
         return render_template(
             "trust/_gate_update_result.html",
             error_message="Threshold must be between 0.0 and 1.0",

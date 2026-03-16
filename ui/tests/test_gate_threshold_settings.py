@@ -337,3 +337,25 @@ class TestUpdateGateThreshold:
         assert resp.status_code == 200
         html = resp.data.decode()
         assert "updated successfully" in html
+
+    def test_rejects_boolean_true_threshold(
+        self, admin_client: MagicMock
+    ) -> None:
+        resp = admin_client.post(
+            "/settings/trust/gates/3/update",
+            data={"threshold": "true"},
+        )
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "must be a number" in html
+
+    def test_rejects_boolean_false_threshold(
+        self, admin_client: MagicMock
+    ) -> None:
+        resp = admin_client.post(
+            "/settings/trust/gates/3/update",
+            data={"threshold": "false"},
+        )
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "must be a number" in html
