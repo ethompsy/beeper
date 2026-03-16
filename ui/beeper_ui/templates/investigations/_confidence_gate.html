@@ -1,0 +1,48 @@
+{# Confidence Gate Status Display #}
+{% if gate_decision %}
+<div class="confidence-gate-status">
+    <div class="gate-header">
+        <strong>Confidence Gate</strong>
+        {% if gate_decision.permitted %}
+        <span class="badge status-healthy">Auto-action Eligible</span>
+        {% else %}
+        <span class="badge status-warning">Advisory Only</span>
+        {% endif %}
+    </div>
+    <p class="gate-message">{{ gate_message }}</p>
+    <div class="gate-details">
+        <span>Trust Level: TL{{ gate_decision.trust_level }}</span>
+        {% if gate_decision.trust_level >= 3 %}
+        <span>Score: {{ (gate_decision.confidence_score * 100)|round|int }}%</span>
+        <span>Threshold: {{ (gate_decision.threshold * 100)|round|int }}%</span>
+        {% endif %}
+    </div>
+    {% if not gate_decision.permitted and gate_decision.trust_level >= 3 %}
+    <div class="gate-actions">
+        <form hx-post="/investigations/{{ investigation_id }}/confirm"
+              hx-target="#confirmation-result"
+              hx-swap="innerHTML">
+            <button type="submit" class="btn btn-secondary btn-sm">
+                Manual Approve
+            </button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% elif gate_error %}
+<div class="confidence-gate-status">
+    <div class="gate-header">
+        <strong>Confidence Gate</strong>
+        <span class="badge status-neutral">Unavailable</span>
+    </div>
+    <p class="gate-message">Unable to evaluate confidence gate.</p>
+</div>
+{% else %}
+<div class="confidence-gate-status">
+    <div class="gate-header">
+        <strong>Confidence Gate</strong>
+        <span class="badge status-neutral">Pending</span>
+    </div>
+    <p class="gate-message">Investigation in progress — gate evaluation pending completion.</p>
+</div>
+{% endif %}

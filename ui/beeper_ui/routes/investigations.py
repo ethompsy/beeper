@@ -16,6 +16,11 @@ from flask import (
     stream_with_context,
 )
 
+from beeper_ui.services.confidence_gate_service import (
+    ConfidenceGateService,
+    format_gate_message,
+    normalize_confidence_score,
+)
 from beeper_ui.services.investigation_service import (
     Investigation,
     InvestigationDetail,
@@ -438,6 +443,63 @@ def investigation_related_kb(investigation_id: str) -> str:
         related_entries=related_entries,
         exact_match_entry=exact_match_entry,
         exact_match_found=exact_match_found,
+    )
+
+
+@investigations_bp.route("/<investigation_id>/gate-status")
+def investigation_gate_status(investigation_id: str) -> str:
+    """Evaluate and return confidence gate status for an investigation.
+
+    Returns HTMX partial showing gate decision for the investigation's
+    service and confidence score.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    svc = get_investigation_service()
+    gate_decision = None
+    gate_message = ""
+    gate_error = False
+
+    try:
+        investigation = svc.get_investigation(investigation_id)
+        if investigation is None:
+            return render_template(
+                "investigations/_confidence_gate.html",
+                gate_decision=None,
+                gate_message="",
+                gate_error=False,
+                investigation_id=investigation_id,
+            )
+
+        findings = svc.get_investigation_findings(investigation_id)
+        confidence_score = normalize_confidence_score(findings)
+
+        import os
+
+        gate_svc = ConfidenceGateService(
+            host=os.getenv("QDRANT_HOST", "localhost"),
+            port=int(os.getenv("QDRANT_PORT", "6333")),
+        )
+        try:
+            gate_decision = gate_svc.evaluate_gate(
+                service_name=investigation.service,
+                confidence_score=confidence_score,
+            )
+            gate_message = format_gate_message(gate_decision)
+        except Exception:
+            gate_error = True
+        finally:
+            gate_svc.close()
+    except InvestigationServiceError:
+        gate_error = True
+
+    return render_template(
+        "investigations/_confidence_gate.html",
+        gate_decision=gate_decision,
+        gate_message=gate_message,
+        gate_error=gate_error,
+        investigation_id=investigation_id,
     )
 
 

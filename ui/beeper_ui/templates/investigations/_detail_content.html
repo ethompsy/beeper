@@ -64,6 +64,19 @@
         </div>
     </div>
 
+    {# Confidence Gate Status #}
+    {% if investigation.status not in ('investigating', 'failed') %}
+    <div class="card">
+        <h3>Confidence Gate</h3>
+        <div id="gate-status"
+             hx-get="/investigations/{{ investigation.id }}/gate-status"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <span class="htmx-indicator">Evaluating confidence gate...</span>
+        </div>
+    </div>
+    {% endif %}
+
     {# Resolution Confirmation #}
     {% if findings and findings.get('recommendations') and investigation.status not in ('investigating', 'failed') %}
     <div class="card">
