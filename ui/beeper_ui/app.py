@@ -65,6 +65,11 @@ def create_app(config_class: type | None = None) -> Flask:
 
     register_blueprints(app)
 
+    # Initialize WebSocket support (Flask-SocketIO)
+    from beeper_ui.websocket import init_socketio
+
+    init_socketio(app)
+
     # Register root route
     @app.route("/")
     def index() -> str:
@@ -74,8 +79,6 @@ def create_app(config_class: type | None = None) -> Flask:
     return app
 
 
-# For backwards compatibility and direct running
-app = create_app()
-
 if __name__ == "__main__":
+    app = create_app()
     app.run(debug=True, host=app.config["UI_HOST"], port=app.config["UI_PORT"])

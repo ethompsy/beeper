@@ -89,8 +89,8 @@ development_status:
   epic-4-retrospective: done
 
   # Epic 5: Real-Time Investigation Collaboration (Wave 3)
-  epic-5: backlog
-  5-1-websocket-collaboration-channel: backlog
+  epic-5: in-progress
+  5-1-websocket-collaboration-channel: review
   5-2-evidence-presentation-references: backlog
   5-3-investigation-annotation-redirection: backlog
   5-4-fix-approval-rejection: backlog

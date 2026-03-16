@@ -20,14 +20,19 @@
     <p>No investigation found with ID: <code>{{ investigation_id }}</code></p>
 </div>
 {% else %}
-<div id="main-content"
-     hx-ext="sse"
-     sse-connect="/investigations/{{ investigation.id }}/stream">
-    {% include "investigations/_detail_content.html" %}
+<div class="investigation-layout">
+    <div id="main-content"
+         hx-ext="sse"
+         sse-connect="/investigations/{{ investigation.id }}/stream">
+        {% include "investigations/_detail_content.html" %}
+    </div>
+    {% include "investigations/_collaboration_panel.html" %}
 </div>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/htmx-ext-sse.js') }}"></script>
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/investigation-collab.js') }}"></script>
 {% endblock %}

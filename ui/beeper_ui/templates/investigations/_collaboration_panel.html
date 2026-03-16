@@ -1,0 +1,16 @@
+<div id="collab-panel" class="collaboration-panel"
+     data-investigation-id="{{ investigation.id }}">
+  <div class="collab-header">
+    <span class="collab-title">Collaboration</span>
+    <span id="active-users" class="collab-active-users"></span>
+    <span id="collab-status" class="collab-connection-status">Connecting&hellip;</span>
+  </div>
+  <div id="collab-messages" class="collab-messages">
+    <!-- Messages appended here by investigation-collab.js -->
+  </div>
+  <div class="collab-input-area">
+    <input id="collab-input" type="text" placeholder="Type a message&hellip;"
+           class="collab-input" autocomplete="off">
+    <button onclick="sendCollabMessage()" class="collab-send-btn">Send</button>
+  </div>
+</div>
