@@ -382,7 +382,7 @@ mod tests {
 
     #[test]
     fn test_spec_deserialization_from_json() {
-        let json = r#"{
+        let json = r##"{
             "type": "slack",
             "config": {
                 "channel": "#sre-alerts"
@@ -399,7 +399,7 @@ mod tests {
                     "escalation_override": true
                 }
             }
-        }"#;
+        }"##;
 
         let spec: NotificationChannelSpec = serde_json::from_str(json).unwrap();
         assert_eq!(spec.channel_type, ChannelType::Slack);

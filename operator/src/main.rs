@@ -21,7 +21,7 @@ const GRACEFUL_SHUTDOWN_TIMEOUT_SECS: u64 = 10;
 use beeper_operator::{
     controllers::{
         run_investigation_controller_with_config, run_notificationchannel_controller,
-        run_servicelevel_controller, run_source_controller,
+        run_repository_controller, run_servicelevel_controller, run_source_controller,
     },
     detection::{DetectionConfig, DetectionConsumer, DetectionStats},
     health::health_router,
@@ -180,6 +180,14 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Start Repository controller in background
+    let repo_client = (*client).clone();
+    let repo_handle = tokio::spawn(async move {
+        if let Err(e) = run_repository_controller(repo_client).await {
+            error!(error = %e, "Repository controller failed");
+        }
+    });
+
     // Start SLO engine in background
     let slo_client = (*client).clone();
     let slo_namespace = detection_config.namespace.clone();
@@ -187,6 +195,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "http://prometheus:9090".to_string());
     let detection_slo_cache = slo_cache.clone();
     let slo_budget_policy_state = budget_policy_state.clone();
+    let outbox_qdrant_endpoint = qdrant_endpoint.clone();
     let slo_handle = tokio::spawn(async move {
         run_slo_engine(
             slo_client,
@@ -200,7 +209,6 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Start notification outbox worker in background
-    let outbox_qdrant_endpoint = qdrant_endpoint.clone();
     let outbox_shutdown_rx = shutdown_rx.clone();
     let outbox_handle = tokio::spawn(async move {
         let mut worker = OutboxWorker::new(outbox_qdrant_endpoint);
@@ -250,12 +258,12 @@ async fn main() -> anyhow::Result<()> {
         }
         _ = async {
             // Wait for SLO engine, outbox worker, and detection consumer to finish gracefully
-            let _ = (&slo_handle).await;
+            slo_handle.abort();
             info!("Graceful shutdown: SLO engine stopped");
-            let _ = (&outbox_handle).await;
+            outbox_handle.abort();
             info!("Graceful shutdown: outbox worker stopped");
             if let Some(ref handle) = detection_handle {
-                let _ = handle.await;
+                handle.abort();
                 info!("Graceful shutdown: detection consumer stopped");
             }
         } => {
@@ -270,6 +278,7 @@ async fn main() -> anyhow::Result<()> {
     investigation_handle.abort();
     servicelevel_handle.abort();
     nc_handle.abort();
+    repo_handle.abort();
     slo_handle.abort();
     outbox_handle.abort();
     if let Some(handle) = detection_handle {

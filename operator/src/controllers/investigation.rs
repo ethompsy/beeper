@@ -159,6 +159,12 @@ async fn reconcile(
             }
         }
 
+        Some(InvestigationPhase::AwaitingConfirmation) => {
+            info!("Investigation is AwaitingConfirmation - waiting for human confirmation");
+            // Requeue to check if confirmation has been provided
+            return Ok(Action::requeue(Duration::from_secs(10)));
+        }
+
         Some(InvestigationPhase::Completed) => {
             info!("Investigation is Completed - no action needed");
             // No requeue needed for completed investigations

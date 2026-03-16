@@ -41,12 +41,14 @@ pub mod sources;
 pub use api::{api_router, api_router_full, api_router_with_llm};
 pub use controllers::{
     run_investigation_controller, run_investigation_controller_with_config,
-    run_notificationchannel_controller, run_servicelevel_controller, run_source_controller,
+    run_notificationchannel_controller, run_repository_controller, run_servicelevel_controller,
+    run_source_controller,
 };
 pub use crds::{
     Investigation, InvestigationSpec, InvestigationStatus, NotificationChannel,
-    NotificationChannelSpec, NotificationChannelStatus, ServiceLevel, ServiceLevelSpec,
-    ServiceLevelStatus, Source, SourceSpec, SourceStatus,
+    NotificationChannelSpec, NotificationChannelStatus, Repository, RepositorySpec,
+    RepositoryStatus, ServiceLevel, ServiceLevelSpec, ServiceLevelStatus, Source, SourceSpec,
+    SourceStatus,
 };
 pub use notifications::{NotificationRouter, OutboxError, OutboxWorker, RouterError, RoutingDecision, Severity, SloContext};
 pub use health::{health_router, start_health_server};

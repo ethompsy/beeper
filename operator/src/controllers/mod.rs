@@ -5,10 +5,12 @@
 
 pub mod investigation;
 pub mod notification_channel;
+pub mod repository;
 pub mod servicelevel;
 pub mod source;
 
 pub use investigation::{run_investigation_controller, run_investigation_controller_with_config};
 pub use notification_channel::run_notificationchannel_controller;
+pub use repository::run_repository_controller;
 pub use servicelevel::run_servicelevel_controller;
 pub use source::run_source_controller;
