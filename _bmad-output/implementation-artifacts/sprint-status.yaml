@@ -67,7 +67,7 @@ development_status:
 
   # Epic 3: Graduated Trust & Autonomy (Wave 2)
   epic-3: in-progress
-  3-1-trust-level-configuration-persistence: review
+  3-1-trust-level-configuration-persistence: done
   3-2-confidence-gate-engine: backlog
   3-3-confidence-gate-threshold-configuration: backlog
   3-4-one-click-investigation-feedback: backlog

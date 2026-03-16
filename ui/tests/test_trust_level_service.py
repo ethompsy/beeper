@@ -279,6 +279,16 @@ class TestSetTrustLevel:
         with pytest.raises(ValueError, match="Trust level must be"):
             service.set_trust_level("svc", "high", "admin")  # type: ignore[arg-type]
 
+    def test_rejects_boolean_true(self) -> None:
+        service = _make_service(MagicMock())
+        with pytest.raises(ValueError, match="Trust level must be"):
+            service.set_trust_level("svc", True, "admin")  # type: ignore[arg-type]
+
+    def test_rejects_boolean_false(self) -> None:
+        service = _make_service(MagicMock())
+        with pytest.raises(ValueError, match="Trust level must be"):
+            service.set_trust_level("svc", False, "admin")  # type: ignore[arg-type]
+
     def test_rejects_negative_level(self) -> None:
         service = _make_service(MagicMock())
         with pytest.raises(ValueError, match="Trust level must be"):

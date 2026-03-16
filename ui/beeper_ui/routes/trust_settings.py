@@ -25,11 +25,13 @@ trust_settings_bp = Blueprint(
     "trust_settings", __name__, url_prefix="/settings/trust"
 )
 
+_SERVICE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
 
 def _get_trust_level_service() -> TrustLevelService:
     """Get configured TrustLevelService instance."""
     return TrustLevelService(
-        host=os.getenv("QDRANT_HOST"),
+        host=os.getenv("QDRANT_HOST", "localhost"),
         port=int(os.getenv("QDRANT_PORT", "6333")),
     )
 
@@ -71,8 +73,8 @@ def trust_settings_page() -> str:
 def update_trust_level(service_name: str) -> str:
     """Handle form submission to update a service's trust level."""
     # Validate service_name
-    if not service_name or len(service_name) > 100 or not re.match(
-        r"^[a-zA-Z0-9_-]+$", service_name
+    if not service_name or len(service_name) > 100 or not _SERVICE_NAME_RE.match(
+        service_name
     ):
         return render_template(
             "trust/_update_result.html",

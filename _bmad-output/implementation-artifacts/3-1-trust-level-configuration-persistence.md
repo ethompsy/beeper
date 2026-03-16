@@ -1,6 +1,6 @@
 # Story 3.1: Trust Level Configuration & Persistence
 
-Status: review
+Status: done
 
 ## Story
 

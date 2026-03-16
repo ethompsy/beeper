@@ -16,7 +16,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import (
     FieldCondition,
     Filter,
@@ -153,7 +152,7 @@ class TrustLevelService:
             if "autonomy_level" not in payload:
                 return None
             return TrustLevelConfig.from_qdrant(payload)
-        except (UnexpectedResponse, Exception) as e:
+        except Exception as e:
             msg = f"Failed to get trust level for {service_name}: {e}"
             logger.warning(msg)
             raise TrustLevelServiceError(msg) from e
@@ -180,7 +179,7 @@ class TrustLevelService:
                 if "autonomy_level" in payload:
                     configs.append(TrustLevelConfig.from_qdrant(payload))
             return configs
-        except (UnexpectedResponse, Exception) as e:
+        except Exception as e:
             msg = f"Failed to list trust levels: {e}"
             logger.warning(msg)
             raise TrustLevelServiceError(msg) from e
@@ -207,7 +206,12 @@ class TrustLevelService:
             ValueError: If level is not 1-5.
             TrustLevelServiceError: On Qdrant communication failure.
         """
-        if not isinstance(level, int) or level < MIN_TRUST_LEVEL or level > MAX_TRUST_LEVEL:
+        if (
+            isinstance(level, bool)
+            or not isinstance(level, int)
+            or level < MIN_TRUST_LEVEL
+            or level > MAX_TRUST_LEVEL
+        ):
             msg = (
                 f"Trust level must be an integer between "
                 f"{MIN_TRUST_LEVEL} and {MAX_TRUST_LEVEL}, got {level}"
@@ -270,7 +274,7 @@ class TrustLevelService:
                 reason=reason,
                 previous_level=previous_level,
             )
-        except (UnexpectedResponse, Exception) as e:
+        except Exception as e:
             msg = f"Failed to set trust level for {service_name}: {e}"
             logger.warning(msg)
             raise TrustLevelServiceError(msg) from e

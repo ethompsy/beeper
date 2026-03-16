@@ -289,6 +289,39 @@ class TestUpdateTrustLevel:
             )
         assert resp.status_code == 200
 
+    def test_rejects_boolean_true_level(self, admin_client: MagicMock) -> None:
+        resp = admin_client.put(
+            "/api/v1/trust/services/payment-api",
+            data=json.dumps({"level": True}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_rejects_boolean_false_level(self, admin_client: MagicMock) -> None:
+        resp = admin_client.put(
+            "/api/v1/trust/services/payment-api",
+            data=json.dumps({"level": False}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_rejects_invalid_service_name_special_chars(self, admin_client: MagicMock) -> None:
+        resp = admin_client.put(
+            "/api/v1/trust/services/invalid%20name!",
+            data=json.dumps({"level": 3}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_rejects_empty_service_name(self, admin_client: MagicMock) -> None:
+        resp = admin_client.put(
+            "/api/v1/trust/services/",
+            data=json.dumps({"level": 3}),
+            content_type="application/json",
+        )
+        # Empty name hits 404 (no route match) or 405 — not a valid path
+        assert resp.status_code in (404, 405)
+
 
 # ---------- GET /api/v1/trust/definitions ----------
 

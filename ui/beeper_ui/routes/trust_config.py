@@ -6,6 +6,7 @@ levels (TL1-5). Admin-only for writes, user-accessible for reads.
 
 import logging
 import os
+import re
 from typing import Any
 
 from flask import Blueprint, jsonify, request
@@ -27,11 +28,13 @@ trust_config_bp = Blueprint(
     "trust_config", __name__, url_prefix="/api/v1/trust"
 )
 
+_SERVICE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
 
 def _get_trust_level_service() -> TrustLevelService:
     """Get configured TrustLevelService instance."""
     return TrustLevelService(
-        host=os.getenv("QDRANT_HOST"),
+        host=os.getenv("QDRANT_HOST", "localhost"),
         port=int(os.getenv("QDRANT_PORT", "6333")),
     )
 
@@ -126,6 +129,22 @@ def get_trust_level(name: str) -> tuple[Any, int]:
 @require_role("admin")
 def update_trust_level(name: str) -> tuple[Any, int]:
     """Update trust level for a service. Admin-only."""
+    if not name or len(name) > 100 or not _SERVICE_NAME_RE.match(name):
+        return (
+            jsonify(
+                {
+                    "type": "https://beeper.dev/errors/validation-error",
+                    "title": "Validation Error",
+                    "status": 400,
+                    "detail": (
+                        "Service name must be 1-100 alphanumeric,"
+                        " hyphen, or underscore characters"
+                    ),
+                }
+            ),
+            400,
+        )
+
     data = request.get_json(silent=True)
     if data is None:
         return (
@@ -154,7 +173,12 @@ def update_trust_level(name: str) -> tuple[Any, int]:
             400,
         )
 
-    if not isinstance(level, int) or level < MIN_TRUST_LEVEL or level > MAX_TRUST_LEVEL:
+    if (
+        isinstance(level, bool)
+        or not isinstance(level, int)
+        or level < MIN_TRUST_LEVEL
+        or level > MAX_TRUST_LEVEL
+    ):
         return (
             jsonify(
                 {
