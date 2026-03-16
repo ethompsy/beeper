@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from beeper_investigator.agent import SourceClients
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
@@ -13,7 +11,6 @@ from beeper_investigator.remediation.metric_verifier import (
     VerificationResult,
 )
 from beeper_investigator.steps import InvestigationStep
-
 
 # ── Factories ────────────────────────────────────────────
 
@@ -88,7 +85,7 @@ class TestTrustGating:
         result = step.execute()
         assert result.success is True
         assert result.data["verification_executed"] is False
-        assert result.data["skip_reason"] == "trust_level_insufficient"
+        assert result.data["verification_skip_reason"] == "trust_level_insufficient"
         assert result.data["trust_level"] == 1
 
     def test_tl2_skips(self):
@@ -96,7 +93,7 @@ class TestTrustGating:
         result = step.execute()
         assert result.success is True
         assert result.data["verification_executed"] is False
-        assert result.data["skip_reason"] == "trust_level_insufficient"
+        assert result.data["verification_skip_reason"] == "trust_level_insufficient"
 
     def test_tl3_proceeds(self):
         step, _ = _make_step(trust_level=3, pipeline_metadata=_sample_pipeline_metadata())
@@ -128,7 +125,7 @@ class TestPrerequisiteChecks:
         result = step.execute()
         assert result.success is True
         assert result.data["verification_executed"] is False
-        assert result.data["skip_reason"] == "no_fix_applied"
+        assert result.data["verification_skip_reason"] == "no_fix_applied"
 
     def test_no_prometheus_skips(self):
         sources = SourceClients(prometheus=None, loki=MagicMock())
@@ -139,7 +136,7 @@ class TestPrerequisiteChecks:
         result = step.execute()
         assert result.success is True
         assert result.data["verification_executed"] is False
-        assert result.data["skip_reason"] == "no_prometheus"
+        assert result.data["verification_skip_reason"] == "no_prometheus"
 
     def test_no_metrics_to_watch_skips(self):
         step, _ = _make_step(
@@ -148,7 +145,7 @@ class TestPrerequisiteChecks:
         result = step.execute()
         assert result.success is True
         assert result.data["verification_executed"] is False
-        assert result.data["skip_reason"] == "no_metrics_to_watch"
+        assert result.data["verification_skip_reason"] == "no_metrics_to_watch"
 
     def test_no_metrics_key_skips(self):
         step, _ = _make_step(
@@ -156,7 +153,7 @@ class TestPrerequisiteChecks:
         )
         result = step.execute()
         assert result.success is True
-        assert result.data["skip_reason"] == "no_metrics_to_watch"
+        assert result.data["verification_skip_reason"] == "no_metrics_to_watch"
 
     def test_sandbox_executed_true_proceeds(self):
         step, _ = _make_step(pipeline_metadata={
@@ -182,7 +179,7 @@ class TestPrerequisiteChecks:
             sources=None,
         )
         result = step.execute()
-        assert result.data["skip_reason"] == "no_prometheus"
+        assert result.data["verification_skip_reason"] == "no_prometheus"
 
 
 # ── Metric Comparison ────────────────────────────────────
@@ -350,7 +347,7 @@ class TestDegradationHandling:
             _prometheus_response(5.0),
             _prometheus_response(15.0),
         ]
-        result = step.execute()
+        step.execute()
         # Check status_updater was called with degradation message
         status = defaults["status_updater"]
         calls = [str(c) for c in status.update_message.call_args_list]

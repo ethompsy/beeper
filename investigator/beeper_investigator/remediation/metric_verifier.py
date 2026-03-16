@@ -79,7 +79,7 @@ class MetricVerifierStep:
                 ),
                 data={
                     "verification_executed": False,
-                    "skip_reason": "trust_level_insufficient",
+                    "verification_skip_reason": "trust_level_insufficient",
                     "trust_level": self.context.trust_level,
                 },
             )
@@ -96,7 +96,7 @@ class MetricVerifierStep:
                 summary="No fix applied — metric verification skipped",
                 data={
                     "verification_executed": False,
-                    "skip_reason": "no_fix_applied",
+                    "verification_skip_reason": "no_fix_applied",
                 },
             )
 
@@ -108,7 +108,7 @@ class MetricVerifierStep:
                 summary="Prometheus not configured — metric verification skipped",
                 data={
                     "verification_executed": False,
-                    "skip_reason": "no_prometheus",
+                    "verification_skip_reason": "no_prometheus",
                 },
             )
 
@@ -121,7 +121,7 @@ class MetricVerifierStep:
                 summary="No metrics to watch — metric verification skipped",
                 data={
                     "verification_executed": False,
-                    "skip_reason": "no_metrics_to_watch",
+                    "verification_skip_reason": "no_metrics_to_watch",
                 },
             )
 
@@ -213,14 +213,18 @@ class MetricVerifierStep:
         else:
             query = f"avg_over_time({metric}[{duration_minutes}m])"
 
+        if not self.sources or not self.sources.prometheus:
+            logger.warning("Prometheus unavailable for metric query: %s", metric)
+            return None
+
         try:
-            assert self.sources is not None  # guarded in execute()
             result = self.sources.prometheus.query(query)
             data = result.get("data", {}).get("result", [])
-            if data and len(data) > 0:
+            if data:
                 value = data[0].get("value", [None, None])
                 if isinstance(value, list) and len(value) > 1 and value[1] is not None:
                     return float(value[1])
+            logger.debug("No Prometheus data returned for %s", metric)
         except Exception as exc:
             logger.warning("Prometheus query failed for %s: %s", metric, exc)
         return None

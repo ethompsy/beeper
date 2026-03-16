@@ -95,8 +95,8 @@ class TestSandboxExecutorPipelineIntegration:
         # MetricVerifierStep at index 9, PRGeneratorStep at index 10
         assert isinstance(steps[10], PRGeneratorStep)
 
-    def test_total_pipeline_length_is_10(self):
-        """Pipeline has exactly 10 steps after adding SandboxExecutorStep."""
+    def test_total_pipeline_length_is_11(self):
+        """Pipeline has exactly 11 steps (6 core + 5 remediation)."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()

@@ -345,7 +345,7 @@ class TestVerificationResultsSection:
         ctx = _make_context()
         metadata = _full_metadata()
         metadata["verification_executed"] = False
-        metadata["skip_reason"] = "no_prometheus"
+        metadata["verification_skip_reason"] = "no_prometheus"
         body = fmt.format_pr_body(ctx, metadata, "Fix")
 
         assert "### Post-Fix Verification" in body
@@ -359,6 +359,20 @@ class TestVerificationResultsSection:
         body = fmt.format_pr_body(ctx, metadata, "Fix")
 
         assert "### Post-Fix Verification" not in body
+
+    def test_verification_skip_reason_not_confused_with_sandbox_skip_reason(self):
+        """Verify namespaced skip_reason keys prevent cross-step contamination."""
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["sandbox_executed"] = False
+        metadata["skip_reason"] = "no_sandbox_configured"
+        metadata["verification_executed"] = False
+        metadata["verification_skip_reason"] = "no_prometheus"
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "Skipped: no_sandbox_configured" in body
+        assert "Skipped: no_prometheus" in body
 
     def test_non_dict_verification_results_skipped(self, caplog):
         fmt = EvidenceTrailFormatter()

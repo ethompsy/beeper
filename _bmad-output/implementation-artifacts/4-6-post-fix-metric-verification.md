@@ -1,6 +1,6 @@
 # Story 4.6: Post-Fix Metric Verification
 
-Status: review
+Status: done
 
 ## Story
 

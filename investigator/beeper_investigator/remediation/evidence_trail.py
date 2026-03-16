@@ -189,7 +189,7 @@ class EvidenceTrailFormatter:
                 )
             sections.append("\n".join(verification_lines) + "\n")
         elif pipeline_metadata.get("verification_executed") is False:
-            v_skip_reason = pipeline_metadata.get("skip_reason", "unknown")
+            v_skip_reason = pipeline_metadata.get("verification_skip_reason", "unknown")
             sections.append(
                 f"### Post-Fix Verification\n*Skipped: {v_skip_reason}*\n"
             )
