@@ -77,7 +77,7 @@ development_status:
   epic-3-retrospective: done
 
   # Epic 4: Autonomous Remediation Pipeline (Wave 2)
-  epic-4: in-progress
+  epic-4: done
   4-1-repository-crd-git-provider-integration: done
   4-2-human-language-runbook-execution: done
   4-3-advisory-test-plan-generation: done
@@ -86,7 +86,7 @@ development_status:
   4-6-post-fix-metric-verification: done
   4-7-trust-gated-remediation-actions: done
   4-8-proven-fix-accumulation-kb: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # Epic 5: Real-Time Investigation Collaboration (Wave 3)
   epic-5: backlog
