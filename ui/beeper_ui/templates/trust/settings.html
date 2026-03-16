@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Trust Level Configuration - Beeper{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Trust Level Configuration</h2>
+    <p>Configure per-service autonomy levels controlling how autonomous Beeper can be for each service.</p>
+</div>
+
+{% if error_message %}
+    <div class="card error-card">
+        <p class="error-text">{{ error_message }}</p>
+    </div>
+{% elif trusts|length == 0 %}
+    <div class="card">
+        <p>No services have been configured with autonomy trust levels yet.</p>
+        <p>Trust levels default to <strong>TL1 (Advisory Only)</strong> for all services until explicitly configured.</p>
+    </div>
+{% else %}
+    {% include "trust/_service_list.html" %}
+{% endif %}
+
+<div class="card" style="margin-top: 20px;">
+    <h3>Trust Level Reference</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Level</th>
+                <th>Name</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for level, defn in trust_definitions.items()|sort %}
+            <tr>
+                <td><span class="badge trust-tl{{ level }}">TL{{ level }}</span></td>
+                <td>{{ defn.name }}</td>
+                <td>{{ defn.description }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

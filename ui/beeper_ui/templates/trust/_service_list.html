@@ -1,0 +1,42 @@
+<div class="trust-grid">
+    {% for trust in trusts %}
+    <div class="card trust-card" id="trust-card-{{ trust.service_name }}">
+        <div class="trust-card-header">
+            <h3>{{ trust.service_name }}</h3>
+            <span class="badge trust-tl{{ trust.trust_level }}">TL{{ trust.trust_level }}</span>
+        </div>
+        <div class="trust-card-body">
+            <p class="trust-level-name">
+                <strong>{{ trust_definitions[trust.trust_level].name }}</strong>
+            </p>
+            <p class="trust-level-desc">{{ trust_definitions[trust.trust_level].description }}</p>
+            {% if trust.reason %}
+            <p class="trust-reason"><em>Reason: {{ trust.reason }}</em></p>
+            {% endif %}
+            {% if trust.updated_at %}
+            <p class="trust-meta">Last updated: {{ trust.updated_at }} by {{ trust.updated_by }}</p>
+            {% endif %}
+            {% if trust.previous_level is not none %}
+            <p class="trust-meta">Previous level: TL{{ trust.previous_level }}</p>
+            {% endif %}
+        </div>
+        <div class="trust-card-actions">
+            <form hx-post="{{ url_for('trust_settings.update_trust_level', service_name=trust.service_name) }}"
+                  hx-target="#trust-card-{{ trust.service_name }}"
+                  hx-swap="outerHTML"
+                  class="trust-update-form">
+                <label for="trust-level-{{ trust.service_name }}">Set Level:</label>
+                <select name="trust_level" id="trust-level-{{ trust.service_name }}">
+                    {% for level in range(1, 6) %}
+                    <option value="{{ level }}" {% if level == trust.trust_level %}selected{% endif %}>
+                        TL{{ level }} - {{ trust_definitions[level].name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <input type="text" name="reason" placeholder="Reason (optional)" class="trust-reason-input">
+                <button type="submit" class="btn btn-primary btn-sm">Update</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>

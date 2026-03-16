@@ -1,0 +1,49 @@
+{% if error_message %}
+<div class="card trust-card error-card" id="trust-card-{{ service_name }}">
+    <div class="trust-card-header">
+        <h3>{{ service_name }}</h3>
+        <span class="badge">Error</span>
+    </div>
+    <div class="trust-card-body">
+        <p class="error-text">{{ error_message }}</p>
+    </div>
+</div>
+{% else %}
+<div class="card trust-card" id="trust-card-{{ config.service_name }}">
+    <div class="trust-card-header">
+        <h3>{{ config.service_name }}</h3>
+        <span class="badge trust-tl{{ config.trust_level }}">TL{{ config.trust_level }}</span>
+    </div>
+    <div class="trust-card-body">
+        <p class="trust-level-name">
+            <strong>{{ trust_definitions[config.trust_level].name }}</strong>
+        </p>
+        <p class="trust-level-desc">{{ trust_definitions[config.trust_level].description }}</p>
+        {% if config.reason %}
+        <p class="trust-reason"><em>Reason: {{ config.reason }}</em></p>
+        {% endif %}
+        <p class="trust-meta">Last updated: {{ config.updated_at }} by {{ config.updated_by }}</p>
+        {% if config.previous_level is not none %}
+        <p class="trust-meta">Previous level: TL{{ config.previous_level }}</p>
+        {% endif %}
+        <p class="success-text">Trust level updated successfully.</p>
+    </div>
+    <div class="trust-card-actions">
+        <form hx-post="{{ url_for('trust_settings.update_trust_level', service_name=config.service_name) }}"
+              hx-target="#trust-card-{{ config.service_name }}"
+              hx-swap="outerHTML"
+              class="trust-update-form">
+            <label for="trust-level-{{ config.service_name }}">Set Level:</label>
+            <select name="trust_level" id="trust-level-{{ config.service_name }}">
+                {% for level in range(1, 6) %}
+                <option value="{{ level }}" {% if level == config.trust_level %}selected{% endif %}>
+                    TL{{ level }} - {{ trust_definitions[level].name }}
+                </option>
+                {% endfor %}
+            </select>
+            <input type="text" name="reason" placeholder="Reason (optional)" class="trust-reason-input">
+            <button type="submit" class="btn btn-primary btn-sm">Update</button>
+        </form>
+    </div>
+</div>
+{% endif %}
