@@ -1,0 +1,38 @@
+{% if gate_error %}
+    <div class="card error-card">
+        <p class="error-text">{{ gate_error }}</p>
+    </div>
+{% else %}
+    <p class="trust-meta">Trust levels 1-2 are advisory-only &mdash; no confidence gate applies.</p>
+    <div class="trust-grid">
+        {% for config in thresholds %}
+        <div class="card trust-card" id="gate-card-tl{{ config.trust_level }}">
+            <div class="trust-card-header">
+                <span class="badge trust-tl{{ config.trust_level }}">TL{{ config.trust_level }}</span>
+                <h3>{{ config.description }}</h3>
+            </div>
+            <div class="trust-card-body">
+                <p>Threshold: <strong>{{ (config.threshold * 100)|int }}%</strong></p>
+                <p class="trust-level-desc">Actions require at least {{ (config.threshold * 100)|int }}% confidence for autonomous execution.</p>
+                {% if config.updated_by %}
+                <p class="trust-meta">Last updated: {{ config.updated_at }} by {{ config.updated_by }}</p>
+                {% else %}
+                <p class="trust-meta">Using default threshold.</p>
+                {% endif %}
+            </div>
+            <div class="trust-card-actions">
+                <form hx-post="{{ url_for('trust_settings.update_gate_threshold', trust_level=config.trust_level) }}"
+                      hx-target="#gate-card-tl{{ config.trust_level }}"
+                      hx-swap="outerHTML"
+                      class="trust-update-form">
+                    <label for="gate-threshold-tl{{ config.trust_level }}">Threshold (0.01&ndash;1.0):</label>
+                    <input type="number" name="threshold" id="gate-threshold-tl{{ config.trust_level }}"
+                           step="0.01" min="0.01" max="1.0" value="{{ config.threshold }}"
+                           class="trust-reason-input">
+                    <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% endif %}

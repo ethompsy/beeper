@@ -22,6 +22,17 @@
 {% endif %}
 
 <div class="card" style="margin-top: 20px;">
+    <h3>Confidence Gate Thresholds</h3>
+    <p>Configure the minimum confidence required for autonomous actions at each trust level.</p>
+    <div id="gate-thresholds"
+         hx-get="{{ url_for('trust_settings.gate_thresholds_section') }}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <span class="htmx-indicator">Loading gate thresholds...</span>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 20px;">
     <h3>Trust Level Reference</h3>
     <table class="table">
         <thead>

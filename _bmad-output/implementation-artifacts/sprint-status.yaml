@@ -69,7 +69,7 @@ development_status:
   epic-3: in-progress
   3-1-trust-level-configuration-persistence: done
   3-2-confidence-gate-engine: done
-  3-3-confidence-gate-threshold-configuration: backlog
+  3-3-confidence-gate-threshold-configuration: review
   3-4-one-click-investigation-feedback: backlog
   3-5-adaptive-alert-threshold-tuning: backlog
   3-6-impact-weighted-escalation-urgency: backlog
