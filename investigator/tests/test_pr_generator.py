@@ -75,8 +75,7 @@ def _make_step(trust_level=3, pipeline_metadata=None, **overrides):
     }
     defaults.update(overrides)
 
-    with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
-        step = PRGeneratorStep(**defaults)
+    step = PRGeneratorStep(**defaults)
     step._repository_lookup = MagicMock()
     return step, defaults
 

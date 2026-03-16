@@ -174,7 +174,6 @@ class PRGeneratorStep:
 
         files = fix_data.get("files", {})
         fix_description = fix_data.get("description", "Auto-generated fix")
-        change_summary = fix_data.get("change_summary", "")
 
         if not files:
             return StepResult(
@@ -187,7 +186,7 @@ class PRGeneratorStep:
         self.status_updater.update_message("Creating pull request")
         try:
             pr_result = self._create_pr(
-                repo_info, token, files, fix_description, change_summary
+                repo_info, token, files, fix_description
             )
         except Exception as exc:
             logger.warning("Failed to create PR: %s", exc)
@@ -292,7 +291,6 @@ class PRGeneratorStep:
         token: str,
         files: dict[str, str],
         fix_description: str,
-        change_summary: str,
     ) -> Any:
         """Create a branch, commit files, and open a PR."""
         provider = create_git_provider(repo_info.provider, repo_info.url, token)

@@ -150,6 +150,11 @@ class GitHubProvider(GitProvider):
     def commit_files(
         self, branch: str, files: dict[str, str], message: str
     ) -> str:
+        try:
+            from github import UnknownObjectException  # type: ignore[import-untyped]
+        except ImportError:
+            UnknownObjectException = Exception  # type: ignore[misc, assignment]
+
         last_sha = ""
         for filepath, content in files.items():
             try:
@@ -157,7 +162,7 @@ class GitHubProvider(GitProvider):
                 result = self._repo.update_file(
                     filepath, message, content, existing.sha, branch=branch  # type: ignore[union-attr]
                 )
-            except Exception:
+            except UnknownObjectException:
                 result = self._repo.create_file(filepath, message, content, branch=branch)
             last_sha = result["commit"].sha
         logger.info("Committed %d file(s) to %s", len(files), branch)
@@ -212,12 +217,17 @@ class GitLabProvider(GitProvider):
     def commit_files(
         self, branch: str, files: dict[str, str], message: str
     ) -> str:
+        try:
+            from gitlab.exceptions import GitlabGetError  # type: ignore[import-untyped]
+        except ImportError:
+            GitlabGetError = Exception  # type: ignore[misc, assignment]
+
         actions: list[dict[str, Any]] = []
         for filepath, content in files.items():
             try:
                 self._project.files.get(filepath, ref=branch)
                 action_type = "update"
-            except Exception:
+            except GitlabGetError:
                 action_type = "create"
             actions.append({
                 "action": action_type,

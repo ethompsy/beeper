@@ -1,6 +1,6 @@
 # Story 4.4: Auto-PR Generation with Evidence Trail
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

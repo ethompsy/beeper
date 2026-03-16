@@ -130,7 +130,7 @@ class TestFormatPRBody:
 
         assert "Increase pool max connections" in body
 
-    def test_non_dict_verification_steps_skipped(self):
+    def test_non_dict_verification_steps_skipped(self, caplog):
         fmt = EvidenceTrailFormatter()
         ctx = _make_context()
         metadata = _full_metadata()
@@ -141,6 +141,7 @@ class TestFormatPRBody:
         body = fmt.format_pr_body(ctx, metadata, "Fix")
 
         assert "Valid" in body
+        assert "Skipping non-dict verification step" in caplog.text
 
 
 # ── FormatCommitMessage ──────────────────────────────────

@@ -103,6 +103,10 @@ class EvidenceTrailFormatter:
                         title = s.get("title", "Untitled")
                         action = s.get("action", "")
                         step_lines.append(f"{num}. **{title}** — {action}")
+                    else:
+                        logger.warning(
+                            "Skipping non-dict verification step: %s", type(s).__name__
+                        )
                 sections.append(
                     "### Advisory Test Plan\n" + "\n".join(step_lines) + "\n"
                 )
