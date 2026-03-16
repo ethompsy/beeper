@@ -1,7 +1,8 @@
 """Tests for RunbookExecutorStep (Story 4.2)."""
 
 import json
-from unittest.mock import MagicMock
+import logging
+from unittest.mock import MagicMock, patch
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
@@ -455,17 +456,10 @@ class TestStepFailure:
     """Tests for step failure and halt behavior."""
 
     def test_failure_halts_execution(self):
-        """Step failure halts pipeline and captures context."""
+        """Step failure halts pipeline and captures error context."""
         ctx = _make_context(trust_level=3, confidence_threshold=0.5)
-        step, deps = _make_step(context=ctx)
-        deps["llm_client"].embed_sync.return_value = [0.0] * 1536
-        deps["kb_client"].search_knowledge.return_value = [
-            SearchResult(id="r1", score=0.9, payload=_runbook_payload()),
-        ]
-        deps["llm_client"].select_model.return_value = "test-model"
+        step, _ = _make_step(context=ctx)
 
-        # Create steps where step 2 will fail by injecting error in execution
-        # We'll test _execute_steps directly for failure scenarios
         interpreted = [
             {
                 "step_number": 1,
@@ -478,12 +472,12 @@ class TestStepFailure:
             },
             {
                 "step_number": 2,
-                "original_text": "Do bad thing",
-                "action_type": "invalid_will_be_normalized",
-                "interpreted_action": "something",
-                "confidence": 0.8,
-                "k8s_resource": None,
-                "k8s_operation": None,
+                "original_text": "Restart pod",
+                "action_type": "cluster_action",
+                "interpreted_action": "kubectl rollout restart",
+                "confidence": 0.95,
+                "k8s_resource": "deployment",
+                "k8s_operation": "restart",
             },
             {
                 "step_number": 3,
@@ -496,38 +490,94 @@ class TestStepFailure:
             },
         ]
 
-        # Test direct execution — step 2 won't fail because it's manual_step
-        # Let me test the halt mechanism via the complete execute() path
-        # by testing _execute_steps directly
-        result = step._execute_steps(interpreted)
+        # Patch logger.info to raise on the second call (step 2's log)
+        original_info = logging.getLogger("beeper_investigator.remediation.runbook_executor").info
+        call_count = 0
 
-        # All 3 steps should complete (step 2 is normalized to manual_step)
-        assert len(result.executed_steps) == 3
-        assert result.halted is False
+        def _exploding_info(msg, *args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            # call 1 = step 1 diagnostic log; call 2 = step 2 approved log → explode
+            if call_count >= 2:
+                raise RuntimeError("simulated step failure")
+            return original_info(msg, *args, **kwargs)
+
+        with patch.object(
+            logging.getLogger("beeper_investigator.remediation.runbook_executor"),
+            "info",
+            side_effect=_exploding_info,
+        ):
+            result = step._execute_steps(interpreted)
+
+        assert result.halted is True
+        assert result.failed_step is not None
+        assert result.failed_step["step_number"] == 2
+        assert "simulated step failure" in result.failed_step["error"]
+        assert len(result.remaining_steps) == 1
+        assert result.remaining_steps[0]["step_number"] == 3
 
     def test_remaining_steps_captured_on_halt(self):
-        """On halt, remaining steps are captured."""
-        ctx = _make_context(trust_level=3)
+        """On halt, remaining unexecuted steps are captured."""
+        ctx = _make_context(trust_level=1)
         step, _ = _make_step(context=ctx)
 
-        # Simulate a failure by passing steps where one causes an exception
-        # Since _execute_steps catches exceptions per step, we need to
-        # actually trigger an internal failure. We can do this by having a
-        # step dict that causes str() to raise (unlikely), but the easier
-        # approach is to verify the halt path via the result structure.
-        # The real test: if halted=True, remaining_steps should have items.
-        # We tested above that normal execution doesn't halt.
-        # Let's verify the RunbookExecutionResult dataclass works:
-        from beeper_investigator.remediation.runbook_executor import RunbookExecutionResult
+        interpreted = [
+            {
+                "step_number": 1,
+                "original_text": "Check logs",
+                "action_type": "diagnostic_check",
+                "interpreted_action": "kubectl logs",
+                "confidence": 0.95,
+                "k8s_resource": None,
+                "k8s_operation": None,
+            },
+            {
+                "step_number": 2,
+                "original_text": "Restart pod",
+                "action_type": "cluster_action",
+                "interpreted_action": "kubectl rollout restart",
+                "confidence": 0.95,
+                "k8s_resource": "deployment",
+                "k8s_operation": "restart",
+            },
+            {
+                "step_number": 3,
+                "original_text": "Scale up",
+                "action_type": "cluster_action",
+                "interpreted_action": "scale",
+                "confidence": 0.9,
+                "k8s_resource": "deployment",
+                "k8s_operation": "scale",
+            },
+        ]
 
-        r = RunbookExecutionResult(
-            halted=True,
-            failed_step={"step_number": 2, "error": "timeout"},
-            remaining_steps=[{"step_number": 3, "original_text": "Scale up"}],
-        )
-        assert r.halted is True
-        assert r.failed_step["step_number"] == 2
-        assert len(r.remaining_steps) == 1
+        # Explode on step 2 to verify remaining_steps captures step 3
+        original_info = logging.getLogger("beeper_investigator.remediation.runbook_executor").info
+        call_count = 0
+
+        def _exploding_info(msg, *args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            # call 1 = step 1 diagnostic log; call 2 = step 2 advisory log → explode
+            if call_count >= 2:
+                raise RuntimeError("boom")
+            return original_info(msg, *args, **kwargs)
+
+        with patch.object(
+            logging.getLogger("beeper_investigator.remediation.runbook_executor"),
+            "info",
+            side_effect=_exploding_info,
+        ):
+            result = step._execute_steps(interpreted)
+
+        assert result.halted is True
+        assert result.failed_step is not None
+        assert result.failed_step["step_number"] == 2
+        assert len(result.remaining_steps) == 1
+        assert result.remaining_steps[0]["step_number"] == 3
+        # Step 1 should have completed before halt
+        assert len(result.executed_steps) == 1
+        assert result.executed_steps[0]["step_number"] == 1
 
     def test_partial_execution_reported(self):
         """Partial execution correctly reports executed count."""

@@ -1041,8 +1041,8 @@ class TestAgentPipelineRegistration:
         step_names = [s.name for s in steps]
         assert "Investigation Documentation" in step_names
 
-    def test_documentation_step_is_last(self) -> None:
-        """Documentation step is the last in pipeline."""
+    def test_documentation_step_position(self) -> None:
+        """Documentation step is step 6 (before remediation steps)."""
         from beeper_investigator.agent import (
             InvestigatorAgent,
             SourceClients,
@@ -1058,4 +1058,4 @@ class TestAgentPipelineRegistration:
         )
         steps = agent._build_steps()
 
-        assert steps[-1].name == "Investigation Documentation"
+        assert steps[5].name == "Investigation Documentation"

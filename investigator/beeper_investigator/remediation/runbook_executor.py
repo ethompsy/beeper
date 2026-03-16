@@ -308,8 +308,12 @@ class RunbookExecutorStep:
         try:
             result: dict[str, Any] = json.loads(text.strip())
             return result
-        except (json.JSONDecodeError, ValueError):
-            logger.warning("Failed to parse runbook interpretation response")
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.warning(
+                "Failed to parse runbook interpretation response: %s (text: %.200s)",
+                exc,
+                text.strip(),
+            )
             return {}
 
     def _validate_interpreted_steps(
@@ -335,11 +339,19 @@ class RunbookExecutorStep:
             except (ValueError, TypeError):
                 confidence = 0.5
 
+            interpreted_action = step.get("interpreted_action")
+            if not interpreted_action:
+                logger.debug(
+                    "Step %d missing interpreted_action, using original_text",
+                    step.get("step_number", i + 1),
+                )
+                interpreted_action = original_text
+
             validated.append({
                 "step_number": step.get("step_number", i + 1),
                 "original_text": original_text,
                 "action_type": action_type,
-                "interpreted_action": str(step.get("interpreted_action", original_text)),
+                "interpreted_action": str(interpreted_action),
                 "confidence": confidence,
                 "k8s_resource": step.get("k8s_resource"),
                 "k8s_operation": step.get("k8s_operation"),
@@ -435,7 +447,8 @@ class RunbookExecutorStep:
                     })
 
                 else:
-                    # Unknown action type — treat as manual
+                    # Defensive guard — normally unreachable since
+                    # _validate_interpreted_steps normalizes to known types
                     logger.warning(
                         "Unknown action type '%s' (step %d), treating as manual",
                         action_type, step_num,
@@ -465,11 +478,12 @@ class RunbookExecutorStep:
     # ── Helpers ─────────────────────────────────────────────
 
     def _get_model_name(self) -> str | None:
-        """Get the model name for remediation tier, with fallback."""
-        try:
-            return self.llm_client.select_model("remediation")
-        except Exception:
+        """Get the model name for remediation tier, with fallback to deep_rca."""
+        for tier in ("remediation", "deep_rca"):
             try:
-                return self.llm_client.select_model("deep_rca")
-            except Exception:
-                return None
+                model = self.llm_client.select_model(tier)
+                if model is not None:
+                    return model
+            except (KeyError, ValueError, AttributeError):
+                logger.debug("Model tier '%s' not available, trying next", tier)
+        return None

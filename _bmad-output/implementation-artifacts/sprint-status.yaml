@@ -79,7 +79,7 @@ development_status:
   # Epic 4: Autonomous Remediation Pipeline (Wave 2)
   epic-4: in-progress
   4-1-repository-crd-git-provider-integration: done
-  4-2-human-language-runbook-execution: review
+  4-2-human-language-runbook-execution: done
   4-3-advisory-test-plan-generation: backlog
   4-4-auto-pr-generation-evidence-trail: backlog
   4-5-sandbox-test-execution: backlog
