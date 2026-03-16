@@ -72,7 +72,7 @@ development_status:
   3-3-confidence-gate-threshold-configuration: done
   3-4-one-click-investigation-feedback: done
   3-5-adaptive-alert-threshold-tuning: done
-  3-6-impact-weighted-escalation-urgency: review
+  3-6-impact-weighted-escalation-urgency: done
   3-7-noise-report-dashboard: backlog
   epic-3-retrospective: optional
 

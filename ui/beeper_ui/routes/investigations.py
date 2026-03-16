@@ -284,6 +284,10 @@ def list_investigations() -> str:
                         inv.id
                     )
                 except Exception:
+                    logger.warning(
+                        "Failed to fetch findings for %s, using empty",
+                        inv.id,
+                    )
                     findings_map[inv.id] = {}
 
             urgency_scores = urgency_svc.compute_batch_urgency(
@@ -660,6 +664,8 @@ def investigation_urgency(investigation_id: str) -> str:
             urgency_svc.close()
     except InvestigationServiceError:
         error_message = "Unable to connect to the Beeper operator."
+    finally:
+        svc.close()
 
     return render_template(
         "investigations/_urgency_card.html",
@@ -1266,9 +1272,12 @@ def _generate_sse_events(
                     event_type = "investigation-update"
 
                 # Render HTML partial for HTMX swap
+                # Note: urgency_scores not computed in SSE path (too expensive
+                # for every poll cycle); template handles missing data gracefully.
                 html = render_template(
                     "investigations/_list_content.html",
                     investigations=investigations,
+                    urgency_scores={},
                     error_message=None,
                 )
                 # Format for SSE: prefix each line with "data: "

@@ -370,3 +370,64 @@ class TestInvestigationUrgencyDetail:
         response = client.get("/investigations/inv-missing/urgency")
         assert response.status_code == 200
         assert b"not found" in response.data.lower()
+
+    @patch(URG_SVC_PATCH)
+    @patch(SLO_SVC_PATCH)
+    @patch(INV_SVC_PATCH)
+    def test_urgency_route_closes_investigation_service(
+        self, mock_inv_svc, mock_slo_svc, mock_urg_svc, client
+    ):
+        """Verify InvestigationService is closed after urgency route completes."""
+        inv_svc = MagicMock()
+        inv_svc.get_investigation.return_value = _make_investigation_detail()
+        inv_svc.get_investigation_findings.return_value = {}
+        mock_inv_svc.return_value = inv_svc
+
+        slo_svc = MagicMock()
+        slo_svc.get_service_budget.return_value = None
+        mock_slo_svc.return_value = slo_svc
+
+        urg_svc = MagicMock()
+        urg_svc.get_service_accuracy_rate.return_value = {
+            "accurate_rate": None,
+            "total_feedback": 0,
+            "accurate_count": 0,
+            "inaccurate_count": 0,
+            "not_an_issue_count": 0,
+        }
+        urg_svc.calculate_urgency.return_value = _make_urgency_score()
+        mock_urg_svc.return_value = urg_svc
+
+        client.get("/investigations/inv-001/urgency")
+        inv_svc.close.assert_called_once()
+
+
+class TestListFindingsLogging:
+    """Tests for logging in list route findings fetch."""
+
+    @patch(URG_SVC_PATCH)
+    @patch(SLO_SVC_PATCH)
+    @patch(INV_SVC_PATCH)
+    def test_findings_fetch_failure_logs_warning(
+        self, mock_inv_svc, mock_slo_svc, mock_urg_svc, client, caplog
+    ):
+        """Verify that findings fetch failures are logged, not silently swallowed."""
+        inv_svc = MagicMock()
+        inv_svc.list_investigations.return_value = [_make_investigation()]
+        inv_svc.get_investigation_findings.side_effect = Exception("qdrant timeout")
+        mock_inv_svc.return_value = inv_svc
+
+        slo_svc = MagicMock()
+        slo_svc.get_service_budget.return_value = None
+        mock_slo_svc.return_value = slo_svc
+
+        urg_svc = MagicMock()
+        urg_svc.compute_batch_urgency.return_value = {}
+        mock_urg_svc.return_value = urg_svc
+
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            response = client.get("/investigations/")
+        assert response.status_code == 200
+        assert "Failed to fetch findings for inv-001" in caplog.text
