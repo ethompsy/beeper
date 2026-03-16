@@ -1,4 +1,4 @@
-"""Integration tests for SandboxExecutorStep in the agent pipeline (Story 4.5)."""
+"""Integration tests for MetricVerifierStep in the agent pipeline (Story 4.6)."""
 
 from unittest.mock import MagicMock, patch
 
@@ -7,7 +7,7 @@ from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.kb.client import KBClient
 from beeper_investigator.llm.client import LlmClient
-from beeper_investigator.remediation.sandbox_executor import SandboxExecutorStep
+from beeper_investigator.remediation.metric_verifier import MetricVerifierStep
 
 
 def _make_agent(trust_level=3):
@@ -38,37 +38,37 @@ def _make_agent(trust_level=3):
     return agent
 
 
-class TestSandboxExecutorPipelineIntegration:
-    def test_sandbox_executor_is_step_9(self):
-        """SandboxExecutorStep is step 9 (index 8) in _build_steps()."""
+class TestMetricVerifierPipelineIntegration:
+    def test_metric_verifier_is_step_10(self):
+        """MetricVerifierStep is step 10 (index 9) in _build_steps()."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
         assert len(steps) == 11
-        assert isinstance(steps[8], SandboxExecutorStep)
-        assert steps[8].name == "Sandbox Test Execution"
+        assert isinstance(steps[9], MetricVerifierStep)
+        assert steps[9].name == "Post-Fix Metric Verification"
 
     def test_pipeline_metadata_shared(self):
-        """SandboxExecutorStep receives the shared pipeline_metadata reference."""
+        """MetricVerifierStep receives the shared pipeline_metadata reference."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        sandbox_step = steps[8]
-        assert sandbox_step.pipeline_metadata is agent._pipeline_metadata
+        verifier_step = steps[9]
+        assert verifier_step.pipeline_metadata is agent._pipeline_metadata
 
-    def test_sources_passed_to_sandbox_step(self):
-        """SandboxExecutorStep receives the sources (Prometheus/Loki) clients."""
+    def test_sources_passed_to_verifier_step(self):
+        """MetricVerifierStep receives the sources (Prometheus/Loki) clients."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        sandbox_step = steps[8]
-        assert sandbox_step.sources is agent.sources
+        verifier_step = steps[9]
+        assert verifier_step.sources is agent.sources
 
     def test_step_always_included_gates_internally(self):
-        """SandboxExecutorStep is always in the pipeline; trust gating is internal."""
+        """MetricVerifierStep is always in pipeline; trust gating is internal."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent_tl1 = _make_agent(trust_level=1)
             steps_tl1 = agent_tl1._build_steps()
@@ -77,26 +77,25 @@ class TestSandboxExecutorPipelineIntegration:
             steps_tl5 = agent_tl5._build_steps()
 
         assert len(steps_tl1) == 11
-        assert isinstance(steps_tl1[8], SandboxExecutorStep)
+        assert isinstance(steps_tl1[9], MetricVerifierStep)
         assert len(steps_tl5) == 11
-        assert isinstance(steps_tl5[8], SandboxExecutorStep)
+        assert isinstance(steps_tl5[9], MetricVerifierStep)
 
-    def test_step_between_test_planner_and_pr_generator(self):
-        """SandboxExecutorStep is between TestPlannerStep and PRGeneratorStep."""
+    def test_step_between_sandbox_and_pr_generator(self):
+        """MetricVerifierStep is between SandboxExecutorStep and PRGeneratorStep."""
         from beeper_investigator.remediation.pr_generator import PRGeneratorStep
-        from beeper_investigator.remediation.test_planner import TestPlannerStep
+        from beeper_investigator.remediation.sandbox_executor import SandboxExecutorStep
 
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert isinstance(steps[7], TestPlannerStep)
         assert isinstance(steps[8], SandboxExecutorStep)
-        # MetricVerifierStep at index 9, PRGeneratorStep at index 10
+        assert isinstance(steps[9], MetricVerifierStep)
         assert isinstance(steps[10], PRGeneratorStep)
 
-    def test_total_pipeline_length_is_10(self):
-        """Pipeline has exactly 10 steps after adding SandboxExecutorStep."""
+    def test_total_pipeline_length_is_11(self):
+        """Pipeline has exactly 11 steps after adding MetricVerifierStep."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
@@ -104,12 +103,12 @@ class TestSandboxExecutorPipelineIntegration:
         assert len(steps) == 11
 
     def test_step_protocol_compliance(self):
-        """SandboxExecutorStep implements InvestigationStep protocol."""
+        """MetricVerifierStep implements InvestigationStep protocol."""
         from beeper_investigator.steps import InvestigationStep
 
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        sandbox_step = steps[8]
-        assert isinstance(sandbox_step, InvestigationStep)
+        verifier_step = steps[9]
+        assert isinstance(verifier_step, InvestigationStep)

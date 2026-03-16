@@ -242,6 +242,7 @@ class TestSandboxResultsSection:
         metadata["sandbox_test_results"] = []
         body = fmt.format_pr_body(ctx, metadata, "Fix")
 
+        # Without verification_executed, audit trail uses sandbox status
         assert "verification (pass)" in body
 
     def test_audit_trail_pending_when_no_sandbox(self):
@@ -274,3 +275,110 @@ class TestSandboxResultsSection:
 
         assert "Valid" in body
         assert "Skipping non-dict sandbox result" in caplog.text
+
+
+# ── Verification Results Section ──────────────────────────
+
+
+class TestVerificationResultsSection:
+    def test_verification_executed_renders_table(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["verification_executed"] = True
+        metadata["verification_status"] = "confirmed"
+        metadata["verification_window_minutes"] = 15
+        metadata["verification_results"] = [
+            {
+                "metric": "kube_pod_container_status_restarts_total",
+                "pre_fix_value": 10.0,
+                "post_fix_value": 0.0,
+                "status": "confirmed",
+                "delta_pct": -100.0,
+                "error_message": None,
+            },
+        ]
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Post-Fix Verification" in body
+        assert "CONFIRMED" in body
+        assert "15min" in body
+        assert "kube_pod_container_status_restarts_total" in body
+
+    def test_verification_degraded_shows_rollback_warning(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["verification_executed"] = True
+        metadata["verification_status"] = "degraded"
+        metadata["verification_window_minutes"] = 15
+        metadata["verification_results"] = [
+            {
+                "metric": "error_rate",
+                "pre_fix_value": 5.0,
+                "post_fix_value": 15.0,
+                "status": "degraded",
+                "delta_pct": 200.0,
+                "error_message": None,
+            },
+        ]
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Post-Fix Verification" in body
+        assert "DEGRADED" in body
+        assert "ROLLBACK RECOMMENDED" in body
+
+    def test_verification_confirmed_in_audit_trail(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["verification_executed"] = True
+        metadata["verification_status"] = "confirmed"
+        metadata["verification_window_minutes"] = 15
+        metadata["verification_results"] = []
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "verification (confirmed)" in body
+
+    def test_verification_not_executed_shows_skip_reason(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["verification_executed"] = False
+        metadata["skip_reason"] = "no_prometheus"
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Post-Fix Verification" in body
+        assert "Skipped: no_prometheus" in body
+
+    def test_no_verification_data_gracefully_omitted(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        # No verification_executed key at all
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Post-Fix Verification" not in body
+
+    def test_non_dict_verification_results_skipped(self, caplog):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["verification_executed"] = True
+        metadata["verification_status"] = "confirmed"
+        metadata["verification_window_minutes"] = 15
+        metadata["verification_results"] = [
+            "not a dict",
+            {
+                "metric": "valid_metric",
+                "pre_fix_value": 10.0,
+                "post_fix_value": 1.0,
+                "status": "confirmed",
+                "delta_pct": -90.0,
+                "error_message": None,
+            },
+        ]
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "valid_metric" in body
+        assert "Skipping non-dict verification result" in caplog.text

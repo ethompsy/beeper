@@ -12,6 +12,10 @@ from beeper_investigator.remediation.git_provider import (
     PRResult,
     create_git_provider,
 )
+from beeper_investigator.remediation.metric_verifier import (
+    MetricVerifierStep,
+    VerificationResult,
+)
 from beeper_investigator.remediation.pr_generator import PRGeneratorStep
 from beeper_investigator.remediation.runbook_executor import RunbookExecutorStep
 from beeper_investigator.remediation.sandbox_executor import (
@@ -25,11 +29,13 @@ __all__ = [
     "GitHubProvider",
     "GitLabProvider",
     "GitProvider",
+    "MetricVerifierStep",
     "PRGeneratorStep",
     "PRResult",
     "RunbookExecutorStep",
     "SandboxExecutorStep",
     "SandboxStepResult",
     "TestPlannerStep",
+    "VerificationResult",
     "create_git_provider",
 ]

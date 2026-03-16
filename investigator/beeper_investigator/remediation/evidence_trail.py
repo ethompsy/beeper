@@ -149,9 +149,58 @@ class EvidenceTrailFormatter:
                 f"### Sandbox Test Results\n*Skipped: {skip_reason}*\n"
             )
 
+        # Post-fix verification (if executed)
+        if pipeline_metadata.get("verification_executed"):
+            v_status = pipeline_metadata.get("verification_status", "unknown")
+            window = pipeline_metadata.get("verification_window_minutes", "N/A")
+            v_results = pipeline_metadata.get("verification_results", [])
+            verification_lines = [
+                "### Post-Fix Verification\n"
+                f"**Overall: {v_status.upper()}** (window: {window}min)\n"
+            ]
+            if v_results:
+                verification_lines.append(
+                    "| Metric | Pre-Fix | Post-Fix | Delta% | Status |"
+                )
+                verification_lines.append(
+                    "|--------|---------|----------|--------|--------|"
+                )
+                for vr in v_results:
+                    if isinstance(vr, dict):
+                        pre = vr.get("pre_fix_value", "N/A")
+                        post = vr.get("post_fix_value", "N/A")
+                        delta = vr.get("delta_pct")
+                        delta_str = f"{delta}%" if delta is not None else "N/A"
+                        verification_lines.append(
+                            f"| {str(vr.get('metric', '?'))[:40]} "
+                            f"| {pre} "
+                            f"| {post} "
+                            f"| {delta_str} "
+                            f"| {vr.get('status', '?')} |"
+                        )
+                    else:
+                        logger.warning(
+                            "Skipping non-dict verification result: %s",
+                            type(vr).__name__,
+                        )
+            if v_status == "degraded":
+                verification_lines.append(
+                    "\n**ROLLBACK RECOMMENDED** — metrics degraded after fix.\n"
+                )
+            sections.append("\n".join(verification_lines) + "\n")
+        elif pipeline_metadata.get("verification_executed") is False:
+            v_skip_reason = pipeline_metadata.get("skip_reason", "unknown")
+            sections.append(
+                f"### Post-Fix Verification\n*Skipped: {v_skip_reason}*\n"
+            )
+
         # Audit trail
         verification_status = "pending"
-        if pipeline_metadata.get("sandbox_executed"):
+        if pipeline_metadata.get("verification_executed"):
+            verification_status = pipeline_metadata.get(
+                "verification_status", "pending"
+            )
+        elif pipeline_metadata.get("sandbox_executed"):
             verification_status = pipeline_metadata.get(
                 "sandbox_overall_status", "pending"
             )

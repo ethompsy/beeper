@@ -39,15 +39,15 @@ def _make_agent(trust_level=3):
 
 
 class TestPRGeneratorPipelineIntegration:
-    def test_pr_generator_is_step_10(self):
-        """PRGeneratorStep is step 10 (index 9) in _build_steps()."""
+    def test_pr_generator_is_step_11(self):
+        """PRGeneratorStep is step 11 (index 10) in _build_steps()."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 10
-        assert isinstance(steps[9], PRGeneratorStep)
-        assert steps[9].name == "PR Generation"
+        assert len(steps) == 11
+        assert isinstance(steps[10], PRGeneratorStep)
+        assert steps[10].name == "PR Generation"
 
     def test_pipeline_metadata_shared_with_pr_step(self):
         """PRGeneratorStep receives the shared pipeline_metadata reference."""
@@ -55,7 +55,7 @@ class TestPRGeneratorPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        pr_step = steps[9]
+        pr_step = steps[10]
         assert pr_step.pipeline_metadata is agent._pipeline_metadata
 
     def test_step_always_included_gates_internally(self):
@@ -68,18 +68,18 @@ class TestPRGeneratorPipelineIntegration:
             steps_tl5 = agent_tl5._build_steps()
 
         # Step is present regardless of trust level
-        assert len(steps_tl1) == 10
-        assert isinstance(steps_tl1[9], PRGeneratorStep)
-        assert len(steps_tl5) == 10
-        assert isinstance(steps_tl5[9], PRGeneratorStep)
+        assert len(steps_tl1) == 11
+        assert isinstance(steps_tl1[10], PRGeneratorStep)
+        assert len(steps_tl5) == 11
+        assert isinstance(steps_tl5[10], PRGeneratorStep)
 
-    def test_step_order_after_sandbox_executor(self):
-        """PRGeneratorStep comes immediately after SandboxExecutorStep."""
-        from beeper_investigator.remediation.sandbox_executor import SandboxExecutorStep
+    def test_step_order_after_metric_verifier(self):
+        """PRGeneratorStep comes after MetricVerifierStep."""
+        from beeper_investigator.remediation.metric_verifier import MetricVerifierStep
 
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert isinstance(steps[8], SandboxExecutorStep)
-        assert isinstance(steps[9], PRGeneratorStep)
+        assert isinstance(steps[9], MetricVerifierStep)
+        assert isinstance(steps[10], PRGeneratorStep)

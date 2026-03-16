@@ -182,6 +182,7 @@ class InvestigatorAgent:
         Uses lazy imports to keep the agent framework decoupled from
         specific step implementations.
         """
+        from beeper_investigator.remediation.metric_verifier import MetricVerifierStep
         from beeper_investigator.remediation.pr_generator import PRGeneratorStep
         from beeper_investigator.remediation.runbook_executor import RunbookExecutorStep
         from beeper_investigator.remediation.sandbox_executor import SandboxExecutorStep
@@ -248,6 +249,13 @@ class InvestigatorAgent:
                 pipeline_metadata=self._pipeline_metadata,
             ),
             SandboxExecutorStep(
+                llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+                pipeline_metadata=self._pipeline_metadata,
+                sources=self.sources,
+            ),
+            MetricVerifierStep(
                 llm_client=self.llm_client,
                 context=self.context,
                 status_updater=self.status_updater,
