@@ -275,6 +275,28 @@ class TestGetCurrentThreshold:
         with pytest.raises(AdaptiveThresholdError, match="timeout"):
             svc.get_current_threshold("payments")
 
+    def test_boolean_true_returns_default(self) -> None:
+        svc = AdaptiveThresholdService(host="localhost")
+        mock_client = MagicMock()
+        point = MagicMock()
+        point.payload = {"service_name": "payments", "alert_threshold": True}
+        mock_client.scroll.return_value = ([point], None)
+        svc._client = mock_client
+
+        result = svc.get_current_threshold("payments")
+        assert result == DEFAULT_ALERT_THRESHOLD
+
+    def test_boolean_false_returns_default(self) -> None:
+        svc = AdaptiveThresholdService(host="localhost")
+        mock_client = MagicMock()
+        point = MagicMock()
+        point.payload = {"service_name": "payments", "alert_threshold": False}
+        mock_client.scroll.return_value = ([point], None)
+        svc._client = mock_client
+
+        result = svc.get_current_threshold("payments")
+        assert result == DEFAULT_ALERT_THRESHOLD
+
 
 class TestEvaluateService:
     """Tests for the full evaluation orchestration."""

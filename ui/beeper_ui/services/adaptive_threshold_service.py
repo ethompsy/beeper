@@ -208,7 +208,11 @@ class AdaptiveThresholdService:
             if not results:
                 return DEFAULT_ALERT_THRESHOLD
             payload = results[0].payload or {}
-            return float(payload.get("alert_threshold", DEFAULT_ALERT_THRESHOLD))
+            raw = payload.get("alert_threshold", DEFAULT_ALERT_THRESHOLD)
+            # Boolean bypass guard — isinstance(True, (int, float)) is True
+            if isinstance(raw, bool):
+                return DEFAULT_ALERT_THRESHOLD
+            return float(raw)
         except Exception as e:
             msg = f"Failed to get current threshold for {service_name}: {e}"
             logger.warning(msg)
@@ -525,6 +529,13 @@ class AdaptiveThresholdService:
                     f"(status: {payload.get('status')})"
                 )
 
+            # Apply the threshold change FIRST — if this fails, the
+            # adjustment record still shows "pending" (consistent state).
+            self._update_service_threshold(
+                payload["service_name"], payload["new_threshold"]
+            )
+
+            # Only mark as "applied" after threshold is successfully updated
             now = datetime.now(timezone.utc).isoformat()
             payload["status"] = "applied"
             payload["applied_at"] = now
@@ -535,11 +546,6 @@ class AdaptiveThresholdService:
                 points=[
                     PointStruct(id=point.id, vector=[0.0], payload=payload)
                 ],
-            )
-
-            # Apply the threshold change
-            self._update_service_threshold(
-                payload["service_name"], payload["new_threshold"]
             )
 
             return ThresholdAdjustment.from_qdrant(payload)

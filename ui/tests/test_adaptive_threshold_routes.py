@@ -9,6 +9,10 @@ from beeper_ui.services.adaptive_threshold_service import (
 
 ADAPTIVE_SVC_PATCH = "beeper_ui.routes.trust_settings._get_adaptive_service"
 
+# Valid UUID for test adjustment IDs (must pass _UUID_RE validation)
+TEST_UUID = "550e8400-e29b-41d4-a716-446655440000"
+TEST_UUID_2 = "550e8400-e29b-41d4-a716-446655440999"
+
 
 def _make_adjustment(
     adjustment_id: str = "adj-001",
@@ -126,13 +130,13 @@ class TestApplyAdjustment:
         )
 
         with patch(ADAPTIVE_SVC_PATCH, return_value=mock_svc):
-            response = admin_client.post("/settings/trust/adjustments/adj-001/apply")
+            response = admin_client.post(f"/settings/trust/adjustments/{TEST_UUID}/apply")
 
         assert response.status_code == 200
         assert b"Applied" in response.data
 
     def test_user_cannot_apply(self, user_client: MagicMock) -> None:
-        response = user_client.post("/settings/trust/adjustments/adj-001/apply")
+        response = user_client.post(f"/settings/trust/adjustments/{TEST_UUID}/apply")
         assert response.status_code == 403
 
     def test_not_found_returns_error(self, admin_client: MagicMock) -> None:
@@ -140,7 +144,7 @@ class TestApplyAdjustment:
         mock_svc.apply_pending_adjustment.side_effect = AdaptiveThresholdError("not found")
 
         with patch(ADAPTIVE_SVC_PATCH, return_value=mock_svc):
-            response = admin_client.post("/settings/trust/adjustments/adj-999/apply")
+            response = admin_client.post(f"/settings/trust/adjustments/{TEST_UUID_2}/apply")
 
         assert response.status_code == 400
         assert b"not found" in response.data
@@ -150,7 +154,7 @@ class TestApplyAdjustment:
         mock_svc.apply_pending_adjustment.return_value = _make_adjustment()
 
         with patch(ADAPTIVE_SVC_PATCH, return_value=mock_svc):
-            admin_client.post("/settings/trust/adjustments/adj-001/apply")
+            admin_client.post(f"/settings/trust/adjustments/{TEST_UUID}/apply")
 
         mock_svc.close.assert_called_once()
 
@@ -165,13 +169,13 @@ class TestRejectAdjustment:
         )
 
         with patch(ADAPTIVE_SVC_PATCH, return_value=mock_svc):
-            response = admin_client.post("/settings/trust/adjustments/adj-001/reject")
+            response = admin_client.post(f"/settings/trust/adjustments/{TEST_UUID}/reject")
 
         assert response.status_code == 200
         assert b"Rejected" in response.data
 
     def test_user_cannot_reject(self, user_client: MagicMock) -> None:
-        response = user_client.post("/settings/trust/adjustments/adj-001/reject")
+        response = user_client.post(f"/settings/trust/adjustments/{TEST_UUID}/reject")
         assert response.status_code == 403
 
     def test_not_found_returns_error(self, admin_client: MagicMock) -> None:
@@ -179,7 +183,7 @@ class TestRejectAdjustment:
         mock_svc.reject_pending_adjustment.side_effect = AdaptiveThresholdError("not found")
 
         with patch(ADAPTIVE_SVC_PATCH, return_value=mock_svc):
-            response = admin_client.post("/settings/trust/adjustments/adj-999/reject")
+            response = admin_client.post(f"/settings/trust/adjustments/{TEST_UUID_2}/reject")
 
         assert response.status_code == 400
         assert b"not found" in response.data
@@ -259,6 +263,84 @@ class TestEvaluateServiceThreshold:
             admin_client.post("/settings/trust/adaptive/evaluate/payments")
 
         mock_svc.close.assert_called_once()
+
+
+class TestAdaptiveTuningSection:
+    """Tests for GET /settings/trust/adaptive/tuning (HTMX partial)."""
+
+    def test_user_can_view_tuning_section(self, user_client: MagicMock) -> None:
+        mock_tl_svc = MagicMock()
+        svc1 = MagicMock()
+        svc1.service_name = "payments"
+        svc2 = MagicMock()
+        svc2.service_name = "api-gateway"
+        mock_tl_svc.get_all_trust_levels.return_value = [svc1, svc2]
+
+        patch_path = "beeper_ui.routes.trust_settings._get_trust_level_service"
+        with patch(patch_path, return_value=mock_tl_svc):
+            response = user_client.get("/settings/trust/adaptive/tuning")
+
+        assert response.status_code == 200
+        assert b"payments" in response.data
+        assert b"api-gateway" in response.data
+        assert b"Evaluate" in response.data
+
+    def test_empty_services_shows_message(self, user_client: MagicMock) -> None:
+        mock_tl_svc = MagicMock()
+        mock_tl_svc.get_all_trust_levels.return_value = []
+
+        patch_path = "beeper_ui.routes.trust_settings._get_trust_level_service"
+        with patch(patch_path, return_value=mock_tl_svc):
+            response = user_client.get("/settings/trust/adaptive/tuning")
+
+        assert response.status_code == 200
+        assert b"No services configured" in response.data
+
+    def test_service_is_closed(self, user_client: MagicMock) -> None:
+        mock_tl_svc = MagicMock()
+        mock_tl_svc.get_all_trust_levels.return_value = []
+
+        patch_path = "beeper_ui.routes.trust_settings._get_trust_level_service"
+        with patch(patch_path, return_value=mock_tl_svc):
+            user_client.get("/settings/trust/adaptive/tuning")
+
+        mock_tl_svc.close.assert_called_once()
+
+
+class TestApplyRejectUuidValidation:
+    """Tests for UUID validation on adjustment ID parameters."""
+
+    def test_apply_rejects_non_uuid_id(self, admin_client: MagicMock) -> None:
+        response = admin_client.post("/settings/trust/adjustments/not-a-uuid/apply")
+        assert response.status_code == 400
+        assert b"Invalid adjustment ID" in response.data
+
+    def test_reject_rejects_non_uuid_id(self, admin_client: MagicMock) -> None:
+        response = admin_client.post("/settings/trust/adjustments/hello-world/reject")
+        assert response.status_code == 400
+        assert b"Invalid adjustment ID" in response.data
+
+    def test_apply_accepts_valid_uuid(self, admin_client: MagicMock) -> None:
+        mock_svc = MagicMock()
+        mock_svc.apply_pending_adjustment.return_value = _make_adjustment()
+
+        with patch(ADAPTIVE_SVC_PATCH, return_value=mock_svc):
+            response = admin_client.post(
+                f"/settings/trust/adjustments/{TEST_UUID}/apply"
+            )
+
+        assert response.status_code == 200
+
+    def test_reject_accepts_valid_uuid(self, admin_client: MagicMock) -> None:
+        mock_svc = MagicMock()
+        mock_svc.reject_pending_adjustment.return_value = _make_adjustment(status="rejected")
+
+        with patch(ADAPTIVE_SVC_PATCH, return_value=mock_svc):
+            response = admin_client.post(
+                f"/settings/trust/adjustments/{TEST_UUID}/reject"
+            )
+
+        assert response.status_code == 200
 
 
 class TestSettingsPageHasHistoryLink:

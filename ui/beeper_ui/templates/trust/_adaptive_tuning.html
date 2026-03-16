@@ -1,0 +1,27 @@
+{% if error_message %}
+<p class="error-text">{{ error_message }}</p>
+{% elif services|length == 0 %}
+<p>No services configured. Configure service trust levels above to enable adaptive tuning.</p>
+{% else %}
+<table class="table">
+    <thead>
+        <tr>
+            <th>Service</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for svc in services %}
+        <tr>
+            <td>{{ svc }}</td>
+            <td id="eval-{{ svc }}">
+                <button class="btn btn-sm"
+                        hx-post="{{ url_for('trust_settings.evaluate_service_threshold', service_name=svc) }}"
+                        hx-target="#eval-{{ svc }}"
+                        hx-swap="innerHTML">Evaluate</button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}

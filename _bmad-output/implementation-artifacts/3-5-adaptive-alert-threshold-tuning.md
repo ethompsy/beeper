@@ -1,6 +1,6 @@
 # Story 3.5: Adaptive Alert Threshold Tuning
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -435,6 +435,28 @@ Claude Opus 4.6
 - Investigator: 505 passed, 12 pre-existing LLM client async test failures (identical without changes)
 - Ruff: all story 3-5 files clean
 
+### Senior Developer Review (AI)
+
+**Reviewed by:** Claude Opus 4.6 (code-review workflow)
+**Date:** 2026-03-16
+**Outcome:** Approved with fixes applied
+
+**Issues Found:** 3 MEDIUM, 2 LOW — all auto-fixed
+
+| # | Severity | Description | Fix |
+|---|----------|-------------|-----|
+| 1 | MEDIUM | `apply_pending_adjustment` upserted "applied" status before threshold update — data inconsistency risk if threshold update failed | Reordered: update threshold first, then mark adjustment as applied |
+| 2 | MEDIUM | Adjustment ID validation used `_SERVICE_NAME_RE` (service name regex) instead of UUID validation | Added `_UUID_RE` regex pattern; updated apply/reject routes |
+| 3 | MEDIUM | Task 4.2 `_adaptive_tuning.html` marked [x] but not created — no UI trigger for evaluate route | Created template + `GET /adaptive/tuning` route + HTMX lazy-load in settings |
+| 4 | LOW | `get_current_threshold` missing boolean bypass validation (`float(True)` = 1.0 silently) | Added `isinstance(raw, bool)` guard before `float()` conversion |
+| 5 | LOW | Settings page adaptive section used static HTML instead of HTMX lazy-load pattern per Task 4.1 | Fixed by wiring `_adaptive_tuning.html` with `hx-get`/`hx-trigger="load"` |
+
+**Tests added:** 9 new tests (3 tuning section route + 4 UUID validation + 2 boolean threshold rejection)
+**Post-fix results:**
+- UI pytest: 1,287 passed (1,278 + 9 new), zero regressions
+- Investigator: 505 passed, 12 pre-existing LLM client async failures (unchanged)
+- Ruff: all clean
+
 ### File List
 
 **New files created:**
@@ -443,11 +465,12 @@ Claude Opus 4.6
 3. `ui/beeper_ui/templates/trust/_history_content.html` — HTMX partial: adjustment history table with action buttons
 4. `ui/beeper_ui/templates/trust/_adjustment_action_result.html` — HTMX partial: apply/reject action result
 5. `ui/beeper_ui/templates/trust/_adaptive_eval_result.html` — HTMX partial: evaluation result
-6. `ui/tests/test_adaptive_threshold_service.py` — 39 unit tests for service
-7. `ui/tests/test_adaptive_threshold_routes.py` — 22 route tests
+6. `ui/beeper_ui/templates/trust/_adaptive_tuning.html` — HTMX partial: per-service evaluate buttons (code review fix)
+7. `ui/tests/test_adaptive_threshold_service.py` — 41 unit tests for service (39 original + 2 boolean validation)
+8. `ui/tests/test_adaptive_threshold_routes.py` — 29 route tests (22 original + 3 tuning section + 4 UUID validation)
 
 **Files modified:**
-1. `ui/beeper_ui/routes/trust_settings.py` — Added AdaptiveThresholdService import, `_get_adaptive_service()` helper, 6 new routes (history page/content, apply, reject, evaluate)
-2. `ui/beeper_ui/templates/trust/settings.html` — Added "Adaptive Alert Threshold Tuning" card with history link
+1. `ui/beeper_ui/routes/trust_settings.py` — Added AdaptiveThresholdService import, `_get_adaptive_service()` helper, 7 routes (history page/content, apply, reject, evaluate, adaptive tuning section), `_UUID_RE` regex
+2. `ui/beeper_ui/templates/trust/settings.html` — Added "Adaptive Alert Threshold Tuning" card with HTMX lazy-load and history link
 3. `_bmad-output/implementation-artifacts/sprint-status.yaml` — Story 3-5 status updates
 4. `_bmad-output/implementation-artifacts/3-5-adaptive-alert-threshold-tuning.md` — This story file

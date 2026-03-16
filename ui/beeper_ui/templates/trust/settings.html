@@ -36,6 +36,12 @@
     <h3>Adaptive Alert Threshold Tuning</h3>
     <p>Beeper adjusts alert sensitivity per service based on investigation feedback. Services with many false positives get higher thresholds; services with accurate alerts maintain or lower thresholds.</p>
     <p><a href="{{ url_for('trust_settings.threshold_history_page') }}" class="btn btn-sm">View Adjustment History</a></p>
+    <div id="adaptive-tuning"
+         hx-get="{{ url_for('trust_settings.adaptive_tuning_section') }}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <span class="htmx-indicator">Loading service evaluations...</span>
+    </div>
 </div>
 
 <div class="card" style="margin-top: 20px;">

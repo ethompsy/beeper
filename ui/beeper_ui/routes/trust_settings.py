@@ -37,6 +37,9 @@ trust_settings_bp = Blueprint(
 )
 
 _SERVICE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
 
 
 def _get_trust_level_service() -> TrustLevelService:
@@ -285,7 +288,7 @@ def threshold_history_content() -> str:
 @require_role("admin")
 def apply_adjustment(adjustment_id: str) -> str | tuple[str, int]:
     """Apply a pending threshold adjustment."""
-    if not adjustment_id or not _SERVICE_NAME_RE.match(adjustment_id):
+    if not adjustment_id or not _UUID_RE.match(adjustment_id):
         return render_template(
             "trust/_adjustment_action_result.html",
             error_message="Invalid adjustment ID",
@@ -322,7 +325,7 @@ def apply_adjustment(adjustment_id: str) -> str | tuple[str, int]:
 @require_role("admin")
 def reject_adjustment(adjustment_id: str) -> str | tuple[str, int]:
     """Reject a pending threshold adjustment."""
-    if not adjustment_id or not _SERVICE_NAME_RE.match(adjustment_id):
+    if not adjustment_id or not _UUID_RE.match(adjustment_id):
         return render_template(
             "trust/_adjustment_action_result.html",
             error_message="Invalid adjustment ID",
@@ -352,6 +355,30 @@ def reject_adjustment(adjustment_id: str) -> str | tuple[str, int]:
         adjustment=adjustment,
         action="rejected",
         error_message=None,
+    )
+
+
+@trust_settings_bp.route("/adaptive/tuning")
+@require_role("user")
+def adaptive_tuning_section() -> str:
+    """HTMX partial: per-service adaptive tuning with evaluate buttons."""
+    trust_svc = _get_trust_level_service()
+    services: list[str] = []
+    error_message = None
+
+    try:
+        trusts = trust_svc.get_all_trust_levels()
+        services = [t.service_name for t in trusts]
+    except TrustLevelServiceError as e:
+        logger.warning("Failed to load services for tuning: %s", e)
+        error_message = "Unable to load services"
+    finally:
+        trust_svc.close()
+
+    return render_template(
+        "trust/_adaptive_tuning.html",
+        services=services,
+        error_message=error_message,
     )
 
 
