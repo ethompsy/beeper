@@ -78,6 +78,21 @@
                     <option value="90d" {% if selected_date_range == '90d' %}selected{% endif %}>Last 90 days</option>
                 </select>
             </div>
+
+            {# Sort Filter #}
+            <div class="filter-group">
+                <label for="inv-filter-sort">Sort by</label>
+                <select name="sort"
+                        id="inv-filter-sort"
+                        hx-get="{{ url_for('investigations.list_investigations') }}"
+                        hx-trigger="change"
+                        hx-target="#investigation-list"
+                        hx-include="#investigation-filter-panel select"
+                        hx-push-url="true">
+                    <option value="">Default</option>
+                    <option value="urgency" {% if selected_sort == 'urgency' %}selected{% endif %}>Urgency (highest)</option>
+                </select>
+            </div>
         </div>
     </div>
 </div>

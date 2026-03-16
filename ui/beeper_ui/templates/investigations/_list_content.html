@@ -9,6 +9,7 @@
     <thead>
         <tr>
             <th>Severity</th>
+            <th>Urgency</th>
             <th>Status</th>
             <th>ID</th>
             <th>Service</th>
@@ -24,6 +25,29 @@
                       role="img"
                       aria-label="{{ inv.severity }} severity"></span>
                 {{ inv.severity|capitalize }}
+            </td>
+            <td>
+                {% set urgency = urgency_scores.get(inv.id) if urgency_scores is defined and urgency_scores else None %}
+                {% if urgency %}
+                    {% if urgency.score > 80 %}
+                        {% set urgency_level = "critical" %}
+                    {% elif urgency.score > 60 %}
+                        {% set urgency_level = "high" %}
+                    {% elif urgency.score > 40 %}
+                        {% set urgency_level = "medium" %}
+                    {% else %}
+                        {% set urgency_level = "low" %}
+                    {% endif %}
+                    <span class="badge urgency-{{ urgency_level }}"
+                          title="Burn rate: {{ urgency.factors.burn_rate_component }} | Budget: {{ urgency.factors.budget_component }} | Severity: {{ urgency.factors.severity_component }}{% if urgency.factors.customer_impact_boost %} | Customer impact boost{% endif %}{% if urgency.factors.confidence_dampening %} | Dampened (low confidence){% endif %}">
+                        {{ urgency.score|round(0)|int }}
+                    </span>
+                    {% if urgency.low_confidence %}
+                    <span class="badge badge-warning" title="Low feedback accuracy (&lt;50%) — urgency dampened">low confidence</span>
+                    {% endif %}
+                {% else %}
+                    &mdash;
+                {% endif %}
             </td>
             <td>
                 <span class="status-badge investigation-status-{{ inv.status }}">

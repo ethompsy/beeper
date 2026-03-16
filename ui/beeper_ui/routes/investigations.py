@@ -24,6 +24,11 @@ from beeper_ui.services.confidence_gate_service import (
     format_gate_message,
     normalize_confidence_score,
 )
+from beeper_ui.services.escalation_urgency_service import (
+    EscalationUrgencyError,
+    EscalationUrgencyService,
+    UrgencyScore,
+)
 from beeper_ui.services.investigation_service import (
     Investigation,
     InvestigationDetail,
@@ -32,6 +37,7 @@ from beeper_ui.services.investigation_service import (
 )
 from beeper_ui.services.kb_service import KBEntry, KBService, KBServiceError
 from beeper_ui.services.notification_audit_service import NotificationAuditService
+from beeper_ui.services.slo_service import SloService, SloServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +200,26 @@ def get_investigation_service() -> InvestigationService:
     )
 
 
+def _get_slo_service() -> SloService:
+    """Get configured SloService instance."""
+    return SloService(
+        operator_url=current_app.config["OPERATOR_URL"],
+        timeout=current_app.config.get("OPERATOR_TIMEOUT", 5.0),
+    )
+
+
+def _get_urgency_service() -> EscalationUrgencyService:
+    """Get configured EscalationUrgencyService instance."""
+    return EscalationUrgencyService(
+        host=os.getenv("QDRANT_HOST", "localhost"),
+        port=int(os.getenv("QDRANT_PORT", "6333")),
+    )
+
+
+# Valid sort options
+VALID_SORTS = {"urgency"}
+
+
 @investigations_bp.route("/")
 def list_investigations() -> str:
     """Display list of all investigations.
@@ -203,6 +229,7 @@ def list_investigations() -> str:
     - service: Filter by service name
     - severity: Filter by severity (low, medium, high, critical)
     - date_range: Filter by time window (today, 7d, 30d, 90d)
+    - sort: Sort by urgency score descending (sort=urgency)
 
     For HTMX requests (filtering/SSE updates), returns only the list content partial.
     For full page requests, returns the complete page.
@@ -211,6 +238,9 @@ def list_investigations() -> str:
     service = validate_service(request.args.get("service"))
     severity = validate_severity(request.args.get("severity"))
     date_range = validate_date_range(request.args.get("date_range"))
+    sort_by = request.args.get("sort", "")
+    if sort_by not in VALID_SORTS:
+        sort_by = ""
 
     svc = get_investigation_service()
     error_message: str | None = None
@@ -229,6 +259,51 @@ def list_investigations() -> str:
     except InvestigationServiceError:
         error_message = "Unable to connect to the Beeper operator."
 
+    # Compute urgency scores for all investigations
+    urgency_scores: dict[str, UrgencyScore] = {}
+    if investigations:
+        slo_svc = _get_slo_service()
+        urgency_svc = _get_urgency_service()
+        try:
+            # Fetch SLO budgets per unique service
+            services = {inv.service for inv in investigations}
+            slo_budgets: dict[str, dict[str, object] | None] = {}
+            for svc_name in services:
+                try:
+                    slo_budgets[svc_name] = slo_svc.get_service_budget(
+                        svc_name
+                    )
+                except SloServiceError:
+                    slo_budgets[svc_name] = None
+
+            # Fetch findings per investigation for customer_impacting
+            findings_map: dict[str, dict[str, object]] = {}
+            for inv in investigations:
+                try:
+                    findings_map[inv.id] = svc.get_investigation_findings(
+                        inv.id
+                    )
+                except Exception:
+                    findings_map[inv.id] = {}
+
+            urgency_scores = urgency_svc.compute_batch_urgency(
+                investigations, slo_budgets, findings_map
+            )
+        except EscalationUrgencyError:
+            logger.warning("Failed to compute urgency scores, degrading gracefully")
+        finally:
+            slo_svc.close()
+            urgency_svc.close()
+
+    # Sort by urgency if requested
+    if sort_by == "urgency" and urgency_scores:
+        investigations.sort(
+            key=lambda inv: urgency_scores.get(
+                inv.id, UrgencyScore.default()
+            ).score,
+            reverse=True,
+        )
+
     # Calculate if any filter is active
     any_filter_active = bool(status or service or severity or date_range)
 
@@ -237,17 +312,20 @@ def list_investigations() -> str:
         return render_template(
             "investigations/_list_content.html",
             investigations=investigations,
+            urgency_scores=urgency_scores,
             error_message=error_message,
         )
 
     return render_template(
         "investigations/list.html",
         investigations=investigations,
+        urgency_scores=urgency_scores,
         error_message=error_message,
         selected_status=status,
         selected_service=service,
         selected_severity=severity,
         selected_date_range=date_range,
+        selected_sort=sort_by,
         any_filter_active=any_filter_active,
     )
 
@@ -515,6 +593,78 @@ def investigation_gate_status(investigation_id: str) -> str:
         gate_message=gate_message,
         gate_error=gate_error,
         investigation_id=investigation_id,
+    )
+
+
+@investigations_bp.route("/<investigation_id>/urgency")
+def investigation_urgency(investigation_id: str) -> str:
+    """Compute and return escalation urgency for an investigation.
+
+    Returns HTMX partial showing the impact-weighted urgency score
+    with factor breakdown and confidence assessment.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    svc = get_investigation_service()
+    urgency: UrgencyScore | None = None
+    error_message: str | None = None
+
+    try:
+        investigation = svc.get_investigation(investigation_id)
+        if investigation is None:
+            return render_template(
+                "investigations/_urgency_card.html",
+                urgency=None,
+                error_message="Investigation not found.",
+            )
+
+        findings = svc.get_investigation_findings(investigation_id)
+        customer_impacting = bool(findings.get("customer_impacting", False))
+
+        # Fetch SLO budget for this service
+        slo_svc = _get_slo_service()
+        burn_rate = None
+        budget_remaining = None
+        try:
+            budget = slo_svc.get_service_budget(investigation.service)
+            if budget:
+                burn_rate = budget.get("burn_rate")
+                budget_remaining = budget.get("budget_remaining")
+        except SloServiceError:
+            logger.warning(
+                "Failed to fetch SLO data for %s", investigation.service
+            )
+        finally:
+            slo_svc.close()
+
+        # Compute urgency score
+        urgency_svc = _get_urgency_service()
+        try:
+            accuracy_data = urgency_svc.get_service_accuracy_rate(
+                investigation.service
+            )
+            urgency = urgency_svc.calculate_urgency(
+                investigation_id=investigation_id,
+                service_name=investigation.service,
+                severity=investigation.severity,
+                burn_rate=burn_rate,
+                budget_remaining=budget_remaining,
+                customer_impacting=customer_impacting,
+                accuracy_data=accuracy_data,
+            )
+        except EscalationUrgencyError as e:
+            logger.warning("Failed to compute urgency: %s", e)
+            error_message = "Unable to compute urgency score."
+        finally:
+            urgency_svc.close()
+    except InvestigationServiceError:
+        error_message = "Unable to connect to the Beeper operator."
+
+    return render_template(
+        "investigations/_urgency_card.html",
+        urgency=urgency,
+        error_message=error_message,
     )
 
 

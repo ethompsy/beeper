@@ -1,0 +1,73 @@
+{% if error_message %}
+<div class="card error-card">
+    <p class="error-text">{{ error_message }}</p>
+</div>
+{% elif urgency %}
+<div class="card">
+    <h3>Escalation Urgency</h3>
+    <div class="urgency-score-display">
+        {% if urgency.score > 80 %}
+            {% set level = "critical" %}
+        {% elif urgency.score > 60 %}
+            {% set level = "high" %}
+        {% elif urgency.score > 40 %}
+            {% set level = "medium" %}
+        {% else %}
+            {% set level = "low" %}
+        {% endif %}
+        <span class="badge urgency-{{ level }} urgency-large">{{ urgency.score|round(0)|int }}</span>
+        <span class="badge badge-{{ urgency.confidence }}">{{ urgency.confidence }} confidence</span>
+        {% if urgency.low_confidence %}
+        <span class="badge badge-warning" title="Low feedback accuracy (&lt;50%) — urgency dampened">Urgency dampened</span>
+        {% endif %}
+    </div>
+    {% if not urgency.has_slo_data %}
+    <p class="text-muted">No SLO data available — using severity-only scoring.</p>
+    {% endif %}
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Factor</th>
+                <th>Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if urgency.has_slo_data %}
+            <tr>
+                <td>Burn Rate (40%)</td>
+                <td>{{ urgency.factors.burn_rate_component }}</td>
+            </tr>
+            <tr>
+                <td>Budget Remaining (35%)</td>
+                <td>{{ urgency.factors.budget_component }}</td>
+            </tr>
+            <tr>
+                <td>Severity (25%)</td>
+                <td>{{ urgency.factors.severity_component }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td>Severity (base)</td>
+                <td>{{ urgency.factors.severity_component }}</td>
+            </tr>
+            {% endif %}
+            {% if urgency.factors.customer_impact_boost %}
+            <tr>
+                <td>Customer Impact</td>
+                <td>+20% boost</td>
+            </tr>
+            {% endif %}
+            {% if urgency.factors.confidence_dampening %}
+            <tr>
+                <td>Confidence Dampening</td>
+                <td>-30% (low accuracy)</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card">
+    <p>Urgency score unavailable.</p>
+</div>
+{% endif %}

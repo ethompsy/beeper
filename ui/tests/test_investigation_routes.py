@@ -1,7 +1,8 @@
 """Tests for Investigation routes."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import pytest
 import respx
 from flask.testing import FlaskClient
 from httpx import Response
@@ -32,6 +33,18 @@ MOCK_INVESTIGATIONS = [
 
 class TestInvestigationsRoute:
     """Tests for investigations route."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_urgency_deps(self):
+        with patch("beeper_ui.routes.investigations._get_slo_service") as mock_slo, \
+             patch("beeper_ui.routes.investigations._get_urgency_service") as mock_urg:
+            slo = MagicMock()
+            slo.get_service_budget.return_value = None
+            mock_slo.return_value = slo
+            urg = MagicMock()
+            urg.compute_batch_urgency.return_value = {}
+            mock_urg.return_value = urg
+            yield
 
     @respx.mock
     def test_investigations_page_with_data(self, client: FlaskClient) -> None:
@@ -717,6 +730,18 @@ class TestStepStates:
 
 class TestDetailSSEEventGeneration:
     """Tests for SSE event generation logic."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_urgency_deps(self):
+        with patch("beeper_ui.routes.investigations._get_slo_service") as mock_slo, \
+             patch("beeper_ui.routes.investigations._get_urgency_service") as mock_urg:
+            slo = MagicMock()
+            slo.get_service_budget.return_value = None
+            mock_slo.return_value = slo
+            urg = MagicMock()
+            urg.compute_batch_urgency.return_value = {}
+            mock_urg.return_value = urg
+            yield
 
     @respx.mock
     def test_sse_sends_step_update_on_message_change(

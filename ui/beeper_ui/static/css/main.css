@@ -3214,6 +3214,34 @@ a.match-badge.kb-entry-link::after {
     color: #991b1b;
 }
 
+/* Urgency badges */
+.urgency-critical { background-color: #ef4444; color: #fff; }
+.urgency-high { background-color: #f97316; color: #fff; }
+.urgency-medium { background-color: #eab308; color: #1a1a2e; }
+.urgency-low { background-color: #22c55e; color: #fff; }
+
+.urgency-large {
+    font-size: 1.5rem;
+    padding: 0.25rem 0.75rem;
+    font-weight: bold;
+}
+
+.urgency-score-display {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.badge-warning { background-color: #fbbf24; color: #1a1a2e; }
+.badge-high { background-color: #22c55e; color: #fff; }
+.badge-moderate { background-color: #60a5fa; color: #fff; }
+.badge-low { background-color: #f97316; color: #fff; }
+.badge-unknown { background-color: #9ca3af; color: #fff; }
+
+.text-muted { color: #9ca3af; font-style: italic; }
+
 /* Revision Panel */
 
 .revision-panel h3 {

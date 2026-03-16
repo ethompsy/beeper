@@ -48,6 +48,14 @@
         {% endif %}
     </div>
 
+    {# Escalation Urgency #}
+    <div id="urgency-score"
+         hx-get="/investigations/{{ investigation.id }}/urgency"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <span class="htmx-indicator">Calculating urgency...</span>
+    </div>
+
     {# Step Progress Timeline #}
     <div class="card">
         <h3>Investigation Progress</h3>
