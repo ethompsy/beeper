@@ -194,6 +194,67 @@ class EvidenceTrailFormatter:
                 f"### Post-Fix Verification\n*Skipped: {v_skip_reason}*\n"
             )
 
+        # Trust gate decisions (if evaluated)
+        if pipeline_metadata.get("trust_gate_evaluated"):
+            tl = pipeline_metadata.get("trust_gate_trust_level", "?")
+            threshold = pipeline_metadata.get(
+                "trust_gate_confidence_threshold", "?"
+            )
+            decisions = pipeline_metadata.get("trust_gate_decisions", [])
+            rollback_paths = pipeline_metadata.get(
+                "trust_gate_rollback_paths", []
+            )
+            approval_required = pipeline_metadata.get(
+                "trust_gate_approval_required", False
+            )
+
+            trust_lines = [
+                "### Trust Gate Decisions\n"
+                f"**Trust Level:** TL{tl} | "
+                f"**Confidence Threshold:** {threshold}\n"
+            ]
+
+            if approval_required:
+                trust_lines.append(
+                    "**MANUAL APPROVAL REQUIRED** — "
+                    "some actions blocked by confidence gate.\n"
+                )
+
+            if decisions:
+                trust_lines.append(
+                    "| Action | Category | Decision | Confidence | Reason |"
+                )
+                trust_lines.append(
+                    "|--------|----------|----------|------------|--------|"
+                )
+                for d in decisions:
+                    if isinstance(d, dict):
+                        conf = d.get("confidence")
+                        conf_str = f"{conf:.2f}" if conf is not None else "N/A"
+                        trust_lines.append(
+                            f"| {str(d.get('action_name', '?'))[:30]} "
+                            f"| {d.get('action_category', '?')} "
+                            f"| {d.get('action_type', '?')} "
+                            f"| {conf_str} "
+                            f"| {str(d.get('reason', ''))[:40]} |"
+                        )
+                    else:
+                        logger.warning(
+                            "Skipping non-dict trust gate decision: %s",
+                            type(d).__name__,
+                        )
+
+            if rollback_paths:
+                trust_lines.append("\n**Registered Rollback Paths:**\n")
+                for rp in rollback_paths:
+                    if isinstance(rp, dict):
+                        trust_lines.append(
+                            f"- {rp.get('action_name', '?')}: "
+                            f"{rp.get('rollback_action', '?')}"
+                        )
+
+            sections.append("\n".join(trust_lines) + "\n")
+
         # Audit trail
         verification_status = "pending"
         if pipeline_metadata.get("verification_executed"):

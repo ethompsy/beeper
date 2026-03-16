@@ -23,6 +23,12 @@ from beeper_investigator.remediation.sandbox_executor import (
     SandboxStepResult,
 )
 from beeper_investigator.remediation.test_planner import TestPlannerStep
+from beeper_investigator.remediation.trust_gate import (
+    TrustGateDecision,
+    TrustGateEvaluator,
+    TrustGateStep,
+    TrustGateSummary,
+)
 
 __all__ = [
     "EvidenceTrailFormatter",
@@ -36,6 +42,10 @@ __all__ = [
     "SandboxExecutorStep",
     "SandboxStepResult",
     "TestPlannerStep",
+    "TrustGateDecision",
+    "TrustGateEvaluator",
+    "TrustGateStep",
+    "TrustGateSummary",
     "VerificationResult",
     "create_git_provider",
 ]

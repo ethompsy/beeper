@@ -396,3 +396,143 @@ class TestVerificationResultsSection:
 
         assert "valid_metric" in body
         assert "Skipping non-dict verification result" in caplog.text
+
+
+# ── Trust Gate Decisions Section ──────────────────────────
+
+
+class TestTrustGateDecisionsSection:
+    def test_trust_gate_decisions_rendered_in_table(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["trust_gate_evaluated"] = True
+        metadata["trust_gate_trust_level"] = 3
+        metadata["trust_gate_confidence_threshold"] = 0.9
+        metadata["trust_gate_approval_required"] = False
+        metadata["trust_gate_decisions"] = [
+            {
+                "action_name": "Runbook execution",
+                "action_category": "cluster_mutation",
+                "action_type": "executed",
+                "confidence": 0.95,
+                "reason": "Trust level 3, confidence 0.95 above threshold",
+            },
+            {
+                "action_name": "Post-fix verification",
+                "action_category": "read_only",
+                "action_type": "executed",
+                "confidence": None,
+                "reason": "Always permitted",
+            },
+        ]
+        metadata["trust_gate_rollback_paths"] = []
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Trust Gate Decisions" in body
+        assert "TL3" in body
+        assert "0.9" in body
+        assert "Runbook execution" in body
+        assert "Post-fix verification" in body
+
+    def test_requires_approval_banner_shown(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["trust_gate_evaluated"] = True
+        metadata["trust_gate_trust_level"] = 3
+        metadata["trust_gate_confidence_threshold"] = 0.9
+        metadata["trust_gate_approval_required"] = True
+        metadata["trust_gate_decisions"] = [
+            {
+                "action_name": "Auto-PR generation",
+                "action_category": "code_change",
+                "action_type": "requires_approval",
+                "confidence": 0.50,
+                "reason": "Confidence 0.50 below threshold 0.90",
+            },
+        ]
+        metadata["trust_gate_rollback_paths"] = []
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "MANUAL APPROVAL REQUIRED" in body
+
+    def test_rollback_paths_listed(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["trust_gate_evaluated"] = True
+        metadata["trust_gate_trust_level"] = 4
+        metadata["trust_gate_confidence_threshold"] = 0.9
+        metadata["trust_gate_approval_required"] = False
+        metadata["trust_gate_decisions"] = []
+        metadata["trust_gate_rollback_paths"] = [
+            {
+                "action_name": "Auto-PR",
+                "rollback_action": "Close PR and revert",
+            },
+            {
+                "action_name": "Sandbox deployment",
+                "rollback_action": "Delete sandbox namespace resources",
+            },
+        ]
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "Registered Rollback Paths" in body
+        assert "Auto-PR: Close PR and revert" in body
+        assert "Sandbox deployment: Delete sandbox namespace resources" in body
+
+    def test_no_trust_gate_data_shows_no_section(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        # No trust_gate_evaluated key
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Trust Gate Decisions" not in body
+
+    def test_non_dict_trust_gate_decisions_skipped(self, caplog):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["trust_gate_evaluated"] = True
+        metadata["trust_gate_trust_level"] = 3
+        metadata["trust_gate_confidence_threshold"] = 0.9
+        metadata["trust_gate_approval_required"] = False
+        metadata["trust_gate_decisions"] = [
+            "not a dict",
+            {
+                "action_name": "Valid action",
+                "action_category": "read_only",
+                "action_type": "executed",
+                "confidence": None,
+                "reason": "Always permitted",
+            },
+        ]
+        metadata["trust_gate_rollback_paths"] = []
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "Valid action" in body
+        assert "Skipping non-dict trust gate decision" in caplog.text
+
+    def test_trust_gate_section_between_verification_and_audit(self):
+        """Trust gate section appears after verification and before audit trail."""
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["verification_executed"] = True
+        metadata["verification_status"] = "confirmed"
+        metadata["verification_window_minutes"] = 15
+        metadata["verification_results"] = []
+        metadata["trust_gate_evaluated"] = True
+        metadata["trust_gate_trust_level"] = 3
+        metadata["trust_gate_confidence_threshold"] = 0.9
+        metadata["trust_gate_approval_required"] = False
+        metadata["trust_gate_decisions"] = []
+        metadata["trust_gate_rollback_paths"] = []
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        verification_pos = body.index("### Post-Fix Verification")
+        trust_gate_pos = body.index("### Trust Gate Decisions")
+        audit_pos = body.index("### Audit Trail")
+        assert verification_pos < trust_gate_pos < audit_pos

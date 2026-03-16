@@ -187,6 +187,7 @@ class InvestigatorAgent:
         from beeper_investigator.remediation.runbook_executor import RunbookExecutorStep
         from beeper_investigator.remediation.sandbox_executor import SandboxExecutorStep
         from beeper_investigator.remediation.test_planner import TestPlannerStep
+        from beeper_investigator.remediation.trust_gate import TrustGateStep
         from beeper_investigator.steps.impact_assessment import CustomerImpactStep
         from beeper_investigator.steps.investigation_documentation import (
             InvestigationDocumentationStep,
@@ -263,6 +264,12 @@ class InvestigatorAgent:
                 sources=self.sources,
             ),
             PRGeneratorStep(
+                llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+                pipeline_metadata=self._pipeline_metadata,
+            ),
+            TrustGateStep(
                 llm_client=self.llm_client,
                 context=self.context,
                 status_updater=self.status_updater,
