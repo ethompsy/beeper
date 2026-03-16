@@ -1,0 +1,29 @@
+<div class="feedback-buttons">
+    <p class="feedback-prompt">Was this investigation accurate?</p>
+    <div class="feedback-btn-group">
+        <button class="btn btn-sm feedback-btn feedback-accurate{{ ' feedback-btn-selected' if current_feedback == 'accurate' else '' }}"
+                hx-post="/investigations/{{ investigation_id }}/feedback"
+                hx-target="#feedback-section"
+                hx-swap="innerHTML"
+                hx-vals='{"feedback_type": "accurate"}'
+                type="button">
+            Accurate
+        </button>
+        <button class="btn btn-sm feedback-btn feedback-inaccurate{{ ' feedback-btn-selected' if current_feedback == 'inaccurate' else '' }}"
+                hx-post="/investigations/{{ investigation_id }}/feedback"
+                hx-target="#feedback-section"
+                hx-swap="innerHTML"
+                hx-vals='{"feedback_type": "inaccurate"}'
+                type="button">
+            Inaccurate
+        </button>
+        <button class="btn btn-sm feedback-btn feedback-not-an-issue{{ ' feedback-btn-selected' if current_feedback == 'not_an_issue' else '' }}"
+                hx-post="/investigations/{{ investigation_id }}/feedback"
+                hx-target="#feedback-section"
+                hx-swap="innerHTML"
+                hx-vals='{"feedback_type": "not_an_issue"}'
+                type="button">
+            Not an Issue
+        </button>
+    </div>
+</div>

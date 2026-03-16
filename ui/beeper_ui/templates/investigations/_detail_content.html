@@ -77,6 +77,18 @@
     </div>
     {% endif %}
 
+    {# Investigation Feedback (One-Click) #}
+    {% if investigation.status not in ('investigating', 'failed') %}
+    <div class="card">
+        <h3>Investigation Feedback</h3>
+        <div id="feedback-section" sse-swap="feedback-update" hx-swap="innerHTML">
+            {% set current_feedback = findings.get('investigation_feedback', '') if findings else '' %}
+            {% set investigation_id = investigation.id %}
+            {% include "investigations/_feedback_buttons.html" with context %}
+        </div>
+    </div>
+    {% endif %}
+
     {# Resolution Confirmation #}
     {% if findings and findings.get('recommendations') and investigation.status not in ('investigating', 'failed') %}
     <div class="card">

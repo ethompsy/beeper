@@ -17,6 +17,7 @@ from flask import (
     stream_with_context,
 )
 
+from beeper_ui.middleware.permissions import require_role
 from beeper_ui.services.confidence_gate_service import (
     ConfidenceGateError,
     ConfidenceGateService,
@@ -92,6 +93,16 @@ REJECTION_REASON_LABELS = {
     "better_alternative": "Better alternative exists",
     "not_applicable": "Not applicable",
     "other": "Other",
+}
+
+# Valid one-click investigation feedback types
+VALID_FEEDBACK_TYPES = {"accurate", "inaccurate", "not_an_issue"}
+
+# Human-readable feedback type labels
+FEEDBACK_TYPE_LABELS = {
+    "accurate": "Accurate",
+    "inaccurate": "Inaccurate",
+    "not_an_issue": "Not an Issue",
 }
 
 # SSE polling interval in seconds
@@ -805,6 +816,51 @@ def resolve_investigation_route(investigation_id: str) -> str | tuple[str, int]:
         svc.close()
 
 
+@investigations_bp.route("/<investigation_id>/feedback", methods=["POST"])
+@require_role("user")
+def submit_investigation_feedback(investigation_id: str) -> str | tuple[str, int]:
+    """Submit one-click investigation feedback (accurate/inaccurate/not-an-issue).
+
+    Records feedback type, user identity, and timestamp to Qdrant.
+    Single click — no modal, no form, no confirmation required.
+    Last feedback wins (overwrites previous).
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    feedback_type = (request.form.get("feedback_type") or "").strip()
+    if feedback_type not in VALID_FEEDBACK_TYPES:
+        return render_template(
+            "investigations/_feedback_result.html",
+            error_message="Invalid feedback type.",
+            current_feedback="",
+            investigation_id=investigation_id,
+        ), 400
+
+    user = request.headers.get("X-Beeper-User", "anonymous")
+    now = datetime.now(timezone.utc).isoformat()
+
+    svc = get_investigation_service()
+    try:
+        svc.save_resolution_feedback(investigation_id, {
+            "investigation_feedback": feedback_type,
+            "investigation_feedback_by": user,
+            "investigation_feedback_at": now,
+        })
+    finally:
+        svc.close()
+
+    feedback_label = FEEDBACK_TYPE_LABELS.get(feedback_type, feedback_type)
+    return render_template(
+        "investigations/_feedback_result.html",
+        current_feedback=feedback_type,
+        feedback_label=feedback_label,
+        investigation_id=investigation_id,
+        feedback_by=user,
+        feedback_at=now,
+    )
+
+
 def _generate_detail_sse_events(
     operator_url: str,
     operator_timeout: float,
@@ -825,6 +881,7 @@ def _generate_detail_sse_events(
     kb_update_sent = False
     last_resolution_action: str | None = None
     last_resolution_outcome: str | None = None
+    last_investigation_feedback: str | None = None
 
     while True:
         try:
@@ -953,6 +1010,24 @@ def _generate_detail_sse_events(
                     )
                     yield f"event: resolution-update\n{resolve_lines}\n\n"
                     last_resolution_outcome = current_outcome
+
+            # Check for investigation feedback changes (one-click feedback)
+            if findings:
+                current_inv_feedback = str(
+                    findings.get("investigation_feedback", "")
+                ) or None
+                if current_inv_feedback != last_investigation_feedback:
+                    feedback_html = render_template(
+                        "investigations/_feedback_buttons.html",
+                        current_feedback=current_inv_feedback or "",
+                        investigation_id=investigation_id,
+                    )
+                    feedback_lines = "\n".join(
+                        f"data: {line}"
+                        for line in feedback_html.split("\n")
+                    )
+                    yield f"event: feedback-update\n{feedback_lines}\n\n"
+                    last_investigation_feedback = current_inv_feedback
 
             # Send completion event
             if current_phase == "completed":
