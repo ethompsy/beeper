@@ -320,6 +320,51 @@ class TestVerificationStepExecution:
         )
         assert len(results) == 0
 
+    def test_api_probe_invalid_url_returns_error(self):
+        step, _ = _make_step()
+        vstep = {
+            "step_number": 1,
+            "title": "Bad URL",
+            "verification_type": "api_probe",
+            "expected_outcome": "HTTP 200",
+            "metric_or_endpoint": "not-a-url",
+        }
+        result = step._dispatch_step(vstep, "beeper-sandbox")
+        assert result.status == "error"
+        assert "Invalid endpoint URL" in str(result.error_message)
+
+    def test_health_check_invalid_url_returns_error(self):
+        step, _ = _make_step()
+        vstep = {
+            "step_number": 1,
+            "title": "Bad URL",
+            "verification_type": "health_check",
+            "expected_outcome": "HTTP 200",
+            "metric_or_endpoint": "ftp://invalid",
+        }
+        result = step._dispatch_step(vstep, "beeper-sandbox")
+        assert result.status == "error"
+        assert "Invalid endpoint URL" in str(result.error_message)
+
+    def test_log_inspection_escapes_backticks_in_action(self):
+        step, _ = _make_step()
+        step.sources.loki.query.return_value = {
+            "data": {"result": [{"stream": {}, "values": []}]}
+        }
+        vstep = {
+            "step_number": 1,
+            "title": "Log check with backticks",
+            "verification_type": "log_inspection",
+            "expected_outcome": "No errors",
+            "action": "search `error` pattern",
+        }
+        result = step._dispatch_step(vstep, "beeper-sandbox")
+        # Should not error from backticks — they get escaped
+        assert result.verification_type == "log_inspection"
+        # Verify loki was called with escaped action
+        call_args = step.sources.loki.query.call_args[0][0]
+        assert "\\`" in call_args
+
 
 class TestResultAggregation:
     def test_all_pass(self):
@@ -455,9 +500,6 @@ class TestExecuteOrchestration:
         assert result.data["sandbox_executed"] is True
         assert result.data["sandbox_namespace"] == "test-sandbox"
         assert result.data["sandbox_steps_total"] == 2
-        # First step: metric_check (passes)
-        # Second step: health_check (errors — no real server)
-        assert result.data["sandbox_steps_total"] >= 1
 
     def test_prometheus_query_failure_returns_error(self):
         meta = {

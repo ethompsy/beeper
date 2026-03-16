@@ -82,7 +82,7 @@ development_status:
   4-2-human-language-runbook-execution: done
   4-3-advisory-test-plan-generation: done
   4-4-auto-pr-generation-evidence-trail: done
-  4-5-sandbox-test-execution: review
+  4-5-sandbox-test-execution: done
   4-6-post-fix-metric-verification: backlog
   4-7-trust-gated-remediation-actions: backlog
   4-8-proven-fix-accumulation-kb: backlog

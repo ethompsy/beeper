@@ -11,12 +11,13 @@ import os
 import time as time_module
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
-from beeper_investigator.llm.client import LlmClient, ModelTier
+from beeper_investigator.llm.client import LlmClient
 from beeper_investigator.steps import StepResult
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,12 @@ class SandboxExecutorStep:
             logger.info("Sandbox namespace detected via K8s API: beeper-sandbox")
             return "beeper-sandbox"
         except Exception as exc:
-            logger.info("No sandbox namespace available: %s", exc)
+            # Distinguish K8s 404 (namespace doesn't exist) from real errors
+            status = getattr(exc, "status", None)
+            if status == 404:
+                logger.info("Sandbox namespace 'beeper-sandbox' does not exist")
+            else:
+                logger.warning("Error checking sandbox namespace: %s", exc)
             return None
 
     # ── Main execution ────────────────────────────────────
@@ -347,6 +353,19 @@ class SandboxExecutorStep:
         expected = str(step.get("expected_outcome", ""))
         endpoint = str(step.get("metric_or_endpoint", ""))
 
+        parsed = urlparse(endpoint)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return SandboxStepResult(
+                step_number=step_number,
+                title=title,
+                status="error",
+                verification_type="api_probe",
+                expected_outcome=expected,
+                actual_value="",
+                error_message=f"Invalid endpoint URL: {endpoint}",
+                duration_seconds=time_module.monotonic() - start,
+            )
+
         try:
             with httpx.Client(timeout=10.0) as client:
                 response = client.get(endpoint)
@@ -384,6 +403,19 @@ class SandboxExecutorStep:
         title = str(step.get("title", "Health Check"))
         expected = str(step.get("expected_outcome", ""))
         endpoint = str(step.get("metric_or_endpoint", ""))
+
+        parsed = urlparse(endpoint)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return SandboxStepResult(
+                step_number=step_number,
+                title=title,
+                status="error",
+                verification_type="health_check",
+                expected_outcome=expected,
+                actual_value="",
+                error_message=f"Invalid endpoint URL: {endpoint}",
+                duration_seconds=time_module.monotonic() - start,
+            )
 
         try:
             with httpx.Client(timeout=10.0) as client:
@@ -436,8 +468,9 @@ class SandboxExecutorStep:
             )
 
         try:
-            # Scope query to sandbox namespace
-            logql = f'{{namespace="{namespace}"}} |= `{action}`'
+            # Scope query to sandbox namespace; escape backticks in action
+            safe_action = action.replace("`", "\\`")
+            logql = f'{{namespace="{namespace}"}} |= `{safe_action}`'
             result = self.sources.loki.query(logql, limit=10)
             result_data = result.get("data", {}).get("result", [])
             actual = str(result_data) if result_data else "no matching logs"
@@ -507,16 +540,3 @@ class SandboxExecutorStep:
             return "fail"
         return "pass"
 
-    # ── Helpers ────────────────────────────────────────────
-
-    def _get_model_name(self) -> str | None:
-        """Get the model name for remediation tier, with fallback to deep_rca."""
-        tier: ModelTier
-        for tier in ("remediation", "deep_rca"):
-            try:
-                model = self.llm_client.select_model(tier)
-                if model is not None:
-                    return model
-            except (KeyError, ValueError, AttributeError):
-                logger.debug("Model tier '%s' not available, trying next", tier)
-        return None
