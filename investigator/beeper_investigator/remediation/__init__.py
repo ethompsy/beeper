@@ -17,6 +17,9 @@ from beeper_investigator.remediation.metric_verifier import (
     VerificationResult,
 )
 from beeper_investigator.remediation.pr_generator import PRGeneratorStep
+from beeper_investigator.remediation.proven_fix_accumulator import (
+    ProvenFixAccumulatorStep,
+)
 from beeper_investigator.remediation.runbook_executor import RunbookExecutorStep
 from beeper_investigator.remediation.sandbox_executor import (
     SandboxExecutorStep,
@@ -38,6 +41,7 @@ __all__ = [
     "MetricVerifierStep",
     "PRGeneratorStep",
     "PRResult",
+    "ProvenFixAccumulatorStep",
     "RunbookExecutorStep",
     "SandboxExecutorStep",
     "SandboxStepResult",

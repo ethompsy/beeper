@@ -85,7 +85,7 @@ development_status:
   4-5-sandbox-test-execution: done
   4-6-post-fix-metric-verification: done
   4-7-trust-gated-remediation-actions: done
-  4-8-proven-fix-accumulation-kb: backlog
+  4-8-proven-fix-accumulation-kb: review
   epic-4-retrospective: optional
 
   # Epic 5: Real-Time Investigation Collaboration (Wave 3)

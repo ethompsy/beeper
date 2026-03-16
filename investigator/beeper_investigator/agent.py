@@ -184,6 +184,9 @@ class InvestigatorAgent:
         """
         from beeper_investigator.remediation.metric_verifier import MetricVerifierStep
         from beeper_investigator.remediation.pr_generator import PRGeneratorStep
+        from beeper_investigator.remediation.proven_fix_accumulator import (
+            ProvenFixAccumulatorStep,
+        )
         from beeper_investigator.remediation.runbook_executor import RunbookExecutorStep
         from beeper_investigator.remediation.sandbox_executor import SandboxExecutorStep
         from beeper_investigator.remediation.test_planner import TestPlannerStep
@@ -271,6 +274,13 @@ class InvestigatorAgent:
             ),
             TrustGateStep(
                 llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+                pipeline_metadata=self._pipeline_metadata,
+            ),
+            ProvenFixAccumulatorStep(
+                llm_client=self.llm_client,
+                kb_client=self.kb_client,
                 context=self.context,
                 status_updater=self.status_updater,
                 pipeline_metadata=self._pipeline_metadata,

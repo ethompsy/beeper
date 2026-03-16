@@ -43,7 +43,7 @@ class TestTestPlannerInPipeline:
         agent = _make_agent()
         steps = agent._build_steps()
 
-        assert len(steps) == 12
+        assert len(steps) == 13
         assert isinstance(steps[7], TestPlannerStep)
         assert steps[7].name == "Test Plan Design"
 

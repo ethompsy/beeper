@@ -43,7 +43,7 @@ class TestRunbookInPipeline:
         agent = _make_agent()
         steps = agent._build_steps()
 
-        assert len(steps) == 12
+        assert len(steps) == 13
         assert isinstance(steps[6], RunbookExecutorStep)
         assert steps[6].name == "Runbook Execution"
 

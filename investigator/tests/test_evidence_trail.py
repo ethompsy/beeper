@@ -536,3 +536,78 @@ class TestTrustGateDecisionsSection:
         trust_gate_pos = body.index("### Trust Gate Decisions")
         audit_pos = body.index("### Audit Trail")
         assert verification_pos < trust_gate_pos < audit_pos
+
+
+# ── Proven Fix KB Entry Section ──────────────────────────
+
+
+class TestProvenFixKBSection:
+    def test_proven_fix_section_rendered_when_entry_created(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["kb_entry_created"] = True
+        metadata["proven_fix_entry_id"] = "abcd1234-5678-9012-3456-789012345678"
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Proven Fix KB Entry" in body
+        assert "abcd1234-5678-9012-3456-789012345678" in body
+        assert "proven" in body
+        assert "knowledge base" in body
+
+    def test_no_section_when_entry_not_created(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["kb_entry_created"] = False
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Proven Fix KB Entry" not in body
+
+    def test_no_section_when_key_missing(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        # No kb_entry_created key at all
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "### Proven Fix KB Entry" not in body
+
+    def test_audit_trail_includes_kb_entry_when_created(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["kb_entry_created"] = True
+        metadata["proven_fix_entry_id"] = "abcd1234-5678-9012-3456-789012345678"
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "KB entry (abcd1234)" in body
+
+    def test_audit_trail_no_kb_entry_when_not_created(self):
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["kb_entry_created"] = False
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        assert "KB entry" not in body
+
+    def test_proven_fix_section_between_trust_gate_and_audit(self):
+        """Proven fix section appears after trust gate and before audit trail."""
+        fmt = EvidenceTrailFormatter()
+        ctx = _make_context()
+        metadata = _full_metadata()
+        metadata["trust_gate_evaluated"] = True
+        metadata["trust_gate_trust_level"] = 3
+        metadata["trust_gate_confidence_threshold"] = 0.9
+        metadata["trust_gate_approval_required"] = False
+        metadata["trust_gate_decisions"] = []
+        metadata["trust_gate_rollback_paths"] = []
+        metadata["kb_entry_created"] = True
+        metadata["proven_fix_entry_id"] = "test-entry-id"
+        body = fmt.format_pr_body(ctx, metadata, "Fix")
+
+        trust_gate_pos = body.index("### Trust Gate Decisions")
+        kb_pos = body.index("### Proven Fix KB Entry")
+        audit_pos = body.index("### Audit Trail")
+        assert trust_gate_pos < kb_pos < audit_pos

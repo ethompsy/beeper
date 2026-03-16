@@ -101,7 +101,22 @@ class TestKnowledgeEntry:
                 title="Test Entry",
                 content="Test content",
             )
-            assert entry.entry_type in ["investigation", "runbook", "correction"]
+            assert entry.entry_type in [
+                "investigation", "runbook", "correction", "proven_fix",
+            ]
+
+    def test_proven_fix_entry_type(self) -> None:
+        """Test KnowledgeEntryType.PROVEN_FIX value is 'proven_fix'."""
+        assert KnowledgeEntryType.PROVEN_FIX.value == "proven_fix"
+        entry = KnowledgeEntry(
+            entry_id="kb-proven-001",
+            entry_type=KnowledgeEntryType.PROVEN_FIX,
+            service="payments",
+            created_at=datetime.now(timezone.utc),
+            title="Proven Fix: Connection Pool Exhaustion",
+            content="Fix content",
+        )
+        assert entry.entry_type == "proven_fix"
 
 
 class TestSearchResult:

@@ -255,6 +255,19 @@ class EvidenceTrailFormatter:
 
             sections.append("\n".join(trust_lines) + "\n")
 
+        # Proven fix KB entry (if created)
+        if pipeline_metadata.get("kb_entry_created"):
+            entry_id = pipeline_metadata.get("proven_fix_entry_id", "?")
+            kb_lines = [
+                "### Proven Fix KB Entry\n"
+                f"**KB Entry ID:** `{entry_id}`\n"
+                f"**Validation Status:** proven\n"
+                f"**Service:** {context.service}\n"
+                "This fix has been accumulated in the knowledge base "
+                "for future reference.\n"
+            ]
+            sections.append("\n".join(kb_lines) + "\n")
+
         # Audit trail
         verification_status = "pending"
         if pipeline_metadata.get("verification_executed"):
@@ -265,10 +278,18 @@ class EvidenceTrailFormatter:
             verification_status = pipeline_metadata.get(
                 "sandbox_overall_status", "pending"
             )
+
+        kb_step = ""
+        if pipeline_metadata.get("kb_entry_created"):
+            short_id = str(
+                pipeline_metadata.get("proven_fix_entry_id", "?")
+            )[:8]
+            kb_step = f" → KB entry ({short_id})"
+
         sections.append(
             "### Audit Trail\n"
             f"anomaly ({context.condition}) → investigation ({context.investigation_id})"
-            f" → fix (this PR) → verification ({verification_status})\n"
+            f" → fix (this PR) → verification ({verification_status}){kb_step}\n"
         )
 
         # Footer

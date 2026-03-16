@@ -45,7 +45,7 @@ class TestTrustGatePipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 12
+        assert len(steps) == 13
         assert isinstance(steps[11], TrustGateStep)
         assert steps[11].name == "Trust Gate Evaluation"
 
@@ -67,9 +67,9 @@ class TestTrustGatePipelineIntegration:
             agent_tl5 = _make_agent(trust_level=5)
             steps_tl5 = agent_tl5._build_steps()
 
-        assert len(steps_tl1) == 12
+        assert len(steps_tl1) == 13
         assert isinstance(steps_tl1[11], TrustGateStep)
-        assert len(steps_tl5) == 12
+        assert len(steps_tl5) == 13
         assert isinstance(steps_tl5[11], TrustGateStep)
 
     def test_step_after_pr_generator(self):
@@ -83,13 +83,13 @@ class TestTrustGatePipelineIntegration:
         assert isinstance(steps[10], PRGeneratorStep)
         assert isinstance(steps[11], TrustGateStep)
 
-    def test_total_pipeline_length_is_12(self):
-        """Pipeline has exactly 12 steps (6 core + 6 remediation)."""
+    def test_total_pipeline_length_is_13(self):
+        """Pipeline has exactly 13 steps (6 core + 7 remediation)."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 12
+        assert len(steps) == 13
 
     def test_step_protocol_compliance(self):
         """TrustGateStep implements InvestigationStep protocol."""
@@ -102,10 +102,10 @@ class TestTrustGatePipelineIntegration:
         trust_gate_step = steps[11]
         assert isinstance(trust_gate_step, InvestigationStep)
 
-    def test_trust_gate_is_last_step(self):
-        """TrustGateStep is the last step in the pipeline."""
+    def test_trust_gate_is_second_to_last_step(self):
+        """TrustGateStep is the second-to-last step (before ProvenFixAccumulatorStep)."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert isinstance(steps[-1], TrustGateStep)
+        assert isinstance(steps[11], TrustGateStep)

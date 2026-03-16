@@ -45,7 +45,7 @@ class TestPRGeneratorPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 12
+        assert len(steps) == 13
         assert isinstance(steps[10], PRGeneratorStep)
         assert steps[10].name == "PR Generation"
 
@@ -68,9 +68,9 @@ class TestPRGeneratorPipelineIntegration:
             steps_tl5 = agent_tl5._build_steps()
 
         # Step is present regardless of trust level
-        assert len(steps_tl1) == 12
+        assert len(steps_tl1) == 13
         assert isinstance(steps_tl1[10], PRGeneratorStep)
-        assert len(steps_tl5) == 12
+        assert len(steps_tl5) == 13
         assert isinstance(steps_tl5[10], PRGeneratorStep)
 
     def test_step_order_after_metric_verifier(self):

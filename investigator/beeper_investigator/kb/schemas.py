@@ -25,6 +25,7 @@ class KnowledgeEntryType(str, Enum):
     INVESTIGATION = "investigation"
     RUNBOOK = "runbook"
     CORRECTION = "correction"
+    PROVEN_FIX = "proven_fix"
 
 
 class InvestigationEntry(BaseModel):
