@@ -1,6 +1,6 @@
 # Story 4.1: Repository CRD & Git Provider Integration
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -358,8 +358,8 @@ Claude Opus 4.6
 
 ### File List
 
-- `operator/src/crds/repository.rs` (NEW) — Repository CRD: RepositorySpec, RepositoryProvider, BranchPolicy, CodingStandards, RepositoryStatus, RepositoryCondition, validate_spec, 31 unit tests
-- `operator/src/controllers/repository.rs` (NEW) — Repository controller: reconcile, patch_status, error_policy, run_repository_controller, backoff_duration, 5 unit tests
+- `operator/src/crds/repository.rs` (NEW) — Repository CRD: RepositorySpec, RepositoryProvider, BranchPolicy, CodingStandards, RepositoryStatus, RepositoryCondition, validate_spec, 33 unit tests
+- `operator/src/controllers/repository.rs` (NEW) — Repository controller: reconcile, patch_status, error_policy, run_repository_controller, backoff_duration, 7 unit tests
 - `operator/src/crds/mod.rs` (MODIFIED) — Added repository module and public re-exports
 - `operator/src/controllers/mod.rs` (MODIFIED) — Added repository module and run_repository_controller re-export
 - `operator/src/lib.rs` (MODIFIED) — Added Repository, RepositorySpec, RepositoryStatus to CRD re-exports; added run_repository_controller to controller re-exports
@@ -367,3 +367,30 @@ Claude Opus 4.6
 - `operator/src/crds/notification_channel.rs` (MODIFIED) — Fixed pre-existing raw string literal test (r#""# → r##""##)
 - `operator/src/controllers/investigation.rs` (MODIFIED) — Fixed pre-existing non-exhaustive match for AwaitingConfirmation phase
 - `operator/src/api.rs` (MODIFIED) — Fixed pre-existing missing fields in ServiceLevelResponse test
+
+### Senior Developer Review (AI)
+
+**Reviewer:** eric on 2026-03-16
+**Outcome:** Approved with fixes applied
+
+**Issues Found:** 5 MEDIUM, 2 LOW (0 HIGH)
+**Issues Fixed:** 5 (all MEDIUM + 1 LOW)
+**Action Items:** 0
+
+**Fixes Applied:**
+1. Fixed RepositoryCondition enum: changed `rename_all = "lowercase"` to `snake_case`, removed manual `#[serde(rename)]` overrides
+2. Added `PartialEq` derives to RepositorySpec, BranchPolicy, CodingStandards, RepositoryStatus
+3. Added URL format validation: `validate_spec` now rejects URLs not starting with `https://` or `http://`
+4. Added `#[instrument]` tracing span to reconcile function (consistent with 3 of 5 other controllers)
+5. Added missing `ValidationError(String)` and `SecretNotFound(String)` variants to RepositoryError (per subtask 2.1 spec)
+6. Added 4 new tests: URL format validation (2), error variant Display strings (2)
+
+**Remaining LOW (accepted):**
+- Deterministic jitter in `backoff_duration` — matches existing notification_channel pattern
+- `backoff_duration(1)` hardcoded in error_policy — matches existing notification_channel pattern
+
+**Test Results Post-Review:**
+- Repository: 40 passed (was 36)
+- Operator total: 527 passed, 4 pre-existing failures
+- Investigator: 505 passed, 12 pre-existing async failures
+- UI: 1,388 passed

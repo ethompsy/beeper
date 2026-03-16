@@ -15,7 +15,7 @@ use kube::{
     Client, ResourceExt,
 };
 use serde_json::json;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::crds::{Repository, RepositoryCondition, RepositoryStatus};
 use crate::crds::repository::validate_spec;
@@ -31,6 +31,12 @@ pub enum RepositoryError {
 
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
+
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+
+    #[error("Secret not found: {0}")]
+    SecretNotFound(String),
 }
 
 /// Context shared across reconciliation calls
@@ -42,6 +48,7 @@ pub struct RepositoryContext {
 ///
 /// Validates the spec, checks that credentials_secret exists,
 /// and reports repository status (connected/auth_error/not_found/error).
+#[instrument(skip(repo, ctx), fields(repository_name = %repo.name_any()))]
 async fn reconcile(
     repo: Arc<Repository>,
     ctx: Arc<RepositoryContext>,
@@ -256,6 +263,18 @@ mod tests {
     fn test_repository_error_from_serde() {
         // Verify the From<serde_json::Error> impl compiles
         let _: fn(serde_json::Error) -> RepositoryError = RepositoryError::SerializationError;
+    }
+
+    #[test]
+    fn test_repository_error_display_validation() {
+        let err = RepositoryError::ValidationError("url is invalid".to_string());
+        assert_eq!(format!("{}", err), "Validation error: url is invalid");
+    }
+
+    #[test]
+    fn test_repository_error_display_secret_not_found() {
+        let err = RepositoryError::SecretNotFound("my-secret".to_string());
+        assert_eq!(format!("{}", err), "Secret not found: my-secret");
     }
 
     #[test]

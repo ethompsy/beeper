@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Specification for a Repository resource
-#[derive(CustomResource, Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[derive(CustomResource, Deserialize, Serialize, Clone, Debug, JsonSchema, PartialEq)]
 #[kube(
     group = "beeper.dev",
     version = "v1",
@@ -48,7 +48,7 @@ pub enum RepositoryProvider {
 }
 
 /// Branch policy configuration for auto-PR generation
-#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct BranchPolicy {
     /// Base branch for PRs (defaults to "main" in controller logic)
@@ -65,7 +65,7 @@ pub struct BranchPolicy {
 }
 
 /// Coding standards configuration for auto-generated fixes
-#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct CodingStandards {
     /// Programming language
@@ -83,7 +83,7 @@ pub struct CodingStandards {
 
 /// Current condition of a Repository resource
 #[derive(Deserialize, Serialize, Clone, Debug, Default, JsonSchema, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum RepositoryCondition {
     /// Initial state — not yet checked
     #[default]
@@ -91,17 +91,15 @@ pub enum RepositoryCondition {
     /// Repository accessible and credentials valid
     Connected,
     /// Credentials secret missing or invalid
-    #[serde(rename = "auth_error")]
     AuthError,
     /// Repository URL not found or inaccessible
-    #[serde(rename = "not_found")]
     NotFound,
     /// General error (e.g., validation failure)
     Error,
 }
 
 /// Status of a Repository resource
-#[derive(Deserialize, Serialize, Clone, Debug, Default, JsonSchema)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct RepositoryStatus {
     /// Current condition of the repository connection
@@ -125,6 +123,10 @@ pub struct RepositoryStatus {
 pub fn validate_spec(spec: &RepositorySpec) -> Result<(), String> {
     if spec.url.is_empty() {
         return Err("spec.url must not be empty".to_string());
+    }
+
+    if !spec.url.starts_with("https://") && !spec.url.starts_with("http://") {
+        return Err("spec.url must start with https:// or http://".to_string());
     }
 
     if spec.credentials_secret.is_empty() {
@@ -463,6 +465,22 @@ mod tests {
         let result = validate_spec(&spec);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("test_command must not be empty"));
+    }
+
+    #[test]
+    fn test_validate_invalid_url_format() {
+        let mut spec = sample_github_spec();
+        spec.url = "not-a-url".to_string();
+        let result = validate_spec(&spec);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must start with https:// or http://"));
+    }
+
+    #[test]
+    fn test_validate_http_url_accepted() {
+        let mut spec = sample_github_spec();
+        spec.url = "http://internal-gitlab.corp.local/org/repo".to_string();
+        assert!(validate_spec(&spec).is_ok());
     }
 
     #[test]
