@@ -4057,3 +4057,129 @@ a.match-badge.kb-entry-link::after {
 .budget-bar-fill.budget-critical {
     background: #ef4444;
 }
+
+/* ========================================
+   Noise Report Dashboard
+   ======================================== */
+
+.noise-filter-bar {
+    display: flex;
+    gap: 16px;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    align-items: flex-end;
+}
+
+.noise-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.noise-filter-group label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6b7280;
+}
+
+.noise-filter-group select {
+    padding: 6px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    background: #ffffff;
+}
+
+.noise-summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.noise-summary-card {
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    text-align: center;
+}
+
+.noise-summary-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #111827;
+    font-family: monospace;
+}
+
+.noise-summary-label {
+    color: #6b7280;
+    font-size: 0.875rem;
+    margin-top: 4px;
+}
+
+.noise-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.noise-table th {
+    text-align: left;
+    padding: 10px 12px;
+    background: #f9fafb;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #374151;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.noise-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 0.875rem;
+}
+
+.noise-worst-performer {
+    background: #fef2f2;
+}
+
+.noise-worst-performer td {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.noise-trend-display {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.noise-trend-point {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #f9fafb;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.noise-trend-label {
+    font-weight: 600;
+    color: #374151;
+    min-width: 50px;
+}
+
+.noise-trend-value {
+    font-family: monospace;
+    font-weight: 700;
+    color: #111827;
+}
+
+.noise-trend-count {
+    color: #9ca3af;
+    font-size: 0.75rem;
+}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Noise Report - Beeper{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Noise Report</h2>
+    <p>Signal-to-noise ratio and false page trends across services.</p>
+</div>
+<div class="noise-filter-bar">
+    <div class="noise-filter-group">
+        <label for="service-filter">Service</label>
+        <select id="service-filter" name="service"
+                hx-get="{{ url_for('reports.noise_report') }}"
+                hx-target="#noise-content"
+                hx-swap="innerHTML"
+                hx-include="[name='period']">
+            <option value="">All Services</option>
+            {% for svc in available_services %}
+            <option value="{{ svc }}" {% if svc == selected_service %}selected{% endif %}>{{ svc }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="noise-filter-group">
+        <label for="period-filter">Time Period</label>
+        <select id="period-filter" name="period"
+                hx-get="{{ url_for('reports.noise_report') }}"
+                hx-target="#noise-content"
+                hx-swap="innerHTML"
+                hx-include="[name='service']">
+            <option value="7d" {% if selected_period == "7d" %}selected{% endif %}>Last 7 Days</option>
+            <option value="30d" {% if selected_period == "30d" %}selected{% endif %}>Last 30 Days</option>
+            <option value="90d" {% if selected_period == "90d" %}selected{% endif %}>Last 90 Days</option>
+        </select>
+    </div>
+</div>
+<div id="noise-content">
+    {% include "reports/_noise_content.html" %}
+</div>
+{% endblock %}

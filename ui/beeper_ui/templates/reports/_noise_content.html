@@ -1,0 +1,78 @@
+{% if error_message %}
+<div class="card error-card">
+    <p class="error-text">{{ error_message }}</p>
+</div>
+{% elif report %}
+<div class="noise-summary-cards">
+    <div class="noise-summary-card">
+        <div class="noise-summary-value">{{ (report.overall_signal_to_noise * 100)|round(1) }}%</div>
+        <div class="noise-summary-label">Signal-to-Noise Ratio</div>
+    </div>
+    <div class="noise-summary-card">
+        <div class="noise-summary-value">{{ (report.overall_false_page_rate * 100)|round(1) }}%</div>
+        <div class="noise-summary-label">False Page Rate</div>
+    </div>
+    <div class="noise-summary-card">
+        <div class="noise-summary-value">{{ report.total_investigations_with_feedback }}</div>
+        <div class="noise-summary-label">Investigations with Feedback</div>
+    </div>
+    <div class="noise-summary-card">
+        <div class="noise-summary-value">{{ report.total_notifications }}</div>
+        <div class="noise-summary-label">Total Notifications</div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Per-Service Breakdown</h3>
+    {% if report.per_service %}
+    <table class="noise-table">
+        <thead>
+            <tr>
+                <th>Service</th>
+                <th>Investigations</th>
+                <th>Accurate</th>
+                <th>Inaccurate</th>
+                <th>Not an Issue</th>
+                <th>S/N Ratio</th>
+                <th>False Page Rate</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for svc in report.per_service %}
+            <tr class="{% if svc.is_worst_performer %}noise-worst-performer{% endif %}">
+                <td>{{ svc.service_name }}</td>
+                <td>{{ svc.total_investigations }}</td>
+                <td>{{ svc.accurate_count }}</td>
+                <td>{{ svc.inaccurate_count }}</td>
+                <td>{{ svc.not_an_issue_count }}</td>
+                <td>{{ (svc.signal_to_noise_ratio * 100)|round(1) }}%</td>
+                <td>{{ (svc.false_page_rate * 100)|round(1) }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No service data available for the selected filters.</p>
+    {% endif %}
+</div>
+
+{% if report.trend_data %}
+<div class="card">
+    <h3>False Page Rate Trend</h3>
+    <div class="noise-trend-display">
+        {% for point in report.trend_data %}
+        <div class="noise-trend-point">
+            <span class="noise-trend-label">{{ point.period_label }}</span>
+            <span class="noise-trend-value">{{ (point.false_page_rate * 100)|round(1) }}%</span>
+            <span class="noise-trend-count">({{ point.total }} notifications)</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% else %}
+<div class="card empty-state">
+    <p class="text-muted">No investigation feedback recorded yet. Signal-to-noise data will appear as SREs provide feedback.</p>
+    <a href="{{ url_for('investigations.list_investigations') }}" class="btn btn-secondary">View Investigations</a>
+</div>
+{% endif %}
