@@ -1,7 +1,8 @@
 """Trust level settings UI routes.
 
 Provides HTML pages for viewing and configuring per-service autonomy
-trust levels (TL1-5) and confidence gate thresholds.
+trust levels (TL1-5), confidence gate thresholds, and adaptive
+alert threshold tuning history.
 Separate from the API routes in trust_config.py and confidence_gates.py.
 """
 
@@ -12,6 +13,10 @@ import re
 from flask import Blueprint, render_template, request
 
 from beeper_ui.middleware.permissions import require_role
+from beeper_ui.services.adaptive_threshold_service import (
+    AdaptiveThresholdError,
+    AdaptiveThresholdService,
+)
 from beeper_ui.services.confidence_gate_service import (
     GATED_TRUST_LEVELS,
     ConfidenceGateError,
@@ -233,4 +238,158 @@ def update_gate_threshold(trust_level: int) -> str:
         config=config,
         error_message=None,
         trust_level=trust_level,
+    )
+
+
+def _get_adaptive_service() -> AdaptiveThresholdService:
+    """Get configured AdaptiveThresholdService instance."""
+    return AdaptiveThresholdService(
+        host=os.getenv("QDRANT_HOST", "localhost"),
+        port=int(os.getenv("QDRANT_PORT", "6333")),
+    )
+
+
+@trust_settings_bp.route("/history")
+@require_role("user")
+def threshold_history_page() -> str:
+    """Display threshold adjustment history page."""
+    return render_template("trust/history.html")
+
+
+@trust_settings_bp.route("/history/content")
+@require_role("user")
+def threshold_history_content() -> str:
+    """HTMX partial: threshold adjustment history table."""
+    service = _get_adaptive_service()
+    error_message = None
+    adjustments: list = []
+
+    try:
+        adjustments = service.get_adjustment_history()
+    except AdaptiveThresholdError as e:
+        logger.warning("Adjustment history query failed: %s", e)
+        error_message = "Unable to load adjustment history"
+    finally:
+        service.close()
+
+    return render_template(
+        "trust/_history_content.html",
+        adjustments=adjustments,
+        error_message=error_message,
+    )
+
+
+@trust_settings_bp.route(
+    "/adjustments/<adjustment_id>/apply", methods=["POST"]
+)
+@require_role("admin")
+def apply_adjustment(adjustment_id: str) -> str | tuple[str, int]:
+    """Apply a pending threshold adjustment."""
+    if not adjustment_id or not _SERVICE_NAME_RE.match(adjustment_id):
+        return render_template(
+            "trust/_adjustment_action_result.html",
+            error_message="Invalid adjustment ID",
+        ), 400
+
+    applied_by = request.headers.get("X-Beeper-User", "admin")
+
+    service = _get_adaptive_service()
+    try:
+        adjustment = service.apply_pending_adjustment(
+            adjustment_id=adjustment_id,
+            applied_by=applied_by,
+        )
+    except AdaptiveThresholdError as e:
+        logger.warning("Apply adjustment failed for %s: %s", adjustment_id, e)
+        return render_template(
+            "trust/_adjustment_action_result.html",
+            error_message=str(e),
+        ), 400
+    finally:
+        service.close()
+
+    return render_template(
+        "trust/_adjustment_action_result.html",
+        adjustment=adjustment,
+        action="applied",
+        error_message=None,
+    )
+
+
+@trust_settings_bp.route(
+    "/adjustments/<adjustment_id>/reject", methods=["POST"]
+)
+@require_role("admin")
+def reject_adjustment(adjustment_id: str) -> str | tuple[str, int]:
+    """Reject a pending threshold adjustment."""
+    if not adjustment_id or not _SERVICE_NAME_RE.match(adjustment_id):
+        return render_template(
+            "trust/_adjustment_action_result.html",
+            error_message="Invalid adjustment ID",
+        ), 400
+
+    rejected_by = request.headers.get("X-Beeper-User", "admin")
+
+    service = _get_adaptive_service()
+    try:
+        adjustment = service.reject_pending_adjustment(
+            adjustment_id=adjustment_id,
+            rejected_by=rejected_by,
+        )
+    except AdaptiveThresholdError as e:
+        logger.warning(
+            "Reject adjustment failed for %s: %s", adjustment_id, e
+        )
+        return render_template(
+            "trust/_adjustment_action_result.html",
+            error_message=str(e),
+        ), 400
+    finally:
+        service.close()
+
+    return render_template(
+        "trust/_adjustment_action_result.html",
+        adjustment=adjustment,
+        action="rejected",
+        error_message=None,
+    )
+
+
+@trust_settings_bp.route(
+    "/adaptive/evaluate/<service_name>", methods=["POST"]
+)
+@require_role("admin")
+def evaluate_service_threshold(service_name: str) -> str | tuple[str, int]:
+    """Trigger adaptive threshold evaluation for a service."""
+    if (
+        not service_name
+        or len(service_name) > 100
+        or not _SERVICE_NAME_RE.match(service_name)
+    ):
+        return render_template(
+            "trust/_adaptive_eval_result.html",
+            error_message="Invalid service name",
+            service_name=service_name,
+        ), 400
+
+    service = _get_adaptive_service()
+    try:
+        adjustment = service.evaluate_service(service_name)
+    except AdaptiveThresholdError as e:
+        logger.warning(
+            "Adaptive evaluation failed for %s: %s", service_name, e
+        )
+        return render_template(
+            "trust/_adaptive_eval_result.html",
+            error_message="Evaluation failed",
+            service_name=service_name,
+        ), 503
+    finally:
+        service.close()
+
+    return render_template(
+        "trust/_adaptive_eval_result.html",
+        adjustment=adjustment,
+        service_name=service_name,
+        error_message=None,
     )

@@ -1,0 +1,66 @@
+{% if error_message %}
+<div class="card error-card">
+    <p class="error-text">{{ error_message }}</p>
+</div>
+{% elif adjustments|length == 0 %}
+<div class="card">
+    <p>No threshold adjustments have been made yet.</p>
+    <p>Adjustments are proposed when a service accumulates 10+ investigation feedback entries.</p>
+</div>
+{% else %}
+<div class="card">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Service</th>
+                <th>Before</th>
+                <th>After</th>
+                <th>Change</th>
+                <th>Reason</th>
+                <th>Status</th>
+                <th>Trust Level</th>
+                <th>Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for adj in adjustments %}
+            <tr>
+                <td>{{ adj.service_name }}</td>
+                <td>{{ adj.previous_threshold }}</td>
+                <td>{{ adj.new_threshold }}</td>
+                <td>{{ adj.direction }} {{ adj.adjustment_pct }}%</td>
+                <td>{{ adj.reason }}</td>
+                <td>
+                    {% if adj.status == 'applied' %}
+                    <span class="badge badge-success">Applied</span>
+                    {% elif adj.status == 'pending' %}
+                    <span class="badge badge-warning">Pending</span>
+                    {% elif adj.status == 'rejected' %}
+                    <span class="badge badge-danger">Rejected</span>
+                    {% endif %}
+                </td>
+                <td><span class="badge trust-tl{{ adj.trust_level }}">TL{{ adj.trust_level }}</span></td>
+                <td>{{ adj.created_at[:16] }}</td>
+                <td id="adj-action-{{ adj.adjustment_id }}">
+                    {% if adj.status == 'pending' %}
+                    <button class="btn btn-sm btn-success"
+                            hx-post="{{ url_for('trust_settings.apply_adjustment', adjustment_id=adj.adjustment_id) }}"
+                            hx-target="#adj-action-{{ adj.adjustment_id }}"
+                            hx-swap="innerHTML">Apply</button>
+                    <button class="btn btn-sm btn-danger"
+                            hx-post="{{ url_for('trust_settings.reject_adjustment', adjustment_id=adj.adjustment_id) }}"
+                            hx-target="#adj-action-{{ adj.adjustment_id }}"
+                            hx-swap="innerHTML">Reject</button>
+                    {% elif adj.status == 'applied' and adj.applied_by %}
+                    <span class="text-muted">by {{ adj.applied_by }}</span>
+                    {% elif adj.status == 'rejected' and adj.rejected_by %}
+                    <span class="text-muted">by {{ adj.rejected_by }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}

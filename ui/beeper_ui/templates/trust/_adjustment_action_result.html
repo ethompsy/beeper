@@ -1,0 +1,7 @@
+{% if error_message %}
+<span class="error-text">{{ error_message }}</span>
+{% elif action == 'applied' %}
+<span class="badge badge-success">Applied</span>
+{% elif action == 'rejected' %}
+<span class="badge badge-danger">Rejected</span>
+{% endif %}

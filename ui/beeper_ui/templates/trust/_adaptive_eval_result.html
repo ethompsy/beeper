@@ -1,0 +1,20 @@
+{% if error_message %}
+<div class="card error-card">
+    <p class="error-text">{{ error_message }}</p>
+</div>
+{% elif adjustment is none %}
+<div class="card">
+    <p><strong>{{ service_name }}</strong>: No adjustment needed. Either insufficient feedback (&lt;10 entries) or mixed feedback signals.</p>
+</div>
+{% else %}
+<div class="card">
+    <p><strong>{{ adjustment.service_name }}</strong>: {{ adjustment.reason }}</p>
+    <p>Threshold: {{ adjustment.previous_threshold }} &rarr; {{ adjustment.new_threshold }} ({{ adjustment.direction }} {{ adjustment.adjustment_pct }}%)</p>
+    {% if adjustment.status == 'applied' %}
+    <p><span class="badge badge-success">Auto-applied</span> (TL{{ adjustment.trust_level }})</p>
+    {% elif adjustment.status == 'pending' %}
+    <p><span class="badge badge-warning">Pending admin approval</span> (TL{{ adjustment.trust_level }})</p>
+    <p>View and manage on the <a href="{{ url_for('trust_settings.threshold_history_page') }}">Adjustment History</a> page.</p>
+    {% endif %}
+</div>
+{% endif %}
