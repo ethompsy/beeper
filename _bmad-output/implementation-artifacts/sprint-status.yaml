@@ -66,7 +66,7 @@ development_status:
   epic-2-retrospective: done
 
   # Epic 3: Graduated Trust & Autonomy (Wave 2)
-  epic-3: in-progress
+  epic-3: done
   3-1-trust-level-configuration-persistence: done
   3-2-confidence-gate-engine: done
   3-3-confidence-gate-threshold-configuration: done
@@ -74,7 +74,7 @@ development_status:
   3-5-adaptive-alert-threshold-tuning: done
   3-6-impact-weighted-escalation-urgency: done
   3-7-noise-report-dashboard: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # Epic 4: Autonomous Remediation Pipeline (Wave 2)
   epic-4: backlog
