@@ -251,6 +251,15 @@ class AutoKBCreationService:
             "confidence_percentage": data.get("confidence_percentage"),
             "customer_impacting": data.get("customer_impacting"),
             "version": 1,
+            "linked_investigations": [
+                {
+                    "investigation_id": investigation_id,
+                    "relationship": "source",
+                    "linked_at": now,
+                }
+            ]
+            if investigation_id
+            else [],
         }
 
         persisted = self._persist_with_retry(entry_id, payload, embedding)
@@ -311,6 +320,19 @@ class AutoKBCreationService:
         new_related = new_data.get("related_investigations", [])
         merged_related = list(set(existing_related + new_related))
 
+        # Merge linked_investigations (deduplicate by investigation_id)
+        existing_links = existing_payload.get("linked_investigations", [])
+        merged_links = list(existing_links)
+        existing_link_ids = {
+            link.get("investigation_id") for link in existing_links
+        }
+        if investigation_id and investigation_id not in existing_link_ids:
+            merged_links.append({
+                "investigation_id": investigation_id,
+                "relationship": "related",
+                "linked_at": now,
+            })
+
         # Update payload
         updated_payload = dict(existing_payload)
         updated_payload.update({
@@ -319,6 +341,7 @@ class AutoKBCreationService:
             "key_findings": merged_findings,
             "contributing_investigations": merged_contribs,
             "related_investigations": merged_related,
+            "linked_investigations": merged_links,
         })
 
         # Enrich resolution if new data has more detail

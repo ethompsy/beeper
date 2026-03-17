@@ -1,0 +1,22 @@
+{% if linked_kb_entries %}
+<div class="linked-kb-list">
+    {% for entry in linked_kb_entries %}
+    <div class="kb-entry-card">
+        <div class="kb-entry-card-header">
+            <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}"
+               target="_blank"
+               class="kb-entry-link">{{ entry.title }}</a>
+            <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+        </div>
+        {% if entry.service %}
+        <span class="service-badge">{{ entry.service }}</span>
+        {% endif %}
+        {% if entry.created_at %}
+        <span class="entry-date">{{ entry.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state-text">No KB entries were created from this investigation.</p>
+{% endif %}

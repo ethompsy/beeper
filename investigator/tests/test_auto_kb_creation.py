@@ -530,6 +530,347 @@ class TestGracefulDegradation:
         assert result["action"] == "created"
 
 
+class TestLinkedInvestigationsOnCreate:
+    """Test that _create_new_entry populates linked_investigations correctly."""
+
+    def test_new_entry_includes_source_linked_investigation(self) -> None:
+        """New entry has linked_investigations with source relationship."""
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+        service = AutoKBCreationService(kb, llm)
+
+        data = _sample_investigation_data()
+        service.create_or_update_from_investigation(data)
+
+        # Find the knowledge collection upsert
+        for call in kb.client.upsert.call_args_list:
+            collection = call[0][0] if call[0] else call.kwargs.get("collection_name")
+            if collection == "knowledge":
+                points = call[0][1] if len(call[0]) > 1 else call.kwargs.get("points")
+                payload = points[0].payload
+                linked = payload["linked_investigations"]
+                assert len(linked) == 1
+                assert linked[0]["investigation_id"] == "inv-test-001"
+                assert linked[0]["relationship"] == "source"
+                assert "linked_at" in linked[0]
+                return
+        pytest.fail("No knowledge collection upsert found")
+
+    def test_new_entry_linked_at_is_iso_timestamp(self) -> None:
+        """The linked_at field is a valid ISO 8601 timestamp."""
+        from datetime import datetime
+
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+        service = AutoKBCreationService(kb, llm)
+
+        data = _sample_investigation_data()
+        service.create_or_update_from_investigation(data)
+
+        for call in kb.client.upsert.call_args_list:
+            collection = call[0][0] if call[0] else call.kwargs.get("collection_name")
+            if collection == "knowledge":
+                points = call[0][1] if len(call[0]) > 1 else call.kwargs.get("points")
+                payload = points[0].payload
+                linked_at = payload["linked_investigations"][0]["linked_at"]
+                # Should parse without error
+                parsed = datetime.fromisoformat(linked_at)
+                assert parsed is not None
+                return
+        pytest.fail("No knowledge collection upsert found")
+
+    def test_new_entry_no_linked_investigations_when_no_investigation_id(self) -> None:
+        """When investigation_id is empty, linked_investigations is empty list."""
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+        service = AutoKBCreationService(kb, llm)
+
+        data = _sample_investigation_data()
+        data["investigation_id"] = ""
+        service.create_or_update_from_investigation(data)
+
+        for call in kb.client.upsert.call_args_list:
+            collection = call[0][0] if call[0] else call.kwargs.get("collection_name")
+            if collection == "knowledge":
+                points = call[0][1] if len(call[0]) > 1 else call.kwargs.get("points")
+                payload = points[0].payload
+                assert payload["linked_investigations"] == []
+                return
+        pytest.fail("No knowledge collection upsert found")
+
+    def test_linked_investigation_matches_source_investigation_id(self) -> None:
+        """The linked investigation_id matches source_investigation_id in payload."""
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+        service = AutoKBCreationService(kb, llm)
+
+        data = _sample_investigation_data()
+        service.create_or_update_from_investigation(data)
+
+        for call in kb.client.upsert.call_args_list:
+            collection = call[0][0] if call[0] else call.kwargs.get("collection_name")
+            if collection == "knowledge":
+                points = call[0][1] if len(call[0]) > 1 else call.kwargs.get("points")
+                payload = points[0].payload
+                linked_inv_id = payload["linked_investigations"][0]["investigation_id"]
+                assert payload["source_investigation_id"] == linked_inv_id
+                return
+        pytest.fail("No knowledge collection upsert found")
+
+
+class TestLinkedInvestigationsOnEnrich:
+    """Test that _enrich_existing_entry manages linked_investigations correctly."""
+
+    def test_enrichment_appends_related_linked_investigation(self) -> None:
+        """Enriching appends new linked investigation with 'related' relationship."""
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+
+        existing_entry = SearchResult(
+            id="existing-point-001",
+            score=0.88,
+            payload={
+                "entry_id": "existing-entry-001",
+                "entry_type": "investigation",
+                "service": "payments",
+                "title": "DB Pool Issue",
+                "content": "Original content",
+                "root_cause": "DB pool full",
+                "resolution": "Short fix",
+                "key_findings": ["DB pool full"],
+                "contributing_investigations": ["inv-old-001"],
+                "related_investigations": ["inv-old-001"],
+                "linked_investigations": [
+                    {
+                        "investigation_id": "inv-old-001",
+                        "relationship": "source",
+                        "linked_at": "2026-01-01T00:00:00+00:00",
+                    }
+                ],
+                "version": 1,
+            },
+        )
+        kb.search_knowledge.return_value = [existing_entry]
+
+        service = AutoKBCreationService(kb, llm)
+        data = _sample_investigation_data()
+        result = service.create_or_update_from_investigation(data)
+
+        assert result["action"] == "enriched"
+
+        knowledge_calls = [
+            c for c in kb.client.upsert.call_args_list
+            if (c[0][0] if c[0] else "") == "knowledge"
+        ]
+        enriched_payload = knowledge_calls[-1][0][1][0].payload
+        linked = enriched_payload["linked_investigations"]
+
+        # Should have the original source link plus the new related link
+        assert len(linked) == 2
+
+        new_link = next(
+            lnk for lnk in linked if lnk["investigation_id"] == "inv-test-001"
+        )
+        assert new_link["relationship"] == "related"
+        assert "linked_at" in new_link
+
+        old_link = next(
+            lnk for lnk in linked if lnk["investigation_id"] == "inv-old-001"
+        )
+        assert old_link["relationship"] == "source"
+
+    def test_enrichment_deduplicates_linked_investigations(self) -> None:
+        """Enriching with same investigation_id does not create duplicate link."""
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+
+        existing_entry = SearchResult(
+            id="existing-point-002",
+            score=0.90,
+            payload={
+                "entry_id": "existing-entry-002",
+                "entry_type": "investigation",
+                "service": "payments",
+                "title": "DB Pool Issue",
+                "content": "Original content",
+                "root_cause": "DB pool full",
+                "resolution": "Short fix",
+                "key_findings": ["DB pool full"],
+                "contributing_investigations": ["inv-test-001"],
+                "related_investigations": [],
+                "linked_investigations": [
+                    {
+                        "investigation_id": "inv-test-001",
+                        "relationship": "source",
+                        "linked_at": "2026-01-01T00:00:00+00:00",
+                    }
+                ],
+                "version": 1,
+            },
+        )
+        kb.search_knowledge.return_value = [existing_entry]
+
+        service = AutoKBCreationService(kb, llm)
+        data = _sample_investigation_data()  # Uses inv-test-001
+        result = service.create_or_update_from_investigation(data)
+
+        assert result["action"] == "enriched"
+
+        knowledge_calls = [
+            c for c in kb.client.upsert.call_args_list
+            if (c[0][0] if c[0] else "") == "knowledge"
+        ]
+        enriched_payload = knowledge_calls[-1][0][1][0].payload
+        linked = enriched_payload["linked_investigations"]
+
+        # Should still have only 1 link (no duplicate)
+        inv_ids = [lnk["investigation_id"] for lnk in linked]
+        assert inv_ids.count("inv-test-001") == 1
+
+    def test_enrichment_preserves_existing_links(self) -> None:
+        """Existing linked_investigations entries are preserved during enrichment."""
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+
+        existing_links = [
+            {
+                "investigation_id": "inv-alpha",
+                "relationship": "source",
+                "linked_at": "2026-01-01T00:00:00+00:00",
+            },
+            {
+                "investigation_id": "inv-beta",
+                "relationship": "related",
+                "linked_at": "2026-01-02T00:00:00+00:00",
+            },
+        ]
+
+        existing_entry = SearchResult(
+            id="existing-point-003",
+            score=0.85,
+            payload={
+                "entry_id": "existing-entry-003",
+                "entry_type": "investigation",
+                "service": "payments",
+                "title": "Existing Issue",
+                "content": "Content",
+                "root_cause": "Root cause",
+                "resolution": "Resolution",
+                "key_findings": [],
+                "contributing_investigations": ["inv-alpha", "inv-beta"],
+                "related_investigations": [],
+                "linked_investigations": existing_links,
+                "version": 2,
+            },
+        )
+        kb.search_knowledge.return_value = [existing_entry]
+
+        service = AutoKBCreationService(kb, llm)
+        data = _sample_investigation_data()
+        result = service.create_or_update_from_investigation(data)
+
+        assert result["action"] == "enriched"
+
+        knowledge_calls = [
+            c for c in kb.client.upsert.call_args_list
+            if (c[0][0] if c[0] else "") == "knowledge"
+        ]
+        enriched_payload = knowledge_calls[-1][0][1][0].payload
+        linked = enriched_payload["linked_investigations"]
+
+        # All three should be present: alpha, beta, and inv-test-001
+        inv_ids = {lnk["investigation_id"] for lnk in linked}
+        assert "inv-alpha" in inv_ids
+        assert "inv-beta" in inv_ids
+        assert "inv-test-001" in inv_ids
+        assert len(linked) == 3
+
+    def test_enrichment_handles_missing_linked_investigations(self) -> None:
+        """Enrichment works when existing entry has no linked_investigations field."""
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+
+        existing_entry = SearchResult(
+            id="existing-point-004",
+            score=0.80,
+            payload={
+                "entry_id": "existing-entry-004",
+                "entry_type": "investigation",
+                "service": "payments",
+                "title": "Legacy Entry",
+                "content": "Old content",
+                "root_cause": "Old root cause",
+                "resolution": "",
+                "key_findings": [],
+                "contributing_investigations": [],
+                "related_investigations": [],
+                "version": 1,
+                # No linked_investigations key at all
+            },
+        )
+        kb.search_knowledge.return_value = [existing_entry]
+
+        service = AutoKBCreationService(kb, llm)
+        data = _sample_investigation_data()
+        result = service.create_or_update_from_investigation(data)
+
+        assert result["action"] == "enriched"
+
+        knowledge_calls = [
+            c for c in kb.client.upsert.call_args_list
+            if (c[0][0] if c[0] else "") == "knowledge"
+        ]
+        enriched_payload = knowledge_calls[-1][0][1][0].payload
+        linked = enriched_payload["linked_investigations"]
+
+        # Should have exactly 1 new link
+        assert len(linked) == 1
+        assert linked[0]["investigation_id"] == "inv-test-001"
+        assert linked[0]["relationship"] == "related"
+
+    def test_enrichment_linked_at_is_iso_timestamp(self) -> None:
+        """The linked_at field added during enrichment is a valid ISO timestamp."""
+        from datetime import datetime
+
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+
+        existing_entry = SearchResult(
+            id="existing-point-005",
+            score=0.87,
+            payload={
+                "entry_id": "existing-entry-005",
+                "entry_type": "investigation",
+                "service": "payments",
+                "title": "Entry",
+                "content": "Content",
+                "root_cause": "Cause",
+                "resolution": "",
+                "key_findings": [],
+                "contributing_investigations": [],
+                "related_investigations": [],
+                "linked_investigations": [],
+                "version": 1,
+            },
+        )
+        kb.search_knowledge.return_value = [existing_entry]
+
+        service = AutoKBCreationService(kb, llm)
+        data = _sample_investigation_data()
+        service.create_or_update_from_investigation(data)
+
+        knowledge_calls = [
+            c for c in kb.client.upsert.call_args_list
+            if (c[0][0] if c[0] else "") == "knowledge"
+        ]
+        enriched_payload = knowledge_calls[-1][0][1][0].payload
+        linked = enriched_payload["linked_investigations"]
+
+        new_link = linked[0]
+        parsed = datetime.fromisoformat(new_link["linked_at"])
+        assert parsed is not None
+
+
 class TestSkipOnFailedInvestigation:
     """Test that auto KB creation is only for successful investigations."""
 

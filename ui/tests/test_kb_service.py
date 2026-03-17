@@ -1321,3 +1321,390 @@ class TestGenerateDiff:
             ln for h in result["hunks"] for ln in h["lines"] if ln["type"] == "remove"
         ]
         assert any(ln["content"] == "---" for ln in removed)
+
+
+class TestGetSourceInvestigation:
+    """Tests for get_source_investigation method."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_source_when_present(self, mock_client_class: MagicMock) -> None:
+        """Test with entry that has source_investigation_id set."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-abc",
+            "source_investigation_id": "inv-source-123",
+            "contributing_investigations": ["inv-contrib-1"],
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        result = service.get_source_investigation("kb-abc")
+
+        assert result is not None
+        assert result["investigation_id"] == "inv-source-123"
+        assert result["relationship"] == "source"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_none_when_no_source(self, mock_client_class: MagicMock) -> None:
+        """Test with entry without source_investigation_id."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-no-source",
+            "title": "No Source Entry",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        result = service.get_source_investigation("kb-no-source")
+
+        assert result is None
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_none_when_entry_not_found(self, mock_client_class: MagicMock) -> None:
+        """Test returns None when entry does not exist."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService()
+        result = service.get_source_investigation("kb-nonexistent")
+
+        assert result is None
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_none_when_source_id_empty(self, mock_client_class: MagicMock) -> None:
+        """Test returns None when source_investigation_id is empty string."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-empty-source",
+            "source_investigation_id": "",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        result = service.get_source_investigation("kb-empty-source")
+
+        assert result is None
+
+
+class TestGetContributingInvestigations:
+    """Tests for get_contributing_investigations method."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_contributing_list(self, mock_client_class: MagicMock) -> None:
+        """Test with entry that has contributing_investigations list."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-contribs",
+            "source_investigation_id": "inv-source-1",
+            "contributing_investigations": [
+                "inv-source-1",
+                "inv-contrib-2",
+                "inv-contrib-3",
+            ],
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        result = service.get_contributing_investigations("kb-contribs")
+
+        # Should exclude source_investigation_id from results
+        assert len(result) == 2
+        inv_ids = [r["investigation_id"] for r in result]
+        assert "inv-contrib-2" in inv_ids
+        assert "inv-contrib-3" in inv_ids
+        assert "inv-source-1" not in inv_ids
+        for item in result:
+            assert item["relationship"] == "contributing"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_empty_when_no_contribs(self, mock_client_class: MagicMock) -> None:
+        """Test returns empty list when no contributing_investigations."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-no-contribs",
+            "title": "No Contribs",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        result = service.get_contributing_investigations("kb-no-contribs")
+
+        assert result == []
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_empty_when_entry_not_found(self, mock_client_class: MagicMock) -> None:
+        """Test returns empty list when entry does not exist."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService()
+        result = service.get_contributing_investigations("kb-nonexistent")
+
+        assert result == []
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_excludes_source_from_contribs(self, mock_client_class: MagicMock) -> None:
+        """Test that source_investigation_id is excluded from contributing list."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-overlap",
+            "source_investigation_id": "inv-overlap",
+            "contributing_investigations": ["inv-overlap", "inv-other"],
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService()
+        result = service.get_contributing_investigations("kb-overlap")
+
+        assert len(result) == 1
+        assert result[0]["investigation_id"] == "inv-other"
+        assert result[0]["relationship"] == "contributing"
+
+
+class TestGetLinkedKBEntries:
+    """Tests for get_linked_kb_entries method."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_linked_entries(self, mock_client_class: MagicMock) -> None:
+        """Test returns KBEntry list for matching investigation_id."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point1 = MagicMock()
+        mock_point1.id = "point-1"
+        mock_point1.payload = {
+            "entry_id": "kb-linked-1",
+            "entry_type": "investigation",
+            "title": "Linked Entry 1",
+            "content": "Content 1",
+            "service": "payments",
+            "source_investigation_id": "inv-abc",
+        }
+
+        mock_point2 = MagicMock()
+        mock_point2.id = "point-2"
+        mock_point2.payload = {
+            "entry_id": "kb-linked-2",
+            "entry_type": "runbook",
+            "title": "Linked Entry 2",
+            "content": "Content 2",
+            "service": "api",
+            "contributing_investigations": ["inv-abc"],
+        }
+        mock_client.scroll.return_value = ([mock_point1, mock_point2], None)
+
+        service = KBService()
+        result = service.get_linked_kb_entries("inv-abc")
+
+        assert len(result) == 2
+        assert isinstance(result[0], KBEntry)
+        assert isinstance(result[1], KBEntry)
+        assert result[0].entry_id == "kb-linked-1"
+        assert result[1].entry_id == "kb-linked-2"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_empty_when_no_matches(self, mock_client_class: MagicMock) -> None:
+        """Test returns empty list when no matches found."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService()
+        result = service.get_linked_kb_entries("inv-no-links")
+
+        assert result == []
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_empty_on_error(self, mock_client_class: MagicMock) -> None:
+        """Test returns empty list when Qdrant raises an error."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.side_effect = Exception("Connection failed")
+
+        service = KBService()
+        result = service.get_linked_kb_entries("inv-error")
+
+        assert result == []
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_uses_should_filter(self, mock_client_class: MagicMock) -> None:
+        """Test that scroll uses should filter for source or contributing."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService()
+        service.get_linked_kb_entries("inv-filter-test")
+
+        call_args = mock_client.scroll.call_args
+        assert call_args is not None
+        filter_arg = call_args.kwargs.get("scroll_filter")
+        assert filter_arg is not None
+        # Should use 'should' (OR) filter, not 'must' (AND)
+        assert filter_arg.should is not None
+        assert len(filter_arg.should) == 2
+
+
+class TestLinkPreservationOnUpdate:
+    """Tests for verifying update_entry preserves bi-directional link fields."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_preserves_source_investigation_id(self, mock_client_class: MagicMock) -> None:
+        """Test that update_entry preserves source_investigation_id in the payload."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-preserve",
+            "entry_type": "investigation",
+            "title": "Original",
+            "content": "Original content",
+            "version": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+            "source_investigation_id": "inv-source-999",
+            "contributing_investigations": ["inv-contrib-1", "inv-contrib-2"],
+            "linked_investigations": ["inv-linked-1"],
+            "validation_status": "validated",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        service.update_entry(
+            entry_id="kb-preserve",
+            title="Updated Title",
+            embedding_service=mock_embedding_service,
+        )
+
+        # Get the upsert call for the knowledge update (last call)
+        upsert_calls = mock_client.upsert.call_args_list
+        # Last upsert is the knowledge entry update
+        last_call = upsert_calls[-1]
+        points = last_call.kwargs.get("points") or last_call[1].get("points")
+        payload = points[0].payload
+
+        assert payload["source_investigation_id"] == "inv-source-999"
+        assert payload["contributing_investigations"] == ["inv-contrib-1", "inv-contrib-2"]
+        assert payload["linked_investigations"] == ["inv-linked-1"]
+        assert payload["validation_status"] == "validated"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_preserves_empty_link_fields(self, mock_client_class: MagicMock) -> None:
+        """Test that update_entry preserves link fields even when they are empty/None."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-2"
+        mock_point.payload = {
+            "entry_id": "kb-no-links",
+            "entry_type": "runbook",
+            "title": "No Links",
+            "content": "Content without links",
+            "version": 3,
+            "created_at": "2026-01-15T00:00:00Z",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        service.update_entry(
+            entry_id="kb-no-links",
+            content="Updated content",
+            embedding_service=mock_embedding_service,
+        )
+
+        # Get the knowledge update upsert (last call)
+        upsert_calls = mock_client.upsert.call_args_list
+        last_call = upsert_calls[-1]
+        points = last_call.kwargs.get("points") or last_call[1].get("points")
+        payload = points[0].payload
+
+        # Fields should still be present in payload (with defaults)
+        assert "source_investigation_id" in payload
+        assert "contributing_investigations" in payload
+        assert "linked_investigations" in payload
+        assert "validation_status" in payload
+        assert payload["contributing_investigations"] == []
+        assert payload["linked_investigations"] == []
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_link_fields_survive_title_update(self, mock_client_class: MagicMock) -> None:
+        """Test that updating only title does not lose link fields."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-3"
+        mock_point.payload = {
+            "entry_id": "kb-title-update",
+            "entry_type": "investigation",
+            "title": "Old Title",
+            "content": "Existing content",
+            "version": 2,
+            "created_at": "2026-02-01T00:00:00Z",
+            "source_investigation_id": "inv-keep-this",
+            "contributing_investigations": ["inv-keep-too"],
+            "linked_investigations": ["inv-also-keep"],
+            "validation_status": "pending",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService()
+        new_version = service.update_entry(
+            entry_id="kb-title-update",
+            title="New Title Only",
+            embedding_service=mock_embedding_service,
+        )
+
+        assert new_version == 3
+
+        upsert_calls = mock_client.upsert.call_args_list
+        last_call = upsert_calls[-1]
+        points = last_call.kwargs.get("points") or last_call[1].get("points")
+        payload = points[0].payload
+
+        # Title should be updated
+        assert payload["title"] == "New Title Only"
+        # Content should be preserved
+        assert payload["content"] == "Existing content"
+        # All link fields should be preserved
+        assert payload["source_investigation_id"] == "inv-keep-this"
+        assert payload["contributing_investigations"] == ["inv-keep-too"]
+        assert payload["linked_investigations"] == ["inv-also-keep"]
+        assert payload["validation_status"] == "pending"

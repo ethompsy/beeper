@@ -101,7 +101,7 @@ development_status:
   # Epic 6: Knowledge & Signal Intelligence (Wave 3)
   epic-6: in-progress
   6-1-automatic-kb-entry-creation: done
-  6-2-bi-directional-kb-investigation-links: backlog
+  6-2-bi-directional-kb-investigation-links: review
   6-3-per-service-knowledge-views: backlog
   6-4-kb-entry-validation-weighting: backlog
   6-5-kb-entry-review-edit-correction: backlog

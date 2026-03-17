@@ -61,6 +61,33 @@
     </div>
     {% endif %}
 
+    {% if source_investigation or contributing_investigations %}
+    <div class="card investigation-links">
+        <h3>Investigation Links</h3>
+        {% if source_investigation %}
+        <div class="investigation-link-item">
+            <span class="link-type-badge badge-source">Source</span>
+            <a href="/investigations/{{ source_investigation.investigation_id }}"
+               class="investigation-link">{{ source_investigation.investigation_id }}</a>
+        </div>
+        {% endif %}
+        {% if contributing_investigations %}
+        <div class="contributing-investigations">
+            <strong>Contributing Investigations:</strong>
+            <ul class="investigation-link-list">
+                {% for inv in contributing_investigations %}
+                <li>
+                    <span class="link-type-badge badge-contributing">Contributing</span>
+                    <a href="/investigations/{{ inv.investigation_id }}"
+                       class="investigation-link">{{ inv.investigation_id }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div class="entry-content card">
         {{ entry.content|markdown }}
     </div>

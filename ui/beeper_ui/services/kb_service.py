@@ -530,6 +530,111 @@ class KBService:
             logger.error(f"KB service error: {e}")
             raise KBServiceError(f"Failed to list related entries: {e}") from e
 
+    def get_entry_payload(self, entry_id: str) -> Optional[dict[str, Any]]:
+        """Get raw payload for a KB entry by entry_id.
+
+        Args:
+            entry_id: The unique identifier of the entry.
+
+        Returns:
+            Raw payload dict if found, None otherwise.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=KNOWLEDGE_COLLECTION,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="entry_id", match=MatchValue(value=entry_id))]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+            if not results:
+                return None
+            return dict(results[0].payload or {})
+        except Exception as e:
+            logger.warning(f"Failed to get entry payload for {entry_id}: {e}")
+            return None
+
+    def get_source_investigation(self, entry_id: str) -> Optional[dict[str, str]]:
+        """Get the source investigation link for a KB entry.
+
+        Args:
+            entry_id: The KB entry ID.
+
+        Returns:
+            Dict with investigation_id and relationship, or None.
+        """
+        payload = self.get_entry_payload(entry_id)
+        if not payload:
+            return None
+        source_id = payload.get("source_investigation_id")
+        if not source_id:
+            return None
+        return {"investigation_id": source_id, "relationship": "source"}
+
+    def get_contributing_investigations(self, entry_id: str) -> list[dict[str, str]]:
+        """Get contributing investigation links for a KB entry.
+
+        Args:
+            entry_id: The KB entry ID.
+
+        Returns:
+            List of dicts with investigation_id and relationship.
+        """
+        payload = self.get_entry_payload(entry_id)
+        if not payload:
+            return []
+        contribs = payload.get("contributing_investigations", [])
+        source_id = payload.get("source_investigation_id", "")
+        return [
+            {"investigation_id": inv_id, "relationship": "contributing"}
+            for inv_id in contribs
+            if inv_id and inv_id != source_id
+        ]
+
+    def get_linked_kb_entries(self, investigation_id: str) -> list[KBEntry]:
+        """Get KB entries linked to an investigation.
+
+        Finds entries where the investigation is the source or contributor.
+
+        Args:
+            investigation_id: The investigation ID to look up.
+
+        Returns:
+            List of KBEntry objects linked to this investigation.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=KNOWLEDGE_COLLECTION,
+                scroll_filter=Filter(
+                    should=[
+                        FieldCondition(
+                            key="source_investigation_id",
+                            match=MatchValue(value=investigation_id),
+                        ),
+                        FieldCondition(
+                            key="contributing_investigations",
+                            match=MatchValue(value=investigation_id),
+                        ),
+                    ]
+                ),
+                limit=50,
+                with_payload=True,
+                with_vectors=False,
+            )
+            return [
+                KBEntry.from_qdrant(r.id, r.payload or {})
+                for r in results
+            ]
+        except Exception as e:
+            logger.warning(
+                "Failed to get linked KB entries for investigation %s: %s",
+                investigation_id,
+                e,
+            )
+            return []
+
     def get_available_services(self) -> list[str]:
         """Get list of unique service names in the KB.
 
@@ -1085,7 +1190,7 @@ class KBService:
                 logger.error(f"Failed to generate embedding: {e}")
                 raise KBServiceError(f"Failed to update KB entry: {e}") from e
 
-            # Create updated payload
+            # Create updated payload — preserve bi-directional link fields
             now = datetime.now(timezone.utc)
             payload = {
                 "entry_id": entry_id,
@@ -1098,6 +1203,10 @@ class KBService:
                 "author": author or existing_payload.get("author"),
                 "version": new_version,
                 "tags": new_tags,
+                "validation_status": existing_payload.get("validation_status"),
+                "source_investigation_id": existing_payload.get("source_investigation_id"),
+                "contributing_investigations": existing_payload.get("contributing_investigations", []),
+                "linked_investigations": existing_payload.get("linked_investigations", []),
             }
 
             # Save version snapshot BEFORE overwriting

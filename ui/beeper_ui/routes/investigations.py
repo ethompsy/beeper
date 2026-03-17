@@ -580,6 +580,30 @@ def investigation_related_kb(investigation_id: str) -> str:
     )
 
 
+@investigations_bp.route("/<investigation_id>/linked-kb")
+def investigation_linked_kb(investigation_id: str) -> str:
+    """Fetch KB entries created by this investigation.
+
+    Returns entries where source_investigation_id matches, showing
+    the bi-directional "Knowledge Created" link.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    from beeper_ui.services.kb_service import KBService
+
+    kb_svc = KBService(
+        host=os.getenv("QDRANT_HOST", "localhost"),
+        port=int(os.getenv("QDRANT_PORT", "6333")),
+    )
+    linked_kb_entries = kb_svc.get_linked_kb_entries(investigation_id)
+
+    return render_template(
+        "investigations/_linked_kb.html",
+        linked_kb_entries=linked_kb_entries,
+    )
+
+
 @investigations_bp.route("/<investigation_id>/gate-status")
 def investigation_gate_status(investigation_id: str) -> str:
     """Evaluate and return confidence gate status for an investigation.

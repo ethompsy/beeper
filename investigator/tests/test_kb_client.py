@@ -338,3 +338,311 @@ class TestKBClientIntegration:
         results = client.search_knowledge(query_vector, limit=5)
         # Should have results if seed-kb.sh was run
         assert isinstance(results, list)
+
+
+# =============================================================================
+# Bi-directional KB-Investigation Link Tests (Unit Tests)
+# =============================================================================
+
+
+class TestGetKBEntriesForInvestigation:
+    """Tests for KBClient.get_kb_entries_for_investigation.
+
+    This method searches using a 'should' filter so that entries are returned
+    when the investigation is the source creator OR a contributing investigation.
+    """
+
+    def test_returns_entries_matching_source_investigation_id(self) -> None:
+        """Entries where source_investigation_id matches are returned."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+
+        mock_point = MagicMock()
+        mock_point.id = "point-src-001"
+        mock_point.payload = {
+            "entry_id": "entry-001",
+            "source_investigation_id": "inv-123",
+            "contributing_investigations": [],
+        }
+        mock_qdrant.scroll.return_value = ([mock_point], None)
+
+        results = client.get_kb_entries_for_investigation("inv-123")
+
+        assert len(results) == 1
+        assert results[0].id == "point-src-001"
+        assert results[0].payload["source_investigation_id"] == "inv-123"
+        assert results[0].score == 1.0
+
+    def test_returns_entries_matching_contributing_investigations(self) -> None:
+        """Entries where contributing_investigations contains the ID are returned."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+
+        mock_point = MagicMock()
+        mock_point.id = "point-contrib-001"
+        mock_point.payload = {
+            "entry_id": "entry-002",
+            "source_investigation_id": "inv-other",
+            "contributing_investigations": ["inv-456"],
+        }
+        mock_qdrant.scroll.return_value = ([mock_point], None)
+
+        results = client.get_kb_entries_for_investigation("inv-456")
+
+        assert len(results) == 1
+        assert results[0].id == "point-contrib-001"
+
+    def test_returns_multiple_entries(self) -> None:
+        """Multiple linked entries are returned together."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+
+        mock_point_a = MagicMock()
+        mock_point_a.id = "point-a"
+        mock_point_a.payload = {
+            "entry_id": "entry-a",
+            "source_investigation_id": "inv-789",
+        }
+        mock_point_b = MagicMock()
+        mock_point_b.id = "point-b"
+        mock_point_b.payload = {
+            "entry_id": "entry-b",
+            "contributing_investigations": ["inv-789"],
+        }
+        mock_qdrant.scroll.return_value = ([mock_point_a, mock_point_b], None)
+
+        results = client.get_kb_entries_for_investigation("inv-789")
+
+        assert len(results) == 2
+        ids = {r.id for r in results}
+        assert ids == {"point-a", "point-b"}
+
+    def test_returns_empty_list_when_no_matches(self) -> None:
+        """Empty list returned when no entries link to the investigation."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+
+        mock_qdrant.scroll.return_value = ([], None)
+
+        results = client.get_kb_entries_for_investigation("inv-nonexistent")
+
+        assert results == []
+
+    def test_uses_should_filter_with_both_conditions(self) -> None:
+        """Scroll is called with a 'should' filter for both fields."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+        mock_qdrant.scroll.return_value = ([], None)
+
+        client.get_kb_entries_for_investigation("inv-check")
+
+        mock_qdrant.scroll.assert_called_once()
+        call_kwargs = mock_qdrant.scroll.call_args
+        scroll_filter = call_kwargs.kwargs.get(
+            "scroll_filter"
+        ) or call_kwargs[1].get("scroll_filter")
+        if scroll_filter is None:
+            # Positional args: collection_name is [0][0], scroll_filter may be kwarg
+            scroll_filter = call_kwargs.kwargs.get("scroll_filter")
+
+        assert scroll_filter is not None
+        assert scroll_filter.should is not None
+        assert len(scroll_filter.should) == 2
+
+        field_keys = [cond.key for cond in scroll_filter.should]
+        assert "source_investigation_id" in field_keys
+        assert "contributing_investigations" in field_keys
+
+    def test_scroll_called_with_correct_params(self) -> None:
+        """Scroll uses knowledge collection, with_payload=True, with_vectors=False."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+        mock_qdrant.scroll.return_value = ([], None)
+
+        client.get_kb_entries_for_investigation("inv-params")
+
+        mock_qdrant.scroll.assert_called_once()
+        call_kwargs = mock_qdrant.scroll.call_args.kwargs
+        assert call_kwargs.get("collection_name") == KNOWLEDGE_COLLECTION or (
+            mock_qdrant.scroll.call_args[0][0] == KNOWLEDGE_COLLECTION
+        )
+        assert call_kwargs.get("with_payload") is True
+        assert call_kwargs.get("with_vectors") is False
+        assert call_kwargs.get("limit") == 50
+
+    def test_returns_empty_list_on_exception(self) -> None:
+        """Gracefully returns empty list when scroll raises an exception."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+        mock_qdrant.scroll.side_effect = Exception("Qdrant unavailable")
+
+        results = client.get_kb_entries_for_investigation("inv-fail")
+
+        assert results == []
+
+    def test_handles_none_payload(self) -> None:
+        """Points with None payload get empty dict in result."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+
+        mock_point = MagicMock()
+        mock_point.id = "point-none"
+        mock_point.payload = None
+        mock_qdrant.scroll.return_value = ([mock_point], None)
+
+        results = client.get_kb_entries_for_investigation("inv-null")
+
+        assert len(results) == 1
+        assert results[0].payload == {}
+
+
+class TestGetEntriesByInvestigationId:
+    """Tests for KBClient.get_entries_by_investigation_id.
+
+    This method searches using a 'must' filter on source_investigation_id only,
+    returning entries created by a specific investigation.
+    """
+
+    def test_returns_entries_created_by_investigation(self) -> None:
+        """Entries with matching source_investigation_id are returned."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+
+        mock_point = MagicMock()
+        mock_point.id = "point-created-001"
+        mock_point.payload = {
+            "entry_id": "entry-created-001",
+            "source_investigation_id": "inv-src-001",
+        }
+        mock_qdrant.scroll.return_value = ([mock_point], None)
+
+        results = client.get_entries_by_investigation_id("inv-src-001")
+
+        assert len(results) == 1
+        assert results[0].id == "point-created-001"
+        assert results[0].payload["source_investigation_id"] == "inv-src-001"
+        assert results[0].score == 1.0
+
+    def test_returns_empty_list_when_no_matches(self) -> None:
+        """Empty list returned when no entries were created by the investigation."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+        mock_qdrant.scroll.return_value = ([], None)
+
+        results = client.get_entries_by_investigation_id("inv-no-entries")
+
+        assert results == []
+
+    def test_uses_must_filter_on_source_investigation_id(self) -> None:
+        """Scroll is called with a 'must' filter on source_investigation_id."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+        mock_qdrant.scroll.return_value = ([], None)
+
+        client.get_entries_by_investigation_id("inv-must-check")
+
+        mock_qdrant.scroll.assert_called_once()
+        call_kwargs = mock_qdrant.scroll.call_args
+        scroll_filter = call_kwargs.kwargs.get(
+            "scroll_filter"
+        ) or call_kwargs[1].get("scroll_filter")
+
+        assert scroll_filter is not None
+        assert scroll_filter.must is not None
+        assert len(scroll_filter.must) == 1
+        assert scroll_filter.must[0].key == "source_investigation_id"
+        assert scroll_filter.must[0].match.value == "inv-must-check"
+
+    def test_does_not_use_should_filter(self) -> None:
+        """Unlike get_kb_entries_for_investigation, this uses must not should."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+        mock_qdrant.scroll.return_value = ([], None)
+
+        client.get_entries_by_investigation_id("inv-no-should")
+
+        call_kwargs = mock_qdrant.scroll.call_args
+        scroll_filter = call_kwargs.kwargs.get(
+            "scroll_filter"
+        ) or call_kwargs[1].get("scroll_filter")
+
+        # should is None or empty
+        assert not scroll_filter.should
+
+    def test_returns_multiple_entries(self) -> None:
+        """An investigation can create multiple KB entries."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+
+        points = []
+        for i in range(3):
+            p = MagicMock()
+            p.id = f"point-multi-{i}"
+            p.payload = {
+                "entry_id": f"entry-multi-{i}",
+                "source_investigation_id": "inv-multi",
+            }
+            points.append(p)
+        mock_qdrant.scroll.return_value = (points, None)
+
+        results = client.get_entries_by_investigation_id("inv-multi")
+
+        assert len(results) == 3
+
+    def test_returns_empty_list_on_exception(self) -> None:
+        """Gracefully returns empty list when scroll raises an exception."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+        mock_qdrant.scroll.side_effect = Exception("Qdrant connection lost")
+
+        results = client.get_entries_by_investigation_id("inv-error")
+
+        assert results == []
+
+    def test_scroll_called_with_correct_params(self) -> None:
+        """Scroll uses knowledge collection, correct limit, payload and vector flags."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+        mock_qdrant.scroll.return_value = ([], None)
+
+        client.get_entries_by_investigation_id("inv-params-check")
+
+        mock_qdrant.scroll.assert_called_once()
+        call_kwargs = mock_qdrant.scroll.call_args.kwargs
+        assert call_kwargs.get("collection_name") == KNOWLEDGE_COLLECTION or (
+            mock_qdrant.scroll.call_args[0][0] == KNOWLEDGE_COLLECTION
+        )
+        assert call_kwargs.get("with_payload") is True
+        assert call_kwargs.get("with_vectors") is False
+        assert call_kwargs.get("limit") == 50
+
+    def test_handles_none_payload(self) -> None:
+        """Points with None payload get empty dict in result."""
+        client = KBClient()
+        mock_qdrant = MagicMock()
+        client._client = mock_qdrant
+
+        mock_point = MagicMock()
+        mock_point.id = "point-null-payload"
+        mock_point.payload = None
+        mock_qdrant.scroll.return_value = ([mock_point], None)
+
+        results = client.get_entries_by_investigation_id("inv-null-payload")
+
+        assert len(results) == 1
+        assert results[0].payload == {}

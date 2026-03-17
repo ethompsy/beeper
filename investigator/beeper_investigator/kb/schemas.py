@@ -70,6 +70,10 @@ class KnowledgeEntry(BaseModel):
         default_factory=list,
         description="All investigations that contributed to this entry",
     )
+    linked_investigations: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Investigation links with relationship type (source, related, supersedes)",
+    )
 
     model_config = ConfigDict(use_enum_values=True)
 

@@ -201,6 +201,101 @@ class KBClient:
             for r in results.points
         ]
 
+    def get_kb_entries_for_investigation(
+        self, investigation_id: str
+    ) -> list[SearchResult]:
+        """Find all KB entries linked to a specific investigation.
+
+        Searches for entries where the investigation is the source creator
+        OR a contributing investigation.
+
+        Args:
+            investigation_id: The investigation ID to look up.
+
+        Returns:
+            List of KB entries linked to this investigation.
+        """
+        try:
+            # Search by source_investigation_id
+            results, _ = self.client.scroll(
+                collection_name=KNOWLEDGE_COLLECTION,
+                scroll_filter=Filter(
+                    should=[
+                        FieldCondition(
+                            key="source_investigation_id",
+                            match=MatchValue(value=investigation_id),
+                        ),
+                        FieldCondition(
+                            key="contributing_investigations",
+                            match=MatchValue(value=investigation_id),
+                        ),
+                    ]
+                ),
+                limit=50,
+                with_payload=True,
+                with_vectors=False,
+            )
+            return [
+                SearchResult(
+                    id=str(r.id),
+                    score=1.0,
+                    payload=r.payload or {},
+                )
+                for r in results
+            ]
+        except Exception as e:
+            logger.warning(
+                "Failed to get KB entries for investigation %s: %s",
+                investigation_id,
+                e,
+            )
+            return []
+
+    def get_entries_by_investigation_id(
+        self, investigation_id: str
+    ) -> list[SearchResult]:
+        """Find KB entries created by a specific investigation.
+
+        Filters by source_investigation_id for the primary lookup
+        of "Knowledge Created" links.
+
+        Args:
+            investigation_id: The source investigation ID.
+
+        Returns:
+            List of KB entries created by this investigation.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=KNOWLEDGE_COLLECTION,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="source_investigation_id",
+                            match=MatchValue(value=investigation_id),
+                        ),
+                    ]
+                ),
+                limit=50,
+                with_payload=True,
+                with_vectors=False,
+            )
+            return [
+                SearchResult(
+                    id=str(r.id),
+                    score=1.0,
+                    payload=r.payload or {},
+                )
+                for r in results
+            ]
+        except Exception as e:
+            logger.warning(
+                "Failed to get KB entries by investigation ID %s: %s",
+                investigation_id,
+                e,
+            )
+            return []
+
     def close(self) -> None:
         """Close the Qdrant client connection."""
         if self._client is not None:

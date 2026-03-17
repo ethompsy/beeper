@@ -1799,12 +1799,18 @@ def kb_entry(entry_id: str) -> tuple[str, int] | str:
     error_message: str | None = None
     entry: KBEntry | None = None
     related_entries: list[KBEntry] = []
+    source_investigation: dict[str, str] | None = None
+    contributing_investigations: list[dict[str, str]] = []
 
     try:
         entry = service_client.get_entry(entry_id)
         if entry:
             related_entries = service_client.list_related_entries(
                 entry_id=entry_id, service=entry.service, limit=5
+            )
+            source_investigation = service_client.get_source_investigation(entry_id)
+            contributing_investigations = service_client.get_contributing_investigations(
+                entry_id
             )
     except KBServiceError as e:
         error_message = str(e)
@@ -1815,6 +1821,8 @@ def kb_entry(entry_id: str) -> tuple[str, int] | str:
                 "knowledge/entry.html",
                 entry=None,
                 related_entries=[],
+                source_investigation=None,
+                contributing_investigations=[],
                 error_message=f"Entry '{entry_id}' not found",
             ),
             404,
@@ -1824,6 +1832,8 @@ def kb_entry(entry_id: str) -> tuple[str, int] | str:
         "knowledge/entry.html",
         entry=entry,
         related_entries=related_entries,
+        source_investigation=source_investigation,
+        contributing_investigations=contributing_investigations,
         error_message=error_message,
     )
 

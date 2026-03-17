@@ -145,7 +145,18 @@
     </div>
     {% endif %}
 
-    {# Related Knowledge Base Entries #}
+    {# Knowledge Created — KB entries created FROM this investigation #}
+    <div class="card">
+        <h3>Knowledge Created</h3>
+        <div id="linked-kb"
+             hx-get="/investigations/{{ investigation.id }}/linked-kb"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <span class="htmx-indicator">Loading linked KB entries...</span>
+        </div>
+    </div>
+
+    {# Related Knowledge Base Entries — entries found relevant TO this investigation #}
     <div class="card">
         <h3>Related Knowledge Base Entries</h3>
         <div id="related-kb"
