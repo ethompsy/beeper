@@ -414,3 +414,99 @@ class TestConfirmEntryRoute:
         response = client.get("/knowledge/kb-proven")
         assert response.status_code == 200
         assert b"Confirm as Accurate" not in response.data
+
+
+class TestEditRouteValidationStatus:
+    """Tests for edit route setting validation_status='corrected' on content changes."""
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_content_change_sets_corrected(
+        self, mock_get_service: MagicMock, mock_get_embedding: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that editing content sets validation_status to 'corrected'."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-edit-1", "investigation", "Original Title")
+        entry.content = "Original content"
+        entry.version = 1
+        entry.validation_status = "AI-generated"
+        mock_service.get_entry.return_value = entry
+        mock_service.get_available_services.return_value = []
+        mock_service.update_entry.return_value = 2
+
+        mock_emb = MagicMock()
+        mock_emb.is_configured.return_value = True
+        mock_get_embedding.return_value = mock_emb
+
+        response = client.post(
+            "/knowledge/kb-edit-1/edit",
+            data={
+                "title": "Original Title",
+                "content": "Changed content",
+                "tags": "",
+                "version": "1",
+            },
+        )
+        assert response.status_code == 200
+        mock_service.update_entry.assert_called_once()
+        call_kwargs = mock_service.update_entry.call_args
+        assert call_kwargs.kwargs.get("validation_status") == "corrected"
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_tags_only_change_preserves_status(
+        self, mock_get_service: MagicMock, mock_get_embedding: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that changing only tags does NOT set validation_status."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-edit-2", "investigation", "Same Title")
+        entry.content = "Same content"
+        entry.version = 1
+        entry.validation_status = "AI-generated"
+        mock_service.get_entry.return_value = entry
+        mock_service.get_available_services.return_value = []
+        mock_service.update_entry.return_value = 2
+
+        mock_emb = MagicMock()
+        mock_emb.is_configured.return_value = True
+        mock_get_embedding.return_value = mock_emb
+
+        response = client.post(
+            "/knowledge/kb-edit-2/edit",
+            data={
+                "title": "Same Title",
+                "content": "Same content",
+                "tags": "new-tag",
+                "version": "1",
+            },
+        )
+        assert response.status_code == 200
+        mock_service.update_entry.assert_called_once()
+        call_kwargs = mock_service.update_entry.call_args
+        assert call_kwargs.kwargs.get("validation_status") is None
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_edit_handles_get_entry_failure(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that edit POST doesn't crash when get_entry fails (NameError fix)."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_available_services.return_value = []
+        mock_service.get_entry.side_effect = KBServiceError("connection failed")
+        mock_service.update_entry.return_value = 2
+
+        # Should not crash with NameError — current_entry is None
+        response = client.post(
+            "/knowledge/kb-fail/edit",
+            data={
+                "title": "Title",
+                "content": "Content",
+                "tags": "",
+                "version": "",
+            },
+        )
+        # The edit should still proceed (validation_status=None since we can't compare)
+        assert response.status_code == 200

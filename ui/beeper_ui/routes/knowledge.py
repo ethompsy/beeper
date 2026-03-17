@@ -934,6 +934,7 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
         )
 
     # Optimistic concurrency check: verify entry hasn't been modified since form was loaded
+    current_entry = None
     try:
         current_entry = service_client.get_entry(entry_id)
         if current_entry and form_version:

@@ -2025,6 +2025,26 @@ class TestConfirmEntry:
         with pytest.raises(KBServiceError, match="KB entry not found"):
             service.confirm_entry("kb-missing", "user")
 
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_rejects_none_validation_status(self, mock_client_class: MagicMock) -> None:
+        """Test confirming a legacy entry with validation_status=None raises an error."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.vector = [0.1] * 1536
+        mock_point.payload = {
+            "entry_id": "kb-legacy",
+            "entry_type": "investigation",
+            "title": "Legacy Entry",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService(host="localhost", port=6333)
+        with pytest.raises(KBServiceError, match="Can only confirm AI-generated"):
+            service.confirm_entry("kb-legacy", "user")
+
 
 class TestUpdateEntryValidationStatus:
     """Tests for update_entry with validation_status parameter."""

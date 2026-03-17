@@ -1,6 +1,6 @@
 # Story 6.4: KB Entry Validation Weighting
 
-Status: review
+Status: done
 
 ## Story
 
@@ -223,6 +223,7 @@ claude-opus-4-6
 ### Change Log
 
 - 2026-03-17: Implemented story 6-4 — KB entry validation weighting with normalized multipliers, field-first status derivation, investigator-side weighting, SRE confirmation flow, and correction status wiring
+- 2026-03-17: Code review — Found 2 MEDIUM + 3 LOW issues. Auto-fixed: NameError risk in edit route (current_entry undefined when get_entry fails), added 4 new tests (3 edit route validation_status tests + 1 confirm_entry None status test). All 3,174 tests pass (952 investigator + 1,691 UI + 531 operator).
 
 ### File List
 
