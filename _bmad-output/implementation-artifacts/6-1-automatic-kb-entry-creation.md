@@ -1,6 +1,6 @@
 # Story 6.1: Automatic KB Entry Creation from Resolved Investigations
 
-Status: review
+Status: done
 
 ## Story
 
@@ -265,6 +265,7 @@ claude-opus-4-6
 ### Change Log
 
 - 2026-03-17: Implemented story 6-1 — automatic KB entry creation from resolved investigations
+- 2026-03-17: Code review — fixed 3 MEDIUM issues (empty resolution field, dead enrichment code, broad type hint), added 2 tests. All 3,072 tests pass.
 
 ### File List
 

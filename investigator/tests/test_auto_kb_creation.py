@@ -122,6 +122,25 @@ class TestCreateOrUpdateFromInvestigation:
                 return
         pytest.fail("No knowledge collection upsert found")
 
+    def test_resolution_extracted_from_recommendations(self) -> None:
+        """Resolution field is populated from recommendations when not explicit."""
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+        service = AutoKBCreationService(kb, llm)
+
+        data = _sample_investigation_data()
+        service.create_or_update_from_investigation(data)
+
+        # Find the knowledge collection upsert
+        for call in kb.client.upsert.call_args_list:
+            collection = call[0][0] if call[0] else call.kwargs.get("collection_name")
+            if collection == "knowledge":
+                points = call[0][1] if len(call[0]) > 1 else call.kwargs.get("points")
+                payload = points[0].payload
+                assert payload["resolution"] == "Increase DB connection pool size to 50"
+                return
+        pytest.fail("No knowledge collection upsert found")
+
     def test_skips_when_empty_summary(self) -> None:
         kb = _make_kb_client()
         llm = _make_llm_client()
@@ -252,6 +271,40 @@ class TestSimilarityCheckAndEnrichment:
         assert "Unique existing finding" in findings
         assert "5xx rate spiked to 15%" in findings
         assert len(findings) == len(set(findings))
+
+
+    def test_enrichment_updates_resolution_from_recommendations(self) -> None:
+        """Enrichment updates resolution when new data has better recommendation."""
+        kb = _make_kb_client()
+        llm = _make_llm_client()
+
+        existing_entry = SearchResult(
+            id="point-001",
+            score=0.88,
+            payload={
+                "entry_id": "entry-001",
+                "entry_type": "investigation",
+                "service": "payments",
+                "key_findings": [],
+                "contributing_investigations": [],
+                "related_investigations": [],
+                "version": 1,
+                "resolution": "Short fix",
+            },
+        )
+        kb.search_knowledge.return_value = [existing_entry]
+
+        service = AutoKBCreationService(kb, llm)
+        data = _sample_investigation_data()
+        service.create_or_update_from_investigation(data)
+
+        knowledge_calls = [
+            c for c in kb.client.upsert.call_args_list
+            if (c[0][0] if c[0] else "") == "knowledge"
+        ]
+        enriched_payload = knowledge_calls[-1][0][1][0].payload
+        # Resolution should be updated from recommendations since it's longer
+        assert enriched_payload["resolution"] == "Increase DB connection pool size to 50"
 
 
 class TestNoSimilarEntry:

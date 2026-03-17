@@ -20,6 +20,7 @@ from beeper_investigator.kb.client import (
     VERSIONS_COLLECTION,
     KBClient,
 )
+from beeper_investigator.kb.schemas import SearchResult
 from beeper_investigator.llm.client import LlmClient
 
 logger = logging.getLogger(__name__)
@@ -148,7 +149,7 @@ class AutoKBCreationService:
 
     def _find_best_match(
         self, embedding: list[float], service: str
-    ) -> Optional[Any]:
+    ) -> Optional[SearchResult]:
         """Search for the best matching existing KB entry.
 
         Returns the top result regardless of score, or None if no results.
@@ -216,6 +217,12 @@ class AutoKBCreationService:
 
         investigation_id = data.get("investigation_id", "")
 
+        resolution = data.get("resolution", "")
+        if not resolution:
+            recs = data.get("recommendations", [])
+            if recs and isinstance(recs[0], dict):
+                resolution = recs[0].get("action", "")
+
         payload: dict[str, Any] = {
             "entry_id": entry_id,
             "entry_type": "investigation",
@@ -229,7 +236,7 @@ class AutoKBCreationService:
             "summary": data.get("documentation_summary", ""),
             "content": content,
             "root_cause": root_cause,
-            "resolution": data.get("resolution", ""),
+            "resolution": resolution,
             "signals_summary": signals,
             "key_findings": data.get("key_findings", []),
             "recommendations": recommendations,
@@ -316,6 +323,10 @@ class AutoKBCreationService:
 
         # Enrich resolution if new data has more detail
         new_resolution = new_data.get("resolution", "")
+        if not new_resolution:
+            recs = new_data.get("recommendations", [])
+            if recs and isinstance(recs[0], dict):
+                new_resolution = recs[0].get("action", "")
         if new_resolution and len(new_resolution) > len(
             existing_payload.get("resolution", "")
         ):
