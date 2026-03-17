@@ -127,7 +127,7 @@ class CollaborationService:
         self,
         investigation_id: str,
         since_timestamp: Optional[str] = None,
-        limit: int = 100,
+        limit: int = 500,
     ) -> list[CollaborationMessage]:
         """Retrieve message history for an investigation.
 
@@ -205,6 +205,14 @@ class CollaborationService:
                 del self._active_rooms[investigation_id]
             return user
         return None
+
+    def get_all_room_ids(self) -> list[str]:
+        """Get all investigation IDs with active rooms.
+
+        Returns:
+            List of investigation IDs that have active users.
+        """
+        return list(self._active_rooms.keys())
 
     def get_active_users(self, investigation_id: str) -> list[str]:
         """Get list of active users in an investigation room.

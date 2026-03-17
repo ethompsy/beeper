@@ -164,7 +164,7 @@ def handle_disconnect() -> None:
     service = collab_svc.get_collaboration_service()
 
     # Remove user from all rooms they were in
-    for inv_id in list(service._active_rooms.keys()):
+    for inv_id in service.get_all_room_ids():
         user = service.remove_active_user(inv_id, sid)
         if user:
             room = _room_name(inv_id)

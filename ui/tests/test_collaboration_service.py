@@ -145,6 +145,25 @@ class TestCollaborationServiceActiveUsers:
         assert "inv-001" not in service._active_rooms
 
 
+    @patch("beeper_ui.services.collaboration_service.QdrantClient")
+    def test_get_all_room_ids(self, mock_qdrant_cls):
+        mock_qdrant_cls.return_value.get_collection.return_value = True
+        service = CollaborationService(qdrant_url="http://mock:6333")
+
+        service.add_active_user("inv-001", "sid-1", "alice")
+        service.add_active_user("inv-002", "sid-2", "bob")
+
+        room_ids = service.get_all_room_ids()
+        assert sorted(room_ids) == ["inv-001", "inv-002"]
+
+    @patch("beeper_ui.services.collaboration_service.QdrantClient")
+    def test_get_all_room_ids_empty(self, mock_qdrant_cls):
+        mock_qdrant_cls.return_value.get_collection.return_value = True
+        service = CollaborationService(qdrant_url="http://mock:6333")
+
+        assert service.get_all_room_ids() == []
+
+
 class TestCollaborationServiceMessages:
     """Tests for message persistence via Qdrant."""
 

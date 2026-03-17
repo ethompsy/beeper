@@ -25,6 +25,9 @@ def init_socketio(app: Flask) -> SocketIO:
     # self.handlers (survives server recreation on subsequent init_app calls)
     from beeper_ui.websocket import investigation  # noqa: F401
 
-    socketio.init_app(app, cors_allowed_origins="*", async_mode="threading")
+    cors_origins = app.config.get("SOCKETIO_CORS_ORIGINS", "*")
+    socketio.init_app(
+        app, cors_allowed_origins=cors_origins, async_mode="threading"
+    )
 
     return socketio

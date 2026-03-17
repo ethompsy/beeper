@@ -43,6 +43,10 @@
     messages.forEach(function (msg) {
       appendMessage(msg);
     });
+    // Update lastSeen to most recent message so reconnection doesn't re-fetch
+    if (messages.length > 0) {
+      updateLastSeen(messages[messages.length - 1].timestamp);
+    }
     scrollToBottom();
   });
 
