@@ -11,7 +11,7 @@ function copyHandoff() {
         .then(function (res) { return res.json(); })
         .then(function (data) {
             var text = formatHandoffText(data);
-            navigator.clipboard.writeText(text).then(function () {
+            return navigator.clipboard.writeText(text).then(function () {
                 showCopyToast();
             });
         })
@@ -19,10 +19,14 @@ function copyHandoff() {
             /* Fallback: copy visible text */
             var el = document.getElementById("handoff-content");
             if (el) {
-                navigator.clipboard.writeText(el.innerText).then(function () {
+                return navigator.clipboard.writeText(el.innerText).then(function () {
                     showCopyToast();
                 });
             }
+        })
+        .catch(function () {
+            /* Clipboard API unavailable (HTTP or permission denied) */
+            showCopyError();
         });
 }
 
@@ -99,6 +103,22 @@ function showCopyToast() {
         toast.style.opacity = "0";
         setTimeout(function () { toast.style.display = "none"; }, 300);
     }, 2000);
+}
+
+/* Error toast when clipboard is unavailable */
+function showCopyError() {
+    var toast = document.getElementById("copy-toast");
+    if (!toast) return;
+    toast.textContent = "Copy failed — use HTTPS or check permissions";
+    toast.style.display = "block";
+    toast.style.opacity = "1";
+    setTimeout(function () {
+        toast.style.opacity = "0";
+        setTimeout(function () {
+            toast.style.display = "none";
+            toast.textContent = "Copied!";
+        }, 300);
+    }, 3000);
 }
 
 /* Toggle SBAR section visibility */

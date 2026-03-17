@@ -4837,7 +4837,13 @@ a.match-badge.kb-entry-link::after {
 /* SBAR sections */
 .sbar-section {
     margin-bottom: 0.75rem;
+    border-left: 4px solid transparent;
 }
+
+.sbar-section:has(.sbar-s) { border-left-color: #3b82f6; }
+.sbar-section:has(.sbar-b) { border-left-color: #6b7280; }
+.sbar-section:has(.sbar-a) { border-left-color: #d97706; }
+.sbar-section:has(.sbar-r) { border-left-color: #22c55e; }
 
 .sbar-header {
     display: flex;

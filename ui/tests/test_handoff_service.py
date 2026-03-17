@@ -311,6 +311,24 @@ class TestBuildResolvedIncidents:
         result = HandoffService._build_resolved_incidents(investigations, now)
         assert result[0]["link"] == "/investigations/x"
 
+    def test_invalid_completed_at_skipped(self) -> None:
+        """Investigations with unparseable completed_at are silently skipped."""
+        from beeper_ui.services.investigation_service import Investigation
+
+        now = datetime.now(timezone.utc)
+        investigations = [
+            Investigation(
+                "bad-ts", "completed", "s", "m", "c",
+                completed_at="not-a-date",
+            ),
+            Investigation(
+                "none-ts", "completed", "s", "m", "c",
+                completed_at=None,
+            ),
+        ]
+        result = HandoffService._build_resolved_incidents(investigations, now)
+        assert len(result) == 0
+
 
 # -----------------------------------------------------------------
 # _build_slo_status

@@ -71,12 +71,14 @@ class HandoffService:
 
     def close(self) -> None:
         """Close underlying service clients."""
-        if self._inv_svc is not None:
-            self._inv_svc.close()
-            self._inv_svc = None
-        if self._slo_svc is not None:
-            self._slo_svc.close()
-            self._slo_svc = None
+        try:
+            if self._inv_svc is not None:
+                self._inv_svc.close()
+                self._inv_svc = None
+        finally:
+            if self._slo_svc is not None:
+                self._slo_svc.close()
+                self._slo_svc = None
 
     # ------------------------------------------------------------------
     # Public API
