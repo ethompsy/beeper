@@ -283,8 +283,28 @@ class TestKnowledgeCollection:
             "key_findings", "recommendations",
             "related_investigations",
             "customer_impacting",
+            "validation_status",
+            "source_investigation_id",
         }
         assert set(payload.keys()) == expected_keys
+
+    def test_validation_status_is_ai_generated(self) -> None:
+        """Payload includes validation_status='AI-generated'."""
+        step, _, mock_kb, _ = _make_step()
+        step.execute()
+
+        call_args = mock_kb.client.upsert.call_args
+        payload = call_args[0][1][0].payload
+        assert payload["validation_status"] == "AI-generated"
+
+    def test_source_investigation_id_present(self) -> None:
+        """Payload includes source_investigation_id matching context."""
+        step, _, mock_kb, _ = _make_step()
+        step.execute()
+
+        call_args = mock_kb.client.upsert.call_args
+        payload = call_args[0][1][0].payload
+        assert payload["source_investigation_id"] == "inv-test-001"
 
 
 # ── 7.4: Embeddings generated via embed_sync (AC2) ──────

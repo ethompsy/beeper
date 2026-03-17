@@ -638,6 +638,10 @@ class InvestigationDocumentationStep:
             "customer_impacting": impact_data.get(
                 "customer_impacting"
             ),
+            "validation_status": "AI-generated",
+            "source_investigation_id": (
+                self.context.investigation_id
+            ),
         }
 
     # ── Persistence with retry ──────────────────────────────

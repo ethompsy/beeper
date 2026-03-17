@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # Collection names (must match init-collections.py)
 INVESTIGATIONS_COLLECTION = "investigations"
 KNOWLEDGE_COLLECTION = "knowledge"
+VERSIONS_COLLECTION = "knowledge_versions"
 
 # Default configuration
 DEFAULT_HOST = "localhost"

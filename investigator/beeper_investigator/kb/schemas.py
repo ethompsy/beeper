@@ -59,6 +59,17 @@ class KnowledgeEntry(BaseModel):
     content: str = Field(..., description="Entry content (markdown)")
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
     version: int = Field(default=1, description="Entry version number")
+    validation_status: Optional[str] = Field(
+        None,
+        description="Validation status: AI-generated, human-confirmed, proven, corrected",
+    )
+    source_investigation_id: Optional[str] = Field(
+        None, description="Source investigation that created this entry"
+    )
+    contributing_investigations: list[str] = Field(
+        default_factory=list,
+        description="All investigations that contributed to this entry",
+    )
 
     model_config = ConfigDict(use_enum_values=True)
 

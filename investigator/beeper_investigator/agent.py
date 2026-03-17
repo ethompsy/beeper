@@ -13,6 +13,7 @@ from qdrant_client.models import PointStruct
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
+from beeper_investigator.kb.auto_creation import AutoKBCreationService
 from beeper_investigator.kb.client import INVESTIGATIONS_COLLECTION, KBClient
 from beeper_investigator.llm.client import LlmClient, LlmClientError
 from beeper_investigator.llm.spending_cap import SpendingCapConfig, SpendingCapEnforcer
@@ -345,6 +346,20 @@ class InvestigatorAgent:
         # Persist investigation result to Qdrant
         persisted = self._persist_result(result)
 
+        # Auto-create KB entry from resolved investigation (FR38)
+        if result.success:
+            try:
+                auto_kb_result = self._auto_create_kb_entry(result)
+                result.metadata["auto_kb_creation"] = auto_kb_result
+            except Exception:
+                logger.exception(
+                    "Auto KB entry creation failed (non-fatal)"
+                )
+                result.metadata["auto_kb_creation"] = {
+                    "action": "skipped",
+                    "reason": "exception",
+                }
+
         # Update Investigation CR status
         if result.success:
             summary = result.summary
@@ -397,3 +412,43 @@ class InvestigatorAgent:
         except Exception:
             logger.exception("Failed to persist investigation result to Qdrant")
             return False
+
+    def _auto_create_kb_entry(
+        self, result: "InvestigationResult"
+    ) -> dict[str, Any]:
+        """Auto-create KB entry from resolved investigation (FR38).
+
+        Non-fatal: returns result dict even on failure.
+        """
+        service = AutoKBCreationService(self.kb_client, self.llm_client)
+
+        pm = self._pipeline_metadata if self._pipeline_metadata else {}
+
+        investigation_data: dict[str, Any] = {
+            # Context
+            "investigation_id": self.context.investigation_id,
+            "service": self.context.service,
+            "condition": self.context.condition,
+            "severity": self.context.severity,
+            # Pipeline metadata
+            "root_cause_hypothesis": pm.get("root_cause_hypothesis", ""),
+            "confidence_level": pm.get("confidence_level", ""),
+            "confidence_percentage": pm.get("confidence_percentage"),
+            "signals_summary": pm.get("signal_summary", ""),
+            "supporting_evidence": pm.get("supporting_evidence", []),
+            "recommendations": pm.get("recommendations", []),
+            "prior_research_summary": pm.get("prior_research_summary", ""),
+            "relevant_matches": pm.get("relevant_matches", []),
+            "customer_impacting": pm.get("customer_impacting"),
+            "related_investigations": pm.get("related_investigations", []),
+            # Result
+            "summary": result.summary,
+            "findings": result.findings,
+            # Documentation step output
+            "documentation_title": pm.get("documentation_title", ""),
+            "documentation_summary": pm.get("documentation_summary", ""),
+            "kb_entry_id": pm.get("kb_entry_id"),
+            "key_findings": pm.get("key_findings", []),
+        }
+
+        return service.create_or_update_from_investigation(investigation_data)

@@ -84,11 +84,13 @@ class TestInvestigatorAgentRun:
 
         agent.run()
 
-        mock_kb.client.upsert.assert_called_once()
-        call_args = mock_kb.client.upsert.call_args
-        collection = call_args[0][0]
-        points = call_args[0][1]
-        assert collection == "investigations"
+        # Find the investigations collection upsert
+        investigation_calls = [
+            c for c in mock_kb.client.upsert.call_args_list
+            if c[0][0] == "investigations"
+        ]
+        assert len(investigation_calls) == 1
+        points = investigation_calls[0][0][1]
         assert len(points) == 1
         payload = points[0].payload
         assert payload["investigation_id"] == "inv-test-001"
@@ -158,3 +160,43 @@ class TestInvestigatorAgentRun:
         msg = mock_status.set_completed.call_args[0][0]
         assert "WARNING" in msg
         assert "not persisted" in msg
+
+
+class TestAutoKBCreationInFinalize:
+    """Test auto KB entry creation from resolved investigations (FR38)."""
+
+    def test_auto_kb_creation_called_on_success(self) -> None:
+        """Auto KB creation is called when investigation succeeds."""
+        agent, mock_kb, mock_llm, _ = _make_agent()
+        mock_llm.embed_sync.return_value = [0.1] * 1536
+        mock_kb.search_knowledge.return_value = []
+
+        result = agent.run()
+
+        assert result.success is True
+        assert "auto_kb_creation" in result.metadata
+        auto_kb = result.metadata["auto_kb_creation"]
+        assert auto_kb["action"] in ("created", "skipped")
+
+    def test_auto_kb_creation_non_fatal(self) -> None:
+        """Auto KB creation failure does not fail the investigation."""
+        agent, mock_kb, mock_llm, mock_status = _make_agent()
+        mock_llm.embed_sync.side_effect = Exception("LLM completely down")
+        # Make search_knowledge also fail
+        mock_kb.search_knowledge.side_effect = Exception("Qdrant down too")
+
+        result = agent.run()
+
+        assert result.success is True
+        mock_status.set_completed.assert_called_once()
+        # Auto KB creation should have been attempted
+        assert "auto_kb_creation" in result.metadata
+
+    def test_auto_kb_creation_skipped_on_failure(self) -> None:
+        """Auto KB creation is NOT called for failed investigations."""
+        agent, mock_kb, _, mock_status = _make_agent(kb_healthy=False)
+
+        result = agent.run()
+
+        assert result.success is False
+        assert "auto_kb_creation" not in result.metadata
