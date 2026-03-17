@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Shift Handoff Summary - Beeper{% endblock %}
+
+{% block content %}
+<div class="handoff-container">
+    <div class="handoff-header">
+        <h2>Shift Handoff Summary</h2>
+        <div class="handoff-actions">
+            <button class="btn btn-secondary" onclick="copyHandoff()">Copy to Clipboard</button>
+            <button class="btn btn-secondary"
+                    hx-get="/handoff/"
+                    hx-target="#handoff-content"
+                    hx-swap="innerHTML">Refresh</button>
+        </div>
+    </div>
+    <div id="handoff-content" data-handoff-json="/handoff/json">
+        {% include "handoff/_content.html" %}
+    </div>
+</div>
+<div class="handoff-copy-success" id="copy-toast" style="display:none;">Copied!</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/handoff.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,170 @@
+{% if error_message %}
+<div class="card handoff-error">
+    <p>{{ error_message }}</p>
+</div>
+{% elif summary is none %}
+<div class="card handoff-error">
+    <p>Unable to generate handoff summary.</p>
+</div>
+{% elif summary.is_all_clear %}
+<div class="card handoff-all-clear">
+    <h3>All Clear</h3>
+    <p>No active investigations or recent incidents. Current SLO compliance overview:</p>
+    {% if summary.slo_status %}
+    <table class="handoff-table">
+        <thead>
+            <tr>
+                <th>Service</th>
+                <th>Condition</th>
+                <th>Compliance</th>
+                <th>Burn Rate</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for svc in summary.slo_status %}
+            <tr class="handoff-item">
+                <td><a href="{{ svc.link }}">{{ svc.name }}</a></td>
+                <td><span class="badge badge-{{ svc.condition }}">{{ svc.condition }}</span></td>
+                <td>{{ "%.2f%%"|format(svc.compliance * 100) if svc.compliance is not none else "N/A" }}</td>
+                <td>{{ "%.1fx"|format(svc.burn_rate) if svc.burn_rate is not none else "N/A" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No SLO data available.</p>
+    {% endif %}
+</div>
+{% else %}
+<!-- Situation -->
+<div class="card sbar-section">
+    <div class="sbar-header" onclick="toggleSbar(this)">
+        <span class="sbar-badge sbar-s">S</span>
+        <h3>Situation</h3>
+        <span class="sbar-toggle">&#9660;</span>
+    </div>
+    <div class="sbar-content">
+        <p>{{ summary.active_investigations|length }} active investigation{{ "s" if summary.active_investigations|length != 1 else "" }}.</p>
+        {% if summary.active_investigations %}
+        <table class="handoff-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Service</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inv in summary.active_investigations %}
+                <tr class="handoff-item">
+                    <td><a href="{{ inv.link }}">{{ inv.id }}</a></td>
+                    <td>{{ inv.service }}</td>
+                    <td><span class="badge badge-{{ inv.severity }}">{{ inv.severity }}</span></td>
+                    <td>{{ inv.status }}</td>
+                    <td>{{ inv.started_at or "N/A" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No active investigations.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Background -->
+<div class="card sbar-section">
+    <div class="sbar-header" onclick="toggleSbar(this)">
+        <span class="sbar-badge sbar-b">B</span>
+        <h3>Background</h3>
+        <span class="sbar-toggle">&#9660;</span>
+    </div>
+    <div class="sbar-content">
+        <p>{{ summary.resolved_incidents|length }} incident{{ "s" if summary.resolved_incidents|length != 1 else "" }} resolved in the past 8 hours.</p>
+        {% if summary.resolved_incidents %}
+        <table class="handoff-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Service</th>
+                    <th>Severity</th>
+                    <th>Resolved</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inc in summary.resolved_incidents %}
+                <tr class="handoff-item">
+                    <td><a href="{{ inc.link }}">{{ inc.id }}</a></td>
+                    <td>{{ inc.service }}</td>
+                    <td><span class="badge badge-{{ inc.severity }}">{{ inc.severity }}</span></td>
+                    <td>{{ inc.completed_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No recently resolved incidents.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Assessment -->
+<div class="card sbar-section">
+    <div class="sbar-header" onclick="toggleSbar(this)">
+        <span class="sbar-badge sbar-a">A</span>
+        <h3>Assessment</h3>
+        <span class="sbar-toggle">&#9660;</span>
+    </div>
+    <div class="sbar-content">
+        {% if summary.slo_status %}
+        <table class="handoff-table">
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Condition</th>
+                    <th>Compliance</th>
+                    <th>Burn Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for svc in summary.slo_status %}
+                <tr class="handoff-item">
+                    <td><a href="{{ svc.link }}">{{ svc.name }}</a></td>
+                    <td><span class="badge badge-{{ svc.condition }}">{{ svc.condition }}</span></td>
+                    <td>{{ "%.2f%%"|format(svc.compliance * 100) if svc.compliance is not none else "N/A" }}</td>
+                    <td>{{ "%.1fx"|format(svc.burn_rate) if svc.burn_rate is not none else "N/A" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No SLO data available.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Recommendation -->
+<div class="card sbar-section">
+    <div class="sbar-header" onclick="toggleSbar(this)">
+        <span class="sbar-badge sbar-r">R</span>
+        <h3>Recommendation</h3>
+        <span class="sbar-toggle">&#9660;</span>
+    </div>
+    <div class="sbar-content">
+        {% if summary.items_to_watch %}
+        <ul class="handoff-watch-list">
+            {% for item in summary.items_to_watch %}
+            <li class="handoff-item">
+                <span class="badge badge-{{ item.severity }}">{{ item.type }}</span>
+                <a href="{{ item.link }}">{{ item.description }}</a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p>No items requiring immediate attention.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}

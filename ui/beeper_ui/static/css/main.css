@@ -4790,3 +4790,188 @@ a.match-badge.kb-entry-link::after {
 .intervention-type-badge.badge-redirect {
     color: #d97706;
 }
+
+/* ============================================================
+   Shift Handoff Summaries (Story 5-5)
+   ============================================================ */
+
+.handoff-container {
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.handoff-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.handoff-header h2 {
+    margin: 0;
+}
+
+.handoff-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.handoff-error {
+    border-left: 4px solid #ef4444;
+}
+
+/* All-clear card */
+.handoff-all-clear {
+    border-left: 4px solid #22c55e;
+    text-align: center;
+}
+
+.handoff-all-clear h3 {
+    color: #22c55e;
+}
+
+.handoff-all-clear .handoff-table {
+    text-align: left;
+}
+
+/* SBAR sections */
+.sbar-section {
+    margin-bottom: 0.75rem;
+}
+
+.sbar-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sbar-header h3 {
+    margin: 0;
+    flex: 1;
+}
+
+.sbar-toggle {
+    font-size: 0.75rem;
+    transition: transform 0.15s ease;
+}
+
+.sbar-header.collapsed .sbar-toggle {
+    transform: rotate(-90deg);
+}
+
+.sbar-content {
+    margin-top: 0.75rem;
+}
+
+.sbar-header.collapsed + .sbar-content {
+    display: none;
+}
+
+/* SBAR letter badges */
+.sbar-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 0.875rem;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.sbar-s { background: #3b82f6; }  /* Situation — blue */
+.sbar-b { background: #6b7280; }  /* Background — gray */
+.sbar-a { background: #d97706; }  /* Assessment — amber */
+.sbar-r { background: #22c55e; }  /* Recommendation — green */
+
+/* Handoff tables */
+.handoff-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.handoff-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border-color, #334155);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.handoff-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border-color, #1e293b);
+}
+
+.handoff-item {
+    cursor: pointer;
+}
+
+.handoff-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.handoff-item a {
+    color: #60a5fa;
+    text-decoration: none;
+}
+
+.handoff-item a:hover {
+    text-decoration: underline;
+}
+
+/* Watch list */
+.handoff-watch-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.handoff-watch-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color, #1e293b);
+}
+
+.handoff-watch-list li:last-child {
+    border-bottom: none;
+}
+
+/* Condition/severity badges */
+.badge-healthy  { background: #166534; color: #86efac; }
+.badge-warning  { background: #713f12; color: #fde68a; }
+.badge-critical { background: #7f1d1d; color: #fca5a5; }
+.badge-low      { background: #1e3a5f; color: #93c5fd; }
+.badge-medium   { background: #713f12; color: #fde68a; }
+.badge-high     { background: #7f1d1d; color: #fca5a5; }
+
+.badge-slo,
+.badge-investigation {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Copy toast */
+.handoff-copy-success {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    background: #166534;
+    color: #86efac;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    z-index: 1000;
+    transition: opacity 0.3s ease;
+}
