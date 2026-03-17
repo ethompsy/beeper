@@ -23,7 +23,25 @@
     <details class="evidence-panel">
         <summary>KB Match Details</summary>
         <div class="evidence-data-wrapper">
+            {% if findings.get('relevant_matches') is iterable and findings.get('relevant_matches') is not string %}
+            <ul class="evidence-kb-match-list">
+                {% for match in findings.get('relevant_matches', []) %}
+                {% if match is string and ':' in match %}
+                {% set match_id = match.split(':')[0].strip() %}
+                <li>
+                    <a href="{{ url_for('knowledge.kb_entry', entry_id=match_id) }}"
+                       target="_blank"
+                       class="kb-entry-link evidence-ref-link">{{ match_id }}</a>:
+                    {{ match.split(':', 1)[1].strip() }}
+                </li>
+                {% elif match is string %}
+                <li>{{ match }}</li>
+                {% endif %}
+                {% endfor %}
+            </ul>
+            {% else %}
             <pre class="evidence-data">{{ findings.get('relevant_matches') }}</pre>
+            {% endif %}
         </div>
     </details>
     {% endif %}
@@ -33,7 +51,23 @@
     <details class="evidence-panel">
         <summary>Correlation &amp; Supporting Evidence</summary>
         <div class="evidence-data-wrapper">
+            {% if findings.get('supporting_evidence') is iterable and findings.get('supporting_evidence') is not string %}
+            <ul class="evidence-supporting-list">
+                {% for item in findings.get('supporting_evidence', []) %}
+                {% if item is string %}
+                <li>
+                    {% if 'rate(' in item or 'sum(' in item or 'promql' in item.lower() or 'prometheus' in item.lower() %}
+                    <code class="evidence-query-inline">{{ item }}</code>
+                    {% else %}
+                    {{ item }}
+                    {% endif %}
+                </li>
+                {% endif %}
+                {% endfor %}
+            </ul>
+            {% else %}
             <pre class="evidence-data">{{ findings.get('supporting_evidence') }}</pre>
+            {% endif %}
             {% if findings.get('additional_data_needs') %}
             <h5>Additional Data Needs</h5>
             <pre class="evidence-data">{{ findings.get('additional_data_needs') }}</pre>
@@ -49,7 +83,8 @@
         <div class="evidence-data-wrapper">
             <pre class="evidence-data">{{ findings.get('documentation_written') }}</pre>
             {% if findings.get('kb_entry_id') %}
-            <p><a href="/knowledge/{{ findings.get('kb_entry_id') }}">View KB Entry</a></p>
+            <p><a href="{{ url_for('knowledge.kb_entry', entry_id=findings.get('kb_entry_id')) }}"
+                  class="kb-entry-link evidence-ref-link">View KB Entry &rarr;</a></p>
             {% endif %}
         </div>
     </details>

@@ -35,6 +35,7 @@ from beeper_ui.services.investigation_service import (
     InvestigationService,
     InvestigationServiceError,
 )
+from beeper_ui.services.evidence_service import EvidenceService, get_evidence_service
 from beeper_ui.services.kb_service import KBEntry, KBService, KBServiceError
 from beeper_ui.services.notification_audit_service import NotificationAuditService
 from beeper_ui.services.slo_service import SloService, SloServiceError
@@ -461,6 +462,15 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
     except InvestigationServiceError:
         error_message = "Unable to connect to the Beeper operator."
 
+    # Extract structured evidence references from findings
+    evidence_references = []
+    if findings:
+        ev_svc = get_evidence_service()
+        evidence_references = ev_svc.extract_evidence_references(
+            investigation_id, findings
+        )
+        evidence_references = ev_svc.enrich_kb_references(evidence_references)
+
     if request.headers.get("HX-Request"):
         return render_template(
             "investigations/_detail_content.html",
@@ -468,6 +478,7 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
             findings=findings,
             step_states=step_states,
             error_message=error_message,
+            evidence_references=evidence_references,
         )
 
     return render_template(
@@ -477,6 +488,7 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         findings=findings,
         step_states=step_states,
         error_message=error_message,
+        evidence_references=evidence_references,
     )
 
 
@@ -1094,6 +1106,28 @@ def _generate_detail_sse_events(
                     f"data: {line}" for line in evidence_html.split("\n")
                 )
                 yield f"event: evidence-update\n{evidence_lines}\n\n"
+
+                # Update evidence timeline with structured references
+                try:
+                    ev_svc = get_evidence_service()
+                    ev_refs = ev_svc.extract_evidence_references(
+                        investigation_id, findings
+                    )
+                    ev_refs = ev_svc.enrich_kb_references(ev_refs)
+                    timeline_html = render_template(
+                        "investigations/_evidence_timeline.html",
+                        evidence_references=ev_refs,
+                    )
+                    timeline_lines = "\n".join(
+                        f"data: {line}"
+                        for line in timeline_html.split("\n")
+                    )
+                    yield f"event: evidence-timeline-update\n{timeline_lines}\n\n"
+                except Exception:
+                    logger.debug(
+                        "SSE: Failed to render evidence timeline for %s",
+                        investigation_id,
+                    )
 
                 # Send kb-update when KB query data first appears
                 if (

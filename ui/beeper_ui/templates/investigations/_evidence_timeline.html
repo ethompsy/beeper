@@ -1,0 +1,67 @@
+{% if evidence_references %}
+<div class="evidence-timeline">
+    {% for ref in evidence_references %}
+    <div class="evidence-timeline-item evidence-type-{{ ref.evidence_type }}">
+        <div class="evidence-timeline-marker">
+            <span class="evidence-type-badge badge-{{ ref.evidence_type }}">
+                {% if ref.evidence_type == 'metric' %}metric
+                {% elif ref.evidence_type == 'log' %}log
+                {% elif ref.evidence_type == 'deploy' %}deploy
+                {% elif ref.evidence_type == 'kb' %}KB
+                {% elif ref.evidence_type == 'config_change' %}config
+                {% else %}{{ ref.evidence_type }}
+                {% endif %}
+            </span>
+        </div>
+        <div class="evidence-timeline-content">
+            <div class="evidence-timeline-header">
+                <span class="evidence-timeline-title">{{ ref.title }}</span>
+                {% if ref.evidence_type == 'kb' and ref.validation_status %}
+                <span class="validation-status-badge validation-{{ ref.validation_status | replace(' ', '-') | lower }}">{{ ref.validation_status }}</span>
+                {% endif %}
+                {% if ref.relevance_score is not none %}
+                <span class="relevance-score" title="Relevance: {{ (ref.relevance_score * 100) | int }}%">{{ (ref.relevance_score * 100) | int }}%</span>
+                {% endif %}
+            </div>
+            <p class="evidence-timeline-preview" title="{{ ref.content_preview }}">{{ ref.content_preview }}</p>
+            <div class="evidence-timeline-footer">
+                {% if ref.source_type == 'kb_entry' %}
+                <a href="{{ url_for('knowledge.kb_entry', entry_id=ref.source_ref) }}"
+                   target="_blank"
+                   class="evidence-ref-link kb-entry-link">View KB Entry &rarr;</a>
+                {% elif ref.source_type == 'prometheus' %}
+                <details class="evidence-inline-detail">
+                    <summary class="evidence-ref-link">View Query</summary>
+                    <code class="evidence-query">{{ ref.source_ref }}</code>
+                    {% if ref.raw_data %}
+                    <pre class="evidence-raw-data">{{ ref.raw_data }}</pre>
+                    {% endif %}
+                </details>
+                {% elif ref.source_type == 'loki' %}
+                <details class="evidence-inline-detail">
+                    <summary class="evidence-ref-link">View Logs</summary>
+                    <code class="evidence-query">{{ ref.source_ref }}</code>
+                    {% if ref.raw_data %}
+                    <pre class="evidence-raw-data">{{ ref.raw_data }}</pre>
+                    {% endif %}
+                </details>
+                {% elif ref.source_type == 'git_commit' %}
+                <span class="evidence-ref-link">
+                    <code>{{ ref.source_ref[:12] }}</code>
+                </span>
+                {% elif ref.source_type == 'config' %}
+                <details class="evidence-inline-detail">
+                    <summary class="evidence-ref-link">View Config Change</summary>
+                    {% if ref.raw_data %}
+                    <pre class="evidence-raw-data">{{ ref.raw_data }}</pre>
+                    {% endif %}
+                </details>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state-text">No evidence references yet.</p>
+{% endif %}

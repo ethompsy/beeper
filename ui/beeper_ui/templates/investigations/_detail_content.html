@@ -72,6 +72,14 @@
         </div>
     </div>
 
+    {# Evidence Timeline #}
+    <div class="card">
+        <h3>Evidence Timeline</h3>
+        <div id="evidence-timeline" sse-swap="evidence-timeline-update" hx-swap="innerHTML">
+            {% include "investigations/_evidence_timeline.html" %}
+        </div>
+    </div>
+
     {# Confidence Gate Status #}
     {% if investigation.status not in ('investigating', 'failed') %}
     <div class="card">

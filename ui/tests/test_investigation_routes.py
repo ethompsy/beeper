@@ -1560,7 +1560,7 @@ class TestRelatedKBNavigation:
                 assert "event: step-update" in event1
 
                 # Second iteration: findings appeared with prior_research_summary
-                # Should get findings-update, evidence-update, AND kb-update
+                # Should get findings-update, evidence-update, evidence-timeline-update, AND kb-update
                 events = []
                 event2 = next(gen)
                 events.append(event2)
@@ -1568,6 +1568,8 @@ class TestRelatedKBNavigation:
                 events.append(event3)
                 event4 = next(gen)
                 events.append(event4)
+                event5 = next(gen)
+                events.append(event5)
 
                 all_events = "\n".join(events)
                 assert "event: findings-update" in all_events
@@ -2007,10 +2009,10 @@ class TestResolutionConfirmation:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-awaiting-002"
                 )
-                # Iteration 1: step-update, findings-update, evidence-update, confirmation-update
+                # Iteration 1: step-update, findings-update, evidence-update, evidence-timeline-update, confirmation-update
                 # Iteration 2: no key change, but resolution_action changed → confirmation-update
                 events = []
-                for _ in range(5):
+                for _ in range(6):
                     events.append(next(gen))
 
                 all_text = "\n".join(events)
@@ -2056,11 +2058,11 @@ class TestResolutionConfirmation:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-awaiting-001"
                 )
-                # Iteration 1 yields: step-update, findings-update, evidence-update
-                # Iteration 2 yields: findings-update, evidence-update, confirmation-update
-                # Total: 6 events
+                # Iteration 1 yields: step-update, findings-update, evidence-update, evidence-timeline-update
+                # Iteration 2 yields: findings-update, evidence-update, evidence-timeline-update, confirmation-update
+                # Total: 8 events
                 events = []
-                for _ in range(6):
+                for _ in range(8):
                     events.append(next(gen))
 
                 all_text = "\n".join(events)
@@ -2480,10 +2482,10 @@ class TestInvestigationResolution:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-res-002"
                 )
-                # Iteration 1: step-update, findings-update, evidence-update, resolution-update (4)
+                # Iteration 1: step-update, findings-update, evidence-update, evidence-timeline-update, resolution-update (5)
                 # Iteration 2: resolution-update only (value changed, no key change) (1)
                 events = []
-                for _ in range(5):
+                for _ in range(6):
                     events.append(next(gen))
 
                 all_text = "\n".join(events)

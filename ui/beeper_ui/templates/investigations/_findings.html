@@ -90,6 +90,14 @@
             {% endif %}
             <div class="hypothesis-card">
                 <p>{{ findings.get('root_cause_hypothesis') }}</p>
+                {% if findings.get('kb_citation') %}
+                <div class="hypothesis-kb-citation">
+                    <span class="citation-label">KB Citation:</span>
+                    <a href="{{ url_for('knowledge.kb_entry', entry_id=findings.get('kb_citation')) }}"
+                       target="_blank"
+                       class="kb-entry-link evidence-ref-link">{{ findings.get('kb_citation') }}</a>
+                </div>
+                {% endif %}
             </div>
             {% if findings.get('alternative_hypotheses') %}
             <div class="alternative-hypotheses">

@@ -16,6 +16,16 @@
                target="_blank"
                class="kb-entry-link">{{ entry.title }}</a>
             <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+            {% if entry.entry_type == 'proven_fix' %}
+            <span class="validation-status-badge validation-proven">proven</span>
+            {% elif entry.entry_type == 'correction' %}
+            <span class="validation-status-badge validation-human-confirmed">human-confirmed</span>
+            {% else %}
+            <span class="validation-status-badge validation-ai-generated">AI-generated</span>
+            {% endif %}
+            {% if entry.relevance_score is not none %}
+            <span class="relevance-score" title="Relevance: {{ (entry.relevance_score * 100) | int }}%">{{ (entry.relevance_score * 100) | int }}%</span>
+            {% endif %}
         </div>
         {% if entry.service %}
         <span class="service-badge">{{ entry.service }}</span>
