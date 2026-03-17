@@ -39,7 +39,7 @@ knowledge_bp = Blueprint("knowledge", __name__, url_prefix="/knowledge")
 MAX_QUERY_LENGTH = 500
 
 # Valid entry types for filtering (security: prevent arbitrary values)
-VALID_ENTRY_TYPES = {"investigation", "runbook", "correction"}
+VALID_ENTRY_TYPES = {"investigation", "runbook", "correction", "proven_fix"}
 
 # Valid validation statuses (from KnowledgeEntry schema)
 VALID_VALIDATION_STATUSES = {"AI-generated", "human-confirmed", "proven", "corrected"}
@@ -927,7 +927,9 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
     tags_string = request.form.get("tags", "")
     tags = parse_tags(tags_string)
     form_version = request.form.get("version", "")
-    new_entry_type = request.form.get("entry_type") or None
+    raw_entry_type = request.form.get("entry_type") or None
+    # Validate entry_type against allowed values (reject arbitrary user input)
+    new_entry_type = raw_entry_type if raw_entry_type in VALID_ENTRY_TYPES else None
 
     # Validate
     errors = validate_import_data(title, content, service, tags)

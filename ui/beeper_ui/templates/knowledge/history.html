@@ -64,6 +64,7 @@
                       hx-post="{{ url_for('knowledge.kb_restore', entry_id=entry.entry_id, version_num=v.version) }}"
                       hx-target="#restore-result"
                       hx-swap="innerHTML"
+                      hx-confirm="Restore version {{ v.version }}? This will create a new version from the old content."
                       hx-indicator="#restore-loading">
                     <button type="submit" class="btn btn-secondary btn-sm">Restore</button>
                 </form>

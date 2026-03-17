@@ -85,7 +85,8 @@ class TestValidateEntryType:
         assert "investigation" in VALID_ENTRY_TYPES
         assert "runbook" in VALID_ENTRY_TYPES
         assert "correction" in VALID_ENTRY_TYPES
-        assert len(VALID_ENTRY_TYPES) == 3
+        assert "proven_fix" in VALID_ENTRY_TYPES
+        assert len(VALID_ENTRY_TYPES) == 4
 
 
 def _make_entry(

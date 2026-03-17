@@ -1,6 +1,6 @@
 # Story 6.5: KB Entry Review, Edit & Correction
 
-Status: review
+Status: done
 
 ## Story
 
@@ -183,6 +183,7 @@ claude-opus-4-6
 ### Change Log
 
 - 2026-03-17: Implemented story 6-5 — KB Entry Review, Edit & Correction with category editing, correction recording on edits, and restore button on history page
+- 2026-03-17: Code review — Found 3 MEDIUM + 2 LOW issues. Auto-fixed: VALID_ENTRY_TYPES missing proven_fix, entry_type POST validation against allowlist, restore button missing hx-confirm, category dropdown raw values (added |replace|title filter), added 7 new tests (_describe_edit_changes + entry_type validation). All 3,188 tests pass (952 investigator + 1,705 UI + 531 operator).
 
 ### File List
 

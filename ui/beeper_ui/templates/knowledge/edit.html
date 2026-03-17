@@ -72,7 +72,7 @@
                 <label for="entry_type">Category</label>
                 <select name="entry_type" id="entry_type">
                     {% for et in entry_types %}
-                    <option value="{{ et }}" {% if entry.entry_type == et %}selected{% endif %}>{{ et }}</option>
+                    <option value="{{ et }}" {% if entry.entry_type == et %}selected{% endif %}>{{ et|replace("_", " ")|title }}</option>
                     {% endfor %}
                 </select>
             </div>

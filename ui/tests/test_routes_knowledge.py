@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from flask.testing import FlaskClient
 
+from beeper_ui.routes.knowledge import _describe_edit_changes
 from beeper_ui.services.kb_service import KBEntry, KBServiceError
 
 
@@ -689,3 +690,82 @@ class TestHistoryRestoreButton:
         assert b"Restore" in response.data
         # The restore form should target the existing restore route
         assert b"/knowledge/kb-hist-1/restore/" in response.data
+
+
+class TestDescribeEditChanges:
+    """Tests for _describe_edit_changes() helper function."""
+
+    def test_title_change(self) -> None:
+        """Test description when only title changes."""
+        entry = _make_entry("kb-desc-1", title="Old Title")
+        result = _describe_edit_changes(entry, "New Title", "Test content", ["test"], None)
+        assert "Title changed" in result
+
+    def test_content_added(self) -> None:
+        """Test description when content is expanded."""
+        entry = _make_entry("kb-desc-2", content="Short")
+        result = _describe_edit_changes(entry, "Test Entry", "Short with more text", ["test"], None)
+        assert "chars added" in result
+
+    def test_content_removed(self) -> None:
+        """Test description when content is shortened."""
+        entry = _make_entry("kb-desc-3", content="Long content here")
+        result = _describe_edit_changes(entry, "Test Entry", "Short", ["test"], None)
+        assert "chars removed" in result
+
+    def test_tags_change(self) -> None:
+        """Test description when tags change."""
+        entry = _make_entry("kb-desc-4")
+        result = _describe_edit_changes(entry, "Test Entry", "Test content", ["new-tag"], None)
+        assert "Tags updated" in result
+
+    def test_category_change(self) -> None:
+        """Test description when entry_type changes."""
+        entry = _make_entry("kb-desc-5", entry_type="investigation")
+        result = _describe_edit_changes(entry, "Test Entry", "Test content", ["test"], "runbook")
+        assert "Category changed to runbook" in result
+
+    def test_fallback_when_no_detectable_changes(self) -> None:
+        """Test fallback message when changes aren't detectable."""
+        entry = _make_entry("kb-desc-6")
+        result = _describe_edit_changes(entry, "Test Entry", "Test content", ["test"], None)
+        assert result == "Content modified"
+
+
+class TestEditEntryTypeValidation:
+    """Tests for entry_type validation in POST handler."""
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_invalid_entry_type_rejected(
+        self, mock_get_service: MagicMock, mock_get_embedding: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that invalid entry_type values are silently ignored."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-val-1")
+        entry.content = "Same content"
+        entry.version = 1
+        mock_service.get_entry.return_value = entry
+        mock_service.get_available_services.return_value = []
+        mock_service.get_entry_types.return_value = ["investigation"]
+        mock_service.update_entry.return_value = 2
+
+        mock_emb = MagicMock()
+        mock_emb.is_configured.return_value = True
+        mock_get_embedding.return_value = mock_emb
+
+        response = client.post(
+            "/knowledge/kb-val-1/edit",
+            data={
+                "title": "Test Entry",
+                "content": "Same content",
+                "tags": "test",
+                "version": "1",
+                "entry_type": "malicious_injection",
+            },
+        )
+        assert response.status_code == 200
+        call_kwargs = mock_service.update_entry.call_args
+        # Invalid entry_type should be rejected (set to None)
+        assert call_kwargs.kwargs.get("entry_type") is None
