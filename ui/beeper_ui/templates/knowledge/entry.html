@@ -34,7 +34,7 @@
         <div class="entry-meta-full">
             <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
             {% if entry.service %}
-            <a href="{{ url_for('knowledge.kb_index', service=entry.service) }}" class="service-badge">
+            <a href="{{ url_for('knowledge.service_knowledge', service_name=entry.service) }}" class="service-badge">
                 {{ entry.service }}
             </a>
             {% endif %}

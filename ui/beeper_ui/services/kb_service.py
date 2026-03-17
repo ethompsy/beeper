@@ -488,6 +488,124 @@ class KBService:
         """
         return self.list_recent_entries(limit=limit, service=service_name)
 
+    def get_service_knowledge_grouped(
+        self,
+        service_name: str,
+        validation_status: Optional[str] = None,
+        limit: int = 100,
+    ) -> dict[str, list[KBEntry]]:
+        """Get KB entries for a service grouped by category.
+
+        Groups entries into: root_causes (investigation), runbooks (runbook),
+        proven_fixes (proven_fix), and patterns (correction + other).
+
+        Args:
+            service_name: The service to get knowledge for.
+            validation_status: Optional filter by validation status.
+            limit: Maximum total entries to return.
+
+        Returns:
+            Dict with category keys mapping to lists of KBEntry.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            conditions: list[FieldCondition] = [
+                FieldCondition(key="service", match=MatchValue(value=service_name))
+            ]
+            if validation_status:
+                conditions.append(
+                    FieldCondition(
+                        key="validation_status",
+                        match=MatchValue(value=validation_status),
+                    )
+                )
+
+            query_filter = Filter(must=conditions)  # type: ignore[arg-type]
+
+            results, _ = self.client.scroll(
+                collection_name=KNOWLEDGE_COLLECTION,
+                scroll_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+                order_by=OrderBy(key="created_at", direction=Direction.DESC),
+            )
+
+            entries = [KBEntry.from_qdrant(point.id, point.payload or {}) for point in results]
+
+            groups: dict[str, list[KBEntry]] = {
+                "root_causes": [],
+                "runbooks": [],
+                "proven_fixes": [],
+                "patterns": [],
+            }
+
+            for entry in entries:
+                if entry.entry_type == "investigation":
+                    groups["root_causes"].append(entry)
+                elif entry.entry_type == "runbook":
+                    groups["runbooks"].append(entry)
+                elif entry.entry_type == "proven_fix":
+                    groups["proven_fixes"].append(entry)
+                else:
+                    groups["patterns"].append(entry)
+
+            return groups
+
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant query failed: {e}")
+            raise KBServiceError(f"Failed to get service knowledge: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to get service knowledge: {e}") from e
+
+    def get_service_validation_counts(
+        self,
+        service_name: str,
+    ) -> dict[str, int]:
+        """Get counts of KB entries per validation status for a service.
+
+        Args:
+            service_name: The service to count entries for.
+
+        Returns:
+            Dict with validation status keys and counts, plus "total" key.
+
+        Raises:
+            KBServiceError: If the query fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=KNOWLEDGE_COLLECTION,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="service", match=MatchValue(value=service_name))]
+                ),
+                limit=MAX_FILTER_METADATA_ENTRIES,
+                with_payload=["validation_status"],
+                with_vectors=False,
+            )
+
+            counts: dict[str, int] = {}
+            total = 0
+            for point in results:
+                status = (point.payload or {}).get("validation_status", "unknown")
+                if not status:
+                    status = "unknown"
+                counts[status] = counts.get(status, 0) + 1
+                total += 1
+
+            counts["total"] = total
+            return counts
+
+        except UnexpectedResponse as e:
+            logger.error(f"Qdrant query failed: {e}")
+            raise KBServiceError(f"Failed to get validation counts: {e}") from e
+        except Exception as e:
+            logger.error(f"KB service error: {e}")
+            raise KBServiceError(f"Failed to get validation counts: {e}") from e
+
     def list_related_entries(
         self,
         entry_id: str,

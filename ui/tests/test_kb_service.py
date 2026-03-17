@@ -1708,3 +1708,218 @@ class TestLinkPreservationOnUpdate:
         assert payload["contributing_investigations"] == ["inv-keep-too"]
         assert payload["linked_investigations"] == ["inv-also-keep"]
         assert payload["validation_status"] == "pending"
+
+
+class TestGetServiceKnowledgeGrouped:
+    """Tests for KBService.get_service_knowledge_grouped()."""
+
+    def _make_point(self, entry_id: str, entry_type: str, service: str, validation_status: str = "AI-generated") -> MagicMock:
+        """Create a mock Qdrant point."""
+        point = MagicMock()
+        point.id = f"point-{entry_id}"
+        point.payload = {
+            "entry_id": entry_id,
+            "entry_type": entry_type,
+            "title": f"Entry {entry_id}",
+            "content": "Content",
+            "service": service,
+            "created_at": "2026-03-17T10:00:00Z",
+            "validation_status": validation_status,
+        }
+        return point
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_groups_entries_by_type(self, mock_client_class: MagicMock) -> None:
+        """Test entries are correctly grouped by entry_type."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        points = [
+            self._make_point("kb-1", "investigation", "api"),
+            self._make_point("kb-2", "runbook", "api"),
+            self._make_point("kb-3", "proven_fix", "api"),
+            self._make_point("kb-4", "correction", "api"),
+            self._make_point("kb-5", "investigation", "api"),
+        ]
+        mock_client.scroll.return_value = (points, None)
+
+        service = KBService(host="localhost", port=6333)
+        groups = service.get_service_knowledge_grouped("api")
+
+        assert len(groups["root_causes"]) == 2
+        assert len(groups["runbooks"]) == 1
+        assert len(groups["proven_fixes"]) == 1
+        assert len(groups["patterns"]) == 1
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_filters_by_service_name(self, mock_client_class: MagicMock) -> None:
+        """Test that service name filter is applied in query."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService(host="localhost", port=6333)
+        service.get_service_knowledge_grouped("payment-service")
+
+        call_args = mock_client.scroll.call_args
+        filter_arg = call_args.kwargs.get("scroll_filter")
+        assert filter_arg is not None
+        assert len(filter_arg.must) == 1
+        assert filter_arg.must[0].key == "service"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_filters_by_validation_status(self, mock_client_class: MagicMock) -> None:
+        """Test that validation_status filter is applied when provided."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService(host="localhost", port=6333)
+        service.get_service_knowledge_grouped("api", validation_status="proven")
+
+        call_args = mock_client.scroll.call_args
+        filter_arg = call_args.kwargs.get("scroll_filter")
+        assert filter_arg is not None
+        assert len(filter_arg.must) == 2
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_empty_groups_when_no_entries(self, mock_client_class: MagicMock) -> None:
+        """Test returns empty group lists when no entries exist."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService(host="localhost", port=6333)
+        groups = service.get_service_knowledge_grouped("empty-service")
+
+        assert groups["root_causes"] == []
+        assert groups["runbooks"] == []
+        assert groups["proven_fixes"] == []
+        assert groups["patterns"] == []
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_unknown_type_goes_to_patterns(self, mock_client_class: MagicMock) -> None:
+        """Test that unknown entry types are grouped under patterns."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        points = [self._make_point("kb-1", "custom_type", "api")]
+        mock_client.scroll.return_value = (points, None)
+
+        service = KBService(host="localhost", port=6333)
+        groups = service.get_service_knowledge_grouped("api")
+
+        assert len(groups["patterns"]) == 1
+        assert groups["patterns"][0].entry_type == "custom_type"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_raises_on_error(self, mock_client_class: MagicMock) -> None:
+        """Test raises KBServiceError on failure."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.side_effect = Exception("Connection failed")
+
+        service = KBService(host="localhost", port=6333)
+        with pytest.raises(KBServiceError, match="Failed to get service knowledge"):
+            service.get_service_knowledge_grouped("api")
+
+
+class TestGetServiceValidationCounts:
+    """Tests for KBService.get_service_validation_counts()."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_counts_entries_per_status(self, mock_client_class: MagicMock) -> None:
+        """Test counts entries correctly per validation_status."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        points = []
+        statuses = ["AI-generated", "AI-generated", "proven", "human-confirmed", "AI-generated"]
+        for i, status in enumerate(statuses):
+            point = MagicMock()
+            point.id = f"point-{i}"
+            point.payload = {"validation_status": status}
+            points.append(point)
+        mock_client.scroll.return_value = (points, None)
+
+        service = KBService(host="localhost", port=6333)
+        counts = service.get_service_validation_counts("api")
+
+        assert counts["AI-generated"] == 3
+        assert counts["proven"] == 1
+        assert counts["human-confirmed"] == 1
+        assert counts["total"] == 5
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_returns_total_count(self, mock_client_class: MagicMock) -> None:
+        """Test total count matches sum of entries."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        point = MagicMock()
+        point.id = "point-1"
+        point.payload = {"validation_status": "proven"}
+        mock_client.scroll.return_value = ([point], None)
+
+        service = KBService(host="localhost", port=6333)
+        counts = service.get_service_validation_counts("api")
+
+        assert counts["total"] == 1
+        assert counts["proven"] == 1
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_empty_for_no_entries(self, mock_client_class: MagicMock) -> None:
+        """Test returns only total=0 for service with no entries."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService(host="localhost", port=6333)
+        counts = service.get_service_validation_counts("empty-service")
+
+        assert counts["total"] == 0
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_handles_missing_validation_status(self, mock_client_class: MagicMock) -> None:
+        """Test entries with no validation_status counted as 'unknown'."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        point = MagicMock()
+        point.id = "point-1"
+        point.payload = {}
+        mock_client.scroll.return_value = ([point], None)
+
+        service = KBService(host="localhost", port=6333)
+        counts = service.get_service_validation_counts("api")
+
+        assert counts["unknown"] == 1
+        assert counts["total"] == 1
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_handles_none_validation_status(self, mock_client_class: MagicMock) -> None:
+        """Test entries with None validation_status counted as 'unknown'."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        point = MagicMock()
+        point.id = "point-1"
+        point.payload = {"validation_status": None}
+        mock_client.scroll.return_value = ([point], None)
+
+        service = KBService(host="localhost", port=6333)
+        counts = service.get_service_validation_counts("api")
+
+        assert counts["unknown"] == 1
+        assert counts["total"] == 1
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_raises_on_error(self, mock_client_class: MagicMock) -> None:
+        """Test raises KBServiceError on failure."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.side_effect = Exception("Connection failed")
+
+        service = KBService(host="localhost", port=6333)
+        with pytest.raises(KBServiceError, match="Failed to get validation counts"):
+            service.get_service_validation_counts("api")

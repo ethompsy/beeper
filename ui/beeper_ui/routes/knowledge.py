@@ -1785,6 +1785,82 @@ def kb_trust_override(
     )
 
 
+@knowledge_bp.route("/services/<service_name>/knowledge")
+def service_knowledge(service_name: str) -> tuple[str, int] | str:
+    """Display per-service knowledge view with entries grouped by category.
+
+    Args:
+        service_name: The service name to view knowledge for.
+
+    Returns:
+        Rendered service knowledge page or 404 if service unknown.
+    """
+    service_client = get_kb_service()
+
+    # Sanitize input
+    clean_name = sanitize_query(service_name)
+    if not clean_name:
+        return render_template(
+            "knowledge/service_knowledge.html",
+            service_name="",
+            groups={"root_causes": [], "runbooks": [], "proven_fixes": [], "patterns": []},
+            validation_counts={"total": 0},
+            active_filter=None,
+            available_services=[],
+            error_message="Invalid service name",
+        ), 404
+
+    # Verify service exists
+    try:
+        available_services = service_client.get_available_services()
+    except KBServiceError:
+        available_services = []
+
+    if clean_name not in available_services:
+        return render_template(
+            "knowledge/service_knowledge.html",
+            service_name=clean_name,
+            groups={"root_causes": [], "runbooks": [], "proven_fixes": [], "patterns": []},
+            validation_counts={"total": 0},
+            active_filter=None,
+            available_services=available_services,
+            error_message=f"Service '{clean_name}' not found in knowledge base",
+        ), 404
+
+    # Get validation status filter
+    validation_status = request.args.get("validation_status")
+    if validation_status and validation_status not in {
+        "AI-generated", "human-confirmed", "proven", "corrected",
+    }:
+        validation_status = None
+
+    try:
+        groups = service_client.get_service_knowledge_grouped(
+            service_name=clean_name,
+            validation_status=validation_status,
+        )
+        validation_counts = service_client.get_service_validation_counts(clean_name)
+    except KBServiceError as e:
+        logger.error(f"Failed to load service knowledge for {clean_name}: {e}")
+        return render_template(
+            "knowledge/service_knowledge.html",
+            service_name=clean_name,
+            groups={"root_causes": [], "runbooks": [], "proven_fixes": [], "patterns": []},
+            validation_counts={"total": 0},
+            active_filter=None,
+            available_services=available_services,
+        )
+
+    return render_template(
+        "knowledge/service_knowledge.html",
+        service_name=clean_name,
+        groups=groups,
+        validation_counts=validation_counts,
+        active_filter=validation_status,
+        available_services=available_services,
+    )
+
+
 @knowledge_bp.route("/<entry_id>")
 def kb_entry(entry_id: str) -> tuple[str, int] | str:
     """Display a single KB entry.

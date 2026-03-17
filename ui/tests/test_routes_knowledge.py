@@ -1,10 +1,10 @@
-"""Tests for Knowledge Base entry detail bi-directional investigation links."""
+"""Tests for Knowledge Base routes including entry detail links and service knowledge views."""
 
 from unittest.mock import MagicMock, patch
 
 from flask.testing import FlaskClient
 
-from beeper_ui.services.kb_service import KBEntry
+from beeper_ui.services.kb_service import KBEntry, KBServiceError
 
 
 def _make_entry(
@@ -147,3 +147,141 @@ class TestKBEntryDetailLinks:
         assert mock_service.get_source_investigation.call_args[0][0] == "kb-verify-calls"
         mock_service.get_contributing_investigations.assert_called_once()
         assert mock_service.get_contributing_investigations.call_args[0][0] == "kb-verify-calls"
+
+
+class TestServiceKnowledgeRoute:
+    """Tests for the per-service knowledge view route."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_service_knowledge_returns_grouped_entries(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test GET /knowledge/services/<name>/knowledge returns grouped entries."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_available_services.return_value = ["payment-service"]
+        mock_service.get_service_knowledge_grouped.return_value = {
+            "root_causes": [_make_entry("kb-1", "investigation", "Root Cause Entry", service="payment-service")],
+            "runbooks": [],
+            "proven_fixes": [],
+            "patterns": [],
+        }
+        mock_service.get_service_validation_counts.return_value = {
+            "AI-generated": 1, "total": 1,
+        }
+
+        response = client.get("/knowledge/services/payment-service/knowledge")
+        assert response.status_code == 200
+        assert b"payment-service" in response.data
+        assert b"Root Cause Entry" in response.data
+        mock_service.get_service_knowledge_grouped.assert_called_once_with(
+            service_name="payment-service",
+            validation_status=None,
+        )
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_service_knowledge_validation_filter(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test validation_status query param filters correctly."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_available_services.return_value = ["api"]
+        mock_service.get_service_knowledge_grouped.return_value = {
+            "root_causes": [], "runbooks": [], "proven_fixes": [], "patterns": [],
+        }
+        mock_service.get_service_validation_counts.return_value = {"total": 0}
+
+        response = client.get("/knowledge/services/api/knowledge?validation_status=proven")
+        assert response.status_code == 200
+        mock_service.get_service_knowledge_grouped.assert_called_once_with(
+            service_name="api",
+            validation_status="proven",
+        )
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_service_knowledge_invalid_validation_filter_ignored(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test invalid validation_status is ignored."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_available_services.return_value = ["api"]
+        mock_service.get_service_knowledge_grouped.return_value = {
+            "root_causes": [], "runbooks": [], "proven_fixes": [], "patterns": [],
+        }
+        mock_service.get_service_validation_counts.return_value = {"total": 0}
+
+        response = client.get("/knowledge/services/api/knowledge?validation_status=invalid")
+        assert response.status_code == 200
+        mock_service.get_service_knowledge_grouped.assert_called_once_with(
+            service_name="api",
+            validation_status=None,
+        )
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_service_knowledge_empty_state(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test empty state shown when no entries."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_available_services.return_value = ["empty-svc"]
+        mock_service.get_service_knowledge_grouped.return_value = {
+            "root_causes": [], "runbooks": [], "proven_fixes": [], "patterns": [],
+        }
+        mock_service.get_service_validation_counts.return_value = {"total": 0}
+
+        response = client.get("/knowledge/services/empty-svc/knowledge")
+        assert response.status_code == 200
+        assert b"No knowledge entries yet" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_service_knowledge_404_for_unknown_service(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test returns 404 for unknown service."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_available_services.return_value = ["api", "payments"]
+
+        response = client.get("/knowledge/services/nonexistent/knowledge")
+        assert response.status_code == 404
+        assert b"not found" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_service_knowledge_renders_validation_badges(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test validation count badges are rendered."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_available_services.return_value = ["api"]
+        mock_service.get_service_knowledge_grouped.return_value = {
+            "root_causes": [_make_entry("kb-1", "investigation", "Entry 1", service="api")],
+            "runbooks": [],
+            "proven_fixes": [],
+            "patterns": [],
+        }
+        mock_service.get_service_validation_counts.return_value = {
+            "AI-generated": 3, "proven": 2, "total": 5,
+        }
+
+        response = client.get("/knowledge/services/api/knowledge")
+        assert response.status_code == 200
+        assert b"All (5)" in response.data
+        assert b"proven (2)" in response.data
+        assert b"AI-generated (3)" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_service_knowledge_handles_service_error(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test graceful handling of KBServiceError."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.get_available_services.return_value = ["api"]
+        mock_service.get_service_knowledge_grouped.side_effect = KBServiceError("Qdrant down")
+
+        response = client.get("/knowledge/services/api/knowledge")
+        assert response.status_code == 200  # Degrades gracefully

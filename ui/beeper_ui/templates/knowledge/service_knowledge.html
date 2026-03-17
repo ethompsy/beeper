@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Knowledge — {{ service_name }} - Beeper{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+    <a href="{{ url_for('knowledge.kb_index') }}">Knowledge Base</a>
+    <span class="separator">/</span>
+    <span class="current">{{ service_name }}</span>
+</nav>
+
+{% if error_message is defined and error_message %}
+<div class="card error-card">
+    <h3>Error</h3>
+    <p>{{ error_message }}</p>
+    <p><a href="{{ url_for('knowledge.kb_index') }}">Return to Knowledge Base</a></p>
+</div>
+{% else %}
+
+<div class="kb-header">
+    <div class="kb-header-content">
+        <div>
+            <h2>{{ service_name }}</h2>
+            <p class="kb-description">Service Knowledge — {{ validation_counts.get('total', 0) }} entries</p>
+        </div>
+        <div>
+            <a href="{{ url_for('knowledge.kb_index', service=service_name) }}" class="btn btn-secondary">Browse in KB</a>
+            <a href="{{ url_for('investigations.list_investigations', service=service_name) }}" class="btn btn-secondary">Investigations</a>
+        </div>
+    </div>
+</div>
+
+{# Validation status filter badges #}
+<div class="filter-badges">
+    <a href="{{ url_for('knowledge.service_knowledge', service_name=service_name) }}"
+       class="status-badge {% if not active_filter %}active{% endif %}">
+        All ({{ validation_counts.get('total', 0) }})
+    </a>
+    {% for status in ['proven', 'human-confirmed', 'AI-generated', 'corrected'] %}
+    {% if validation_counts.get(status, 0) > 0 %}
+    <a href="{{ url_for('knowledge.service_knowledge', service_name=service_name, validation_status=status) }}"
+       class="status-badge badge-{{ status|replace('-', '_') }} {% if active_filter == status %}active{% endif %}">
+        {{ status }} ({{ validation_counts.get(status, 0) }})
+    </a>
+    {% endif %}
+    {% endfor %}
+</div>
+
+{% set total_entries = groups.root_causes|length + groups.runbooks|length + groups.proven_fixes|length + groups.patterns|length %}
+
+{% if total_entries == 0 %}
+{# Empty state #}
+<div class="card empty-state">
+    <div class="empty-state-content">
+        <h3>No knowledge entries yet</h3>
+        {% if active_filter %}
+        <p>No entries with status "{{ active_filter }}" for {{ service_name }}.</p>
+        <p><a href="{{ url_for('knowledge.service_knowledge', service_name=service_name) }}">Clear filter</a> to see all entries.</p>
+        {% else %}
+        <p>Entries are created automatically as investigations resolve.</p>
+        <p><a href="{{ url_for('knowledge.kb_index') }}">Browse the full Knowledge Base</a></p>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+
+{# Grouped sections #}
+{% set sections = [
+    ('root_causes', 'Root Causes', groups.root_causes),
+    ('runbooks', 'Runbooks', groups.runbooks),
+    ('proven_fixes', 'Proven Fixes', groups.proven_fixes),
+    ('patterns', 'Patterns', groups.patterns),
+] %}
+
+{% for key, label, entries in sections %}
+{% if entries|length > 0 %}
+<details class="knowledge-group" open>
+    <summary class="knowledge-group-header">
+        <h3>{{ label }} <span class="group-count">({{ entries|length }})</span></h3>
+    </summary>
+    <div class="knowledge-group-entries">
+        {% for entry in entries %}
+        {% include "knowledge/_entry_card.html" %}
+        {% endfor %}
+    </div>
+</details>
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% endif %}
+{% endblock %}
