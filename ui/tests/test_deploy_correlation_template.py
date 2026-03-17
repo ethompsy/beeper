@@ -143,3 +143,38 @@ class TestDeployCorrelationTemplate:
         # 150 seconds = 2 min 30 sec
         assert "2 min" in html
         assert "30 sec" in html
+
+    def test_exact_minute_time_gap_no_zero_sec(self, app):
+        """Exact minute values should show '2 min' not '2 min 0 sec'."""
+        correlations = [
+            {
+                "commit_sha": "abc123def456",
+                "confidence": "strong",
+                "author": "alice@example.com",
+                "message": "Fix bug",
+                "deployment_timestamp": "2026-03-17T12:00:00+00:00",
+                "time_gap_seconds": 120,
+                "anomaly_detected_at": "2026-03-17T12:02:00+00:00",
+            }
+        ]
+        html = _render_template(app, correlations=correlations)
+        assert "2 min" in html
+        assert "0 sec" not in html
+
+    def test_timestamp_human_readable(self, app):
+        """Deploy timestamp should be formatted without 'T' separator."""
+        correlations = [
+            {
+                "commit_sha": "abc123def456",
+                "confidence": "strong",
+                "author": "alice@example.com",
+                "message": "Fix bug",
+                "deployment_timestamp": "2026-03-17T12:00:00+00:00",
+                "time_gap_seconds": 60,
+                "anomaly_detected_at": "2026-03-17T12:01:00+00:00",
+            }
+        ]
+        html = _render_template(app, correlations=correlations)
+        # Should not contain raw 'T' separator
+        assert "2026-03-17T12:00:00" not in html
+        assert "2026-03-17 12:00:00" in html

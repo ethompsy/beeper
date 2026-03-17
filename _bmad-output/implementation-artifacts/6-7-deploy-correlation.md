@@ -1,6 +1,6 @@
 # Story 6.7: Deploy Correlation
 
-Status: review
+Status: done
 
 ## Story
 
@@ -217,7 +217,8 @@ claude-opus-4-6
 
 ### Change Log
 
-- 2026-03-17: Implemented story 6-7 — Deploy Correlation with DeployCorrelationStep pipeline step, evidence extraction, template card with confidence badges, SSE support, and comprehensive tests. Fixed 4 pipeline integration test files for updated step indices.
+- 2026-03-17: Implemented story 6-7 — Deploy Correlation with DeployCorrelationStep pipeline step, evidence extraction, template card with confidence badges, SSE support, and comprehensive tests. Fixed 8 pipeline integration test files for updated step indices.
+- 2026-03-17: Code review found 3 MEDIUM + 2 LOW issues. Auto-fixed: raw ISO timestamp in deploy correlation template (added replace/truncate filter), time gap formatting inconsistency (exact minutes showed "0 sec"), incomplete File List (added 4 missing integration test files). Added 2 new template tests (exact-minute gap, human-readable timestamp). All 2,716 tests pass (972 investigator + 1,744 UI).
 
 ### File List
 
@@ -233,6 +234,10 @@ claude-opus-4-6
 - investigator/tests/test_agent_sandbox_integration.py (MODIFIED) — Updated step indices for 14-step pipeline
 - investigator/tests/test_agent_pr_integration.py (MODIFIED) — Updated step indices for 14-step pipeline
 - investigator/tests/test_agent_proven_fix_integration.py (MODIFIED) — Updated step indices for 14-step pipeline
+- investigator/tests/test_agent_metric_verifier_integration.py (MODIFIED) — Updated step indices for 14-step pipeline
+- investigator/tests/test_agent_runbook_integration.py (MODIFIED) — Updated step indices for 14-step pipeline
+- investigator/tests/test_agent_trust_gate_integration.py (MODIFIED) — Updated step indices for 14-step pipeline
+- investigator/tests/test_investigation_documentation.py (MODIFIED) — Updated step indices for 14-step pipeline
 - ui/tests/test_evidence_service.py (MODIFIED) — Added TestExtractDeployCorrelationReferences (6 tests)
 - ui/tests/test_deploy_correlation_template.py (CREATED) — Deploy correlation template tests (8 tests)
 - ui/tests/test_investigation_routes.py (MODIFIED) — Added TestDeployCorrelationRoute (2 tests)

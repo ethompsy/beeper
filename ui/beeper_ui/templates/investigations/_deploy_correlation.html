@@ -17,11 +17,11 @@
                 <td><code>{{ corr.commit_sha[:7] }}</code></td>
                 <td>{{ corr.author }}</td>
                 <td>{{ corr.message }}</td>
-                <td class="deploy-timestamp">{{ corr.deployment_timestamp }}</td>
+                <td class="deploy-timestamp">{{ corr.deployment_timestamp | replace('T', ' ') | truncate(19, True, '', 0) }}</td>
                 <td>
                     {% set mins = corr.time_gap_seconds // 60 %}
                     {% set secs = corr.time_gap_seconds % 60 %}
-                    {% if mins > 0 %}{{ mins }} min {% endif %}{{ secs }} sec
+                    {% if mins > 0 and secs > 0 %}{{ mins }} min {{ secs }} sec{% elif mins > 0 %}{{ mins }} min{% else %}{{ secs }} sec{% endif %}
                 </td>
                 <td>
                     <span class="deploy-confidence-badge confidence-{{ corr.confidence }}">
