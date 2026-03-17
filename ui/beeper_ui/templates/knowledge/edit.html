@@ -69,6 +69,15 @@
 
         <div class="edit-metadata">
             <div class="form-group">
+                <label for="entry_type">Category</label>
+                <select name="entry_type" id="entry_type">
+                    {% for et in entry_types %}
+                    <option value="{{ et }}" {% if entry.entry_type == et %}selected{% endif %}>{{ et }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
                 <label for="service">Service</label>
                 <select name="service" id="service">
                     <option value="">Select service...</option>

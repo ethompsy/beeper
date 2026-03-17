@@ -1262,6 +1262,7 @@ class KBService:
         author: Optional[str] = None,
         embedding_service: Optional[EmbeddingService] = None,
         validation_status: Optional[str] = None,
+        entry_type: Optional[str] = None,
     ) -> int:
         """Update an existing KB entry, incrementing its version.
 
@@ -1274,6 +1275,7 @@ class KBService:
             author: Author of this update
             embedding_service: EmbeddingService instance for generating embeddings
             validation_status: New validation status (optional, preserves existing if not provided)
+            entry_type: New entry type/category (optional, preserves existing if not provided)
 
         Returns:
             The new version number.
@@ -1325,7 +1327,7 @@ class KBService:
             now = datetime.now(timezone.utc)
             payload = {
                 "entry_id": entry_id,
-                "entry_type": existing_payload.get("entry_type", "unknown"),
+                "entry_type": entry_type if entry_type is not None else existing_payload.get("entry_type", "unknown"),
                 "title": new_title,
                 "content": new_content,
                 "service": new_service,

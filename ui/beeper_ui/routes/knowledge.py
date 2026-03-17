@@ -878,6 +878,14 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
     except KBServiceError:
         services = []
 
+    try:
+        entry_types = service_client.get_entry_types()
+        # Ensure proven_fix is included (used in per-service knowledge grouping)
+        if "proven_fix" not in entry_types:
+            entry_types = sorted(set(entry_types) | {"proven_fix"})
+    except KBServiceError:
+        entry_types = sorted(["correction", "investigation", "proven_fix", "runbook"])
+
     if request.method == "GET":
         try:
             entry = service_client.get_entry(entry_id)
@@ -887,6 +895,7 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
                     "knowledge/edit.html",
                     entry=None,
                     services=services,
+                    entry_types=entry_types,
                     error_message=str(e),
                 ),
                 200,
@@ -898,6 +907,7 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
                     "knowledge/edit.html",
                     entry=None,
                     services=services,
+                    entry_types=entry_types,
                     error_message=f"Entry '{entry_id}' not found",
                 ),
                 404,
@@ -907,6 +917,7 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
             "knowledge/edit.html",
             entry=entry,
             services=services,
+            entry_types=entry_types,
         )
 
     # POST: Save changes
@@ -916,6 +927,7 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
     tags_string = request.form.get("tags", "")
     tags = parse_tags(tags_string)
     form_version = request.form.get("version", "")
+    new_entry_type = request.form.get("entry_type") or None
 
     # Validate
     errors = validate_import_data(title, content, service, tags)
@@ -972,7 +984,32 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
             author="edit",
             embedding_service=embedding_service,
             validation_status=new_validation_status,
+            entry_type=new_entry_type,
         )
+
+        # Record edit diff in corrections collection when content changed
+        if new_validation_status == "corrected" and current_entry:
+            try:
+                change_desc = _describe_edit_changes(
+                    current_entry, title, content, tags, new_entry_type
+                )
+                correction = service_client.create_correction(
+                    entry_id=entry_id,
+                    user_message=f"Manual edit: {change_desc}",
+                    assistant_response="Edit applied directly.",
+                    summary=change_desc,
+                )
+                # Mark as applied immediately since edit is already saved
+                service_client.update_correction(
+                    correction_id=correction.correction_id,
+                    status="applied",
+                )
+            except KBServiceError:
+                # Don't fail the edit if correction recording fails
+                logger.warning(
+                    "Failed to record correction for edit on entry %s", entry_id
+                )
+
         return render_template(
             "knowledge/_edit_result.html",
             success=True,
@@ -985,6 +1022,49 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
             "knowledge/_edit_result.html",
             error=str(e),
         )
+
+
+def _describe_edit_changes(
+    original: "KBEntry",
+    new_title: str,
+    new_content: str,
+    new_tags: list[str],
+    new_entry_type: str | None,
+) -> str:
+    """Generate a human-readable description of what changed in an edit.
+
+    Args:
+        original: The original KBEntry before editing
+        new_title: The new title
+        new_content: The new content
+        new_tags: The new tags list
+        new_entry_type: The new entry type (or None if unchanged)
+
+    Returns:
+        Description string of changes made.
+    """
+    changes: list[str] = []
+
+    if new_title != (original.title or ""):
+        changes.append("Title changed")
+
+    old_content = original.content or ""
+    if new_content != old_content:
+        diff = len(new_content) - len(old_content)
+        if diff > 0:
+            changes.append(f"Content updated ({diff} chars added)")
+        elif diff < 0:
+            changes.append(f"Content updated ({abs(diff)} chars removed)")
+        else:
+            changes.append("Content updated")
+
+    if sorted(new_tags) != sorted(original.tags or []):
+        changes.append("Tags updated")
+
+    if new_entry_type and new_entry_type != (original.entry_type or ""):
+        changes.append(f"Category changed to {new_entry_type}")
+
+    return "; ".join(changes) if changes else "Content modified"
 
 
 @knowledge_bp.route("/preview", methods=["POST"])

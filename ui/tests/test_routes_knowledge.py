@@ -510,3 +510,182 @@ class TestEditRouteValidationStatus:
         )
         # The edit should still proceed (validation_status=None since we can't compare)
         assert response.status_code == 200
+
+
+class TestEditEntryType:
+    """Tests for entry_type (category) editing in the edit route."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_get_edit_includes_entry_types(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that GET edit page includes entry_types in template context."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-types-1")
+        mock_service.get_entry.return_value = entry
+        mock_service.get_available_services.return_value = ["api"]
+        mock_service.get_entry_types.return_value = ["correction", "investigation", "runbook"]
+
+        response = client.get("/knowledge/kb-types-1/edit")
+        assert response.status_code == 200
+        # Template should render the category select with entry types
+        assert b"entry_type" in response.data
+        assert b"investigation" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_post_edit_passes_entry_type(
+        self, mock_get_service: MagicMock, mock_get_embedding: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that POST edit with entry_type passes it to update_entry()."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-types-2")
+        entry.content = "Same content"
+        entry.version = 1
+        mock_service.get_entry.return_value = entry
+        mock_service.get_available_services.return_value = []
+        mock_service.get_entry_types.return_value = ["correction", "investigation", "runbook"]
+        mock_service.update_entry.return_value = 2
+
+        mock_emb = MagicMock()
+        mock_emb.is_configured.return_value = True
+        mock_get_embedding.return_value = mock_emb
+
+        response = client.post(
+            "/knowledge/kb-types-2/edit",
+            data={
+                "title": "Test Entry",
+                "content": "Same content",
+                "tags": "test",
+                "version": "1",
+                "entry_type": "runbook",
+            },
+        )
+        assert response.status_code == 200
+        mock_service.update_entry.assert_called_once()
+        call_kwargs = mock_service.update_entry.call_args
+        assert call_kwargs.kwargs.get("entry_type") == "runbook"
+
+
+class TestEditCorrectionRecording:
+    """Tests for recording corrections in the corrections collection on edit."""
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_content_change_creates_correction(
+        self, mock_get_service: MagicMock, mock_get_embedding: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that editing content creates a correction record."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-corr-1", "investigation", "Original Title")
+        entry.content = "Original content"
+        entry.version = 1
+        entry.validation_status = "AI-generated"
+        mock_service.get_entry.return_value = entry
+        mock_service.get_available_services.return_value = []
+        mock_service.get_entry_types.return_value = ["investigation"]
+        mock_service.update_entry.return_value = 2
+
+        mock_correction = MagicMock()
+        mock_correction.correction_id = "corr-abc123"
+        mock_service.create_correction.return_value = mock_correction
+
+        mock_emb = MagicMock()
+        mock_emb.is_configured.return_value = True
+        mock_get_embedding.return_value = mock_emb
+
+        response = client.post(
+            "/knowledge/kb-corr-1/edit",
+            data={
+                "title": "Original Title",
+                "content": "Changed content here",
+                "tags": "test",
+                "version": "1",
+            },
+        )
+        assert response.status_code == 200
+        # Correction should be created and immediately applied
+        mock_service.create_correction.assert_called_once()
+        create_kwargs = mock_service.create_correction.call_args.kwargs
+        assert "Manual edit" in create_kwargs["user_message"]
+        mock_service.update_correction.assert_called_once_with(
+            correction_id="corr-abc123",
+            status="applied",
+        )
+
+    @patch("beeper_ui.routes.knowledge.get_embedding_service")
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_tags_only_change_no_correction(
+        self, mock_get_service: MagicMock, mock_get_embedding: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that changing only tags does NOT create a correction."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-corr-2", "investigation", "Same Title")
+        entry.content = "Same content"
+        entry.version = 1
+        mock_service.get_entry.return_value = entry
+        mock_service.get_available_services.return_value = []
+        mock_service.get_entry_types.return_value = ["investigation"]
+        mock_service.update_entry.return_value = 2
+
+        mock_emb = MagicMock()
+        mock_emb.is_configured.return_value = True
+        mock_get_embedding.return_value = mock_emb
+
+        response = client.post(
+            "/knowledge/kb-corr-2/edit",
+            data={
+                "title": "Same Title",
+                "content": "Same content",
+                "tags": "new-tag",
+                "version": "1",
+            },
+        )
+        assert response.status_code == 200
+        mock_service.create_correction.assert_not_called()
+
+
+class TestHistoryRestoreButton:
+    """Tests for restore button on version history page."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_history_has_restore_for_non_current(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that history page shows Restore button for non-current versions."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-hist-1")
+        entry.version = 3
+        mock_service.get_entry.return_value = entry
+        mock_service.list_versions.return_value = [
+            {
+                "version": 2,
+                "author": "edit",
+                "updated_at": "2026-01-02T00:00:00Z",
+                "title": "Old Title",
+                "content_length": 100,
+                "tags": ["test"],
+                "service": "api",
+            },
+            {
+                "version": 1,
+                "author": "beeper",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "title": "Initial Title",
+                "content_length": 50,
+                "tags": [],
+                "service": "api",
+            },
+        ]
+
+        response = client.get("/knowledge/kb-hist-1/history")
+        assert response.status_code == 200
+        # Non-current versions should have Restore button
+        assert b"Restore" in response.data
+        # The restore form should target the existing restore route
+        assert b"/knowledge/kb-hist-1/restore/" in response.data

@@ -2119,3 +2119,75 @@ class TestUpdateEntryValidationStatus:
         points = last_call.kwargs.get("points") or last_call[1].get("points")
         payload = points[0].payload
         assert payload["validation_status"] == "human-confirmed"
+
+
+class TestUpdateEntryEntryType:
+    """Tests for update_entry with entry_type parameter."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_sets_entry_type_when_provided(self, mock_client_class: MagicMock) -> None:
+        """Test that passing entry_type updates the field in the payload."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-cat-change",
+            "entry_type": "investigation",
+            "title": "Title",
+            "content": "Content",
+            "version": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService(host="localhost", port=6333)
+        service.update_entry(
+            entry_id="kb-cat-change",
+            embedding_service=mock_embedding_service,
+            entry_type="runbook",
+        )
+
+        upsert_calls = mock_client.upsert.call_args_list
+        last_call = upsert_calls[-1]
+        points = last_call.kwargs.get("points") or last_call[1].get("points")
+        payload = points[0].payload
+        assert payload["entry_type"] == "runbook"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_preserves_entry_type_when_not_provided(self, mock_client_class: MagicMock) -> None:
+        """Test that omitting entry_type preserves existing value."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-cat-keep",
+            "entry_type": "proven_fix",
+            "title": "Title",
+            "content": "Content",
+            "version": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService(host="localhost", port=6333)
+        service.update_entry(
+            entry_id="kb-cat-keep",
+            tags=["updated-tag"],
+            embedding_service=mock_embedding_service,
+        )
+
+        upsert_calls = mock_client.upsert.call_args_list
+        last_call = upsert_calls[-1]
+        points = last_call.kwargs.get("points") or last_call[1].get("points")
+        payload = points[0].payload
+        assert payload["entry_type"] == "proven_fix"
