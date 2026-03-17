@@ -258,6 +258,101 @@ def handle_redirect(data: dict) -> None:
     emit("investigation_redirected", message.to_payload(), room=room)
 
 
+@socketio.on("approve_fix")
+def handle_approve_fix(data: dict) -> None:
+    """Handle a user approving a proposed fix for an investigation.
+
+    Args:
+        data: Dict with 'investigation_id'.
+    """
+    investigation_id = data.get("investigation_id", "")
+
+    if not investigation_id:
+        emit("error", {"message": "investigation_id is required"})
+        return
+
+    user = _get_user()
+    room = _room_name(investigation_id)
+
+    # Forward approval to operator (non-blocking)
+    try:
+        inv_svc = _get_investigation_service()
+        inv_svc.approve_fix(investigation_id, user)
+    except Exception:
+        logger.warning(
+            "Failed to forward fix approval to operator for %s",
+            investigation_id,
+            exc_info=True,
+        )
+
+    # Store in collaboration history
+    message = CollaborationMessage(
+        id=str(uuid.uuid4()),
+        investigation_id=investigation_id,
+        user=user,
+        role=user,
+        message_type="fix_approved",
+        content=f"{user} approved the proposed fix",
+        timestamp=_now_iso(),
+    )
+
+    service = collab_svc.get_collaboration_service()
+    service.store_message(message)
+
+    # Broadcast to all users in the room
+    emit("fix_approved", message.to_payload(), room=room)
+
+
+@socketio.on("reject_fix")
+def handle_reject_fix(data: dict) -> None:
+    """Handle a user rejecting a proposed fix for an investigation.
+
+    Args:
+        data: Dict with 'investigation_id' and optional 'reason'.
+    """
+    investigation_id = data.get("investigation_id", "")
+
+    if not investigation_id:
+        emit("error", {"message": "investigation_id is required"})
+        return
+
+    user = _get_user()
+    room = _room_name(investigation_id)
+    reason = data.get("reason", "").strip()
+
+    # Forward rejection to operator (non-blocking)
+    try:
+        inv_svc = _get_investigation_service()
+        inv_svc.reject_fix(investigation_id, user, reason or None)
+    except Exception:
+        logger.warning(
+            "Failed to forward fix rejection to operator for %s",
+            investigation_id,
+            exc_info=True,
+        )
+
+    # Store in collaboration history
+    content = f"{user} rejected the proposed fix"
+    if reason:
+        content += f": {reason}"
+
+    message = CollaborationMessage(
+        id=str(uuid.uuid4()),
+        investigation_id=investigation_id,
+        user=user,
+        role=user,
+        message_type="fix_rejected",
+        content=content,
+        timestamp=_now_iso(),
+    )
+
+    service = collab_svc.get_collaboration_service()
+    service.store_message(message)
+
+    # Broadcast to all users in the room
+    emit("fix_rejected", message.to_payload(), room=room)
+
+
 @socketio.on("disconnect")
 def handle_disconnect() -> None:
     """Handle client disconnection — clean up active user tracking."""

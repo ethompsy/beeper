@@ -32,6 +32,15 @@
       <button onclick="cancelRedirect()" class="collab-cancel-btn">Cancel</button>
     </div>
   </div>
+  <div id="collab-reject-input" class="collab-action-input" style="display:none;">
+    <div class="collab-action-label collab-reject-label">Reject Fix</div>
+    <input id="reject-reason-text" type="text" placeholder="Reason for rejection (optional)&hellip;"
+           class="collab-input" autocomplete="off">
+    <div class="collab-action-buttons">
+      <button onclick="submitReject()" class="collab-send-btn">Submit</button>
+      <button onclick="cancelReject()" class="collab-cancel-btn">Cancel</button>
+    </div>
+  </div>
   <div class="collab-action-bar">
     <button onclick="toggleAnnotationInput()" class="collab-action-btn collab-annotate-btn" title="Annotate (n)">
       Annotate
@@ -39,6 +48,15 @@
     <button id="redirect-btn" onclick="toggleRedirectInput()" class="collab-action-btn collab-redirect-btn" title="Redirect (r)"
             {% if investigation.status != 'investigating' %}disabled{% endif %}>
       Redirect
+    </button>
+  </div>
+  <div id="collab-approval-bar" class="collab-approval-bar" style="display:none;">
+    <span id="approval-context" class="collab-approval-context"></span>
+    <button id="approve-btn" onclick="submitApprove()" class="collab-approve-btn" title="Approve (a)">
+      Approve
+    </button>
+    <button id="reject-fix-btn" onclick="toggleRejectInput()" class="collab-reject-btn" title="Reject (x)">
+      Reject
     </button>
   </div>
 </div>

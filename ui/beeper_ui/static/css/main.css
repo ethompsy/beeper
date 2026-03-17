@@ -4621,6 +4621,115 @@ a.match-badge.kb-entry-link::after {
     background: #f3f4f6;
 }
 
+.collab-reject-label {
+    color: #dc2626;
+}
+
+/* ========================================
+   Fix Approval/Rejection Styles (Story 5-4)
+   ======================================== */
+.collab-fix-proposed {
+    border-left: 3px solid #3b82f6;
+    padding-left: 10px;
+}
+
+.collab-fix-proposed-label {
+    color: #2563eb;
+}
+
+.collab-fix-approved {
+    border-left: 3px solid #22c55e;
+    padding-left: 10px;
+}
+
+.collab-fix-approved-label {
+    color: #16a34a;
+}
+
+.collab-fix-rejected {
+    border-left: 3px solid #ef4444;
+    padding-left: 10px;
+}
+
+.collab-fix-rejected-label {
+    color: #dc2626;
+}
+
+.collab-fix-applied {
+    border-left: 3px solid #22c55e;
+    padding-left: 10px;
+}
+
+.collab-fix-applied-label {
+    color: #16a34a;
+    font-weight: 700;
+}
+
+.collab-approval-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid #e5e7eb;
+    background: #f0fdf4;
+}
+
+.collab-approval-context {
+    flex: 1;
+    font-size: 0.8rem;
+    color: #4b5563;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.collab-approve-btn {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 4px;
+    background: #22c55e;
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 150ms, opacity 150ms;
+}
+
+.collab-approve-btn:hover:not(:disabled) {
+    background: #16a34a;
+}
+
+.collab-approve-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.collab-approve-executing {
+    background: #86efac;
+    color: #166534;
+}
+
+.collab-reject-btn {
+    padding: 6px 12px;
+    border: 1px solid #ef4444;
+    border-radius: 4px;
+    background: #fff;
+    color: #dc2626;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 150ms;
+}
+
+.collab-reject-btn:hover:not(:disabled) {
+    background: #fef2f2;
+}
+
+.collab-reject-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 /* ========================================
    Human Interventions Timeline (review view)
    ======================================== */

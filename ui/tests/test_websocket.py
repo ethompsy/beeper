@@ -413,6 +413,211 @@ class TestRedirectInvestigation:
         assert redirects[0]["args"][0]["content"] == "Still works"
 
 
+class TestApproveFix:
+    """Tests for approve_fix event handler."""
+
+    def _join_room(self, client):
+        """Helper: join investigation room and clear received events."""
+        client.emit("join_investigation", {"investigation_id": "inv-001"})
+        client.get_received()  # Clear join events
+
+    def test_approve_stores_and_broadcasts(self, ws_client):
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc = MagicMock()
+            mock_svc.approve_fix.return_value = True
+            mock_svc_fn.return_value = mock_svc
+
+            client.emit("approve_fix", {
+                "investigation_id": "inv-001",
+            })
+
+        received = client.get_received()
+        approvals = [r for r in received if r["name"] == "fix_approved"]
+        assert len(approvals) == 1
+        assert approvals[0]["args"][0]["message_type"] == "fix_approved"
+        assert "approved" in approvals[0]["args"][0]["content"]
+        mock_qdrant.upsert.assert_called()
+
+    def test_approve_missing_investigation_id_returns_error(self, ws_client):
+        client, _ = ws_client
+        client.emit("approve_fix", {})
+        received = client.get_received()
+        assert any(r["name"] == "error" for r in received)
+
+    def test_approve_has_uuid_and_timestamp(self, ws_client):
+        client, _ = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.return_value = MagicMock()
+            client.emit("approve_fix", {
+                "investigation_id": "inv-001",
+            })
+
+        received = client.get_received()
+        approvals = [r for r in received if r["name"] == "fix_approved"]
+        assert len(approvals[0]["args"][0]["id"]) == 36
+        assert "T" in approvals[0]["args"][0]["timestamp"]
+
+    def test_approve_continues_if_operator_fails(self, ws_client):
+        """Approval is stored and broadcast even if operator call fails."""
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.side_effect = Exception("Operator down")
+            client.emit("approve_fix", {
+                "investigation_id": "inv-001",
+            })
+
+        received = client.get_received()
+        approvals = [r for r in received if r["name"] == "fix_approved"]
+        assert len(approvals) == 1
+        assert "approved" in approvals[0]["args"][0]["content"]
+
+    def test_approve_calls_operator_service(self, ws_client):
+        """Verify approve_fix forwards to InvestigationService."""
+        client, _ = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc = MagicMock()
+            mock_svc.approve_fix.return_value = True
+            mock_svc_fn.return_value = mock_svc
+
+            client.emit("approve_fix", {
+                "investigation_id": "inv-001",
+            })
+
+        mock_svc.approve_fix.assert_called_once_with("inv-001", "user")
+
+
+class TestRejectFix:
+    """Tests for reject_fix event handler."""
+
+    def _join_room(self, client):
+        """Helper: join investigation room and clear received events."""
+        client.emit("join_investigation", {"investigation_id": "inv-001"})
+        client.get_received()  # Clear join events
+
+    def test_reject_stores_and_broadcasts(self, ws_client):
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc = MagicMock()
+            mock_svc.reject_fix.return_value = True
+            mock_svc_fn.return_value = mock_svc
+
+            client.emit("reject_fix", {
+                "investigation_id": "inv-001",
+                "reason": "Wrong approach",
+            })
+
+        received = client.get_received()
+        rejections = [r for r in received if r["name"] == "fix_rejected"]
+        assert len(rejections) == 1
+        assert rejections[0]["args"][0]["message_type"] == "fix_rejected"
+        assert "rejected" in rejections[0]["args"][0]["content"]
+        assert "Wrong approach" in rejections[0]["args"][0]["content"]
+        mock_qdrant.upsert.assert_called()
+
+    def test_reject_without_reason_stores_and_broadcasts(self, ws_client):
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc = MagicMock()
+            mock_svc.reject_fix.return_value = True
+            mock_svc_fn.return_value = mock_svc
+
+            client.emit("reject_fix", {
+                "investigation_id": "inv-001",
+            })
+
+        received = client.get_received()
+        rejections = [r for r in received if r["name"] == "fix_rejected"]
+        assert len(rejections) == 1
+        assert rejections[0]["args"][0]["message_type"] == "fix_rejected"
+        assert "rejected" in rejections[0]["args"][0]["content"]
+
+    def test_reject_missing_investigation_id_returns_error(self, ws_client):
+        client, _ = ws_client
+        client.emit("reject_fix", {"reason": "Bad fix"})
+        received = client.get_received()
+        assert any(r["name"] == "error" for r in received)
+
+    def test_reject_has_uuid_and_timestamp(self, ws_client):
+        client, _ = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.return_value = MagicMock()
+            client.emit("reject_fix", {
+                "investigation_id": "inv-001",
+            })
+
+        received = client.get_received()
+        rejections = [r for r in received if r["name"] == "fix_rejected"]
+        assert len(rejections[0]["args"][0]["id"]) == 36
+        assert "T" in rejections[0]["args"][0]["timestamp"]
+
+    def test_reject_continues_if_operator_fails(self, ws_client):
+        """Rejection is stored and broadcast even if operator call fails."""
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.side_effect = Exception("Operator down")
+            client.emit("reject_fix", {
+                "investigation_id": "inv-001",
+                "reason": "Still works",
+            })
+
+        received = client.get_received()
+        rejections = [r for r in received if r["name"] == "fix_rejected"]
+        assert len(rejections) == 1
+        assert "rejected" in rejections[0]["args"][0]["content"]
+
+    def test_reject_calls_operator_with_reason(self, ws_client):
+        """Verify reject_fix forwards reason to InvestigationService."""
+        client, _ = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc = MagicMock()
+            mock_svc.reject_fix.return_value = True
+            mock_svc_fn.return_value = mock_svc
+
+            client.emit("reject_fix", {
+                "investigation_id": "inv-001",
+                "reason": "Wrong approach",
+            })
+
+        mock_svc.reject_fix.assert_called_once_with("inv-001", "user", "Wrong approach")
+
+
 class TestDisconnect:
     """Tests for disconnect handler."""
 
@@ -572,6 +777,42 @@ class TestTemplateIntegration:
                 human_interventions=[],
             )
             assert "Human Interventions" not in html
+
+    def test_collab_panel_has_approval_bar(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_collaboration_panel.html"
+            )
+            html = tmpl.render(investigation=MagicMock(id="inv-test", status="investigating"))
+            assert 'id="collab-approval-bar"' in html
+            assert 'id="approve-btn"' in html
+            assert 'id="reject-fix-btn"' in html
+            assert "submitApprove()" in html
+            assert "toggleRejectInput()" in html
+
+    def test_collab_panel_has_reject_reason_input(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_collaboration_panel.html"
+            )
+            html = tmpl.render(investigation=MagicMock(id="inv-test", status="investigating"))
+            assert 'id="collab-reject-input"' in html
+            assert 'id="reject-reason-text"' in html
+            assert "submitReject()" in html
+            assert "cancelReject()" in html
+
+    def test_approval_bar_initially_hidden(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_collaboration_panel.html"
+            )
+            html = tmpl.render(investigation=MagicMock(id="inv-test", status="investigating"))
+            # The approval bar should have style="display:none;" initially
+            approval_start = html.find('id="collab-approval-bar"')
+            bar_start = html.rfind("<div", 0, approval_start)
+            bar_end = html.find(">", approval_start)
+            bar_tag = html[bar_start:bar_end + 1]
+            assert "display:none" in bar_tag
 
     def test_detail_includes_socketio_scripts(self, ws_app):
         with ws_app.test_request_context():

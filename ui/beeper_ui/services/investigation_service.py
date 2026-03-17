@@ -586,6 +586,87 @@ class InvestigationService:
             )
             return False
 
+    def approve_fix(self, investigation_id: str, user: str) -> bool:
+        """Approve a proposed fix for an investigation.
+
+        Args:
+            investigation_id: The investigation CRD name.
+            user: The user approving the fix.
+
+        Returns:
+            True if approval succeeded, False on any error
+            (not found, timeout, server error, connection error).
+        """
+        try:
+            response = self.client.post(
+                f"{self.operator_url}/api/v1/investigations/{investigation_id}/approve",
+                json={"user": user},
+            )
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return True
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "Timeout approving fix for investigation %s: %s",
+                investigation_id, e,
+            )
+            return False
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "Operator returned error approving fix for investigation %s: %s",
+                investigation_id, e.response.status_code,
+            )
+            return False
+        except httpx.RequestError as e:
+            logger.warning(
+                "Failed to connect to operator for fix approval %s: %s",
+                investigation_id, e,
+            )
+            return False
+
+    def reject_fix(
+        self, investigation_id: str, user: str, reason: str | None = None
+    ) -> bool:
+        """Reject a proposed fix for an investigation.
+
+        Args:
+            investigation_id: The investigation CRD name.
+            user: The user rejecting the fix.
+            reason: Optional reason for rejection.
+
+        Returns:
+            True if rejection succeeded, False on any error
+            (not found, timeout, server error, connection error).
+        """
+        try:
+            response = self.client.post(
+                f"{self.operator_url}/api/v1/investigations/{investigation_id}/reject-fix",
+                json={"user": user, "reason": reason},
+            )
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return True
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "Timeout rejecting fix for investigation %s: %s",
+                investigation_id, e,
+            )
+            return False
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "Operator returned error rejecting fix for investigation %s: %s",
+                investigation_id, e.response.status_code,
+            )
+            return False
+        except httpx.RequestError as e:
+            logger.warning(
+                "Failed to connect to operator for fix rejection %s: %s",
+                investigation_id, e,
+            )
+            return False
+
     def save_resolution_feedback(
         self, investigation_id: str, feedback: dict[str, Any]
     ) -> None:

@@ -809,3 +809,173 @@ class TestRedirectInvestigation:
         payload = json.loads(body)
         assert payload["instruction"] == "Focus on caching"
         assert payload["user"] == "admin"
+
+
+class TestApproveFix:
+    """Tests for approve_fix method."""
+
+    OPERATOR_URL = "http://mock-operator:8080"
+
+    def _make_service(self) -> InvestigationService:
+        return InvestigationService(operator_url=self.OPERATOR_URL)
+
+    @respx.mock
+    def test_approve_fix_success(self) -> None:
+        """Test successful fix approval."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/approve"
+        ).mock(return_value=Response(200, json={"ok": True}))
+        svc = self._make_service()
+        result = svc.approve_fix("inv-001", "admin")
+        assert result is True
+
+    @respx.mock
+    def test_approve_fix_not_found(self) -> None:
+        """Test approval on non-existent investigation returns False."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-999/approve"
+        ).mock(return_value=Response(404))
+        svc = self._make_service()
+        result = svc.approve_fix("inv-999", "user")
+        assert result is False
+
+    @respx.mock
+    def test_approve_fix_server_error_returns_false(self) -> None:
+        """Test approval gracefully handles server errors."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/approve"
+        ).mock(return_value=Response(500))
+        svc = self._make_service()
+        result = svc.approve_fix("inv-001", "user")
+        assert result is False
+
+    @respx.mock
+    def test_approve_fix_timeout_returns_false(self) -> None:
+        """Test approval gracefully handles timeout."""
+        import httpx
+
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/approve"
+        ).mock(side_effect=httpx.TimeoutException("Timeout"))
+        svc = self._make_service()
+        result = svc.approve_fix("inv-001", "user")
+        assert result is False
+
+    @respx.mock
+    def test_approve_fix_connection_error_returns_false(self) -> None:
+        """Test approval gracefully handles connection errors."""
+        import httpx
+
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/approve"
+        ).mock(side_effect=httpx.ConnectError("Connection refused"))
+        svc = self._make_service()
+        result = svc.approve_fix("inv-001", "user")
+        assert result is False
+
+    @respx.mock
+    def test_approve_fix_sends_correct_payload(self) -> None:
+        """Test approval sends correct JSON payload."""
+        route = respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/approve"
+        ).mock(return_value=Response(200, json={"ok": True}))
+        svc = self._make_service()
+        svc.approve_fix("inv-001", "admin")
+        assert route.called
+        body = route.calls[0].request.content
+        import json
+        payload = json.loads(body)
+        assert payload["user"] == "admin"
+
+
+class TestRejectFix:
+    """Tests for reject_fix method."""
+
+    OPERATOR_URL = "http://mock-operator:8080"
+
+    def _make_service(self) -> InvestigationService:
+        return InvestigationService(operator_url=self.OPERATOR_URL)
+
+    @respx.mock
+    def test_reject_fix_success(self) -> None:
+        """Test successful fix rejection."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/reject-fix"
+        ).mock(return_value=Response(200, json={"ok": True}))
+        svc = self._make_service()
+        result = svc.reject_fix("inv-001", "admin", reason="Wrong approach")
+        assert result is True
+
+    @respx.mock
+    def test_reject_fix_not_found(self) -> None:
+        """Test rejection on non-existent investigation returns False."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-999/reject-fix"
+        ).mock(return_value=Response(404))
+        svc = self._make_service()
+        result = svc.reject_fix("inv-999", "user")
+        assert result is False
+
+    @respx.mock
+    def test_reject_fix_server_error_returns_false(self) -> None:
+        """Test rejection gracefully handles server errors."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/reject-fix"
+        ).mock(return_value=Response(500))
+        svc = self._make_service()
+        result = svc.reject_fix("inv-001", "user")
+        assert result is False
+
+    @respx.mock
+    def test_reject_fix_timeout_returns_false(self) -> None:
+        """Test rejection gracefully handles timeout."""
+        import httpx
+
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/reject-fix"
+        ).mock(side_effect=httpx.TimeoutException("Timeout"))
+        svc = self._make_service()
+        result = svc.reject_fix("inv-001", "user")
+        assert result is False
+
+    @respx.mock
+    def test_reject_fix_connection_error_returns_false(self) -> None:
+        """Test rejection gracefully handles connection errors."""
+        import httpx
+
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/reject-fix"
+        ).mock(side_effect=httpx.ConnectError("Connection refused"))
+        svc = self._make_service()
+        result = svc.reject_fix("inv-001", "user")
+        assert result is False
+
+    @respx.mock
+    def test_reject_fix_sends_correct_payload_with_reason(self) -> None:
+        """Test rejection sends correct JSON payload with reason."""
+        route = respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/reject-fix"
+        ).mock(return_value=Response(200, json={"ok": True}))
+        svc = self._make_service()
+        svc.reject_fix("inv-001", "admin", reason="Wrong approach")
+        assert route.called
+        body = route.calls[0].request.content
+        import json
+        payload = json.loads(body)
+        assert payload["user"] == "admin"
+        assert payload["reason"] == "Wrong approach"
+
+    @respx.mock
+    def test_reject_fix_sends_payload_without_reason(self) -> None:
+        """Test rejection sends payload with null reason when not provided."""
+        route = respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/reject-fix"
+        ).mock(return_value=Response(200, json={"ok": True}))
+        svc = self._make_service()
+        svc.reject_fix("inv-001", "admin")
+        assert route.called
+        body = route.calls[0].request.content
+        import json
+        payload = json.loads(body)
+        assert payload["user"] == "admin"
+        assert payload["reason"] is None
