@@ -504,6 +504,75 @@ class TestTemplateIntegration:
             html = tmpl.render(investigation=MagicMock(id="inv-test", status="investigating"))
             assert 'data-investigation-status="investigating"' in html
 
+    def test_human_interventions_renders_annotations_and_redirects(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_detail_content.html"
+            )
+            html = tmpl.render(
+                investigation=MagicMock(
+                    id="inv-test",
+                    status="investigating",
+                    severity="high",
+                    condition="Test",
+                    service="api",
+                    error=None,
+                    triggered_at=None,
+                    started_at=None,
+                    completed_at=None,
+                ),
+                error_message=None,
+                findings=None,
+                step_states=[],
+                evidence_references=[],
+                human_interventions=[
+                    {
+                        "message_type": "annotation",
+                        "user": "admin",
+                        "timestamp": "2026-03-16T12:00:00Z",
+                        "content": "Check DB pools",
+                    },
+                    {
+                        "message_type": "redirect",
+                        "user": "sre1",
+                        "timestamp": "2026-03-16T12:05:00Z",
+                        "content": "Focus on caching",
+                    },
+                ],
+            )
+            assert "Human Interventions" in html
+            assert "Check DB pools" in html
+            assert "Focus on caching" in html
+            assert "intervention-annotation" in html
+            assert "intervention-redirect" in html
+            assert "badge-annotation" in html
+            assert "badge-redirect" in html
+
+    def test_human_interventions_hidden_when_empty(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_detail_content.html"
+            )
+            html = tmpl.render(
+                investigation=MagicMock(
+                    id="inv-test",
+                    status="investigating",
+                    severity="high",
+                    condition="Test",
+                    service="api",
+                    error=None,
+                    triggered_at=None,
+                    started_at=None,
+                    completed_at=None,
+                ),
+                error_message=None,
+                findings=None,
+                step_states=[],
+                evidence_references=[],
+                human_interventions=[],
+            )
+            assert "Human Interventions" not in html
+
     def test_detail_includes_socketio_scripts(self, ws_app):
         with ws_app.test_request_context():
             tmpl = ws_app.jinja_env.get_template("investigations/detail.html")

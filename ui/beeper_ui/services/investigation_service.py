@@ -513,7 +513,8 @@ class InvestigationService:
             user: The user adding the annotation.
 
         Returns:
-            True if annotation succeeded, False if investigation not found.
+            True if annotation succeeded, False on any error
+            (not found, timeout, server error, connection error).
         """
         try:
             response = self.client.post(
@@ -554,7 +555,8 @@ class InvestigationService:
             user: The user issuing the redirect.
 
         Returns:
-            True if redirect succeeded, False if investigation not found.
+            True if redirect succeeded, False on any error
+            (not found, timeout, server error, connection error).
         """
         try:
             response = self.client.post(

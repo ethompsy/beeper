@@ -484,7 +484,9 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         ]
     except Exception:
         logger.warning(
-            "Failed to fetch human interventions for %s", investigation_id
+            "Failed to fetch human interventions for %s",
+            investigation_id,
+            exc_info=True,
         )
 
     if request.headers.get("HX-Request"):

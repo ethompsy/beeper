@@ -189,7 +189,9 @@ def handle_annotate(data: dict) -> None:
         inv_svc.annotate_investigation(investigation_id, text, user)
     except Exception:
         logger.warning(
-            "Failed to forward annotation to operator for %s", investigation_id
+            "Failed to forward annotation to operator for %s",
+            investigation_id,
+            exc_info=True,
         )
 
     # Store in collaboration history
@@ -233,7 +235,9 @@ def handle_redirect(data: dict) -> None:
         inv_svc.redirect_investigation(investigation_id, instruction, user)
     except Exception:
         logger.warning(
-            "Failed to forward redirect to operator for %s", investigation_id
+            "Failed to forward redirect to operator for %s",
+            investigation_id,
+            exc_info=True,
         )
 
     # Store in collaboration history
