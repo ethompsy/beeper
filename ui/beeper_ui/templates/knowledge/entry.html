@@ -67,7 +67,7 @@
         {% if source_investigation %}
         <div class="investigation-link-item">
             <span class="link-type-badge badge-source">Source</span>
-            <a href="/investigations/{{ source_investigation.investigation_id }}"
+            <a href="{{ url_for('investigations.investigation_detail', investigation_id=source_investigation.investigation_id) }}"
                class="investigation-link">{{ source_investigation.investigation_id }}</a>
         </div>
         {% endif %}
@@ -78,7 +78,7 @@
                 {% for inv in contributing_investigations %}
                 <li>
                     <span class="link-type-badge badge-contributing">Contributing</span>
-                    <a href="/investigations/{{ inv.investigation_id }}"
+                    <a href="{{ url_for('investigations.investigation_detail', investigation_id=inv.investigation_id) }}"
                        class="investigation-link">{{ inv.investigation_id }}</a>
                 </li>
                 {% endfor %}

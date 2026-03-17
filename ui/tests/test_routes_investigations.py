@@ -14,6 +14,7 @@ def _make_kb_entry(
     title: str = "Test KB Entry",
     content: str = "Test content",
     service: str = "api",
+    validation_status: str | None = None,
 ) -> KBEntry:
     """Create a mock KBEntry for testing."""
     return KBEntry(
@@ -28,6 +29,7 @@ def _make_kb_entry(
         author="beeper",
         version=1,
         tags=["test"],
+        validation_status=validation_status,
     )
 
 
@@ -87,6 +89,26 @@ class TestLinkedKBEndpoint:
         assert b"Detail Check Entry" in response.data
         assert b"investigation" in response.data
         assert b"payments" in response.data
+
+    @patch("beeper_ui.services.kb_service.KBService")
+    def test_linked_kb_shows_validation_status_badge(
+        self, mock_kb_class: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that linked KB entries show validation status badge."""
+        mock_kb_svc = MagicMock()
+        mock_kb_class.return_value = mock_kb_svc
+        mock_kb_svc.get_linked_kb_entries.return_value = [
+            _make_kb_entry(
+                "kb-proven",
+                "investigation",
+                "Proven Entry",
+                validation_status="proven",
+            ),
+        ]
+
+        response = client.get("/investigations/inv-validation/linked-kb")
+        assert response.status_code == 200
+        assert b"proven" in response.data
 
     def test_linked_kb_invalid_investigation_id(self, client: FlaskClient) -> None:
         """Test that invalid investigation IDs return 404."""

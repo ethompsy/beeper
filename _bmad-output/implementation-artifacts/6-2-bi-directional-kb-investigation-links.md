@@ -1,6 +1,6 @@
 # Story 6.2: Bi-Directional KB-Investigation Links
 
-Status: review
+Status: done
 
 ## Story
 
@@ -222,6 +222,7 @@ claude-opus-4-6
 ### Change Log
 
 - 2026-03-17: Implemented story 6-2 — bi-directional KB-investigation links with structured relationship metadata, UI rendering on both KB entry and investigation detail pages, link preservation on edit
+- 2026-03-17: Code review found 3 MEDIUM + 2 LOW issues. Auto-fixed: triple Qdrant query perf issue (M1), missing validation_status badge in _linked_kb.html (M2), hardcoded URL paths in entry.html (M3). Added validation_status field to KBEntry dataclass. Added 1 new test. All 3,122 tests pass (941 investigator + 1,650 UI + 531 operator).
 
 ### File List
 

@@ -7,6 +7,13 @@
                target="_blank"
                class="kb-entry-link">{{ entry.title }}</a>
             <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+            {% if entry.validation_status == 'proven' %}
+            <span class="validation-status-badge validation-proven" title="Proven fix">&#9733; proven</span>
+            {% elif entry.validation_status == 'human-confirmed' %}
+            <span class="validation-status-badge validation-human-confirmed" title="Human-confirmed">&#10003; human-confirmed</span>
+            {% elif entry.validation_status %}
+            <span class="validation-status-badge validation-ai-generated" title="AI-generated">&#9881; {{ entry.validation_status }}</span>
+            {% endif %}
         </div>
         {% if entry.service %}
         <span class="service-badge">{{ entry.service }}</span>

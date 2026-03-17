@@ -96,6 +96,7 @@ class KBEntry:
     version: int
     tags: list[str]
     auto_published: bool = False
+    validation_status: Optional[str] = None  # AI-generated, human-confirmed, proven, corrected
     relevance_score: Optional[float] = None  # Set during semantic search
 
     @classmethod
@@ -132,6 +133,7 @@ class KBEntry:
             version=payload.get("version", 1),
             tags=payload.get("tags", []),
             auto_published=payload.get("auto_published", False),
+            validation_status=payload.get("validation_status"),
         )
 
 
@@ -556,16 +558,20 @@ class KBService:
             logger.warning(f"Failed to get entry payload for {entry_id}: {e}")
             return None
 
-    def get_source_investigation(self, entry_id: str) -> Optional[dict[str, str]]:
+    def get_source_investigation(
+        self, entry_id: str, payload: Optional[dict[str, Any]] = None
+    ) -> Optional[dict[str, str]]:
         """Get the source investigation link for a KB entry.
 
         Args:
             entry_id: The KB entry ID.
+            payload: Optional pre-fetched payload to avoid extra Qdrant query.
 
         Returns:
             Dict with investigation_id and relationship, or None.
         """
-        payload = self.get_entry_payload(entry_id)
+        if payload is None:
+            payload = self.get_entry_payload(entry_id)
         if not payload:
             return None
         source_id = payload.get("source_investigation_id")
@@ -573,16 +579,20 @@ class KBService:
             return None
         return {"investigation_id": source_id, "relationship": "source"}
 
-    def get_contributing_investigations(self, entry_id: str) -> list[dict[str, str]]:
+    def get_contributing_investigations(
+        self, entry_id: str, payload: Optional[dict[str, Any]] = None
+    ) -> list[dict[str, str]]:
         """Get contributing investigation links for a KB entry.
 
         Args:
             entry_id: The KB entry ID.
+            payload: Optional pre-fetched payload to avoid extra Qdrant query.
 
         Returns:
             List of dicts with investigation_id and relationship.
         """
-        payload = self.get_entry_payload(entry_id)
+        if payload is None:
+            payload = self.get_entry_payload(entry_id)
         if not payload:
             return []
         contribs = payload.get("contributing_investigations", [])

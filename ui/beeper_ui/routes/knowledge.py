@@ -1808,9 +1808,13 @@ def kb_entry(entry_id: str) -> tuple[str, int] | str:
             related_entries = service_client.list_related_entries(
                 entry_id=entry_id, service=entry.service, limit=5
             )
-            source_investigation = service_client.get_source_investigation(entry_id)
+            # Fetch payload once for both link methods (avoids 2 extra Qdrant queries)
+            entry_payload = service_client.get_entry_payload(entry_id)
+            source_investigation = service_client.get_source_investigation(
+                entry_id, payload=entry_payload
+            )
             contributing_investigations = service_client.get_contributing_investigations(
-                entry_id
+                entry_id, payload=entry_payload
             )
     except KBServiceError as e:
         error_message = str(e)

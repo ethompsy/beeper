@@ -27,6 +27,7 @@ def _make_entry(
         author="beeper",
         version=1,
         tags=["test"],
+        validation_status=None,
     )
 
 
@@ -53,7 +54,9 @@ class TestKBEntryDetailLinks:
         response = client.get("/knowledge/kb-with-source")
         assert response.status_code == 200
         assert b"inv-source-abc" in response.data
-        mock_service.get_source_investigation.assert_called_once_with("kb-with-source")
+        mock_service.get_source_investigation.assert_called_once()
+        call_args = mock_service.get_source_investigation.call_args
+        assert call_args[0][0] == "kb-with-source"
 
     @patch("beeper_ui.routes.knowledge.get_kb_service")
     def test_entry_detail_passes_contributing_investigations(
@@ -76,9 +79,9 @@ class TestKBEntryDetailLinks:
         assert response.status_code == 200
         assert b"inv-contrib-1" in response.data
         assert b"inv-contrib-2" in response.data
-        mock_service.get_contributing_investigations.assert_called_once_with(
-            "kb-with-contribs"
-        )
+        mock_service.get_contributing_investigations.assert_called_once()
+        call_args = mock_service.get_contributing_investigations.call_args
+        assert call_args[0][0] == "kb-with-contribs"
 
     @patch("beeper_ui.routes.knowledge.get_kb_service")
     def test_entry_detail_with_both_source_and_contribs(
@@ -140,7 +143,7 @@ class TestKBEntryDetailLinks:
 
         client.get("/knowledge/kb-verify-calls")
 
-        mock_service.get_source_investigation.assert_called_once_with("kb-verify-calls")
-        mock_service.get_contributing_investigations.assert_called_once_with(
-            "kb-verify-calls"
-        )
+        mock_service.get_source_investigation.assert_called_once()
+        assert mock_service.get_source_investigation.call_args[0][0] == "kb-verify-calls"
+        mock_service.get_contributing_investigations.assert_called_once()
+        assert mock_service.get_contributing_investigations.call_args[0][0] == "kb-verify-calls"
