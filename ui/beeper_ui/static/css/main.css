@@ -4981,3 +4981,104 @@ a.match-badge.kb-entry-link::after {
     z-index: 1000;
     transition: opacity 0.3s ease;
 }
+
+/* ===== KB Surfacing Styles (Story 5-6) ===== */
+
+/* Sort indicator above entry list */
+.kb-sort-indicator {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-bottom: 0.5rem;
+    font-style: italic;
+}
+
+/* Enhanced KB entry card for surfacing */
+.kb-surfacing-entry {
+    border-left: 3px solid #4f46e5;
+    padding-left: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+/* Validation weight indicators in badges */
+.validation-proven {
+    color: #f59e0b;
+}
+.validation-human-confirmed {
+    color: #3b82f6;
+}
+.validation-ai-generated {
+    color: #9ca3af;
+}
+
+/* KB feedback action buttons */
+.kb-feedback-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.kb-feedback-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    border: 1px solid #374151;
+    border-radius: 4px;
+    background: transparent;
+    color: #d1d5db;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.kb-feedback-btn:hover:not(:disabled) {
+    background: #1f2937;
+    border-color: #6b7280;
+}
+
+.kb-feedback-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.kb-feedback-btn.selected-relevant {
+    background: #064e3b;
+    border-color: #10b981;
+    color: #6ee7b7;
+}
+
+.kb-feedback-btn.selected-not-relevant {
+    background: #1f2937;
+    border-color: #6b7280;
+    color: #9ca3af;
+}
+
+/* Novel issue banner */
+.kb-novel-issue {
+    border-left: 4px solid #f59e0b;
+    background: #1c1917;
+    padding: 1rem;
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 0.75rem;
+}
+
+.kb-novel-issue strong {
+    color: #fbbf24;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.kb-novel-issue p {
+    color: #9ca3af;
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+/* KB feedback message in collaboration panel */
+.collab-kb-feedback {
+    border-left: 2px solid #6366f1;
+}
+
+.collab-kb-feedback-label {
+    color: #818cf8;
+}

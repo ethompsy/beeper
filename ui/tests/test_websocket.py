@@ -824,3 +824,110 @@ class TestTemplateIntegration:
             )
             assert "socket.io" in html
             assert "investigation-collab.js" in html
+
+
+class TestKBRelevanceFeedback:
+    """Tests for kb_relevance_feedback WebSocket event handler (Story 5-6)."""
+
+    @staticmethod
+    def _join_room(client):
+        client.emit("join_investigation", {"investigation_id": "inv-001"})
+        client.get_received()
+
+    def test_feedback_stores_and_broadcasts(self, ws_client):
+        """Test valid feedback records and broadcasts to room."""
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation.KBSurfacingService"
+        ) as MockSurfacingSvc:
+            mock_svc = MagicMock()
+            mock_svc.record_relevance_feedback.return_value = True
+            MockSurfacingSvc.return_value = mock_svc
+
+            client.emit("kb_relevance_feedback", {
+                "investigation_id": "inv-001",
+                "entry_id": "kb-test-001",
+                "is_relevant": True,
+            })
+
+        received = client.get_received()
+        feedbacks = [r for r in received if r["name"] == "kb_feedback_recorded"]
+        assert len(feedbacks) == 1
+        assert feedbacks[0]["args"][0]["entry_id"] == "kb-test-001"
+        assert feedbacks[0]["args"][0]["is_relevant"] is True
+
+    def test_feedback_missing_investigation_id(self, ws_client):
+        """Test error returned when investigation_id missing."""
+        client, _ = ws_client
+        client.emit("kb_relevance_feedback", {
+            "entry_id": "kb-001",
+            "is_relevant": True,
+        })
+        received = client.get_received()
+        assert any(r["name"] == "error" for r in received)
+
+    def test_feedback_missing_entry_id(self, ws_client):
+        """Test error returned when entry_id missing."""
+        client, _ = ws_client
+        client.emit("kb_relevance_feedback", {
+            "investigation_id": "inv-001",
+            "is_relevant": True,
+        })
+        received = client.get_received()
+        assert any(r["name"] == "error" for r in received)
+
+    def test_feedback_missing_is_relevant(self, ws_client):
+        """Test error returned when is_relevant missing."""
+        client, _ = ws_client
+        client.emit("kb_relevance_feedback", {
+            "investigation_id": "inv-001",
+            "entry_id": "kb-001",
+        })
+        received = client.get_received()
+        assert any(r["name"] == "error" for r in received)
+
+    def test_feedback_stores_collaboration_message(self, ws_client):
+        """Test feedback stores a kb_feedback CollaborationMessage."""
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation.KBSurfacingService"
+        ) as MockSurfacingSvc:
+            mock_svc = MagicMock()
+            mock_svc.record_relevance_feedback.return_value = True
+            MockSurfacingSvc.return_value = mock_svc
+
+            client.emit("kb_relevance_feedback", {
+                "investigation_id": "inv-001",
+                "entry_id": "kb-test-002",
+                "is_relevant": False,
+            })
+
+        # At minimum, a collaboration message was stored (upsert was called)
+        assert mock_qdrant.upsert.called
+
+    def test_feedback_continues_if_surfacing_fails(self, ws_client):
+        """Test feedback handler continues even if recording fails."""
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation.KBSurfacingService"
+        ) as MockSurfacingSvc:
+            mock_svc = MagicMock()
+            mock_svc.record_relevance_feedback.side_effect = Exception("Qdrant down")
+            MockSurfacingSvc.return_value = mock_svc
+
+            client.emit("kb_relevance_feedback", {
+                "investigation_id": "inv-001",
+                "entry_id": "kb-fail-001",
+                "is_relevant": True,
+            })
+
+        received = client.get_received()
+        # Should still broadcast despite recording failure
+        feedbacks = [r for r in received if r["name"] == "kb_feedback_recorded"]
+        assert len(feedbacks) == 1

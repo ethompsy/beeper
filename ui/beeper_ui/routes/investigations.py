@@ -18,6 +18,7 @@ from flask import (
 )
 
 from beeper_ui.middleware.permissions import require_role
+from beeper_ui.services.collaboration_service import get_collaboration_service
 from beeper_ui.services.confidence_gate_service import (
     ConfidenceGateError,
     ConfidenceGateService,
@@ -29,15 +30,15 @@ from beeper_ui.services.escalation_urgency_service import (
     EscalationUrgencyService,
     UrgencyScore,
 )
+from beeper_ui.services.evidence_service import get_evidence_service
 from beeper_ui.services.investigation_service import (
     Investigation,
     InvestigationDetail,
     InvestigationService,
     InvestigationServiceError,
 )
-from beeper_ui.services.collaboration_service import get_collaboration_service
-from beeper_ui.services.evidence_service import get_evidence_service
-from beeper_ui.services.kb_service import KBEntry, KBService, KBServiceError
+from beeper_ui.services.kb_service import KBEntry, KBServiceError
+from beeper_ui.services.kb_surfacing_service import KBSurfacingService
 from beeper_ui.services.notification_audit_service import NotificationAuditService
 from beeper_ui.services.slo_service import SloService, SloServiceError
 
@@ -514,27 +515,27 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
 
 @investigations_bp.route("/<investigation_id>/related-kb")
 def investigation_related_kb(investigation_id: str) -> str:
-    """Fetch related KB entries for an investigation.
+    """Fetch related KB entries for an investigation using semantic search.
 
-    Uses the investigation's service name to find KB entries
-    and highlights exact matches from the investigation findings.
+    Uses KB semantic search to find relevant entries ranked by composite
+    score (relevance * validation weight). Falls back to service-based
+    listing if semantic search is unavailable.
     Returns a partial HTML template for HTMX lazy-loading.
     """
     if not SERVICE_NAME_PATTERN.match(investigation_id):
         abort(404)
 
     svc = get_investigation_service()
-    related_entries: list[KBEntry] = []
+    surfacing_result = None
     exact_match_entry: KBEntry | None = None
     exact_match_found = False
-    exact_match_id: str | None = None
 
     try:
         investigation = svc.get_investigation(investigation_id)
         if investigation is None:
             return render_template(
                 "investigations/_related_kb.html",
-                related_entries=[],
+                surfacing_result=None,
                 exact_match_entry=None,
                 exact_match_found=False,
             )
@@ -543,22 +544,28 @@ def investigation_related_kb(investigation_id: str) -> str:
         exact_match_found = bool(findings.get("exact_match_found"))
         exact_match_id = str(findings.get("exact_match_id", "")) or None
 
-        # Fetch related KB entries by service
-        kb_svc = KBService()
+        # Use semantic search for KB surfacing
+        surfacing_svc = KBSurfacingService()
         try:
-            related_entries = kb_svc.list_entries_by_service(
-                investigation.service, limit=10
+            surfacing_result = surfacing_svc.surface_entries(
+                investigation_id, findings
             )
             # Fetch exact match entry if available
             if exact_match_id:
-                exact_match_entry = kb_svc.get_entry(exact_match_id)
-        except KBServiceError:
+                exact_match_entry = surfacing_svc.kb_service.get_entry(
+                    exact_match_id
+                )
+            # Mark novel investigations for future KB creation
+            if surfacing_result.is_novel:
+                surfacing_svc.mark_novel_investigation(investigation_id)
+        except Exception:
             logger.warning(
-                "Failed to fetch KB entries for investigation %s",
+                "Failed to surface KB entries for investigation %s",
                 investigation_id,
+                exc_info=True,
             )
         finally:
-            kb_svc.close()
+            surfacing_svc.close()
     except InvestigationServiceError:
         logger.warning(
             "Failed to fetch investigation %s for related KB",
@@ -567,7 +574,7 @@ def investigation_related_kb(investigation_id: str) -> str:
 
     return render_template(
         "investigations/_related_kb.html",
-        related_entries=related_entries,
+        surfacing_result=surfacing_result,
         exact_match_entry=exact_match_entry,
         exact_match_found=exact_match_found,
     )
@@ -1154,22 +1161,28 @@ def _generate_detail_sse_events(
                     not kb_update_sent
                     and "prior_research_summary" in current_keys
                 ):
-                    kb_svc = KBService()
+                    surfacing_svc = KBSurfacingService()
                     try:
-                        related_entries = kb_svc.list_entries_by_service(
-                            detail.service, limit=10
+                        surfacing_result = surfacing_svc.surface_entries(
+                            investigation_id, findings
                         )
                         exact_match_id = (
                             str(findings.get("exact_match_id", "")) or None
                         )
                         exact_match_entry = None
                         if exact_match_id:
-                            exact_match_entry = kb_svc.get_entry(
-                                exact_match_id
+                            exact_match_entry = (
+                                surfacing_svc.kb_service.get_entry(
+                                    exact_match_id
+                                )
+                            )
+                        if surfacing_result.is_novel:
+                            surfacing_svc.mark_novel_investigation(
+                                investigation_id
                             )
                         kb_html = render_template(
                             "investigations/_related_kb.html",
-                            related_entries=related_entries,
+                            surfacing_result=surfacing_result,
                             exact_match_entry=exact_match_entry,
                             exact_match_found=bool(
                                 findings.get("exact_match_found")
@@ -1180,13 +1193,13 @@ def _generate_detail_sse_events(
                             for line in kb_html.split("\n")
                         )
                         yield f"event: kb-update\n{kb_lines}\n\n"
-                    except KBServiceError:
+                    except (KBServiceError, Exception):
                         logger.warning(
-                            "SSE: Failed to fetch KB entries for %s",
+                            "SSE: Failed to surface KB entries for %s",
                             investigation_id,
                         )
                     finally:
-                        kb_svc.close()
+                        surfacing_svc.close()
                     kb_update_sent = True
 
                 last_findings_keys = current_keys

@@ -14,6 +14,7 @@ from flask_socketio import emit, join_room, leave_room
 from beeper_ui.services import collaboration_service as collab_svc
 from beeper_ui.services.collaboration_service import CollaborationMessage
 from beeper_ui.services.investigation_service import InvestigationService
+from beeper_ui.services.kb_surfacing_service import KBSurfacingService
 from beeper_ui.websocket import socketio
 
 logger = logging.getLogger(__name__)
@@ -351,6 +352,66 @@ def handle_reject_fix(data: dict) -> None:
 
     # Broadcast to all users in the room
     emit("fix_rejected", message.to_payload(), room=room)
+
+
+@socketio.on("kb_relevance_feedback")
+def handle_kb_relevance_feedback(data: dict) -> None:
+    """Handle a user providing relevance feedback on a surfaced KB entry.
+
+    Args:
+        data: Dict with 'investigation_id', 'entry_id', and 'is_relevant'.
+    """
+    investigation_id = data.get("investigation_id", "")
+    entry_id = data.get("entry_id", "")
+    is_relevant = data.get("is_relevant")
+
+    if not investigation_id or not entry_id or is_relevant is None:
+        emit("error", {"message": "investigation_id, entry_id, and is_relevant are required"})
+        return
+
+    user = _get_user()
+    room = _room_name(investigation_id)
+
+    # Record feedback in investigation Qdrant payload
+    surfacing_svc = KBSurfacingService()
+    try:
+        surfacing_svc.record_relevance_feedback(
+            investigation_id, entry_id, bool(is_relevant), user
+        )
+    except Exception:
+        logger.warning(
+            "Failed to record KB relevance feedback for %s",
+            investigation_id,
+            exc_info=True,
+        )
+    finally:
+        surfacing_svc.close()
+
+    # Store in collaboration history for audit trail
+    feedback_label = "relevant" if is_relevant else "not relevant"
+    message = CollaborationMessage(
+        id=str(uuid.uuid4()),
+        investigation_id=investigation_id,
+        user=user,
+        role=user,
+        message_type="kb_feedback",
+        content=f"Marked KB entry {entry_id} as {feedback_label}",
+        timestamp=_now_iso(),
+    )
+
+    service = collab_svc.get_collaboration_service()
+    service.store_message(message)
+
+    # Broadcast to all users in the room
+    emit(
+        "kb_feedback_recorded",
+        {
+            "entry_id": entry_id,
+            "is_relevant": bool(is_relevant),
+            "user": user,
+        },
+        room=room,
+    )
 
 
 @socketio.on("disconnect")

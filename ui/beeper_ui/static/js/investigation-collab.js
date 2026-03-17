@@ -127,6 +127,11 @@
     hideApprovalBar();
   });
 
+  // Receive KB relevance feedback confirmation
+  socket.on("kb_feedback_recorded", function (data) {
+    updateKBFeedbackUI(data.entry_id, data.is_relevant);
+  });
+
   // User presence updates
   socket.on("user_joined", function (data) {
     updateActiveUsers(data.active_users);
@@ -358,6 +363,44 @@
     }
   });
 
+  // --- KB Relevance Feedback ---
+  window.sendKBFeedback = function (entryId, isRelevant) {
+    // Optimistic UI — immediately update button state
+    updateKBFeedbackUI(entryId, isRelevant);
+
+    socket.emit("kb_relevance_feedback", {
+      investigation_id: investigationId,
+      entry_id: entryId,
+      is_relevant: isRelevant,
+    });
+  };
+
+  function updateKBFeedbackUI(entryId, isRelevant) {
+    var card = document.querySelector('.kb-surfacing-entry[data-entry-id="' + entryId + '"]');
+    if (!card) return;
+    var relevantBtn = card.querySelector('.kb-feedback-relevant');
+    var notRelevantBtn = card.querySelector('.kb-feedback-not-relevant');
+    if (isRelevant) {
+      if (relevantBtn) {
+        relevantBtn.classList.add("selected-relevant");
+        relevantBtn.disabled = true;
+      }
+      if (notRelevantBtn) {
+        notRelevantBtn.classList.remove("selected-not-relevant");
+        notRelevantBtn.disabled = true;
+      }
+    } else {
+      if (notRelevantBtn) {
+        notRelevantBtn.classList.add("selected-not-relevant");
+        notRelevantBtn.disabled = true;
+      }
+      if (relevantBtn) {
+        relevantBtn.classList.remove("selected-relevant");
+        relevantBtn.disabled = true;
+      }
+    }
+  }
+
   function appendMessage(msg) {
     if (!messagesDiv) return;
 
@@ -391,6 +434,9 @@
     } else if (msg.message_type === "fix_applied") {
       div.className += " collab-fix-applied";
       appendLabeledMessage(div, "Fix Applied", "collab-fix-applied-label", msg);
+    } else if (msg.message_type === "kb_feedback") {
+      div.className += " collab-kb-feedback";
+      appendLabeledMessage(div, "KB Feedback", "collab-kb-feedback-label", msg);
     } else {
       var header = document.createElement("div");
       header.className = "collab-msg-header";

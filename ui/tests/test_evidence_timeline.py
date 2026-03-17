@@ -255,20 +255,24 @@ class TestFindingsTemplateEnhancements:
 
 class TestRelatedKBTemplateEnhancements:
     def test_proven_fix_shows_validation_badge(self, app):
-        entry = MagicMock()
-        entry.entry_id = "kb-pf-1"
-        entry.title = "Proven Fix Entry"
-        entry.entry_type = "proven_fix"
-        entry.service = "api"
-        entry.created_at = None
-        entry.content = "This is a proven fix"
-        entry.relevance_score = 0.88
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
+        surfacing_result = KBSurfacingResult(
+            entries=[{
+                "entry_id": "kb-pf-1", "title": "Proven Fix Entry",
+                "entry_type": "proven_fix", "service": "api",
+                "validation_status": "proven", "relevance_score": 0.88,
+                "composite_score": 2.64, "content_preview": "This is a proven fix",
+                "created_at": "", "link": "/knowledge/kb-pf-1",
+            }],
+            is_novel=False, query_text="test", investigation_id="inv-1",
+        )
 
         with app.app_context():
             html = app.jinja_env.get_template(
                 "investigations/_related_kb.html"
             ).render(
-                related_entries=[entry],
+                surfacing_result=surfacing_result,
                 exact_match_entry=None,
                 exact_match_found=False,
             )
@@ -277,20 +281,24 @@ class TestRelatedKBTemplateEnhancements:
             assert "88%" in html
 
     def test_investigation_shows_ai_generated_badge(self, app):
-        entry = MagicMock()
-        entry.entry_id = "kb-inv-1"
-        entry.title = "Investigation Entry"
-        entry.entry_type = "investigation"
-        entry.service = "api"
-        entry.created_at = None
-        entry.content = "Auto-generated"
-        entry.relevance_score = None
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
+        surfacing_result = KBSurfacingResult(
+            entries=[{
+                "entry_id": "kb-inv-1", "title": "Investigation Entry",
+                "entry_type": "investigation", "service": "api",
+                "validation_status": "AI-generated", "relevance_score": None,
+                "composite_score": 0.0, "content_preview": "Auto-generated",
+                "created_at": "", "link": "/knowledge/kb-inv-1",
+            }],
+            is_novel=False, query_text="test", investigation_id="inv-1",
+        )
 
         with app.app_context():
             html = app.jinja_env.get_template(
                 "investigations/_related_kb.html"
             ).render(
-                related_entries=[entry],
+                surfacing_result=surfacing_result,
                 exact_match_entry=None,
                 exact_match_found=False,
             )
@@ -298,20 +306,24 @@ class TestRelatedKBTemplateEnhancements:
             assert "AI-generated" in html
 
     def test_correction_shows_human_confirmed_badge(self, app):
-        entry = MagicMock()
-        entry.entry_id = "kb-cor-1"
-        entry.title = "Correction Entry"
-        entry.entry_type = "correction"
-        entry.service = "api"
-        entry.created_at = None
-        entry.content = "Human correction"
-        entry.relevance_score = 0.72
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
+        surfacing_result = KBSurfacingResult(
+            entries=[{
+                "entry_id": "kb-cor-1", "title": "Correction Entry",
+                "entry_type": "correction", "service": "api",
+                "validation_status": "human-confirmed", "relevance_score": 0.72,
+                "composite_score": 1.44, "content_preview": "Human correction",
+                "created_at": "", "link": "/knowledge/kb-cor-1",
+            }],
+            is_novel=False, query_text="test", investigation_id="inv-1",
+        )
 
         with app.app_context():
             html = app.jinja_env.get_template(
                 "investigations/_related_kb.html"
             ).render(
-                related_entries=[entry],
+                surfacing_result=surfacing_result,
                 exact_match_entry=None,
                 exact_match_found=False,
             )

@@ -1264,55 +1264,101 @@ class TestRecommendationsDisplay:
 
 
 class TestRelatedKBNavigation:
-    """Tests for KB entry navigation from investigations (Story 4-4)."""
+    """Tests for KB entry navigation from investigations (Stories 4-4, 5-6)."""
 
     @respx.mock
-    def test_related_kb_returns_entries_by_service(
+    def test_related_kb_returns_semantically_ranked_entries(
         self, client: FlaskClient
     ) -> None:
-        """Test related-kb route returns KB entries matching investigation service."""
+        """Test related-kb route returns semantically ranked KB entries."""
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
         respx.get(
             "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
         ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
 
-        mock_kb_entries = [
-            _make_mock_kb_entry("kb-001", "Payments Runbook", "payments"),
-            _make_mock_kb_entry("kb-002", "Payment Error Guide", "payments"),
-        ]
+        surfacing_result = KBSurfacingResult(
+            entries=[
+                {
+                    "entry_id": "kb-001", "title": "Payments Runbook",
+                    "entry_type": "proven_fix", "service": "payments",
+                    "validation_status": "proven", "relevance_score": 0.8,
+                    "composite_score": 2.4, "content_preview": "Some content",
+                    "created_at": "2026-03-01", "link": "/knowledge/kb-001",
+                },
+                {
+                    "entry_id": "kb-002", "title": "Payment Error Guide",
+                    "entry_type": "investigation", "service": "payments",
+                    "validation_status": "AI-generated",
+                    "relevance_score": 0.9, "composite_score": 0.9,
+                    "content_preview": "Other content",
+                    "created_at": "2026-03-02", "link": "/knowledge/kb-002",
+                },
+            ],
+            is_novel=False,
+            query_text="test query",
+            investigation_id="inv-detail-001",
+        )
 
         with patch(
             "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
             return_value={},
         ), patch(
-            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
-            return_value=mock_kb_entries,
+            "beeper_ui.routes.investigations.KBSurfacingService.surface_entries",
+            return_value=surfacing_result,
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.close",
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.mark_novel_investigation",
         ):
             response = client.get("/investigations/inv-detail-001/related-kb")
             assert response.status_code == 200
             assert b"Payments Runbook" in response.data
             assert b"Payment Error Guide" in response.data
+            assert b"Ranked by relevance" in response.data
 
     @respx.mock
-    def test_related_kb_empty_state(self, client: FlaskClient) -> None:
-        """Test related-kb returns empty state when no entries found."""
+    def test_related_kb_novel_issue_empty_state(self, client: FlaskClient) -> None:
+        """Test related-kb renders novel issue banner when no entries found (AC #3)."""
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
         respx.get(
             "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
         ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
 
+        surfacing_result = KBSurfacingResult(
+            entries=[],
+            is_novel=True,
+            query_text="unknown issue",
+            investigation_id="inv-detail-001",
+        )
+
+        mock_mark = MagicMock()
+
         with patch(
             "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
-            return_value={},
+            return_value={"root_cause_hypothesis": "unknown"},
         ), patch(
-            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
-            return_value=[],
+            "beeper_ui.routes.investigations.KBSurfacingService.surface_entries",
+            return_value=surfacing_result,
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.mark_novel_investigation",
+            mock_mark,
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.close",
         ):
             response = client.get("/investigations/inv-detail-001/related-kb")
             assert response.status_code == 200
-            assert b"No related KB entries found" in response.data
+            assert b"No prior knowledge found" in response.data
+            assert b"novel issue" in response.data
+            assert b"kb-novel-issue" in response.data
+            mock_mark.assert_called_once_with("inv-detail-001")
 
     @respx.mock
     def test_related_kb_exact_match_banner(self, client: FlaskClient) -> None:
         """Test prior research banner appears with exact match."""
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
         respx.get(
             "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
         ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
@@ -1321,6 +1367,14 @@ class TestRelatedKBNavigation:
             "kb-exact-001", "Exact Prior Incident", "payments"
         )
 
+        surfacing_result = KBSurfacingResult(
+            entries=[], is_novel=False,
+            query_text="test", investigation_id="inv-detail-001",
+        )
+
+        mock_kb_svc = MagicMock()
+        mock_kb_svc.get_entry.return_value = exact_entry
+
         with patch(
             "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
             return_value={
@@ -1328,11 +1382,15 @@ class TestRelatedKBNavigation:
                 "exact_match_id": "kb-exact-001",
             },
         ), patch(
-            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
-            return_value=[],
+            "beeper_ui.routes.investigations.KBSurfacingService.surface_entries",
+            return_value=surfacing_result,
         ), patch(
-            "beeper_ui.routes.investigations.KBService.get_entry",
-            return_value=exact_entry,
+            "beeper_ui.routes.investigations.KBSurfacingService.kb_service",
+            new_callable=lambda: property(lambda self: mock_kb_svc),
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.close",
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.mark_novel_investigation",
         ):
             response = client.get("/investigations/inv-detail-001/related-kb")
             assert response.status_code == 200
@@ -1354,6 +1412,99 @@ class TestRelatedKBNavigation:
         response = client.get("/investigations/inv-detail-001/related-kb")
         assert response.status_code == 200
         assert b"No related KB entries found" in response.data
+
+    @respx.mock
+    def test_related_kb_feedback_buttons_present(self, client: FlaskClient) -> None:
+        """Test feedback buttons render for each surfaced entry (AC #2)."""
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        surfacing_result = KBSurfacingResult(
+            entries=[
+                {"entry_id": "kb-fb-001", "title": "Test Entry", "entry_type": "investigation",
+                 "service": "payments", "validation_status": "AI-generated", "relevance_score": 0.8,
+                 "composite_score": 0.8, "content_preview": "Content", "created_at": "2026-03-01",
+                 "link": "/knowledge/kb-fb-001"},
+            ],
+            is_novel=False,
+            query_text="test",
+            investigation_id="inv-detail-001",
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.surface_entries",
+            return_value=surfacing_result,
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.close",
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.mark_novel_investigation",
+        ):
+            response = client.get("/investigations/inv-detail-001/related-kb")
+            assert response.status_code == 200
+            assert b"kb-feedback-relevant" in response.data
+            assert b"kb-feedback-not-relevant" in response.data
+            assert b'data-entry-id="kb-fb-001"' in response.data
+
+    @respx.mock
+    def test_related_kb_validation_ranking_display(self, client: FlaskClient) -> None:
+        """Test validation status badges show correct indicators (AC #1)."""
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        surfacing_result = KBSurfacingResult(
+            entries=[
+                {
+                    "entry_id": "kb-proven", "title": "Proven Fix",
+                    "entry_type": "proven_fix", "service": "payments",
+                    "validation_status": "proven", "relevance_score": 0.6,
+                    "composite_score": 1.8,
+                    "content_preview": "Proven content",
+                    "created_at": "2026-03-01",
+                    "link": "/knowledge/kb-proven",
+                },
+                {
+                    "entry_id": "kb-ai", "title": "AI Entry",
+                    "entry_type": "investigation", "service": "payments",
+                    "validation_status": "AI-generated",
+                    "relevance_score": 0.9, "composite_score": 0.9,
+                    "content_preview": "AI content",
+                    "created_at": "2026-03-02",
+                    "link": "/knowledge/kb-ai",
+                },
+            ],
+            is_novel=False,
+            query_text="test",
+            investigation_id="inv-detail-001",
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value={},
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.surface_entries",
+            return_value=surfacing_result,
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.close",
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.mark_novel_investigation",
+        ):
+            response = client.get("/investigations/inv-detail-001/related-kb")
+            assert response.status_code == 200
+            assert b"validation-proven" in response.data
+            assert b"validation-ai-generated" in response.data
+            # Proven entry appears first (higher composite score)
+            proven_pos = response.data.find(b"Proven Fix")
+            ai_pos = response.data.find(b"AI Entry")
+            assert proven_pos < ai_pos
 
     @respx.mock
     def test_detail_includes_related_kb_lazy_load(
@@ -1428,20 +1579,39 @@ class TestRelatedKBNavigation:
         self, client: FlaskClient
     ) -> None:
         """Test KB entry links have target=_blank for new tab."""
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
         respx.get(
             "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
         ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
 
-        mock_kb_entries = [
-            _make_mock_kb_entry("kb-001", "Test Entry", "payments"),
-        ]
+        surfacing_result = KBSurfacingResult(
+            entries=[
+                {
+                    "entry_id": "kb-001", "title": "Test Entry",
+                    "entry_type": "investigation", "service": "payments",
+                    "validation_status": "AI-generated",
+                    "relevance_score": 0.8, "composite_score": 0.8,
+                    "content_preview": "Test content",
+                    "created_at": "2026-03-01",
+                    "link": "/knowledge/kb-001",
+                },
+            ],
+            is_novel=False,
+            query_text="test",
+            investigation_id="inv-detail-001",
+        )
 
         with patch(
             "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
             return_value={},
         ), patch(
-            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
-            return_value=mock_kb_entries,
+            "beeper_ui.routes.investigations.KBSurfacingService.surface_entries",
+            return_value=surfacing_result,
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.close",
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.mark_novel_investigation",
         ):
             response = client.get("/investigations/inv-detail-001/related-kb")
             assert response.status_code == 200
@@ -1527,9 +1697,25 @@ class TestRelatedKBNavigation:
             "exact_match_id": "kb-match-sse",
         }
 
-        mock_kb_entries = [
-            _make_mock_kb_entry("kb-001", "SSE KB Entry", "payments"),
-        ]
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
+        surfacing_result = KBSurfacingResult(
+            entries=[
+                {
+                    "entry_id": "kb-001", "title": "SSE KB Entry",
+                    "entry_type": "investigation",
+                    "service": "payments",
+                    "validation_status": "AI-generated",
+                    "relevance_score": 0.8, "composite_score": 0.8,
+                    "content_preview": "Test",
+                    "created_at": "2026-03-01",
+                    "link": "/knowledge/kb-001",
+                },
+            ],
+            is_novel=False,
+            query_text="test",
+            investigation_id="inv-detail-001",
+        )
         exact_entry = _make_mock_kb_entry(
             "kb-match-sse", "Exact SSE Match", "payments"
         )
@@ -1538,10 +1724,14 @@ class TestRelatedKBNavigation:
             "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
             side_effect=[findings_v1, findings_v2],
         ), patch(
-            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
-            return_value=mock_kb_entries,
+            "beeper_ui.routes.investigations.KBSurfacingService.surface_entries",
+            return_value=surfacing_result,
         ), patch(
-            "beeper_ui.routes.investigations.KBService.get_entry",
+            "beeper_ui.routes.investigations.KBSurfacingService.close",
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.mark_novel_investigation",
+        ), patch(
+            "beeper_ui.services.kb_service.KBService.get_entry",
             return_value=exact_entry,
         ), patch(
             "beeper_ui.routes.investigations.time.sleep"
@@ -1560,7 +1750,7 @@ class TestRelatedKBNavigation:
                 assert "event: step-update" in event1
 
                 # Second iteration: findings appeared with prior_research_summary
-                # Should get findings-update, evidence-update, evidence-timeline-update, AND kb-update
+                # Should get findings, evidence, timeline, AND kb-update
                 events = []
                 event2 = next(gen)
                 events.append(event2)
@@ -1606,12 +1796,25 @@ class TestRelatedKBNavigation:
             "new_key": "new data",
         }
 
+        from beeper_ui.services.kb_surfacing_service import KBSurfacingResult
+
+        surfacing_result = KBSurfacingResult(
+            entries=[],
+            is_novel=True,
+            query_text="test",
+            investigation_id="inv-detail-001",
+        )
+
         with patch(
             "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
             side_effect=[findings_with_kb, findings_with_kb_v2],
         ), patch(
-            "beeper_ui.routes.investigations.KBService.list_entries_by_service",
-            return_value=[],
+            "beeper_ui.routes.investigations.KBSurfacingService.surface_entries",
+            return_value=surfacing_result,
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.close",
+        ), patch(
+            "beeper_ui.routes.investigations.KBSurfacingService.mark_novel_investigation",
         ), patch(
             "beeper_ui.routes.investigations.time.sleep"
         ):
