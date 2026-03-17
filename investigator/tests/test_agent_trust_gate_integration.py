@@ -39,15 +39,15 @@ def _make_agent(trust_level=3):
 
 
 class TestTrustGatePipelineIntegration:
-    def test_trust_gate_is_step_12(self):
-        """TrustGateStep is step 12 (index 11) in _build_steps()."""
+    def test_trust_gate_is_step_13(self):
+        """TrustGateStep is step 13 (index 12) in _build_steps()."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 13
-        assert isinstance(steps[11], TrustGateStep)
-        assert steps[11].name == "Trust Gate Evaluation"
+        assert len(steps) == 14
+        assert isinstance(steps[12], TrustGateStep)
+        assert steps[12].name == "Trust Gate Evaluation"
 
     def test_pipeline_metadata_shared(self):
         """TrustGateStep receives the shared pipeline_metadata reference."""
@@ -55,7 +55,7 @@ class TestTrustGatePipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        trust_gate_step = steps[11]
+        trust_gate_step = steps[12]
         assert trust_gate_step.pipeline_metadata is agent._pipeline_metadata
 
     def test_step_always_included_gates_internally(self):
@@ -67,29 +67,29 @@ class TestTrustGatePipelineIntegration:
             agent_tl5 = _make_agent(trust_level=5)
             steps_tl5 = agent_tl5._build_steps()
 
-        assert len(steps_tl1) == 13
-        assert isinstance(steps_tl1[11], TrustGateStep)
-        assert len(steps_tl5) == 13
-        assert isinstance(steps_tl5[11], TrustGateStep)
+        assert len(steps_tl1) == 14
+        assert isinstance(steps_tl1[12], TrustGateStep)
+        assert len(steps_tl5) == 14
+        assert isinstance(steps_tl5[12], TrustGateStep)
 
     def test_step_after_pr_generator(self):
-        """TrustGateStep comes after PRGeneratorStep (last step)."""
+        """TrustGateStep comes after PRGeneratorStep."""
         from beeper_investigator.remediation.pr_generator import PRGeneratorStep
 
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert isinstance(steps[10], PRGeneratorStep)
-        assert isinstance(steps[11], TrustGateStep)
+        assert isinstance(steps[11], PRGeneratorStep)
+        assert isinstance(steps[12], TrustGateStep)
 
-    def test_total_pipeline_length_is_13(self):
-        """Pipeline has exactly 13 steps (6 core + 7 remediation)."""
+    def test_total_pipeline_length_is_14(self):
+        """Pipeline has exactly 14 steps (7 core + 7 remediation)."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 13
+        assert len(steps) == 14
 
     def test_step_protocol_compliance(self):
         """TrustGateStep implements InvestigationStep protocol."""
@@ -99,7 +99,7 @@ class TestTrustGatePipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        trust_gate_step = steps[11]
+        trust_gate_step = steps[12]
         assert isinstance(trust_gate_step, InvestigationStep)
 
     def test_trust_gate_is_second_to_last_step(self):
@@ -108,4 +108,4 @@ class TestTrustGatePipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert isinstance(steps[11], TrustGateStep)
+        assert isinstance(steps[12], TrustGateStep)

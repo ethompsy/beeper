@@ -4,6 +4,7 @@ Extracts evidence references from pipeline metadata and structures them
 for presentation in the investigation timeline with clickable source links.
 """
 
+import json
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -145,6 +146,11 @@ class EvidenceService:
             investigation_id, findings, references, ref_index
         )
 
+        # 2.5 Extract deploy correlation evidence (from deploy_correlation step)
+        ref_index = self._extract_deploy_correlation_references(
+            investigation_id, findings, references, ref_index
+        )
+
         # 3. Extract supporting evidence items (from rca_hypothesis step)
         ref_index = self._extract_supporting_evidence(
             investigation_id, findings, references, ref_index
@@ -278,6 +284,45 @@ class EvidenceService:
                         )
                     )
                     ref_index += 1
+
+        return ref_index
+
+    def _extract_deploy_correlation_references(
+        self,
+        investigation_id: str,
+        findings: dict[str, Any],
+        references: list[EvidenceReference],
+        ref_index: int,
+    ) -> int:
+        """Extract deploy correlation evidence from deploy_correlation step."""
+        correlations = findings.get("deploy_correlations", [])
+        if not isinstance(correlations, list):
+            return ref_index
+
+        for corr in correlations:
+            if not isinstance(corr, dict):
+                continue
+            commit_sha = corr.get("commit_sha", "unknown")
+            confidence = corr.get("confidence", "unknown")
+            sha_short = commit_sha[:7]
+            author = corr.get("author", "unknown")
+            message = corr.get("message", "")
+            timestamp = corr.get("deployment_timestamp", datetime.now(timezone.utc).isoformat())
+
+            references.append(
+                EvidenceReference(
+                    id=f"ev-{investigation_id}-{ref_index}",
+                    investigation_id=investigation_id,
+                    evidence_type="deploy",
+                    title=f"Deploy Correlation: {sha_short} ({confidence})",
+                    content_preview=f"{message} by {author}" if message else f"Commit {sha_short} by {author}",
+                    source_ref=commit_sha,
+                    source_type="git_commit",
+                    timestamp=timestamp,
+                    raw_data=json.dumps(corr),
+                )
+            )
+            ref_index += 1
 
         return ref_index
 

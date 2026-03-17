@@ -80,6 +80,14 @@
         </div>
     </div>
 
+    {# Deploy Correlation #}
+    <div class="card">
+        <h3>Deploy Correlation</h3>
+        <div id="deploy-correlation" sse-swap="deploy-correlation-update" hx-swap="innerHTML">
+            {% include "investigations/_deploy_correlation.html" %}
+        </div>
+    </div>
+
     {# Human Interventions — annotations and redirects visible during review #}
     {% if human_interventions %}
     <div class="card">

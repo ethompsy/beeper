@@ -597,3 +597,105 @@ class TestSingleton:
         s2 = get_evidence_service()
         assert s1 is not s2
         reset_evidence_service()
+
+
+# --- extract_evidence_references: deploy correlation references ---
+
+
+class TestExtractDeployCorrelationReferences:
+    """Test deploy correlation evidence extraction."""
+
+    def test_deploy_correlations_extracted(self, service):
+        findings = {
+            "deploy_correlations": [
+                {
+                    "commit_sha": "abc123def456",
+                    "confidence": "strong",
+                    "author": "alice@example.com",
+                    "message": "Fix payment timeout",
+                    "deployment_timestamp": "2026-03-17T12:00:00+00:00",
+                    "time_gap_seconds": 270,
+                }
+            ],
+        }
+        refs = service.extract_evidence_references("inv-1", findings)
+        deploy_refs = [r for r in refs if r.evidence_type == "deploy"]
+        assert len(deploy_refs) == 1
+        assert deploy_refs[0].source_type == "git_commit"
+        assert deploy_refs[0].source_ref == "abc123def456"
+        assert "abc123d" in deploy_refs[0].title
+        assert "strong" in deploy_refs[0].title
+
+    def test_no_correlations_produces_no_deploy_evidence(self, service):
+        findings = {"deploy_correlations": []}
+        refs = service.extract_evidence_references("inv-1", findings)
+        deploy_refs = [r for r in refs if r.evidence_type == "deploy"]
+        assert len(deploy_refs) == 0
+
+    def test_missing_correlations_key_produces_no_deploy_evidence(self, service):
+        findings = {"signal_summary": "some data"}
+        refs = service.extract_evidence_references("inv-1", findings)
+        deploy_refs = [r for r in refs if r.evidence_type == "deploy"]
+        assert len(deploy_refs) == 0
+
+    def test_confidence_levels_preserved_in_title(self, service):
+        findings = {
+            "deploy_correlations": [
+                {
+                    "commit_sha": "aaa111222333",
+                    "confidence": "moderate",
+                    "author": "bob@example.com",
+                    "message": "Update config",
+                    "deployment_timestamp": "2026-03-17T11:50:00+00:00",
+                    "time_gap_seconds": 600,
+                },
+                {
+                    "commit_sha": "bbb444555666",
+                    "confidence": "weak",
+                    "author": "carol@example.com",
+                    "message": "Refactor",
+                    "deployment_timestamp": "2026-03-17T11:30:00+00:00",
+                    "time_gap_seconds": 2400,
+                },
+            ],
+        }
+        refs = service.extract_evidence_references("inv-1", findings)
+        deploy_refs = [r for r in refs if r.evidence_type == "deploy"]
+        assert len(deploy_refs) == 2
+        assert "moderate" in deploy_refs[0].title
+        assert "weak" in deploy_refs[1].title
+
+    def test_deploy_correlation_timestamp_used(self, service):
+        findings = {
+            "deploy_correlations": [
+                {
+                    "commit_sha": "abc123def456",
+                    "confidence": "strong",
+                    "author": "alice@example.com",
+                    "message": "Fix bug",
+                    "deployment_timestamp": "2026-03-17T12:00:00+00:00",
+                    "time_gap_seconds": 120,
+                }
+            ],
+        }
+        refs = service.extract_evidence_references("inv-1", findings)
+        deploy_refs = [r for r in refs if r.evidence_type == "deploy"]
+        assert deploy_refs[0].timestamp == "2026-03-17T12:00:00+00:00"
+
+    def test_multiple_correlations_all_extracted(self, service):
+        findings = {
+            "deploy_correlations": [
+                {
+                    "commit_sha": f"sha{i}00000000",
+                    "confidence": "strong",
+                    "author": f"dev{i}@example.com",
+                    "message": f"Commit {i}",
+                    "deployment_timestamp": "2026-03-17T12:00:00+00:00",
+                    "time_gap_seconds": 60 * i,
+                }
+                for i in range(1, 4)
+            ],
+        }
+        refs = service.extract_evidence_references("inv-1", findings)
+        deploy_refs = [r for r in refs if r.evidence_type == "deploy"]
+        assert len(deploy_refs) == 3

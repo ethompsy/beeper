@@ -2851,3 +2851,78 @@ class TestInvestigationDetailTimeline:
             earlier_pos = html.find("Earlier Event")
             later_pos = html.find("Later Event")
             assert earlier_pos < later_pos
+
+
+class TestInvestigationDetailDeployCorrelation:
+    """Tests for deploy correlation integration in investigation detail route."""
+
+    @respx.mock
+    def test_detail_passes_deploy_correlations_to_template(
+        self, client: FlaskClient
+    ) -> None:
+        """Test that investigation_detail() passes deploy_correlations to template context."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "deploy_correlations": [
+                {
+                    "commit_sha": "abc123def456",
+                    "confidence": "strong",
+                    "author": "alice@example.com",
+                    "message": "Fix payment timeout",
+                    "deployment_timestamp": "2026-03-17T12:00:00+00:00",
+                    "time_gap_seconds": 270,
+                    "anomaly_detected_at": "2026-03-17T12:04:30+00:00",
+                }
+            ],
+            "deploy_summary": "Anomaly started 4 min 30 sec after deploy abc123d by alice@example.com (strong correlation)",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ), patch(
+            "beeper_ui.routes.investigations.get_evidence_service"
+        ) as mock_get_ev_svc:
+            mock_ev_svc = MagicMock()
+            mock_ev_svc.get_timeline_events.return_value = []
+            mock_get_ev_svc.return_value = mock_ev_svc
+
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            html = response.data.decode()
+            assert "Deploy Correlation" in html
+            assert "abc123d" in html
+            assert "strong" in html
+
+    @respx.mock
+    def test_detail_passes_deploy_summary_when_no_deploys(
+        self, client: FlaskClient
+    ) -> None:
+        """Test that deploy_summary is passed when no correlations exist."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "deploy_correlations": [],
+            "deploy_summary": "No recent deployments found \u2014 likely not deploy-related",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ), patch(
+            "beeper_ui.routes.investigations.get_evidence_service"
+        ) as mock_get_ev_svc:
+            mock_ev_svc = MagicMock()
+            mock_ev_svc.get_timeline_events.return_value = []
+            mock_get_ev_svc.return_value = mock_ev_svc
+
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            html = response.data.decode()
+            assert "deploy-no-results" in html
+            assert "No recent deployments found" in html

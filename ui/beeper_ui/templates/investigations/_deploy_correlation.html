@@ -1,0 +1,44 @@
+{% if deploy_correlations %}
+<div class="deploy-correlation-card">
+    <table class="deploy-table">
+        <thead>
+            <tr>
+                <th>Commit</th>
+                <th>Author</th>
+                <th>Message</th>
+                <th>Deploy Time</th>
+                <th>Time Gap</th>
+                <th>Confidence</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for corr in deploy_correlations %}
+            <tr>
+                <td><code>{{ corr.commit_sha[:7] }}</code></td>
+                <td>{{ corr.author }}</td>
+                <td>{{ corr.message }}</td>
+                <td class="deploy-timestamp">{{ corr.deployment_timestamp }}</td>
+                <td>
+                    {% set mins = corr.time_gap_seconds // 60 %}
+                    {% set secs = corr.time_gap_seconds % 60 %}
+                    {% if mins > 0 %}{{ mins }} min {% endif %}{{ secs }} sec
+                </td>
+                <td>
+                    <span class="deploy-confidence-badge confidence-{{ corr.confidence }}">
+                        {{ corr.confidence }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% elif deploy_summary %}
+<div class="deploy-no-results">
+    <p>{{ deploy_summary }}</p>
+</div>
+{% else %}
+<div class="deploy-no-results">
+    <p>No recent deployments found &mdash; likely not deploy-related</p>
+</div>
+{% endif %}

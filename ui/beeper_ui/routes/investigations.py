@@ -470,6 +470,10 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         ev_svc = get_evidence_service()
         timeline_events = ev_svc.get_timeline_events(investigation_id, findings)
 
+    # Extract deploy correlation data from pipeline findings
+    deploy_correlations = findings.get("deploy_correlations", []) if findings else []
+    deploy_summary = findings.get("deploy_summary", "") if findings else ""
+
     # Retrieve human interventions (annotations & redirects) from collaboration history
     human_interventions = []
     try:
@@ -495,6 +499,8 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
             step_states=step_states,
             error_message=error_message,
             timeline_events=timeline_events,
+            deploy_correlations=deploy_correlations,
+            deploy_summary=deploy_summary,
             human_interventions=human_interventions,
         )
 
@@ -506,6 +512,8 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         step_states=step_states,
         error_message=error_message,
         timeline_events=timeline_events,
+        deploy_correlations=deploy_correlations,
+        deploy_summary=deploy_summary,
         human_interventions=human_interventions,
     )
 
@@ -1175,6 +1183,27 @@ def _generate_detail_sse_events(
                         "SSE: Failed to render evidence timeline for %s",
                         investigation_id,
                     )
+
+                # Update deploy correlation card
+                deploy_correlations = findings.get("deploy_correlations", [])
+                deploy_summary = findings.get("deploy_summary", "")
+                if deploy_correlations or deploy_summary:
+                    try:
+                        deploy_html = render_template(
+                            "investigations/_deploy_correlation.html",
+                            deploy_correlations=deploy_correlations,
+                            deploy_summary=deploy_summary,
+                        )
+                        deploy_lines = "\n".join(
+                            f"data: {line}"
+                            for line in deploy_html.split("\n")
+                        )
+                        yield f"event: deploy-correlation-update\n{deploy_lines}\n\n"
+                    except Exception:
+                        logger.debug(
+                            "SSE: Failed to render deploy correlation for %s",
+                            investigation_id,
+                        )
 
                 # Send kb-update when KB query data first appears
                 if (
