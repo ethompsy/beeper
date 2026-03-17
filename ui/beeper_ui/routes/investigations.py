@@ -35,7 +35,7 @@ from beeper_ui.services.investigation_service import (
     InvestigationService,
     InvestigationServiceError,
 )
-from beeper_ui.services.evidence_service import EvidenceService, get_evidence_service
+from beeper_ui.services.evidence_service import get_evidence_service
 from beeper_ui.services.kb_service import KBEntry, KBService, KBServiceError
 from beeper_ui.services.notification_audit_service import NotificationAuditService
 from beeper_ui.services.slo_service import SloService, SloServiceError
@@ -1123,7 +1123,7 @@ def _generate_detail_sse_events(
                         for line in timeline_html.split("\n")
                     )
                     yield f"event: evidence-timeline-update\n{timeline_lines}\n\n"
-                except Exception:
+                except (KBServiceError, KeyError, TypeError, ValueError):
                     logger.debug(
                         "SSE: Failed to render evidence timeline for %s",
                         investigation_id,

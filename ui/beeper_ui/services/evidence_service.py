@@ -173,6 +173,7 @@ class EvidenceService:
                     evidence_type = "log"
                     source_type = "loki"
                 else:
+                    logger.debug("Unknown signal layer %r, defaulting to metric/prometheus", layer_str)
                     evidence_type = "metric"
                     source_type = "prometheus"
 
@@ -442,19 +443,23 @@ class EvidenceService:
             return references
 
         try:
+            entry_cache: dict[str, KBEntry | None] = {}
             for ref in kb_refs:
-                try:
-                    entry = kb_svc.get_entry(ref.source_ref)
-                    if entry:
-                        ref.validation_status = self._derive_validation_status(entry)
-                        if entry.relevance_score is not None:
-                            ref.relevance_score = entry.relevance_score
-                        if not ref.content_preview or ref.content_preview == ref.source_ref:
-                            ref.content_preview = (entry.content or "")[:200]
-                except KBServiceError:
-                    logger.debug(
-                        "Could not enrich KB reference %s", ref.source_ref
-                    )
+                if ref.source_ref not in entry_cache:
+                    try:
+                        entry_cache[ref.source_ref] = kb_svc.get_entry(ref.source_ref)
+                    except KBServiceError:
+                        logger.debug(
+                            "Could not enrich KB reference %s", ref.source_ref
+                        )
+                        entry_cache[ref.source_ref] = None
+                entry = entry_cache.get(ref.source_ref)
+                if entry:
+                    ref.validation_status = self._derive_validation_status(entry)
+                    if entry.relevance_score is not None:
+                        ref.relevance_score = entry.relevance_score
+                    if not ref.content_preview or ref.content_preview == ref.source_ref:
+                        ref.content_preview = (entry.content or "")[:200]
         finally:
             kb_svc.close()
 
