@@ -4730,6 +4730,18 @@ a.match-badge.kb-entry-link::after {
     cursor: not-allowed;
 }
 
+.collab-confidence-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #dbeafe;
+    color: #1e40af;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
 /* ========================================
    Human Interventions Timeline (review view)
    ======================================== */

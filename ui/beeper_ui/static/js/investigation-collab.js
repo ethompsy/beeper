@@ -54,9 +54,20 @@
   // Receive message history on join/reconnect
   socket.on("message_history", function (messages) {
     if (!Array.isArray(messages)) return;
+    var pendingProposal = null;
     messages.forEach(function (msg) {
       appendMessage(msg);
+      // Track approval bar state from history
+      if (msg.message_type === "fix_proposed") {
+        pendingProposal = msg;
+      } else if (msg.message_type === "fix_applied") {
+        pendingProposal = null;
+      }
     });
+    // Restore approval bar if a fix_proposed is still pending
+    if (pendingProposal) {
+      showApprovalBar(pendingProposal);
+    }
     // Update lastSeen to most recent message so reconnection doesn't re-fetch
     if (messages.length > 0) {
       updateLastSeen(messages[messages.length - 1].timestamp);
@@ -125,10 +136,12 @@
     updateActiveUsers(data.active_users);
   });
 
-  // Error handling
+  // Error handling — only reset approve button if it was in executing state
   socket.on("error", function (data) {
     console.error("Collaboration error:", data.message);
-    resetApproveButton();
+    if (approveBtn && approveBtn.classList.contains("collab-approve-executing")) {
+      resetApproveButton();
+    }
   });
 
   // Send message
@@ -363,6 +376,12 @@
     } else if (msg.message_type === "fix_proposed") {
       div.className += " collab-fix-proposed";
       appendLabeledMessage(div, "Fix Proposed", "collab-fix-proposed-label", msg);
+      if (msg.confidence) {
+        var badge = document.createElement("span");
+        badge.className = "collab-confidence-badge";
+        badge.textContent = msg.confidence + "% confidence";
+        div.appendChild(badge);
+      }
     } else if (msg.message_type === "fix_approved") {
       div.className += " collab-fix-approved";
       appendLabeledMessage(div, "Approved", "collab-fix-approved-label", msg);
