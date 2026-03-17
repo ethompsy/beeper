@@ -5,7 +5,7 @@ import os
 import re
 from typing import Any
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from werkzeug.utils import secure_filename
 
 from beeper_ui.services.correction_service import (
@@ -951,6 +951,16 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
     except KBServiceError:
         pass  # If we can't check, proceed with the save attempt
 
+    # Detect content changes to set validation_status="corrected"
+    new_validation_status = None
+    if current_entry:
+        content_changed = (
+            title != (current_entry.title or "")
+            or content != (current_entry.content or "")
+        )
+        if content_changed:
+            new_validation_status = "corrected"
+
     try:
         new_version = service_client.update_entry(
             entry_id=entry_id,
@@ -960,6 +970,7 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
             tags=tags,
             author="edit",
             embedding_service=embedding_service,
+            validation_status=new_validation_status,
         )
         return render_template(
             "knowledge/_edit_result.html",
@@ -986,6 +997,35 @@ def kb_preview() -> str:
 
     content = request.form.get("content", "")
     return render_markdown(content)
+
+
+# ── Confirmation route ──
+
+
+@knowledge_bp.route("/<entry_id>/confirm", methods=["POST"])
+def kb_confirm(entry_id: str) -> str:
+    """Confirm an AI-generated KB entry as human-verified.
+
+    Changes validation_status from 'AI-generated' to 'human-confirmed',
+    versioned with the confirming user and timestamp.
+
+    Args:
+        entry_id: The unique identifier of the entry to confirm.
+
+    Returns:
+        Redirect to the entry detail page.
+    """
+    entry_id = sanitize_query(entry_id)
+    user = request.form.get("user", "anonymous").strip() or "anonymous"
+    service_client = get_kb_service()
+
+    try:
+        service_client.confirm_entry(entry_id, user)
+        flash("Entry confirmed as human-verified", "success")
+    except KBServiceError as e:
+        flash(str(e), "error")
+
+    return redirect(url_for("knowledge.kb_entry", entry_id=entry_id))
 
 
 # ── Correction routes (must be before /<entry_id> catch-all) ──

@@ -22,6 +22,7 @@ def _make_kb_entry(
     service: str = "payments",
     relevance_score: float = 0.8,
     content: str = "Some investigation content",
+    validation_status: str | None = None,
 ) -> KBEntry:
     """Create a KBEntry for testing."""
     return KBEntry(
@@ -37,6 +38,7 @@ def _make_kb_entry(
         version=1,
         tags=[],
         auto_published=True,
+        validation_status=validation_status,
         relevance_score=relevance_score,
     )
 
@@ -74,13 +76,16 @@ class TestComputeValidationWeight:
     """Tests for _compute_validation_weight static method."""
 
     def test_proven(self) -> None:
-        assert KBSurfacingService._compute_validation_weight("proven") == 3.0
+        assert KBSurfacingService._compute_validation_weight("proven") == 1.0
 
     def test_human_confirmed(self) -> None:
-        assert KBSurfacingService._compute_validation_weight("human-confirmed") == 2.0
+        assert KBSurfacingService._compute_validation_weight("human-confirmed") == 0.9
+
+    def test_corrected(self) -> None:
+        assert KBSurfacingService._compute_validation_weight("corrected") == 0.8
 
     def test_ai_generated(self) -> None:
-        assert KBSurfacingService._compute_validation_weight("AI-generated") == 1.0
+        assert KBSurfacingService._compute_validation_weight("AI-generated") == 0.6
 
     def test_none(self) -> None:
         assert KBSurfacingService._compute_validation_weight(None) == DEFAULT_VALIDATION_WEIGHT
@@ -92,21 +97,37 @@ class TestComputeValidationWeight:
 class TestDeriveValidationStatus:
     """Tests for _derive_validation_status static method."""
 
-    def test_proven_fix(self) -> None:
+    def test_proven_fix_fallback(self) -> None:
         entry = _make_kb_entry(entry_type="proven_fix")
         assert KBSurfacingService._derive_validation_status(entry) == "proven"
 
-    def test_correction(self) -> None:
+    def test_correction_fallback(self) -> None:
         entry = _make_kb_entry(entry_type="correction")
         assert KBSurfacingService._derive_validation_status(entry) == "human-confirmed"
 
-    def test_investigation(self) -> None:
+    def test_investigation_fallback(self) -> None:
         entry = _make_kb_entry(entry_type="investigation")
         assert KBSurfacingService._derive_validation_status(entry) == "AI-generated"
 
-    def test_unknown_type(self) -> None:
+    def test_unknown_type_fallback(self) -> None:
         entry = _make_kb_entry(entry_type="other")
         assert KBSurfacingService._derive_validation_status(entry) == "AI-generated"
+
+    def test_uses_field_when_set(self) -> None:
+        entry = _make_kb_entry(entry_type="investigation", validation_status="human-confirmed")
+        assert KBSurfacingService._derive_validation_status(entry) == "human-confirmed"
+
+    def test_corrected_field(self) -> None:
+        entry = _make_kb_entry(entry_type="investigation", validation_status="corrected")
+        assert KBSurfacingService._derive_validation_status(entry) == "corrected"
+
+    def test_proven_field_overrides_type(self) -> None:
+        entry = _make_kb_entry(entry_type="investigation", validation_status="proven")
+        assert KBSurfacingService._derive_validation_status(entry) == "proven"
+
+    def test_none_field_falls_back_to_type(self) -> None:
+        entry = _make_kb_entry(entry_type="proven_fix", validation_status=None)
+        assert KBSurfacingService._derive_validation_status(entry) == "proven"
 
 
 class TestComposeQuery:
@@ -166,20 +187,27 @@ class TestSurfaceEntries:
     def test_surface_entries_ranked(self) -> None:
         svc = KBSurfacingService()
 
-        # Create entries with different validation statuses
+        # Create entries with explicit validation statuses
         proven_entry = _make_kb_entry(
-            entry_id="kb-proven", entry_type="proven_fix", relevance_score=0.6
-        )
-        ai_entry = _make_kb_entry(
-            entry_id="kb-ai", entry_type="investigation", relevance_score=0.9
+            entry_id="kb-proven", entry_type="proven_fix",
+            validation_status="proven", relevance_score=0.8,
         )
         human_entry = _make_kb_entry(
-            entry_id="kb-human", entry_type="correction", relevance_score=0.7
+            entry_id="kb-human", entry_type="investigation",
+            validation_status="human-confirmed", relevance_score=0.8,
+        )
+        corrected_entry = _make_kb_entry(
+            entry_id="kb-corrected", entry_type="investigation",
+            validation_status="corrected", relevance_score=0.8,
+        )
+        ai_entry = _make_kb_entry(
+            entry_id="kb-ai", entry_type="investigation",
+            validation_status="AI-generated", relevance_score=0.8,
         )
 
         mock_kb = MagicMock()
         mock_kb.search_semantic.return_value = (
-            [proven_entry, ai_entry, human_entry],
+            [ai_entry, corrected_entry, human_entry, proven_entry],
             True,
         )
         svc._kb_service = mock_kb
@@ -190,15 +218,17 @@ class TestSurfaceEntries:
 
         assert result.investigation_id == "inv-123"
         assert result.is_novel is False
-        assert len(result.entries) == 3
+        assert len(result.entries) == 4
 
-        # proven (0.6*3.0=1.8) > human-confirmed (0.7*2.0=1.4) > AI (0.9*1.0=0.9)
+        # proven (0.8*1.0=0.8) > human-confirmed (0.8*0.9=0.72) > corrected (0.8*0.8=0.64) > AI (0.8*0.6=0.48)
         assert result.entries[0]["entry_id"] == "kb-proven"
-        assert result.entries[0]["composite_score"] == pytest.approx(1.8)
+        assert result.entries[0]["composite_score"] == pytest.approx(0.8)
         assert result.entries[1]["entry_id"] == "kb-human"
-        assert result.entries[1]["composite_score"] == pytest.approx(1.4)
-        assert result.entries[2]["entry_id"] == "kb-ai"
-        assert result.entries[2]["composite_score"] == pytest.approx(0.9)
+        assert result.entries[1]["composite_score"] == pytest.approx(0.72)
+        assert result.entries[2]["entry_id"] == "kb-corrected"
+        assert result.entries[2]["composite_score"] == pytest.approx(0.64)
+        assert result.entries[3]["entry_id"] == "kb-ai"
+        assert result.entries[3]["composite_score"] == pytest.approx(0.48)
 
     def test_surface_entries_empty_returns_novel(self) -> None:
         svc = KBSurfacingService()
@@ -237,7 +267,8 @@ class TestSurfaceEntries:
         assert e["service"] == "payments"
         assert e["validation_status"] == "AI-generated"
         assert e["relevance_score"] == pytest.approx(0.85)
-        assert e["composite_score"] == pytest.approx(0.85)
+        # AI-generated weight = 0.6, so composite = 0.85 * 0.6 = 0.51
+        assert e["composite_score"] == pytest.approx(0.51)
         assert e["link"] == "/knowledge/kb-test"
         assert e["created_at"] == "2026-03-01"
         assert len(e["content_preview"]) <= 150

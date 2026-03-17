@@ -321,3 +321,96 @@ class TestFilterPanelServiceLink:
         response = client.get("/knowledge/")
         assert response.status_code == 200
         assert b"View Service Knowledge" not in response.data
+
+
+class TestConfirmEntryRoute:
+    """Tests for POST /knowledge/<entry_id>/confirm route."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_successful_confirm_redirects(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test successful confirmation redirects to entry detail page."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.confirm_entry.return_value = 2
+
+        response = client.post(
+            "/knowledge/kb-123/confirm",
+            data={"user": "sre-sam"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert "/knowledge/kb-123" in response.headers["Location"]
+        mock_service.confirm_entry.assert_called_once_with("kb-123", "sre-sam")
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_confirm_default_user(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test confirmation defaults to 'anonymous' when no user provided."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.confirm_entry.return_value = 2
+
+        response = client.post(
+            "/knowledge/kb-123/confirm",
+            data={},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        mock_service.confirm_entry.assert_called_once_with("kb-123", "anonymous")
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_confirm_error_flashes_message(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test KBServiceError flashes error and redirects."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.confirm_entry.side_effect = KBServiceError(
+            "Can only confirm AI-generated entries, current status: proven"
+        )
+
+        response = client.post(
+            "/knowledge/kb-123/confirm",
+            data={"user": "sre-sam"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_confirm_button_visible_for_ai_generated(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that Confirm button appears for AI-generated entries."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-ai", "investigation", "AI Entry")
+        entry.validation_status = "AI-generated"
+        mock_service.get_entry.return_value = entry
+        mock_service.list_related_entries.return_value = []
+        mock_service.get_source_investigation.return_value = None
+        mock_service.get_contributing_investigations.return_value = []
+
+        response = client.get("/knowledge/kb-ai")
+        assert response.status_code == 200
+        assert b"Confirm as Accurate" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_confirm_button_hidden_for_proven(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that Confirm button is hidden for already-confirmed entries."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        entry = _make_entry("kb-proven", "proven_fix", "Proven Entry")
+        entry.validation_status = "proven"
+        mock_service.get_entry.return_value = entry
+        mock_service.list_related_entries.return_value = []
+        mock_service.get_source_investigation.return_value = None
+        mock_service.get_contributing_investigations.return_value = []
+
+        response = client.get("/knowledge/kb-proven")
+        assert response.status_code == 200
+        assert b"Confirm as Accurate" not in response.data

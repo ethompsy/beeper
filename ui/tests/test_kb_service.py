@@ -1923,3 +1923,179 @@ class TestGetServiceValidationCounts:
         service = KBService(host="localhost", port=6333)
         with pytest.raises(KBServiceError, match="Failed to get validation counts"):
             service.get_service_validation_counts("api")
+
+
+class TestConfirmEntry:
+    """Tests for KBService.confirm_entry() method."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_successful_confirmation(self, mock_client_class: MagicMock) -> None:
+        """Test confirming an AI-generated entry changes status to human-confirmed."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.vector = [0.1] * 1536
+        mock_point.payload = {
+            "entry_id": "kb-confirm-1",
+            "entry_type": "investigation",
+            "title": "Test Entry",
+            "content": "Some content",
+            "version": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+            "validation_status": "AI-generated",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService(host="localhost", port=6333)
+        new_version = service.confirm_entry("kb-confirm-1", "sre-sam")
+
+        assert new_version == 2
+
+        # Check the upsert call for knowledge entry
+        upsert_calls = mock_client.upsert.call_args_list
+        # Last upsert is the knowledge entry update (first is version snapshot)
+        last_call = upsert_calls[-1]
+        points = last_call.kwargs.get("points") or last_call[1].get("points")
+        payload = points[0].payload
+
+        assert payload["validation_status"] == "human-confirmed"
+        assert payload["version"] == 2
+        assert payload["author"] == "sre-sam"
+        assert "updated_at" in payload
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_saves_version_snapshot(self, mock_client_class: MagicMock) -> None:
+        """Test that version snapshot is saved before confirmation."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.vector = [0.1] * 1536
+        mock_point.payload = {
+            "entry_id": "kb-snap",
+            "entry_type": "investigation",
+            "title": "Title",
+            "content": "Content",
+            "version": 3,
+            "created_at": "2026-01-01T00:00:00Z",
+            "validation_status": "AI-generated",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService(host="localhost", port=6333)
+        service.confirm_entry("kb-snap", "user")
+
+        # Should have 2 upsert calls: version snapshot + knowledge entry update
+        assert mock_client.upsert.call_count == 2
+        # First upsert is the version snapshot (to knowledge_versions)
+        first_call = mock_client.upsert.call_args_list[0]
+        collection = first_call.kwargs.get("collection_name") or first_call[1].get("collection_name")
+        assert collection == "knowledge_versions"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_rejects_non_ai_generated(self, mock_client_class: MagicMock) -> None:
+        """Test that confirming a non-AI-generated entry raises an error."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.vector = [0.1] * 1536
+        mock_point.payload = {
+            "entry_id": "kb-proven",
+            "validation_status": "proven",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        service = KBService(host="localhost", port=6333)
+        with pytest.raises(KBServiceError, match="Can only confirm AI-generated"):
+            service.confirm_entry("kb-proven", "user")
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_entry_not_found(self, mock_client_class: MagicMock) -> None:
+        """Test confirming a nonexistent entry raises an error."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.scroll.return_value = ([], None)
+
+        service = KBService(host="localhost", port=6333)
+        with pytest.raises(KBServiceError, match="KB entry not found"):
+            service.confirm_entry("kb-missing", "user")
+
+
+class TestUpdateEntryValidationStatus:
+    """Tests for update_entry with validation_status parameter."""
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_sets_validation_status_when_provided(self, mock_client_class: MagicMock) -> None:
+        """Test that passing validation_status updates the field."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-edit",
+            "entry_type": "investigation",
+            "title": "Old Title",
+            "content": "Old content",
+            "version": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+            "validation_status": "AI-generated",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService(host="localhost", port=6333)
+        service.update_entry(
+            entry_id="kb-edit",
+            content="Corrected content",
+            embedding_service=mock_embedding_service,
+            validation_status="corrected",
+        )
+
+        upsert_calls = mock_client.upsert.call_args_list
+        last_call = upsert_calls[-1]
+        points = last_call.kwargs.get("points") or last_call[1].get("points")
+        payload = points[0].payload
+        assert payload["validation_status"] == "corrected"
+
+    @patch("beeper_ui.services.kb_service.QdrantClient")
+    def test_preserves_status_when_not_provided(self, mock_client_class: MagicMock) -> None:
+        """Test that omitting validation_status preserves existing value."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_point = MagicMock()
+        mock_point.id = "point-1"
+        mock_point.payload = {
+            "entry_id": "kb-tags-only",
+            "entry_type": "investigation",
+            "title": "Title",
+            "content": "Content",
+            "version": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+            "validation_status": "human-confirmed",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
+        mock_embedding_service = MagicMock()
+        mock_embedding_service.get_embedding.return_value = [0.1] * 1536
+
+        service = KBService(host="localhost", port=6333)
+        service.update_entry(
+            entry_id="kb-tags-only",
+            tags=["new-tag"],
+            embedding_service=mock_embedding_service,
+        )
+
+        upsert_calls = mock_client.upsert.call_args_list
+        last_call = upsert_calls[-1]
+        points = last_call.kwargs.get("points") or last_call[1].get("points")
+        payload = points[0].payload
+        assert payload["validation_status"] == "human-confirmed"

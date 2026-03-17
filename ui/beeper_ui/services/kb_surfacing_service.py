@@ -22,12 +22,14 @@ logger = logging.getLogger(__name__)
 INVESTIGATIONS_COLLECTION = "investigations"
 
 # Validation status weights for composite ranking
+# Normalized multipliers: proven (1.0) > human-confirmed (0.9) > corrected (0.8) > AI-generated (0.6)
 VALIDATION_WEIGHTS: dict[str, float] = {
-    "proven": 3.0,
-    "human-confirmed": 2.0,
-    "AI-generated": 1.0,
+    "proven": 1.0,
+    "human-confirmed": 0.9,
+    "corrected": 0.8,
+    "AI-generated": 0.6,
 }
-DEFAULT_VALIDATION_WEIGHT = 1.0
+DEFAULT_VALIDATION_WEIGHT = 0.6
 
 # Maximum query length for semantic search
 MAX_QUERY_LENGTH = 500
@@ -223,12 +225,18 @@ class KBSurfacingService:
     def _derive_validation_status(entry: KBEntry) -> str:
         """Derive validation status from a KB entry.
 
+        Uses the entry's validation_status field directly if set.
+        Falls back to entry_type-based derivation for legacy entries
+        without an explicit validation_status.
+
         Args:
             entry: The KB entry.
 
         Returns:
-            One of: 'proven', 'human-confirmed', 'AI-generated'.
+            One of: 'proven', 'human-confirmed', 'corrected', 'AI-generated'.
         """
+        if entry.validation_status:
+            return entry.validation_status
         if entry.entry_type == "proven_fix":
             return "proven"
         if entry.entry_type == "correction":
@@ -243,7 +251,7 @@ class KBSurfacingService:
             validation_status: The validation status string.
 
         Returns:
-            Weight multiplier (proven=3.0, human-confirmed=2.0, AI-generated=1.0).
+            Weight multiplier (proven=1.0, human-confirmed=0.9, corrected=0.8, AI-generated=0.6).
         """
         if validation_status is None:
             return DEFAULT_VALIDATION_WEIGHT

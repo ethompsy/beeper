@@ -20,6 +20,16 @@ logger = logging.getLogger(__name__)
 
 EXACT_MATCH_THRESHOLD = 0.92
 
+# Validation status weights for knowledge result ranking
+# Normalized: proven=1.0, human-confirmed=0.9, corrected=0.8, AI-generated=0.6
+VALIDATION_WEIGHTS: dict[str, float] = {
+    "proven": 1.0,
+    "human-confirmed": 0.9,
+    "corrected": 0.8,
+    "AI-generated": 0.6,
+}
+DEFAULT_VALIDATION_WEIGHT = 0.6
+
 _SYNTHESIS_SYSTEM_PROMPT = """\
 You are an SRE investigator reviewing prior research from the Knowledge Base. \
 Given the current investigation context and relevant KB matches, synthesize \
@@ -74,12 +84,42 @@ def _format_results(results: list[SearchResult]) -> str:
         summary = payload.get("summary", payload.get("title", ""))
         root_cause = payload.get("root_cause", "")
         resolution = payload.get("resolution", "")
+        validation_status = payload.get("validation_status", "")
+        status_part = f", status={validation_status}" if validation_status else ""
         lines.append(
-            f"- [{inv_id}] (score={r.score:.2f}) {summary}"
+            f"- [{inv_id}] (score={r.score:.2f}{status_part}) {summary}"
             + (f" | root_cause: {root_cause}" if root_cause else "")
             + (f" | resolution: {resolution}" if resolution else "")
         )
     return "\n".join(lines)
+
+
+def _apply_validation_weighting(results: list[SearchResult]) -> list[SearchResult]:
+    """Apply validation status weighting to knowledge search results.
+
+    Multiplies each result's score by its validation weight and returns
+    results sorted by weighted score descending.
+
+    Args:
+        results: Knowledge search results with raw cosine similarity scores.
+
+    Returns:
+        New list of SearchResult with weighted scores, sorted descending.
+    """
+    weighted = []
+    for r in results:
+        status = r.payload.get("validation_status", "AI-generated")
+        weight = VALIDATION_WEIGHTS.get(status, DEFAULT_VALIDATION_WEIGHT)
+        weighted_score = r.score * weight
+        weighted.append(
+            SearchResult(
+                id=r.id,
+                score=weighted_score,
+                payload=r.payload,
+            )
+        )
+    weighted.sort(key=lambda x: x.score, reverse=True)
+    return weighted
 
 
 class KBQueryStep:
@@ -159,6 +199,10 @@ class KBQueryStep:
         except Exception as exc:
             logger.warning("Knowledge search failed: %s", exc)
             search_errors.append(f"knowledge: {exc}")
+
+        # Apply validation weighting to knowledge results (not investigations)
+        if knowledge_results:
+            knowledge_results = _apply_validation_weighting(knowledge_results)
 
         # Both collections failed — report full failure
         if len(search_errors) == 2:

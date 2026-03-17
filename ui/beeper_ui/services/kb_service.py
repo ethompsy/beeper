@@ -898,6 +898,7 @@ class KBService:
             "entry_type": payload.get("entry_type"),
             "service": payload.get("service"),
             "tags": payload.get("tags", []),
+            "validation_status": payload.get("validation_status"),
         }
         self.client.upsert(
             collection_name=VERSIONS_COLLECTION,
@@ -1260,6 +1261,7 @@ class KBService:
         tags: Optional[list[str]] = None,
         author: Optional[str] = None,
         embedding_service: Optional[EmbeddingService] = None,
+        validation_status: Optional[str] = None,
     ) -> int:
         """Update an existing KB entry, incrementing its version.
 
@@ -1271,6 +1273,7 @@ class KBService:
             tags: New tags (optional, keeps existing if not provided)
             author: Author of this update
             embedding_service: EmbeddingService instance for generating embeddings
+            validation_status: New validation status (optional, preserves existing if not provided)
 
         Returns:
             The new version number.
@@ -1331,7 +1334,7 @@ class KBService:
                 "author": author or existing_payload.get("author"),
                 "version": new_version,
                 "tags": new_tags,
-                "validation_status": existing_payload.get("validation_status"),
+                "validation_status": validation_status if validation_status is not None else existing_payload.get("validation_status"),
                 "source_investigation_id": existing_payload.get("source_investigation_id"),
                 "contributing_investigations": existing_payload.get("contributing_investigations", []),
                 "linked_investigations": existing_payload.get("linked_investigations", []),
@@ -1371,6 +1374,87 @@ class KBService:
         except Exception as e:
             logger.error(f"KB service error: {e}")
             raise KBServiceError(f"Failed to update KB entry: {e}") from e
+
+    def confirm_entry(self, entry_id: str, user: str) -> int:
+        """Confirm an AI-generated KB entry as accurate (human-confirmed).
+
+        Changes validation_status from 'AI-generated' to 'human-confirmed',
+        saves a version snapshot, and records the confirming user and timestamp.
+
+        Args:
+            entry_id: The entry_id of the entry to confirm.
+            user: The user confirming the entry.
+
+        Returns:
+            The new version number.
+
+        Raises:
+            KBServiceError: If the entry is not found, not AI-generated, or update fails.
+        """
+        try:
+            results, _ = self.client.scroll(
+                collection_name=KNOWLEDGE_COLLECTION,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="entry_id", match=MatchValue(value=entry_id))]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=True,
+            )
+
+            if not results:
+                raise KBServiceError(f"KB entry not found: {entry_id}")
+
+            existing_point = results[0]
+            existing_payload = dict(existing_point.payload or {})
+            current_status = existing_payload.get("validation_status")
+
+            if current_status != "AI-generated":
+                raise KBServiceError(
+                    f"Can only confirm AI-generated entries, current status: {current_status}"
+                )
+
+            # Save version snapshot BEFORE overwriting
+            self._save_version_snapshot(
+                entry_id=entry_id,
+                payload=existing_payload,
+                point_id=str(existing_point.id),
+            )
+
+            # Update payload
+            new_version = existing_payload.get("version", 1) + 1
+            now = datetime.now(timezone.utc).isoformat()
+            existing_payload["validation_status"] = "human-confirmed"
+            existing_payload["version"] = new_version
+            existing_payload["updated_at"] = now
+            existing_payload["author"] = user
+
+            # Get existing vector
+            vector = existing_point.vector
+            if isinstance(vector, dict):
+                vector = list(vector.values())[0] if vector else [0.0]
+            if vector is None:
+                vector = [0.0]
+
+            point = PointStruct(
+                id=str(existing_point.id),
+                vector=vector,
+                payload=existing_payload,
+            )
+
+            self.client.upsert(
+                collection_name=KNOWLEDGE_COLLECTION,
+                points=[point],
+            )
+
+            logger.info(f"Confirmed KB entry: {entry_id} (version={new_version}, user={user})")
+            return new_version
+
+        except KBServiceError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to confirm KB entry: {e}")
+            raise KBServiceError(f"Failed to confirm KB entry: {e}") from e
 
     def create_correction(
         self,

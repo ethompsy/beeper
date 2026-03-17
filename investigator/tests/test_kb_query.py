@@ -3,12 +3,15 @@
 import json
 from unittest.mock import MagicMock
 
+import pytest
+
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.kb.schemas import SearchResult
 from beeper_investigator.llm.client import LlmClientError
 from beeper_investigator.steps.kb_query import (
     EXACT_MATCH_THRESHOLD,
     KBQueryStep,
+    _apply_validation_weighting,
     _check_exact_match,
     _format_results,
 )
@@ -77,18 +80,22 @@ def _make_result(
     summary: str = "Previous checkout issue",
     root_cause: str = "Memory leak in payment service",
     resolution: str = "Restart pods and increase memory limit",
+    validation_status: str | None = None,
 ) -> SearchResult:
     """Build a SearchResult for testing."""
+    payload = {
+        "investigation_id": investigation_id,
+        "summary": summary,
+        "root_cause": root_cause,
+        "resolution": resolution,
+        "service": "payments",
+    }
+    if validation_status is not None:
+        payload["validation_status"] = validation_status
     return SearchResult(
         id=id,
         score=score,
-        payload={
-            "investigation_id": investigation_id,
-            "summary": summary,
-            "root_cause": root_cause,
-            "resolution": resolution,
-            "service": "payments",
-        },
+        payload=payload,
     )
 
 
@@ -421,3 +428,129 @@ class TestFormatResults:
         assert "Previous checkout issue" in formatted
         assert "Memory leak" in formatted
         assert "Restart pods" in formatted
+
+    def test_format_includes_validation_status(self) -> None:
+        """Format includes validation_status when present in payload."""
+        r = _make_result(validation_status="proven")
+        formatted = _format_results([r])
+        assert "status=proven" in formatted
+
+    def test_format_omits_status_when_absent(self) -> None:
+        """Format omits status label when validation_status not in payload."""
+        r = _make_result()
+        formatted = _format_results([r])
+        assert "status=" not in formatted
+
+
+class TestValidationWeighting:
+    """Tests for _apply_validation_weighting function."""
+
+    def test_weighting_reranks_results(self) -> None:
+        """Proven entry with lower raw score ranks above AI-generated after weighting."""
+        proven = _make_result(id="proven-1", score=0.5, validation_status="proven")
+        ai = _make_result(id="ai-1", score=0.7, validation_status="AI-generated")
+
+        weighted = _apply_validation_weighting([ai, proven])
+
+        # proven: 0.5*1.0=0.5, AI: 0.7*0.6=0.42
+        assert weighted[0].id == "proven-1"
+        assert weighted[0].score == pytest.approx(0.5)
+        assert weighted[1].id == "ai-1"
+        assert weighted[1].score == pytest.approx(0.42)
+
+    def test_missing_validation_status_defaults_to_ai_generated(self) -> None:
+        """Entry without validation_status gets AI-generated weight (0.6)."""
+        r = _make_result(id="no-status", score=1.0)
+        weighted = _apply_validation_weighting([r])
+        assert weighted[0].score == pytest.approx(0.6)
+
+    def test_corrected_weight(self) -> None:
+        """Corrected entry gets 0.8x weight."""
+        r = _make_result(id="corrected-1", score=1.0, validation_status="corrected")
+        weighted = _apply_validation_weighting([r])
+        assert weighted[0].score == pytest.approx(0.8)
+
+    def test_human_confirmed_weight(self) -> None:
+        """Human-confirmed entry gets 0.9x weight."""
+        r = _make_result(id="human-1", score=1.0, validation_status="human-confirmed")
+        weighted = _apply_validation_weighting([r])
+        assert weighted[0].score == pytest.approx(0.9)
+
+    def test_empty_results(self) -> None:
+        """Empty results return empty list."""
+        assert _apply_validation_weighting([]) == []
+
+    def test_all_statuses_ordering(self) -> None:
+        """All four statuses with same raw score sort correctly."""
+        proven = _make_result(id="p", score=0.8, validation_status="proven")
+        human = _make_result(id="h", score=0.8, validation_status="human-confirmed")
+        corrected = _make_result(id="c", score=0.8, validation_status="corrected")
+        ai = _make_result(id="a", score=0.8, validation_status="AI-generated")
+
+        weighted = _apply_validation_weighting([ai, corrected, human, proven])
+
+        assert [w.id for w in weighted] == ["p", "h", "c", "a"]
+
+    def test_preserves_payload(self) -> None:
+        """Weighting preserves the original payload."""
+        r = _make_result(id="kb-1", score=0.9, validation_status="proven")
+        weighted = _apply_validation_weighting([r])
+        assert weighted[0].payload["investigation_id"] == "inv-prior-001"
+        assert weighted[0].payload["validation_status"] == "proven"
+
+
+class TestKBQueryStepValidationWeighting:
+    """Tests that KBQueryStep applies validation weighting to knowledge results."""
+
+    def test_knowledge_results_are_weighted(self) -> None:
+        """Knowledge results have validation weighting applied."""
+        proven_kb = SearchResult(
+            id="kb-proven",
+            score=0.6,
+            payload={"title": "Proven Fix", "validation_status": "proven", "service": "payments"},
+        )
+        ai_kb = SearchResult(
+            id="kb-ai",
+            score=0.8,
+            payload={
+                "title": "AI Entry",
+                "validation_status": "AI-generated",
+                "service": "payments",
+            },
+        )
+
+        step, _, mock_kb, _ = _make_step(
+            llm_response=json.dumps({
+                "prior_research_summary": "test",
+                "relevant_matches": [],
+                "recommended_resolution": None,
+                "confidence_boost": None,
+            }),
+        )
+        mock_kb.search_investigations.return_value = []
+        mock_kb.search_knowledge.return_value = [ai_kb, proven_kb]
+
+        result = step.execute()
+
+        assert result.success is True
+        # Knowledge count reflects original count
+        assert result.data["prior_knowledge_count"] == 2
+
+    def test_investigation_results_not_weighted(self) -> None:
+        """Investigation results are NOT weighted (no validation_status)."""
+        inv = _make_result(score=0.7)
+        step, _, mock_kb, _ = _make_step(
+            llm_response=json.dumps({
+                "prior_research_summary": "test",
+                "relevant_matches": [],
+                "recommended_resolution": None,
+                "confidence_boost": None,
+            }),
+        )
+        mock_kb.search_investigations.return_value = [inv]
+        mock_kb.search_knowledge.return_value = []
+
+        result = step.execute()
+
+        assert result.success is True
+        assert result.data["prior_investigations_count"] == 1
