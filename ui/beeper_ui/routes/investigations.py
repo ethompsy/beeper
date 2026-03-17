@@ -1193,10 +1193,11 @@ def _generate_detail_sse_events(
                             for line in kb_html.split("\n")
                         )
                         yield f"event: kb-update\n{kb_lines}\n\n"
-                    except (KBServiceError, Exception):
+                    except Exception:
                         logger.warning(
                             "SSE: Failed to surface KB entries for %s",
                             investigation_id,
+                            exc_info=True,
                         )
                     finally:
                         surfacing_svc.close()

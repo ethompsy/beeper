@@ -414,7 +414,7 @@ class TestClose:
 
         svc.close()
 
-        svc._kb_service is None  # noqa: B015
+        assert svc._kb_service is None
         assert svc._qdrant_client is None
         assert svc._embedding_service is None
 

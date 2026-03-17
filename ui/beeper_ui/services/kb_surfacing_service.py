@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from beeper_ui.services.embedding_service import EmbeddingService, EmbeddingServiceError
@@ -311,7 +310,7 @@ class KBSurfacingService:
                 points=[point_id],
             )
             return True
-        except (UnexpectedResponse, Exception):
+        except Exception:
             logger.warning(
                 "Failed to record KB relevance feedback for %s",
                 investigation_id,
@@ -361,7 +360,7 @@ class KBSurfacingService:
                 points=[point_id],
             )
             return True
-        except (UnexpectedResponse, Exception):
+        except Exception:
             logger.warning(
                 "Failed to mark investigation %s as novel",
                 investigation_id,
