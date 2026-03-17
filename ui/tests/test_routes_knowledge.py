@@ -285,3 +285,39 @@ class TestServiceKnowledgeRoute:
 
         response = client.get("/knowledge/services/api/knowledge")
         assert response.status_code == 200  # Degrades gracefully
+        assert b"Failed to load knowledge entries" in response.data
+
+
+class TestFilterPanelServiceLink:
+    """Tests for the 'View Service Knowledge' link in the filter panel."""
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_filter_panel_shows_service_link_when_selected(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that selecting a service in KB index shows View Service Knowledge link."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.list_recent_entries.return_value = []
+        mock_service.get_available_services.return_value = ["payment-service"]
+        mock_service.get_entry_types.return_value = ["investigation"]
+
+        response = client.get("/knowledge/?service=payment-service")
+        assert response.status_code == 200
+        assert b"View Service Knowledge" in response.data
+        assert b"/knowledge/services/payment-service/knowledge" in response.data
+
+    @patch("beeper_ui.routes.knowledge.get_kb_service")
+    def test_filter_panel_hides_service_link_when_no_service(
+        self, mock_get_service: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that no service link is shown when no service is selected."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.list_recent_entries.return_value = []
+        mock_service.get_available_services.return_value = ["api"]
+        mock_service.get_entry_types.return_value = ["investigation"]
+
+        response = client.get("/knowledge/")
+        assert response.status_code == 200
+        assert b"View Service Knowledge" not in response.data

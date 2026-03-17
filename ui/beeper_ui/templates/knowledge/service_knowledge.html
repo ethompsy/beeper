@@ -39,7 +39,7 @@
     {% for status in ['proven', 'human-confirmed', 'AI-generated', 'corrected'] %}
     {% if validation_counts.get(status, 0) > 0 %}
     <a href="{{ url_for('knowledge.service_knowledge', service_name=service_name, validation_status=status) }}"
-       class="status-badge badge-{{ status|replace('-', '_') }} {% if active_filter == status %}active{% endif %}">
+       class="status-badge badge-{{ status|lower|replace('-', '_') }} {% if active_filter == status %}active{% endif %}">
         {{ status }} ({{ validation_counts.get(status, 0) }})
     </a>
     {% endif %}

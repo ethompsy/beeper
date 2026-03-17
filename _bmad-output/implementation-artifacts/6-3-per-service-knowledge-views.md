@@ -1,6 +1,6 @@
 # Story 6.3: Per-Service Knowledge Views
 
-Status: review
+Status: done
 
 ## Story
 
@@ -192,6 +192,7 @@ claude-opus-4-6
 ### Change Log
 
 - 2026-03-17: Implemented story 6-3 — per-service knowledge views with grouped entries by category, validation status filter badges, empty state, and navigation from service badges
+- 2026-03-17: Code review found 1 CRITICAL + 2 MEDIUM + 2 LOW issues. Auto-fixed: Task 4.3 not implemented (added "View Service Knowledge" link to _filter_panel.html), hardcoded validation statuses (extracted VALID_VALIDATION_STATUSES constant), silent KBServiceError (now passes error_message to template), CSS class case inconsistency (added |lower filter). Added 2 new tests (TestFilterPanelServiceLink). All 3,143 tests pass (941 investigator + 1,671 UI + 531 operator).
 
 ### File List
 
@@ -199,6 +200,7 @@ claude-opus-4-6
 - ui/beeper_ui/routes/knowledge.py (MODIFIED) — Added `service_knowledge()` route at `/services/<service_name>/knowledge`
 - ui/beeper_ui/templates/knowledge/service_knowledge.html (CREATED) — Per-service knowledge view template with grouped sections, validation badges, empty state
 - ui/beeper_ui/templates/knowledge/_entry_card.html (MODIFIED) — Service badge links to per-service knowledge view
+- ui/beeper_ui/templates/knowledge/_filter_panel.html (MODIFIED) — Added "View Service Knowledge" link when service is selected
 - ui/beeper_ui/templates/knowledge/entry.html (MODIFIED) — Service badge links to per-service knowledge view
 - ui/tests/test_kb_service.py (MODIFIED) — Added TestGetServiceKnowledgeGrouped (6 tests) + TestGetServiceValidationCounts (6 tests)
 - ui/tests/test_routes_knowledge.py (MODIFIED) — Added TestServiceKnowledgeRoute (7 tests)

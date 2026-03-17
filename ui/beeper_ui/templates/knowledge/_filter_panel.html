@@ -47,6 +47,12 @@
                     </option>
                     {% endfor %}
                 </select>
+                {% if selected_service %}
+                <a href="{{ url_for('knowledge.service_knowledge', service_name=selected_service) }}"
+                   class="filter-service-link" title="View all knowledge for {{ selected_service }}">
+                    View Service Knowledge →
+                </a>
+                {% endif %}
             </div>
 
             {# Date Range Filter #}

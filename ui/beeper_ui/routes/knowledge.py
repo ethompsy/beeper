@@ -41,6 +41,9 @@ MAX_QUERY_LENGTH = 500
 # Valid entry types for filtering (security: prevent arbitrary values)
 VALID_ENTRY_TYPES = {"investigation", "runbook", "correction"}
 
+# Valid validation statuses (from KnowledgeEntry schema)
+VALID_VALIDATION_STATUSES = {"AI-generated", "human-confirmed", "proven", "corrected"}
+
 # Allowed file extensions for import
 ALLOWED_EXTENSIONS = {"md", "txt", "json", "markdown"}
 
@@ -1829,9 +1832,7 @@ def service_knowledge(service_name: str) -> tuple[str, int] | str:
 
     # Get validation status filter
     validation_status = request.args.get("validation_status")
-    if validation_status and validation_status not in {
-        "AI-generated", "human-confirmed", "proven", "corrected",
-    }:
+    if validation_status and validation_status not in VALID_VALIDATION_STATUSES:
         validation_status = None
 
     try:
@@ -1849,6 +1850,7 @@ def service_knowledge(service_name: str) -> tuple[str, int] | str:
             validation_counts={"total": 0},
             active_filter=None,
             available_services=available_services,
+            error_message="Failed to load knowledge entries. Please try again later.",
         )
 
     return render_template(
