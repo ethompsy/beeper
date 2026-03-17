@@ -105,7 +105,7 @@ development_status:
   6-3-per-service-knowledge-views: done
   6-4-kb-entry-validation-weighting: done
   6-5-kb-entry-review-edit-correction: done
-  6-6-unified-investigation-timeline: review
+  6-6-unified-investigation-timeline: done
   6-7-deploy-correlation: backlog
   6-8-service-dependency-topology: backlog
   6-9-change-event-ingestion-correlation: backlog

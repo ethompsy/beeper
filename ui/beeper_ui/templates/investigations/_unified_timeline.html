@@ -18,7 +18,7 @@
                 </div>
                 <div class="evidence-timeline-content">
                     <div class="evidence-timeline-header">
-                        <span class="timeline-event-time">{{ event.timestamp }}</span>
+                        <span class="timeline-event-time">{{ event.timestamp | replace('T', ' ') | truncate(19, True, '', 0) }}</span>
                         <span class="evidence-timeline-title">{{ event.title }}</span>
                         {% if event.evidence_type == 'kb' and event.validation_status %}
                         <span class="validation-status-badge validation-{{ event.validation_status | replace(' ', '-') | lower }}">{{ event.validation_status }}</span>

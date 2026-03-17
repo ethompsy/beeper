@@ -405,22 +405,6 @@ class TestRouteIntegration:
 
         # Setup mock evidence service
         mock_ev_svc = MagicMock()
-        mock_ev_svc.extract_evidence_references.return_value = [
-            _make_ref(
-                evidence_type="metric",
-                title="Signal: prometheus",
-                source_type="prometheus",
-                source_ref="prometheus",
-            )
-        ]
-        mock_ev_svc.enrich_kb_references.return_value = [
-            _make_ref(
-                evidence_type="metric",
-                title="Signal: prometheus",
-                source_type="prometheus",
-                source_ref="prometheus",
-            )
-        ]
         ref = _make_ref(
             evidence_type="metric",
             title="Signal: prometheus",
@@ -437,9 +421,11 @@ class TestRouteIntegration:
         html = response.data.decode()
         assert "Investigation Timeline" in html
         assert "evidence-timeline" in html
-        mock_ev_svc.extract_evidence_references.assert_called_once()
-        mock_ev_svc.enrich_kb_references.assert_called_once()
         mock_ev_svc.get_timeline_events.assert_called_once()
+        # extract_evidence_references and enrich_kb_references are called
+        # internally by get_timeline_events, not directly by the route
+        mock_ev_svc.extract_evidence_references.assert_not_called()
+        mock_ev_svc.enrich_kb_references.assert_not_called()
 
     @patch("beeper_ui.routes.investigations.get_investigation_service")
     def test_detail_route_empty_findings_no_evidence(
@@ -494,7 +480,7 @@ def _make_timeline_event(**kwargs):
         "config_change": "config_change",
         "kb": "kb_reference",
     }
-    category = kwargs.pop("event_category", category_map.get(evidence_type, "metric_anomaly"))
+    category = ref_kwargs.pop("event_category", category_map.get(evidence_type, "metric_anomaly"))
     ref = EvidenceReference(**ref_kwargs)
     return TimelineEvent(reference=ref, event_category=category)
 
@@ -519,7 +505,7 @@ class TestUnifiedTimelineTemplate:
             html = app.jinja_env.get_template(
                 "investigations/_unified_timeline.html"
             ).render(timeline_events=events)
-            assert "2026-01-01T12:00:00Z" in html
+            assert "2026-01-01 12:00:00" in html
             assert "Metric Spike" in html
             assert "timeline-event-time" in html
 
@@ -603,3 +589,37 @@ class TestUnifiedTimelineTemplate:
             ).render(timeline_events=events)
             assert "validation-proven" in html
             assert "proven" in html
+
+    def test_timestamp_formatted_without_iso_t(self, app):
+        """Verify timestamps are displayed with space instead of T separator."""
+        events = [
+            _make_timeline_event(
+                timestamp="2026-03-17T14:30:00Z",
+                title="Formatted Timestamp",
+            ),
+        ]
+        with app.app_context():
+            html = app.jinja_env.get_template(
+                "investigations/_unified_timeline.html"
+            ).render(timeline_events=events)
+            # Should display space-separated, not ISO T
+            assert "2026-03-17 14:30:00" in html
+            assert "2026-03-17T14:30:00" not in html
+
+    def test_filter_buttons_have_aria_pressed(self, app):
+        """Verify filter toggle buttons have aria-pressed for accessibility."""
+        events = [_make_timeline_event()]
+        with app.app_context():
+            html = app.jinja_env.get_template(
+                "investigations/_unified_timeline.html"
+            ).render(timeline_events=events)
+            assert 'aria-pressed="true"' in html
+
+
+class TestMakeTimelineEventHelper:
+    def test_event_category_kwarg_does_not_leak_to_reference(self):
+        """Regression: event_category passed via kwargs must not leak into EvidenceReference."""
+        event = _make_timeline_event(event_category="deploy_event")
+        assert event.event_category == "deploy_event"
+        # event_category must not be an attribute on the inner reference
+        assert not hasattr(event.reference, "event_category")

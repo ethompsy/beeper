@@ -1,23 +1,23 @@
 <div class="timeline-filter-bar">
     <span class="timeline-filter-label">Filter:</span>
-    <button type="button" class="timeline-filter-btn active" data-type="metric"
-            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.closest('.unified-timeline').classList.toggle('hide-metric')">
+    <button type="button" class="timeline-filter-btn active" data-type="metric" aria-pressed="true"
+            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.setAttribute('aria-pressed',this.classList.contains('active'));this.closest('.unified-timeline').classList.toggle('hide-metric')">
         Metrics
     </button>
-    <button type="button" class="timeline-filter-btn active" data-type="log"
-            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.closest('.unified-timeline').classList.toggle('hide-log')">
+    <button type="button" class="timeline-filter-btn active" data-type="log" aria-pressed="true"
+            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.setAttribute('aria-pressed',this.classList.contains('active'));this.closest('.unified-timeline').classList.toggle('hide-log')">
         Logs
     </button>
-    <button type="button" class="timeline-filter-btn active" data-type="deploy"
-            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.closest('.unified-timeline').classList.toggle('hide-deploy')">
+    <button type="button" class="timeline-filter-btn active" data-type="deploy" aria-pressed="true"
+            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.setAttribute('aria-pressed',this.classList.contains('active'));this.closest('.unified-timeline').classList.toggle('hide-deploy')">
         Deploys
     </button>
-    <button type="button" class="timeline-filter-btn active" data-type="config_change"
-            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.closest('.unified-timeline').classList.toggle('hide-config_change')">
+    <button type="button" class="timeline-filter-btn active" data-type="config_change" aria-pressed="true"
+            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.setAttribute('aria-pressed',this.classList.contains('active'));this.closest('.unified-timeline').classList.toggle('hide-config_change')">
         Config
     </button>
-    <button type="button" class="timeline-filter-btn active" data-type="kb"
-            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.closest('.unified-timeline').classList.toggle('hide-kb')">
+    <button type="button" class="timeline-filter-btn active" data-type="kb" aria-pressed="true"
+            onclick="this.classList.toggle('active');this.classList.toggle('inactive');this.setAttribute('aria-pressed',this.classList.contains('active'));this.closest('.unified-timeline').classList.toggle('hide-kb')">
         KB
     </button>
 </div>

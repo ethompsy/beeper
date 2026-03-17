@@ -464,15 +464,10 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
     except InvestigationServiceError:
         error_message = "Unable to connect to the Beeper operator."
 
-    # Extract structured evidence references and timeline events from findings
-    evidence_references = []
+    # Extract timeline events (includes evidence extraction + KB enrichment internally)
     timeline_events = []
     if findings:
         ev_svc = get_evidence_service()
-        evidence_references = ev_svc.extract_evidence_references(
-            investigation_id, findings
-        )
-        evidence_references = ev_svc.enrich_kb_references(evidence_references)
         timeline_events = ev_svc.get_timeline_events(investigation_id, findings)
 
     # Retrieve human interventions (annotations & redirects) from collaboration history
@@ -499,7 +494,6 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
             findings=findings,
             step_states=step_states,
             error_message=error_message,
-            evidence_references=evidence_references,
             timeline_events=timeline_events,
             human_interventions=human_interventions,
         )
@@ -511,7 +505,6 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         findings=findings,
         step_states=step_states,
         error_message=error_message,
-        evidence_references=evidence_references,
         timeline_events=timeline_events,
         human_interventions=human_interventions,
     )

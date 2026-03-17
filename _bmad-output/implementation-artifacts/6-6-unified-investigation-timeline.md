@@ -1,6 +1,6 @@
 # Story 6.6: Unified Investigation Timeline
 
-Status: review
+Status: done
 
 ## Story
 
@@ -188,6 +188,7 @@ claude-opus-4-6
 ### Change Log
 
 - 2026-03-17: Implemented story 6-6 — Unified Investigation Timeline with chronological event sorting, CSS-only type filtering, inline detail expansion via `<details>`, and TimelineEvent dataclass
+- 2026-03-17: Code review (AI) — Found 3 MEDIUM + 2 LOW issues. Auto-fixed: removed double extraction/enrichment in route (dead `evidence_references`), fixed `_make_timeline_event` test helper kwarg leak, added human-readable timestamp formatting, added aria-pressed to filter buttons. Added 4 new tests (timestamp format, aria-pressed, event_category kwarg regression, route assert_not_called). All 3,209 tests pass (952 investigator + 1,726 UI + 531 operator).
 
 ### File List
 
