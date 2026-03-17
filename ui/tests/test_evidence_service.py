@@ -7,6 +7,7 @@ import pytest
 from beeper_ui.services.evidence_service import (
     EvidenceReference,
     EvidenceService,
+    TimelineEvent,
     get_evidence_service,
     reset_evidence_service,
 )
@@ -469,6 +470,116 @@ class TestEvidenceReferenceDataclass:
 
 
 # --- Singleton pattern ---
+
+
+class TestGetTimelineEvents:
+    def test_empty_findings_returns_empty(self, service):
+        result = service.get_timeline_events("inv-1", {})
+        assert result == []
+
+    def test_none_findings_returns_empty(self, service):
+        result = service.get_timeline_events("inv-1", None)
+        assert result == []
+
+    @patch.object(EvidenceService, "enrich_kb_references", side_effect=lambda refs: refs)
+    def test_events_sorted_chronologically(self, _mock_enrich, service):
+        findings = {
+            "layers_queried": ["Prometheus"],
+            "signal_summary": "CPU spike detected",
+            "supporting_evidence": ["Log shows OOM kill at 14:32"],
+        }
+        events = service.get_timeline_events("inv-1", findings)
+        assert len(events) > 1
+        timestamps = [e.timestamp for e in events]
+        assert timestamps == sorted(timestamps)
+
+    @patch.object(EvidenceService, "enrich_kb_references", side_effect=lambda refs: refs)
+    def test_event_category_mapping_metric(self, _mock_enrich, service):
+        findings = {
+            "layers_queried": ["Prometheus"],
+            "signal_summary": "Spike",
+        }
+        events = service.get_timeline_events("inv-1", findings)
+        metric_events = [e for e in events if e.evidence_type == "metric"]
+        assert len(metric_events) > 0
+        for ev in metric_events:
+            assert ev.event_category == "metric_anomaly"
+
+    @patch.object(EvidenceService, "enrich_kb_references", side_effect=lambda refs: refs)
+    def test_event_category_mapping_log(self, _mock_enrich, service):
+        findings = {
+            "layers_queried": ["Loki"],
+            "signal_summary": "Error logs found",
+        }
+        events = service.get_timeline_events("inv-1", findings)
+        log_events = [e for e in events if e.evidence_type == "log"]
+        assert len(log_events) > 0
+        for ev in log_events:
+            assert ev.event_category == "log_pattern"
+
+    @patch.object(EvidenceService, "enrich_kb_references", side_effect=lambda refs: refs)
+    def test_event_category_mapping_deploy(self, _mock_enrich, service):
+        findings = {
+            "supporting_evidence": ["Deploy rollout caused failure"],
+        }
+        events = service.get_timeline_events("inv-1", findings)
+        deploy_events = [e for e in events if e.evidence_type == "deploy"]
+        assert len(deploy_events) > 0
+        for ev in deploy_events:
+            assert ev.event_category == "deploy_event"
+
+    @patch.object(EvidenceService, "enrich_kb_references", side_effect=lambda refs: refs)
+    def test_event_category_mapping_kb(self, _mock_enrich, service):
+        findings = {
+            "exact_match_found": True,
+            "exact_match_id": "kb-123",
+            "prior_research_summary": "Known issue",
+        }
+        events = service.get_timeline_events("inv-1", findings)
+        kb_events = [e for e in events if e.evidence_type == "kb"]
+        assert len(kb_events) > 0
+        for ev in kb_events:
+            assert ev.event_category == "kb_reference"
+
+    @patch.object(EvidenceService, "enrich_kb_references", side_effect=lambda refs: refs)
+    def test_event_category_mapping_config_change(self, _mock_enrich, service):
+        findings = {
+            "supporting_evidence": ["ConfigMap update triggered restart"],
+        }
+        events = service.get_timeline_events("inv-1", findings)
+        config_events = [e for e in events if e.evidence_type == "config_change"]
+        assert len(config_events) > 0
+        for ev in config_events:
+            assert ev.event_category == "config_change"
+
+    @patch.object(EvidenceService, "enrich_kb_references", side_effect=lambda refs: refs)
+    def test_timeline_event_properties_delegate_to_reference(self, _mock_enrich, service):
+        findings = {
+            "layers_queried": ["Prometheus"],
+            "signal_summary": "CPU spike",
+        }
+        events = service.get_timeline_events("inv-1", findings)
+        assert len(events) > 0
+        ev = events[0]
+        assert ev.id == ev.reference.id
+        assert ev.investigation_id == ev.reference.investigation_id
+        assert ev.title == ev.reference.title
+        assert ev.content_preview == ev.reference.content_preview
+        assert ev.source_ref == ev.reference.source_ref
+        assert ev.source_type == ev.reference.source_type
+        assert ev.timestamp == ev.reference.timestamp
+
+    @patch.object(EvidenceService, "enrich_kb_references", side_effect=lambda refs: refs)
+    def test_timeline_event_to_dict_includes_category(self, _mock_enrich, service):
+        findings = {
+            "layers_queried": ["Prometheus"],
+            "signal_summary": "Spike",
+        }
+        events = service.get_timeline_events("inv-1", findings)
+        assert len(events) > 0
+        d = events[0].to_dict()
+        assert "event_category" in d
+        assert d["event_category"] == "metric_anomaly"
 
 
 class TestSingleton:

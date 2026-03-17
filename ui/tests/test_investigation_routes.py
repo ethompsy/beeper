@@ -2734,3 +2734,120 @@ class TestFormatMTTR:
 
         assert format_mttr(86400) == "1d"
         assert format_mttr(97200) == "1d 3h"
+
+
+class TestInvestigationDetailTimeline:
+    """Tests for unified timeline integration in investigation detail route."""
+
+    @respx.mock
+    def test_detail_passes_timeline_events_to_template(
+        self, client: FlaskClient
+    ) -> None:
+        """Test that investigation_detail() passes timeline_events to template context."""
+        from beeper_ui.services.evidence_service import EvidenceReference, TimelineEvent
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "layers_queried": ["Prometheus"],
+            "signal_summary": "CPU spike detected",
+        }
+
+        mock_ref = EvidenceReference(
+            id="ev-inv-detail-001-0",
+            investigation_id="inv-detail-001",
+            evidence_type="metric",
+            title="Signal: Prometheus",
+            content_preview="CPU spike detected",
+            source_ref="prometheus",
+            source_type="prometheus",
+            timestamp="2026-03-06T10:01:00Z",
+            raw_data="CPU spike detected",
+        )
+        mock_timeline_events = [
+            TimelineEvent(reference=mock_ref, event_category="metric_anomaly")
+        ]
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ), patch(
+            "beeper_ui.routes.investigations.get_evidence_service"
+        ) as mock_get_ev_svc:
+            mock_ev_svc = MagicMock()
+            mock_ev_svc.extract_evidence_references.return_value = [mock_ref]
+            mock_ev_svc.enrich_kb_references.return_value = [mock_ref]
+            mock_ev_svc.get_timeline_events.return_value = mock_timeline_events
+            mock_get_ev_svc.return_value = mock_ev_svc
+
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            html = response.data.decode()
+            assert "Investigation Timeline" in html
+            assert "unified-timeline" in html
+            assert "timeline-filter-btn" in html
+            mock_ev_svc.get_timeline_events.assert_called_once_with(
+                "inv-detail-001", mock_findings
+            )
+
+    @respx.mock
+    def test_timeline_events_chronological_order(
+        self, client: FlaskClient
+    ) -> None:
+        """Test that timeline events are displayed in chronological order."""
+        from beeper_ui.services.evidence_service import EvidenceReference, TimelineEvent
+
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "layers_queried": ["Prometheus", "Loki"],
+            "signal_summary": "Signals found",
+        }
+
+        ref1 = EvidenceReference(
+            id="ev-1",
+            investigation_id="inv-detail-001",
+            evidence_type="metric",
+            title="Earlier Event",
+            content_preview="First",
+            source_ref="prometheus",
+            source_type="prometheus",
+            timestamp="2026-03-06T10:00:00Z",
+        )
+        ref2 = EvidenceReference(
+            id="ev-2",
+            investigation_id="inv-detail-001",
+            evidence_type="log",
+            title="Later Event",
+            content_preview="Second",
+            source_ref="loki",
+            source_type="loki",
+            timestamp="2026-03-06T10:05:00Z",
+        )
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ), patch(
+            "beeper_ui.routes.investigations.get_evidence_service"
+        ) as mock_get_ev_svc:
+            mock_ev_svc = MagicMock()
+            mock_ev_svc.extract_evidence_references.return_value = [ref1, ref2]
+            mock_ev_svc.enrich_kb_references.return_value = [ref1, ref2]
+            mock_ev_svc.get_timeline_events.return_value = [
+                TimelineEvent(reference=ref1, event_category="metric_anomaly"),
+                TimelineEvent(reference=ref2, event_category="log_pattern"),
+            ]
+            mock_get_ev_svc.return_value = mock_ev_svc
+
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            html = response.data.decode()
+            # Earlier event should appear before later event
+            earlier_pos = html.find("Earlier Event")
+            later_pos = html.find("Later Event")
+            assert earlier_pos < later_pos

@@ -20,6 +20,15 @@ EVIDENCE_TYPES = {"metric", "log", "deploy", "kb", "config_change"}
 SOURCE_TYPES = {"prometheus", "loki", "kb_entry", "git_commit", "config"}
 
 
+_EVENT_CATEGORY_MAP: dict[str, str] = {
+    "metric": "metric_anomaly",
+    "log": "log_pattern",
+    "deploy": "deploy_event",
+    "config_change": "config_change",
+    "kb": "kb_reference",
+}
+
+
 @dataclass
 class EvidenceReference:
     """A structured evidence reference from an investigation."""
@@ -39,6 +48,64 @@ class EvidenceReference:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for template rendering."""
         return asdict(self)
+
+
+@dataclass
+class TimelineEvent:
+    """A timeline event wrapping an EvidenceReference with category classification."""
+
+    reference: EvidenceReference
+    event_category: str  # metric_anomaly, log_pattern, deploy_event, config_change, kb_reference
+
+    @property
+    def id(self) -> str:
+        return self.reference.id
+
+    @property
+    def investigation_id(self) -> str:
+        return self.reference.investigation_id
+
+    @property
+    def evidence_type(self) -> str:
+        return self.reference.evidence_type
+
+    @property
+    def title(self) -> str:
+        return self.reference.title
+
+    @property
+    def content_preview(self) -> str:
+        return self.reference.content_preview
+
+    @property
+    def source_ref(self) -> str:
+        return self.reference.source_ref
+
+    @property
+    def source_type(self) -> str:
+        return self.reference.source_type
+
+    @property
+    def timestamp(self) -> str:
+        return self.reference.timestamp
+
+    @property
+    def relevance_score(self) -> Optional[float]:
+        return self.reference.relevance_score
+
+    @property
+    def validation_status(self) -> Optional[str]:
+        return self.reference.validation_status
+
+    @property
+    def raw_data(self) -> Optional[str]:
+        return self.reference.raw_data
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict for template rendering."""
+        d = self.reference.to_dict()
+        d["event_category"] = self.event_category
+        return d
 
 
 class EvidenceService:
@@ -417,6 +484,34 @@ class EvidenceService:
         if entry.entry_type == "correction":
             return "human-confirmed"
         return "AI-generated"
+
+    def get_timeline_events(
+        self,
+        investigation_id: str,
+        findings: dict[str, Any],
+    ) -> list[TimelineEvent]:
+        """Extract and sort evidence as timeline events in chronological order.
+
+        Calls extract_evidence_references(), wraps each in a TimelineEvent with
+        an event_category, enriches KB references, and sorts by timestamp.
+
+        Args:
+            investigation_id: The investigation ID.
+            findings: Pipeline metadata dict from Qdrant investigations collection.
+
+        Returns:
+            List of TimelineEvent objects sorted chronologically by timestamp.
+        """
+        references = self.extract_evidence_references(investigation_id, findings)
+        references = self.enrich_kb_references(references)
+
+        events: list[TimelineEvent] = []
+        for ref in references:
+            category = _EVENT_CATEGORY_MAP.get(ref.evidence_type, "metric_anomaly")
+            events.append(TimelineEvent(reference=ref, event_category=category))
+
+        events.sort(key=lambda e: e.timestamp)
+        return events
 
     def enrich_kb_references(
         self, references: list[EvidenceReference]

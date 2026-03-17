@@ -1,0 +1,76 @@
+{% if timeline_events %}
+<div class="unified-timeline">
+    {% include "investigations/_timeline_filter.html" %}
+    <div class="unified-timeline-events">
+        {% for event in timeline_events %}
+        <details class="evidence-timeline-item evidence-type-{{ event.evidence_type }}">
+            <summary class="evidence-timeline-summary">
+                <div class="evidence-timeline-marker">
+                    <span class="evidence-type-badge badge-{{ event.evidence_type }}">
+                        {% if event.evidence_type == 'metric' %}metric
+                        {% elif event.evidence_type == 'log' %}log
+                        {% elif event.evidence_type == 'deploy' %}deploy
+                        {% elif event.evidence_type == 'kb' %}KB
+                        {% elif event.evidence_type == 'config_change' %}config
+                        {% else %}{{ event.evidence_type }}
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="evidence-timeline-content">
+                    <div class="evidence-timeline-header">
+                        <span class="timeline-event-time">{{ event.timestamp }}</span>
+                        <span class="evidence-timeline-title">{{ event.title }}</span>
+                        {% if event.evidence_type == 'kb' and event.validation_status %}
+                        <span class="validation-status-badge validation-{{ event.validation_status | replace(' ', '-') | lower }}">{{ event.validation_status }}</span>
+                        {% endif %}
+                        {% if event.relevance_score is not none %}
+                        <span class="relevance-score" title="Relevance: {{ (event.relevance_score * 100) | int }}%">{{ (event.relevance_score * 100) | int }}%</span>
+                        {% endif %}
+                    </div>
+                    <p class="evidence-timeline-preview" title="{{ event.content_preview }}">{{ event.content_preview }}</p>
+                </div>
+            </summary>
+            <div class="evidence-timeline-detail">
+                {% if event.source_type == 'kb_entry' %}
+                <a href="{{ url_for('knowledge.kb_entry', entry_id=event.source_ref) }}"
+                   target="_blank"
+                   class="evidence-ref-link kb-entry-link">View KB Entry &rarr;</a>
+                {% elif event.source_type == 'prometheus' %}
+                <div class="evidence-inline-detail">
+                    <strong>Query:</strong>
+                    <code class="evidence-query">{{ event.source_ref }}</code>
+                    {% if event.raw_data %}
+                    <pre class="evidence-raw-data">{{ event.raw_data }}</pre>
+                    {% endif %}
+                </div>
+                {% elif event.source_type == 'loki' %}
+                <div class="evidence-inline-detail">
+                    <strong>Log Query:</strong>
+                    <code class="evidence-query">{{ event.source_ref }}</code>
+                    {% if event.raw_data %}
+                    <pre class="evidence-raw-data">{{ event.raw_data }}</pre>
+                    {% endif %}
+                </div>
+                {% elif event.source_type == 'git_commit' %}
+                <div class="evidence-inline-detail">
+                    <strong>Commit:</strong> <code>{{ event.source_ref[:12] }}</code>
+                    {% if event.raw_data %}
+                    <pre class="evidence-raw-data">{{ event.raw_data }}</pre>
+                    {% endif %}
+                </div>
+                {% elif event.source_type == 'config' %}
+                <div class="evidence-inline-detail">
+                    <strong>Config Change:</strong>
+                    {% if event.raw_data %}
+                    <pre class="evidence-raw-data">{{ event.raw_data }}</pre>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </details>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<p class="empty-state-text">No timeline events yet.</p>
+{% endif %}

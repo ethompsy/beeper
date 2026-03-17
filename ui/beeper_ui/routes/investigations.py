@@ -464,14 +464,16 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
     except InvestigationServiceError:
         error_message = "Unable to connect to the Beeper operator."
 
-    # Extract structured evidence references from findings
+    # Extract structured evidence references and timeline events from findings
     evidence_references = []
+    timeline_events = []
     if findings:
         ev_svc = get_evidence_service()
         evidence_references = ev_svc.extract_evidence_references(
             investigation_id, findings
         )
         evidence_references = ev_svc.enrich_kb_references(evidence_references)
+        timeline_events = ev_svc.get_timeline_events(investigation_id, findings)
 
     # Retrieve human interventions (annotations & redirects) from collaboration history
     human_interventions = []
@@ -498,6 +500,7 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
             step_states=step_states,
             error_message=error_message,
             evidence_references=evidence_references,
+            timeline_events=timeline_events,
             human_interventions=human_interventions,
         )
 
@@ -509,6 +512,7 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         step_states=step_states,
         error_message=error_message,
         evidence_references=evidence_references,
+        timeline_events=timeline_events,
         human_interventions=human_interventions,
     )
 
@@ -1158,16 +1162,15 @@ def _generate_detail_sse_events(
                 )
                 yield f"event: evidence-update\n{evidence_lines}\n\n"
 
-                # Update evidence timeline with structured references
+                # Update unified investigation timeline
                 try:
                     ev_svc = get_evidence_service()
-                    ev_refs = ev_svc.extract_evidence_references(
+                    tl_events = ev_svc.get_timeline_events(
                         investigation_id, findings
                     )
-                    ev_refs = ev_svc.enrich_kb_references(ev_refs)
                     timeline_html = render_template(
-                        "investigations/_evidence_timeline.html",
-                        evidence_references=ev_refs,
+                        "investigations/_unified_timeline.html",
+                        timeline_events=tl_events,
                     )
                     timeline_lines = "\n".join(
                         f"data: {line}"

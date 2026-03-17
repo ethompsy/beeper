@@ -7,7 +7,7 @@ from flask import Flask
 
 from beeper_ui.app import create_app
 from beeper_ui.config import TestingConfig
-from beeper_ui.services.evidence_service import EvidenceReference
+from beeper_ui.services.evidence_service import EvidenceReference, TimelineEvent
 
 
 @pytest.fixture
@@ -421,15 +421,25 @@ class TestRouteIntegration:
                 source_ref="prometheus",
             )
         ]
+        ref = _make_ref(
+            evidence_type="metric",
+            title="Signal: prometheus",
+            source_type="prometheus",
+            source_ref="prometheus",
+        )
+        mock_ev_svc.get_timeline_events.return_value = [
+            TimelineEvent(reference=ref, event_category="metric_anomaly")
+        ]
         mock_get_ev_svc.return_value = mock_ev_svc
 
         response = client.get("/investigations/test-inv-1")
         assert response.status_code == 200
         html = response.data.decode()
-        assert "Evidence Timeline" in html
+        assert "Investigation Timeline" in html
         assert "evidence-timeline" in html
         mock_ev_svc.extract_evidence_references.assert_called_once()
         mock_ev_svc.enrich_kb_references.assert_called_once()
+        mock_ev_svc.get_timeline_events.assert_called_once()
 
     @patch("beeper_ui.routes.investigations.get_investigation_service")
     def test_detail_route_empty_findings_no_evidence(
@@ -454,4 +464,142 @@ class TestRouteIntegration:
         response = client.get("/investigations/test-inv-2")
         assert response.status_code == 200
         html = response.data.decode()
-        assert "No evidence references yet" in html
+        assert "No timeline events yet" in html
+
+
+# --- Unified Timeline Template Tests ---
+
+
+def _make_timeline_event(**kwargs):
+    """Create a TimelineEvent with defaults."""
+    ref_kwargs = {
+        "id": "ev-test-0",
+        "investigation_id": "inv-1",
+        "evidence_type": "metric",
+        "title": "Test Event",
+        "content_preview": "Preview text",
+        "source_ref": "test-ref",
+        "source_type": "prometheus",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "relevance_score": None,
+        "validation_status": None,
+        "raw_data": None,
+    }
+    ref_kwargs.update(kwargs)
+    evidence_type = ref_kwargs.get("evidence_type", "metric")
+    category_map = {
+        "metric": "metric_anomaly",
+        "log": "log_pattern",
+        "deploy": "deploy_event",
+        "config_change": "config_change",
+        "kb": "kb_reference",
+    }
+    category = kwargs.pop("event_category", category_map.get(evidence_type, "metric_anomaly"))
+    ref = EvidenceReference(**ref_kwargs)
+    return TimelineEvent(reference=ref, event_category=category)
+
+
+class TestUnifiedTimelineTemplate:
+    def test_empty_events_shows_empty_state(self, app):
+        with app.app_context():
+            html = app.jinja_env.get_template(
+                "investigations/_unified_timeline.html"
+            ).render(timeline_events=[])
+            assert "No timeline events yet" in html
+
+    def test_events_render_with_timestamps(self, app):
+        events = [
+            _make_timeline_event(
+                id="ev-1",
+                timestamp="2026-01-01T12:00:00Z",
+                title="Metric Spike",
+            ),
+        ]
+        with app.app_context():
+            html = app.jinja_env.get_template(
+                "investigations/_unified_timeline.html"
+            ).render(timeline_events=events)
+            assert "2026-01-01T12:00:00Z" in html
+            assert "Metric Spike" in html
+            assert "timeline-event-time" in html
+
+    def test_filter_buttons_render_for_each_type(self, app):
+        events = [_make_timeline_event()]
+        with app.app_context():
+            html = app.jinja_env.get_template(
+                "investigations/_unified_timeline.html"
+            ).render(timeline_events=events)
+            assert 'data-type="metric"' in html
+            assert 'data-type="log"' in html
+            assert 'data-type="deploy"' in html
+            assert 'data-type="config_change"' in html
+            assert 'data-type="kb"' in html
+            assert "timeline-filter-btn" in html
+
+    def test_details_element_exists_for_inline_expansion(self, app):
+        events = [
+            _make_timeline_event(
+                evidence_type="metric",
+                source_type="prometheus",
+                source_ref="rate(errors[5m])",
+                raw_data="Rate: 42.5",
+            ),
+        ]
+        with app.app_context():
+            html = app.jinja_env.get_template(
+                "investigations/_unified_timeline.html"
+            ).render(timeline_events=events)
+            assert "<details" in html
+            assert "evidence-timeline-detail" in html
+            assert "rate(errors[5m])" in html
+
+    def test_multiple_event_types_render(self, app):
+        events = [
+            _make_timeline_event(
+                id="ev-1",
+                evidence_type="metric",
+                title="Metric A",
+                timestamp="2026-01-01T00:00:00Z",
+            ),
+            _make_timeline_event(
+                id="ev-2",
+                evidence_type="log",
+                title="Log B",
+                source_type="loki",
+                timestamp="2026-01-01T00:01:00Z",
+            ),
+            _make_timeline_event(
+                id="ev-3",
+                evidence_type="deploy",
+                title="Deploy C",
+                source_type="git_commit",
+                source_ref="abc123def456",
+                timestamp="2026-01-01T00:02:00Z",
+            ),
+        ]
+        with app.app_context():
+            html = app.jinja_env.get_template(
+                "investigations/_unified_timeline.html"
+            ).render(timeline_events=events)
+            assert "evidence-type-metric" in html
+            assert "evidence-type-log" in html
+            assert "evidence-type-deploy" in html
+            assert "Metric A" in html
+            assert "Log B" in html
+            assert "Deploy C" in html
+
+    def test_kb_event_shows_validation_status(self, app):
+        events = [
+            _make_timeline_event(
+                evidence_type="kb",
+                source_type="kb_entry",
+                source_ref="kb-123",
+                validation_status="proven",
+            ),
+        ]
+        with app.app_context():
+            html = app.jinja_env.get_template(
+                "investigations/_unified_timeline.html"
+            ).render(timeline_events=events)
+            assert "validation-proven" in html
+            assert "proven" in html

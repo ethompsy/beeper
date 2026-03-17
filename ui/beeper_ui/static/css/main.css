@@ -4379,6 +4379,134 @@ a.match-badge.kb-entry-link::after {
     word-break: break-word;
 }
 
+/* Unified Investigation Timeline */
+.unified-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.unified-timeline-events {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.timeline-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.timeline-filter-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.timeline-filter-btn {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    background: #fff;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.timeline-filter-btn.active[data-type="metric"] {
+    background: #6366f1;
+    border-color: #6366f1;
+    color: #fff;
+}
+
+.timeline-filter-btn.active[data-type="log"] {
+    background: #f59e0b;
+    border-color: #f59e0b;
+    color: #1f2937;
+}
+
+.timeline-filter-btn.active[data-type="deploy"] {
+    background: #10b981;
+    border-color: #10b981;
+    color: #fff;
+}
+
+.timeline-filter-btn.active[data-type="config_change"] {
+    background: #8b5cf6;
+    border-color: #8b5cf6;
+    color: #fff;
+}
+
+.timeline-filter-btn.active[data-type="kb"] {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #fff;
+}
+
+.timeline-filter-btn.inactive {
+    opacity: 0.5;
+    background: #f9fafb;
+    color: #9ca3af;
+    border-color: #e5e7eb;
+}
+
+/* CSS-only timeline filtering */
+.unified-timeline.hide-metric .evidence-type-metric {
+    display: none;
+}
+
+.unified-timeline.hide-log .evidence-type-log {
+    display: none;
+}
+
+.unified-timeline.hide-deploy .evidence-type-deploy {
+    display: none;
+}
+
+.unified-timeline.hide-config_change .evidence-type-config_change {
+    display: none;
+}
+
+.unified-timeline.hide-kb .evidence-type-kb {
+    display: none;
+}
+
+/* Timeline event timestamp */
+.timeline-event-time {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    flex-shrink: 0;
+}
+
+/* Timeline details summary styling */
+.evidence-timeline-summary {
+    display: flex;
+    gap: 12px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.evidence-timeline-summary::-webkit-details-marker {
+    display: none;
+}
+
+.evidence-timeline-detail {
+    padding: 8px 12px 8px 52px;
+}
+
+details.evidence-timeline-item[open] {
+    background: #f3f4f6;
+}
+
 .evidence-kb-match-list,
 .evidence-supporting-list {
     margin: 0;
