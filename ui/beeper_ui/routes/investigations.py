@@ -35,6 +35,7 @@ from beeper_ui.services.investigation_service import (
     InvestigationService,
     InvestigationServiceError,
 )
+from beeper_ui.services.collaboration_service import get_collaboration_service
 from beeper_ui.services.evidence_service import get_evidence_service
 from beeper_ui.services.kb_service import KBEntry, KBService, KBServiceError
 from beeper_ui.services.notification_audit_service import NotificationAuditService
@@ -471,6 +472,21 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         )
         evidence_references = ev_svc.enrich_kb_references(evidence_references)
 
+    # Retrieve human interventions (annotations & redirects) from collaboration history
+    human_interventions = []
+    try:
+        collab_svc = get_collaboration_service()
+        all_messages = collab_svc.get_message_history(investigation_id)
+        human_interventions = [
+            msg.to_payload()
+            for msg in all_messages
+            if msg.message_type in ("annotation", "redirect")
+        ]
+    except Exception:
+        logger.warning(
+            "Failed to fetch human interventions for %s", investigation_id
+        )
+
     if request.headers.get("HX-Request"):
         return render_template(
             "investigations/_detail_content.html",
@@ -479,6 +495,7 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
             step_states=step_states,
             error_message=error_message,
             evidence_references=evidence_references,
+            human_interventions=human_interventions,
         )
 
     return render_template(
@@ -489,6 +506,7 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         step_states=step_states,
         error_message=error_message,
         evidence_references=evidence_references,
+        human_interventions=human_interventions,
     )
 
 

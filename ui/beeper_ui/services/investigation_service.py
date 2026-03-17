@@ -502,6 +502,88 @@ class InvestigationService:
         except (ValueError, TypeError):
             return None
 
+    def annotate_investigation(
+        self, investigation_id: str, text: str, user: str
+    ) -> bool:
+        """Add an annotation to an active investigation.
+
+        Args:
+            investigation_id: The investigation CRD name.
+            text: Annotation text from the user.
+            user: The user adding the annotation.
+
+        Returns:
+            True if annotation succeeded, False if investigation not found.
+        """
+        try:
+            response = self.client.post(
+                f"{self.operator_url}/api/v1/investigations/{investigation_id}/annotate",
+                json={"text": text, "user": user},
+            )
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return True
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "Timeout annotating investigation %s: %s",
+                investigation_id, e,
+            )
+            return False
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "Operator returned error annotating investigation %s: %s",
+                investigation_id, e.response.status_code,
+            )
+            return False
+        except httpx.RequestError as e:
+            logger.warning(
+                "Failed to connect to operator for annotation %s: %s",
+                investigation_id, e,
+            )
+            return False
+
+    def redirect_investigation(
+        self, investigation_id: str, instruction: str, user: str
+    ) -> bool:
+        """Redirect an active investigation with a new focus instruction.
+
+        Args:
+            investigation_id: The investigation CRD name.
+            instruction: Redirect instruction from the user.
+            user: The user issuing the redirect.
+
+        Returns:
+            True if redirect succeeded, False if investigation not found.
+        """
+        try:
+            response = self.client.post(
+                f"{self.operator_url}/api/v1/investigations/{investigation_id}/redirect",
+                json={"instruction": instruction, "user": user},
+            )
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return True
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "Timeout redirecting investigation %s: %s",
+                investigation_id, e,
+            )
+            return False
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "Operator returned error redirecting investigation %s: %s",
+                investigation_id, e.response.status_code,
+            )
+            return False
+        except httpx.RequestError as e:
+            logger.warning(
+                "Failed to connect to operator for redirect %s: %s",
+                investigation_id, e,
+            )
+            return False
+
     def save_resolution_feedback(
         self, investigation_id: str, feedback: dict[str, Any]
     ) -> None:

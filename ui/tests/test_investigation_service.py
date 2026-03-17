@@ -701,3 +701,111 @@ class TestCalculateMTTR:
             "not-a-date", "2026-03-07T10:57:00Z"
         )
         assert result is None
+
+
+class TestAnnotateInvestigation:
+    """Tests for annotate_investigation method."""
+
+    OPERATOR_URL = "http://mock-operator:8080"
+
+    def _make_service(self) -> InvestigationService:
+        return InvestigationService(operator_url=self.OPERATOR_URL)
+
+    @respx.mock
+    def test_annotate_success(self) -> None:
+        """Test successful annotation."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/annotate"
+        ).mock(return_value=Response(200, json={"ok": True}))
+        svc = self._make_service()
+        result = svc.annotate_investigation("inv-001", "DB issue", "admin")
+        assert result is True
+
+    @respx.mock
+    def test_annotate_not_found(self) -> None:
+        """Test annotation on non-existent investigation returns False."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-999/annotate"
+        ).mock(return_value=Response(404))
+        svc = self._make_service()
+        result = svc.annotate_investigation("inv-999", "text", "user")
+        assert result is False
+
+    @respx.mock
+    def test_annotate_server_error_returns_false(self) -> None:
+        """Test annotation gracefully handles server errors."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/annotate"
+        ).mock(return_value=Response(500))
+        svc = self._make_service()
+        result = svc.annotate_investigation("inv-001", "text", "user")
+        assert result is False
+
+    @respx.mock
+    def test_annotate_sends_correct_payload(self) -> None:
+        """Test annotation sends correct JSON payload."""
+        route = respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/annotate"
+        ).mock(return_value=Response(200, json={"ok": True}))
+        svc = self._make_service()
+        svc.annotate_investigation("inv-001", "Check pools", "admin")
+        assert route.called
+        body = route.calls[0].request.content
+        import json
+        payload = json.loads(body)
+        assert payload["text"] == "Check pools"
+        assert payload["user"] == "admin"
+
+
+class TestRedirectInvestigation:
+    """Tests for redirect_investigation method."""
+
+    OPERATOR_URL = "http://mock-operator:8080"
+
+    def _make_service(self) -> InvestigationService:
+        return InvestigationService(operator_url=self.OPERATOR_URL)
+
+    @respx.mock
+    def test_redirect_success(self) -> None:
+        """Test successful redirect."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/redirect"
+        ).mock(return_value=Response(200, json={"ok": True}))
+        svc = self._make_service()
+        result = svc.redirect_investigation("inv-001", "Focus on DB", "admin")
+        assert result is True
+
+    @respx.mock
+    def test_redirect_not_found(self) -> None:
+        """Test redirect on non-existent investigation returns False."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-999/redirect"
+        ).mock(return_value=Response(404))
+        svc = self._make_service()
+        result = svc.redirect_investigation("inv-999", "instruction", "user")
+        assert result is False
+
+    @respx.mock
+    def test_redirect_server_error_returns_false(self) -> None:
+        """Test redirect gracefully handles server errors."""
+        respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/redirect"
+        ).mock(return_value=Response(500))
+        svc = self._make_service()
+        result = svc.redirect_investigation("inv-001", "instruction", "user")
+        assert result is False
+
+    @respx.mock
+    def test_redirect_sends_correct_payload(self) -> None:
+        """Test redirect sends correct JSON payload."""
+        route = respx.post(
+            f"{self.OPERATOR_URL}/api/v1/investigations/inv-001/redirect"
+        ).mock(return_value=Response(200, json={"ok": True}))
+        svc = self._make_service()
+        svc.redirect_investigation("inv-001", "Focus on caching", "admin")
+        assert route.called
+        body = route.calls[0].request.content
+        import json
+        payload = json.loads(body)
+        assert payload["instruction"] == "Focus on caching"
+        assert payload["user"] == "admin"

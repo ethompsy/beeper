@@ -1,18 +1,19 @@
 """WebSocket event handlers for investigation collaboration.
 
-Handles join/leave rooms, message sending/receiving, and reconnection
-with message history replay.
+Handles join/leave rooms, message sending/receiving, annotations,
+redirections, and reconnection with message history replay.
 """
 
 import logging
 import uuid
 from datetime import datetime, timezone
 
-from flask import g, request
+from flask import current_app, g, request
 from flask_socketio import emit, join_room, leave_room
 
 from beeper_ui.services import collaboration_service as collab_svc
 from beeper_ui.services.collaboration_service import CollaborationMessage
+from beeper_ui.services.investigation_service import InvestigationService
 from beeper_ui.websocket import socketio
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,14 @@ def _now_iso() -> str:
 def _get_user() -> str:
     """Get user identifier from Flask g context."""
     return getattr(g, "user_role", "user")
+
+
+def _get_investigation_service() -> InvestigationService:
+    """Get configured InvestigationService using current app config."""
+    return InvestigationService(
+        operator_url=current_app.config["OPERATOR_URL"],
+        timeout=current_app.config["OPERATOR_TIMEOUT"],
+    )
 
 
 @socketio.on("join_investigation")
@@ -155,6 +164,94 @@ def handle_send_message(data: dict) -> None:
 
     # Broadcast to all users in the room
     emit("new_message", message.to_payload(), room=room)
+
+
+@socketio.on("annotate")
+def handle_annotate(data: dict) -> None:
+    """Handle a user adding an annotation to an investigation.
+
+    Args:
+        data: Dict with 'investigation_id' and 'text'.
+    """
+    investigation_id = data.get("investigation_id", "")
+    text = data.get("text", "").strip()
+
+    if not investigation_id or not text:
+        emit("error", {"message": "investigation_id and text are required"})
+        return
+
+    user = _get_user()
+    room = _room_name(investigation_id)
+
+    # Forward annotation to operator (non-blocking — don't fail the WS action)
+    try:
+        inv_svc = _get_investigation_service()
+        inv_svc.annotate_investigation(investigation_id, text, user)
+    except Exception:
+        logger.warning(
+            "Failed to forward annotation to operator for %s", investigation_id
+        )
+
+    # Store in collaboration history
+    message = CollaborationMessage(
+        id=str(uuid.uuid4()),
+        investigation_id=investigation_id,
+        user=user,
+        role=user,
+        message_type="annotation",
+        content=text,
+        timestamp=_now_iso(),
+    )
+
+    service = collab_svc.get_collaboration_service()
+    service.store_message(message)
+
+    # Broadcast to all users in the room
+    emit("annotation_added", message.to_payload(), room=room)
+
+
+@socketio.on("redirect")
+def handle_redirect(data: dict) -> None:
+    """Handle a user redirecting an investigation's focus.
+
+    Args:
+        data: Dict with 'investigation_id' and 'instruction'.
+    """
+    investigation_id = data.get("investigation_id", "")
+    instruction = data.get("instruction", "").strip()
+
+    if not investigation_id or not instruction:
+        emit("error", {"message": "investigation_id and instruction are required"})
+        return
+
+    user = _get_user()
+    room = _room_name(investigation_id)
+
+    # Forward redirect to operator (non-blocking)
+    try:
+        inv_svc = _get_investigation_service()
+        inv_svc.redirect_investigation(investigation_id, instruction, user)
+    except Exception:
+        logger.warning(
+            "Failed to forward redirect to operator for %s", investigation_id
+        )
+
+    # Store in collaboration history
+    message = CollaborationMessage(
+        id=str(uuid.uuid4()),
+        investigation_id=investigation_id,
+        user=user,
+        role=user,
+        message_type="redirect",
+        content=instruction,
+        timestamp=_now_iso(),
+    )
+
+    service = collab_svc.get_collaboration_service()
+    service.store_message(message)
+
+    # Broadcast to all users in the room
+    emit("investigation_redirected", message.to_payload(), room=room)
 
 
 @socketio.on("disconnect")

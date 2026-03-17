@@ -18,6 +18,12 @@
   var activeUsersEl = document.getElementById("active-users");
   var statusEl = document.getElementById("collab-status");
 
+  // Annotation/redirect input elements
+  var annotationArea = document.getElementById("collab-annotation-input");
+  var annotationInput = document.getElementById("annotation-text");
+  var redirectArea = document.getElementById("collab-redirect-input");
+  var redirectInput = document.getElementById("redirect-text");
+
   // Reconnection: track last seen message timestamp
   var storageKey = "collab-last-seen-" + investigationId;
   var lastSeen = sessionStorage.getItem(storageKey) || null;
@@ -57,6 +63,20 @@
     scrollToBottom();
   });
 
+  // Receive annotations in real time
+  socket.on("annotation_added", function (msg) {
+    appendMessage(msg);
+    updateLastSeen(msg.timestamp);
+    scrollToBottom();
+  });
+
+  // Receive redirects in real time
+  socket.on("investigation_redirected", function (msg) {
+    appendMessage(msg);
+    updateLastSeen(msg.timestamp);
+    scrollToBottom();
+  });
+
   // User presence updates
   socket.on("user_joined", function (data) {
     updateActiveUsers(data.active_users);
@@ -84,7 +104,63 @@
     inputEl.value = "";
   };
 
-  // Handle Enter key
+  // --- Annotation ---
+  window.toggleAnnotationInput = function () {
+    if (!annotationArea) return;
+    var visible = annotationArea.style.display !== "none";
+    annotationArea.style.display = visible ? "none" : "block";
+    if (redirectArea) redirectArea.style.display = "none";
+    if (!visible && annotationInput) annotationInput.focus();
+  };
+
+  window.submitAnnotation = function () {
+    if (!annotationInput) return;
+    var text = annotationInput.value.trim();
+    if (!text) return;
+
+    socket.emit("annotate", {
+      investigation_id: investigationId,
+      text: text,
+    });
+    annotationInput.value = "";
+    if (annotationArea) annotationArea.style.display = "none";
+  };
+
+  window.cancelAnnotation = function () {
+    if (annotationInput) annotationInput.value = "";
+    if (annotationArea) annotationArea.style.display = "none";
+  };
+
+  // --- Redirect ---
+  window.toggleRedirectInput = function () {
+    if (!redirectArea) return;
+    var btn = document.getElementById("redirect-btn");
+    if (btn && btn.disabled) return;
+    var visible = redirectArea.style.display !== "none";
+    redirectArea.style.display = visible ? "none" : "block";
+    if (annotationArea) annotationArea.style.display = "none";
+    if (!visible && redirectInput) redirectInput.focus();
+  };
+
+  window.submitRedirect = function () {
+    if (!redirectInput) return;
+    var instruction = redirectInput.value.trim();
+    if (!instruction) return;
+
+    socket.emit("redirect", {
+      investigation_id: investigationId,
+      instruction: instruction,
+    });
+    redirectInput.value = "";
+    if (redirectArea) redirectArea.style.display = "none";
+  };
+
+  window.cancelRedirect = function () {
+    if (redirectInput) redirectInput.value = "";
+    if (redirectArea) redirectArea.style.display = "none";
+  };
+
+  // Handle Enter key on main input
   if (inputEl) {
     inputEl.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -93,6 +169,44 @@
       }
     });
   }
+
+  // Handle Enter key on annotation input
+  if (annotationInput) {
+    annotationInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        window.submitAnnotation();
+      } else if (e.key === "Escape") {
+        window.cancelAnnotation();
+      }
+    });
+  }
+
+  // Handle Enter key on redirect input
+  if (redirectInput) {
+    redirectInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        window.submitRedirect();
+      } else if (e.key === "Escape") {
+        window.cancelRedirect();
+      }
+    });
+  }
+
+  // Keyboard shortcuts: n=annotate, r=redirect (when not focused on an input)
+  document.addEventListener("keydown", function (e) {
+    var tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+    if (e.key === "n") {
+      e.preventDefault();
+      window.toggleAnnotationInput();
+    } else if (e.key === "r") {
+      e.preventDefault();
+      window.toggleRedirectInput();
+    }
+  });
 
   function appendMessage(msg) {
     if (!messagesDiv) return;
@@ -103,6 +217,62 @@
     if (msg.message_type === "user_joined" || msg.message_type === "user_left") {
       div.className += " collab-system";
       div.textContent = msg.content;
+    } else if (msg.message_type === "annotation") {
+      div.className += " collab-annotation";
+
+      var label = document.createElement("div");
+      label.className = "collab-type-label collab-annotation-label";
+      label.textContent = "Annotation";
+
+      var header = document.createElement("div");
+      header.className = "collab-msg-header";
+
+      var userSpan = document.createElement("span");
+      userSpan.className = "collab-msg-user";
+      userSpan.textContent = msg.user;
+
+      var timeSpan = document.createElement("span");
+      timeSpan.className = "collab-msg-time";
+      timeSpan.textContent = formatTime(msg.timestamp);
+
+      header.appendChild(userSpan);
+      header.appendChild(timeSpan);
+
+      var body = document.createElement("div");
+      body.className = "collab-msg-body";
+      body.textContent = msg.content;
+
+      div.appendChild(label);
+      div.appendChild(header);
+      div.appendChild(body);
+    } else if (msg.message_type === "redirect") {
+      div.className += " collab-redirect";
+
+      var label = document.createElement("div");
+      label.className = "collab-type-label collab-redirect-label";
+      label.textContent = "Redirect";
+
+      var header = document.createElement("div");
+      header.className = "collab-msg-header";
+
+      var userSpan = document.createElement("span");
+      userSpan.className = "collab-msg-user";
+      userSpan.textContent = msg.user;
+
+      var timeSpan = document.createElement("span");
+      timeSpan.className = "collab-msg-time";
+      timeSpan.textContent = formatTime(msg.timestamp);
+
+      header.appendChild(userSpan);
+      header.appendChild(timeSpan);
+
+      var body = document.createElement("div");
+      body.className = "collab-msg-body";
+      body.textContent = msg.content;
+
+      div.appendChild(label);
+      div.appendChild(header);
+      div.appendChild(body);
     } else {
       var header = document.createElement("div");
       header.className = "collab-msg-header";

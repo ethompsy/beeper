@@ -4409,3 +4409,263 @@ a.match-badge.kb-entry-link::after {
     color: #6b7280;
     margin-right: 4px;
 }
+
+/* ========================================
+   Collaboration Panel — Base Styles
+   ======================================== */
+.collaboration-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 300px;
+    max-width: 400px;
+    border-left: 1px solid #e5e7eb;
+    background: #fafafa;
+}
+
+.collab-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 0.9rem;
+}
+
+.collab-title {
+    font-weight: 600;
+}
+
+.collab-active-users {
+    font-size: 0.8rem;
+    color: #6b7280;
+}
+
+.collab-connection-status {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: #9ca3af;
+}
+
+.collab-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+}
+
+.collab-message {
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.collab-system {
+    text-align: center;
+    color: #9ca3af;
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
+.collab-msg-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2px;
+}
+
+.collab-msg-user {
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.collab-msg-time {
+    font-size: 0.75rem;
+    color: #9ca3af;
+}
+
+.collab-msg-body {
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.collab-input-area {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.collab-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    background: #fff;
+}
+
+.collab-input:focus {
+    outline: none;
+    border-color: #6366f1;
+}
+
+.collab-send-btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 4px;
+    background: #6366f1;
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.collab-send-btn:hover {
+    background: #5558e6;
+}
+
+/* ========================================
+   Collaboration Panel — Annotation & Redirect
+   ======================================== */
+.collab-annotation {
+    border-left: 3px solid #22c55e;
+    background: #f0fdf4;
+}
+
+.collab-redirect {
+    border-left: 3px solid #f59e0b;
+    background: #fffbeb;
+}
+
+.collab-type-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 2px;
+}
+
+.collab-annotation-label {
+    color: #16a34a;
+}
+
+.collab-redirect-label {
+    color: #d97706;
+}
+
+.collab-action-bar {
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.collab-action-btn {
+    flex: 1;
+    padding: 5px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.collab-action-btn:hover:not(:disabled) {
+    background: #f3f4f6;
+}
+
+.collab-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.collab-annotate-btn {
+    border-color: #22c55e;
+    color: #16a34a;
+}
+
+.collab-redirect-btn {
+    border-color: #f59e0b;
+    color: #d97706;
+}
+
+.collab-action-input {
+    padding: 8px 12px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.collab-action-input .collab-action-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.collab-action-buttons {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.collab-cancel-btn {
+    padding: 5px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.collab-cancel-btn:hover {
+    background: #f3f4f6;
+}
+
+/* ========================================
+   Human Interventions Timeline (review view)
+   ======================================== */
+.human-interventions-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.human-intervention-item {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.human-intervention-item.intervention-annotation {
+    border-left: 3px solid #22c55e;
+    background: #f0fdf4;
+}
+
+.human-intervention-item.intervention-redirect {
+    border-left: 3px solid #f59e0b;
+    background: #fffbeb;
+}
+
+.intervention-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 2px;
+}
+
+.intervention-type-badge {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+}
+
+.intervention-type-badge.badge-annotation {
+    color: #16a34a;
+}
+
+.intervention-type-badge.badge-redirect {
+    color: #d97706;
+}

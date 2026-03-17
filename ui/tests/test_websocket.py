@@ -217,6 +217,202 @@ class TestSendMessage:
         assert "T" in msgs[0]["args"][0]["timestamp"]  # ISO format
 
 
+class TestAnnotateInvestigation:
+    """Tests for annotate event handler."""
+
+    def _join_room(self, client):
+        """Helper: join investigation room and clear received events."""
+        client.emit("join_investigation", {"investigation_id": "inv-001"})
+        client.get_received()  # Clear join events
+
+    def test_annotation_stores_and_broadcasts(self, ws_client):
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc = MagicMock()
+            mock_svc.annotate_investigation.return_value = True
+            mock_svc_fn.return_value = mock_svc
+
+            client.emit("annotate", {
+                "investigation_id": "inv-001",
+                "text": "Check the DB connection pool",
+            })
+
+        received = client.get_received()
+        annotations = [r for r in received if r["name"] == "annotation_added"]
+        assert len(annotations) == 1
+        assert annotations[0]["args"][0]["content"] == "Check the DB connection pool"
+        assert annotations[0]["args"][0]["message_type"] == "annotation"
+        mock_qdrant.upsert.assert_called()
+
+    def test_annotation_missing_text_returns_error(self, ws_client):
+        client, _ = ws_client
+        client.emit("annotate", {"investigation_id": "inv-001", "text": ""})
+        received = client.get_received()
+        assert any(r["name"] == "error" for r in received)
+
+    def test_annotation_missing_investigation_id_returns_error(self, ws_client):
+        client, _ = ws_client
+        client.emit("annotate", {"text": "Some annotation"})
+        received = client.get_received()
+        assert any(r["name"] == "error" for r in received)
+
+    def test_annotation_strips_whitespace(self, ws_client):
+        client, _ = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.return_value = MagicMock()
+            client.emit("annotate", {
+                "investigation_id": "inv-001",
+                "text": "  trimmed  ",
+            })
+
+        received = client.get_received()
+        annotations = [r for r in received if r["name"] == "annotation_added"]
+        assert annotations[0]["args"][0]["content"] == "trimmed"
+
+    def test_annotation_has_uuid_and_timestamp(self, ws_client):
+        client, _ = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.return_value = MagicMock()
+            client.emit("annotate", {
+                "investigation_id": "inv-001",
+                "text": "Test",
+            })
+
+        received = client.get_received()
+        annotations = [r for r in received if r["name"] == "annotation_added"]
+        assert len(annotations[0]["args"][0]["id"]) == 36
+        assert "T" in annotations[0]["args"][0]["timestamp"]
+
+    def test_annotation_continues_if_operator_fails(self, ws_client):
+        """Annotation is stored and broadcast even if operator call fails."""
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.side_effect = Exception("Operator down")
+            client.emit("annotate", {
+                "investigation_id": "inv-001",
+                "text": "Still works",
+            })
+
+        received = client.get_received()
+        annotations = [r for r in received if r["name"] == "annotation_added"]
+        assert len(annotations) == 1
+        assert annotations[0]["args"][0]["content"] == "Still works"
+
+
+class TestRedirectInvestigation:
+    """Tests for redirect event handler."""
+
+    def _join_room(self, client):
+        """Helper: join investigation room and clear received events."""
+        client.emit("join_investigation", {"investigation_id": "inv-001"})
+        client.get_received()  # Clear join events
+
+    def test_redirect_stores_and_broadcasts(self, ws_client):
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc = MagicMock()
+            mock_svc.redirect_investigation.return_value = True
+            mock_svc_fn.return_value = mock_svc
+
+            client.emit("redirect", {
+                "investigation_id": "inv-001",
+                "instruction": "Focus on the database",
+            })
+
+        received = client.get_received()
+        redirects = [r for r in received if r["name"] == "investigation_redirected"]
+        assert len(redirects) == 1
+        assert redirects[0]["args"][0]["content"] == "Focus on the database"
+        assert redirects[0]["args"][0]["message_type"] == "redirect"
+        mock_qdrant.upsert.assert_called()
+
+    def test_redirect_missing_instruction_returns_error(self, ws_client):
+        client, _ = ws_client
+        client.emit("redirect", {"investigation_id": "inv-001", "instruction": ""})
+        received = client.get_received()
+        assert any(r["name"] == "error" for r in received)
+
+    def test_redirect_missing_investigation_id_returns_error(self, ws_client):
+        client, _ = ws_client
+        client.emit("redirect", {"instruction": "Focus elsewhere"})
+        received = client.get_received()
+        assert any(r["name"] == "error" for r in received)
+
+    def test_redirect_strips_whitespace(self, ws_client):
+        client, _ = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.return_value = MagicMock()
+            client.emit("redirect", {
+                "investigation_id": "inv-001",
+                "instruction": "  focus on cache  ",
+            })
+
+        received = client.get_received()
+        redirects = [r for r in received if r["name"] == "investigation_redirected"]
+        assert redirects[0]["args"][0]["content"] == "focus on cache"
+
+    def test_redirect_has_uuid_and_timestamp(self, ws_client):
+        client, _ = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.return_value = MagicMock()
+            client.emit("redirect", {
+                "investigation_id": "inv-001",
+                "instruction": "Test",
+            })
+
+        received = client.get_received()
+        redirects = [r for r in received if r["name"] == "investigation_redirected"]
+        assert len(redirects[0]["args"][0]["id"]) == 36
+        assert "T" in redirects[0]["args"][0]["timestamp"]
+
+    def test_redirect_continues_if_operator_fails(self, ws_client):
+        """Redirect is stored and broadcast even if operator call fails."""
+        client, mock_qdrant = ws_client
+        self._join_room(client)
+
+        with patch(
+            "beeper_ui.websocket.investigation._get_investigation_service"
+        ) as mock_svc_fn:
+            mock_svc_fn.side_effect = Exception("Operator down")
+            client.emit("redirect", {
+                "investigation_id": "inv-001",
+                "instruction": "Still works",
+            })
+
+        received = client.get_received()
+        redirects = [r for r in received if r["name"] == "investigation_redirected"]
+        assert len(redirects) == 1
+        assert redirects[0]["args"][0]["content"] == "Still works"
+
+
 class TestDisconnect:
     """Tests for disconnect handler."""
 
@@ -249,17 +445,70 @@ class TestTemplateIntegration:
             tmpl = ws_app.jinja_env.get_template(
                 "investigations/_collaboration_panel.html"
             )
-            html = tmpl.render(investigation=MagicMock(id="inv-test"))
+            html = tmpl.render(investigation=MagicMock(id="inv-test", status="investigating"))
             assert 'id="collab-panel"' in html
             assert 'data-investigation-id="inv-test"' in html
             assert 'id="collab-messages"' in html
             assert 'id="collab-input"' in html
 
+    def test_collab_panel_has_annotation_elements(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_collaboration_panel.html"
+            )
+            html = tmpl.render(investigation=MagicMock(id="inv-test", status="investigating"))
+            assert 'id="collab-annotation-input"' in html
+            assert 'id="annotation-text"' in html
+            assert "toggleAnnotationInput()" in html
+            assert "submitAnnotation()" in html
+
+    def test_collab_panel_has_redirect_elements(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_collaboration_panel.html"
+            )
+            html = tmpl.render(investigation=MagicMock(id="inv-test", status="investigating"))
+            assert 'id="collab-redirect-input"' in html
+            assert 'id="redirect-text"' in html
+            assert "toggleRedirectInput()" in html
+            assert "submitRedirect()" in html
+
+    def test_redirect_button_disabled_when_not_investigating(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_collaboration_panel.html"
+            )
+            html = tmpl.render(investigation=MagicMock(id="inv-test", status="completed"))
+            assert "disabled" in html
+
+    def test_redirect_button_enabled_when_investigating(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_collaboration_panel.html"
+            )
+            html = tmpl.render(investigation=MagicMock(id="inv-test", status="investigating"))
+            # The redirect button should NOT have the disabled attribute
+            # Find the redirect button specifically
+            redirect_btn_start = html.find('id="redirect-btn"')
+            # Get the enclosing button tag
+            btn_start = html.rfind("<button", 0, redirect_btn_start)
+            btn_end = html.find(">", redirect_btn_start)
+            btn_tag = html[btn_start:btn_end]
+            assert "disabled" not in btn_tag
+
+    def test_collab_panel_has_status_data_attribute(self, ws_app):
+        with ws_app.test_request_context():
+            tmpl = ws_app.jinja_env.get_template(
+                "investigations/_collaboration_panel.html"
+            )
+            html = tmpl.render(investigation=MagicMock(id="inv-test", status="investigating"))
+            assert 'data-investigation-status="investigating"' in html
+
     def test_detail_includes_socketio_scripts(self, ws_app):
         with ws_app.test_request_context():
             tmpl = ws_app.jinja_env.get_template("investigations/detail.html")
             html = tmpl.render(
-                investigation=MagicMock(id="inv-test"),
+                investigation=MagicMock(id="inv-test", status="investigating"),
                 error_message=None,
                 investigation_id="inv-test",
             )

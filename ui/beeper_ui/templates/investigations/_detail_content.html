@@ -80,6 +80,26 @@
         </div>
     </div>
 
+    {# Human Interventions — annotations and redirects visible during review #}
+    {% if human_interventions %}
+    <div class="card">
+        <h3>Human Interventions</h3>
+        <ul class="human-interventions-list">
+            {% for intervention in human_interventions %}
+            <li class="human-intervention-item intervention-{{ intervention.message_type }}">
+                <div class="intervention-meta">
+                    <span class="intervention-type-badge badge-{{ intervention.message_type }}">
+                        {{ intervention.message_type|title }}
+                    </span>
+                    <span>{{ intervention.user }} &mdash; {{ intervention.timestamp }}</span>
+                </div>
+                <div>{{ intervention.content }}</div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
     {# Confidence Gate Status #}
     {% if investigation.status not in ('investigating', 'failed') %}
     <div class="card">
