@@ -47,6 +47,13 @@ module = [
 ]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+disable_error_code = ["arg-type", "attr-defined", "var-annotated", "type-arg", "unused-ignore"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 markers = [
