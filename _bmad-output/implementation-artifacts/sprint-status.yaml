@@ -107,7 +107,7 @@ development_status:
   6-5-kb-entry-review-edit-correction: done
   6-6-unified-investigation-timeline: done
   6-7-deploy-correlation: done
-  6-8-service-dependency-topology: backlog
+  6-8-service-dependency-topology: review
   6-9-change-event-ingestion-correlation: backlog
   epic-6-retrospective: optional
 

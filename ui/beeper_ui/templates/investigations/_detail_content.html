@@ -88,6 +88,14 @@
         </div>
     </div>
 
+    {# Service Dependency Topology #}
+    <div class="card">
+        <h3>Service Dependencies</h3>
+        <div id="service-topology" sse-swap="topology-update" hx-swap="innerHTML">
+            {% include "investigations/_service_topology.html" %}
+        </div>
+    </div>
+
     {# Human Interventions — annotations and redirects visible during review #}
     {% if human_interventions %}
     <div class="card">

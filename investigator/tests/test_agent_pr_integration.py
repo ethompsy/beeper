@@ -45,9 +45,9 @@ class TestPRGeneratorPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 14
-        assert isinstance(steps[11], PRGeneratorStep)
-        assert steps[11].name == "PR Generation"
+        assert len(steps) == 15
+        assert isinstance(steps[12], PRGeneratorStep)
+        assert steps[12].name == "PR Generation"
 
     def test_pipeline_metadata_shared_with_pr_step(self):
         """PRGeneratorStep receives the shared pipeline_metadata reference."""
@@ -55,7 +55,7 @@ class TestPRGeneratorPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        pr_step = steps[11]
+        pr_step = steps[12]
         assert pr_step.pipeline_metadata is agent._pipeline_metadata
 
     def test_step_always_included_gates_internally(self):
@@ -68,10 +68,10 @@ class TestPRGeneratorPipelineIntegration:
             steps_tl5 = agent_tl5._build_steps()
 
         # Step is present regardless of trust level
-        assert len(steps_tl1) == 14
-        assert isinstance(steps_tl1[11], PRGeneratorStep)
-        assert len(steps_tl5) == 14
-        assert isinstance(steps_tl5[11], PRGeneratorStep)
+        assert len(steps_tl1) == 15
+        assert isinstance(steps_tl1[12], PRGeneratorStep)
+        assert len(steps_tl5) == 15
+        assert isinstance(steps_tl5[12], PRGeneratorStep)
 
     def test_step_order_after_metric_verifier(self):
         """PRGeneratorStep comes after MetricVerifierStep."""
@@ -81,5 +81,5 @@ class TestPRGeneratorPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert isinstance(steps[10], MetricVerifierStep)
-        assert isinstance(steps[11], PRGeneratorStep)
+        assert isinstance(steps[11], MetricVerifierStep)
+        assert isinstance(steps[12], PRGeneratorStep)

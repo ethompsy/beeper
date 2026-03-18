@@ -2926,3 +2926,70 @@ class TestInvestigationDetailDeployCorrelation:
             html = response.data.decode()
             assert "deploy-no-results" in html
             assert "No recent deployments found" in html
+
+    @respx.mock
+    def test_detail_passes_service_topology_to_template(
+        self, client: FlaskClient
+    ) -> None:
+        """Test that investigation_detail() passes service_topology to template context."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "service_topology": {
+                "subject_service": "payments",
+                "upstream": ["orders"],
+                "downstream": ["frontend"],
+                "health": {
+                    "orders": {"slo_status": "healthy", "has_active_investigation": False},
+                },
+                "blast_radius": 1,
+            },
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ), patch(
+            "beeper_ui.routes.investigations.get_evidence_service"
+        ) as mock_get_ev_svc:
+            mock_ev_svc = MagicMock()
+            mock_ev_svc.get_timeline_events.return_value = []
+            mock_get_ev_svc.return_value = mock_ev_svc
+
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            html = response.data.decode()
+            assert "Service Dependencies" in html
+            assert "payments" in html
+            assert "orders" in html
+            assert "Blast radius: 1 service" in html
+
+    @respx.mock
+    def test_detail_topology_no_data_shows_fallback(
+        self, client: FlaskClient
+    ) -> None:
+        """Test that empty topology shows fallback message."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "service_topology": {},
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ), patch(
+            "beeper_ui.routes.investigations.get_evidence_service"
+        ) as mock_get_ev_svc:
+            mock_ev_svc = MagicMock()
+            mock_ev_svc.get_timeline_events.return_value = []
+            mock_get_ev_svc.return_value = mock_ev_svc
+
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            html = response.data.decode()
+            assert "Topology data not available" in html

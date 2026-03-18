@@ -1,0 +1,62 @@
+{% if service_topology and service_topology.subject_service %}
+<div class="service-topology-card">
+    <div class="topology-subject-service">
+        <strong>{{ service_topology.subject_service }}</strong>
+        <span class="topology-blast-radius" title="Downstream services potentially affected">
+            Blast radius: {{ service_topology.blast_radius }} service{{ "s" if service_topology.blast_radius != 1 else "" }}
+        </span>
+    </div>
+
+    <div class="topology-service-lists">
+        <div class="topology-service-list">
+            <h4>Upstream Dependencies ({{ service_topology.upstream|length }})</h4>
+            {% if service_topology.upstream %}
+            <ul>
+                {% for svc in service_topology.upstream %}
+                <li>
+                    {{ svc }}
+                    {% if service_topology.health and svc in service_topology.health %}
+                    <span class="topology-health-badge health-{{ service_topology.health[svc].slo_status }}">
+                        {{ service_topology.health[svc].slo_status }}
+                    </span>
+                    {% if service_topology.health[svc].has_active_investigation %}
+                    <span class="topology-investigation-indicator">investigating</span>
+                    {% endif %}
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="topology-no-data">No upstream dependencies found.</p>
+            {% endif %}
+        </div>
+
+        <div class="topology-service-list">
+            <h4>Downstream Dependents ({{ service_topology.downstream|length }})</h4>
+            {% if service_topology.downstream %}
+            <ul>
+                {% for svc in service_topology.downstream %}
+                <li>
+                    {{ svc }}
+                    {% if service_topology.health and svc in service_topology.health %}
+                    <span class="topology-health-badge health-{{ service_topology.health[svc].slo_status }}">
+                        {{ service_topology.health[svc].slo_status }}
+                    </span>
+                    {% if service_topology.health[svc].has_active_investigation %}
+                    <span class="topology-investigation-indicator">investigating</span>
+                    {% endif %}
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="topology-no-data">No downstream dependents found.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="topology-no-data">
+    <p>Topology data not available</p>
+</div>
+{% endif %}

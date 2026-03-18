@@ -1078,4 +1078,4 @@ class TestAgentPipelineRegistration:
         )
         steps = agent._build_steps()
 
-        assert steps[6].name == "Investigation Documentation"
+        assert steps[7].name == "Investigation Documentation"

@@ -1,0 +1,28 @@
+<div class="topology-service-card">
+    <div class="topology-card-header">
+        <h4>{{ service.name }}</h4>
+        <span class="topology-health-badge health-{{ service.slo_status }}">
+            {{ service.slo_status }}
+        </span>
+    </div>
+    <div class="topology-card-body">
+        {% if service.has_active_investigation %}
+        <span class="topology-investigation-indicator" title="Active investigation">
+            investigating
+        </span>
+        {% endif %}
+        <div class="topology-dependency-counts">
+            <span class="topology-dependency-count" title="Upstream dependencies">
+                {{ service.upstream_count }} upstream
+            </span>
+            <span class="topology-dependency-count" title="Downstream dependents">
+                {{ service.downstream_count }} downstream
+            </span>
+        </div>
+        {% if service.burn_rate is not none %}
+        <div class="topology-burn-rate">
+            Burn rate: {{ "%.1f"|format(service.burn_rate) }}x
+        </div>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Service Topology - Beeper{% endblock %}
+{% block content %}
+<div class="topology-page">
+    <div class="card">
+        <div class="topology-header">
+            <h2>Service Dependency Topology</h2>
+            <button class="btn btn-secondary"
+                    hx-get="/topology/"
+                    hx-target="#topology-content"
+                    hx-swap="innerHTML">
+                Refresh Topology
+            </button>
+        </div>
+    </div>
+
+    <div id="topology-content">
+        {% include "topology/_topology_content.html" %}
+    </div>
+</div>
+{% endblock %}

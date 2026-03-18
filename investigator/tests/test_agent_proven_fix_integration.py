@@ -47,9 +47,9 @@ class TestProvenFixPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 14
-        assert isinstance(steps[13], ProvenFixAccumulatorStep)
-        assert steps[13].name == "Proven Fix Accumulation"
+        assert len(steps) == 15
+        assert isinstance(steps[14], ProvenFixAccumulatorStep)
+        assert steps[14].name == "Proven Fix Accumulation"
 
     def test_pipeline_metadata_shared(self):
         """ProvenFixAccumulatorStep receives the shared pipeline_metadata reference."""
@@ -57,7 +57,7 @@ class TestProvenFixPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        proven_fix_step = steps[13]
+        proven_fix_step = steps[14]
         assert proven_fix_step.pipeline_metadata is agent._pipeline_metadata
 
     def test_kb_client_shared(self):
@@ -66,7 +66,7 @@ class TestProvenFixPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        proven_fix_step = steps[13]
+        proven_fix_step = steps[14]
         assert proven_fix_step.kb_client is agent.kb_client
 
     def test_step_always_included(self):
@@ -78,10 +78,10 @@ class TestProvenFixPipelineIntegration:
             agent_tl5 = _make_agent(trust_level=5)
             steps_tl5 = agent_tl5._build_steps()
 
-        assert len(steps_tl1) == 14
-        assert isinstance(steps_tl1[13], ProvenFixAccumulatorStep)
-        assert len(steps_tl5) == 14
-        assert isinstance(steps_tl5[13], ProvenFixAccumulatorStep)
+        assert len(steps_tl1) == 15
+        assert isinstance(steps_tl1[14], ProvenFixAccumulatorStep)
+        assert len(steps_tl5) == 15
+        assert isinstance(steps_tl5[14], ProvenFixAccumulatorStep)
 
     def test_step_after_trust_gate(self):
         """ProvenFixAccumulatorStep comes after TrustGateStep (last step)."""
@@ -91,16 +91,16 @@ class TestProvenFixPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert isinstance(steps[12], TrustGateStep)
-        assert isinstance(steps[13], ProvenFixAccumulatorStep)
+        assert isinstance(steps[13], TrustGateStep)
+        assert isinstance(steps[14], ProvenFixAccumulatorStep)
 
     def test_total_pipeline_length_is_14(self):
-        """Pipeline has exactly 14 steps (7 core + 7 remediation)."""
+        """Pipeline has exactly 15 steps (8 core + 7 remediation)."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 14
+        assert len(steps) == 15
 
     def test_step_protocol_compliance(self):
         """ProvenFixAccumulatorStep implements InvestigationStep protocol."""
@@ -110,5 +110,5 @@ class TestProvenFixPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        proven_fix_step = steps[13]
+        proven_fix_step = steps[14]
         assert isinstance(proven_fix_step, InvestigationStep)

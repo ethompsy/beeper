@@ -45,9 +45,9 @@ class TestMetricVerifierPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 14
-        assert isinstance(steps[10], MetricVerifierStep)
-        assert steps[10].name == "Post-Fix Metric Verification"
+        assert len(steps) == 15
+        assert isinstance(steps[11], MetricVerifierStep)
+        assert steps[11].name == "Post-Fix Metric Verification"
 
     def test_pipeline_metadata_shared(self):
         """MetricVerifierStep receives the shared pipeline_metadata reference."""
@@ -55,7 +55,7 @@ class TestMetricVerifierPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        verifier_step = steps[10]
+        verifier_step = steps[11]
         assert verifier_step.pipeline_metadata is agent._pipeline_metadata
 
     def test_sources_passed_to_verifier_step(self):
@@ -64,7 +64,7 @@ class TestMetricVerifierPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        verifier_step = steps[10]
+        verifier_step = steps[11]
         assert verifier_step.sources is agent.sources
 
     def test_step_always_included_gates_internally(self):
@@ -76,10 +76,10 @@ class TestMetricVerifierPipelineIntegration:
             agent_tl5 = _make_agent(trust_level=5)
             steps_tl5 = agent_tl5._build_steps()
 
-        assert len(steps_tl1) == 14
-        assert isinstance(steps_tl1[10], MetricVerifierStep)
-        assert len(steps_tl5) == 14
-        assert isinstance(steps_tl5[10], MetricVerifierStep)
+        assert len(steps_tl1) == 15
+        assert isinstance(steps_tl1[11], MetricVerifierStep)
+        assert len(steps_tl5) == 15
+        assert isinstance(steps_tl5[11], MetricVerifierStep)
 
     def test_step_between_sandbox_and_pr_generator(self):
         """MetricVerifierStep is between SandboxExecutorStep and PRGeneratorStep."""
@@ -90,17 +90,17 @@ class TestMetricVerifierPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert isinstance(steps[9], SandboxExecutorStep)
-        assert isinstance(steps[10], MetricVerifierStep)
-        assert isinstance(steps[11], PRGeneratorStep)
+        assert isinstance(steps[10], SandboxExecutorStep)
+        assert isinstance(steps[11], MetricVerifierStep)
+        assert isinstance(steps[12], PRGeneratorStep)
 
     def test_total_pipeline_length_is_14(self):
-        """Pipeline has exactly 14 steps (7 core + 7 remediation)."""
+        """Pipeline has exactly 15 steps (8 core + 7 remediation)."""
         with patch("beeper_investigator.remediation.pr_generator.RepositoryLookup"):
             agent = _make_agent()
             steps = agent._build_steps()
 
-        assert len(steps) == 14
+        assert len(steps) == 15
 
     def test_step_protocol_compliance(self):
         """MetricVerifierStep implements InvestigationStep protocol."""
@@ -110,5 +110,5 @@ class TestMetricVerifierPipelineIntegration:
             agent = _make_agent()
             steps = agent._build_steps()
 
-        verifier_step = steps[10]
+        verifier_step = steps[11]
         assert isinstance(verifier_step, InvestigationStep)

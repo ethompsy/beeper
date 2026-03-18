@@ -1,0 +1,24 @@
+{% if dependencies %}
+<table class="topology-dep-table">
+    <thead>
+        <tr>
+            <th>Source Service</th>
+            <th>Target Service</th>
+            <th>Type</th>
+            <th>Port</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for dep in dependencies %}
+        <tr{% if active_investigations and (dep.source_service in active_investigations or dep.target_service in active_investigations) %} class="topology-dep-active"{% endif %}>
+            <td>{{ dep.source_service }}</td>
+            <td>{{ dep.target_service }}</td>
+            <td><span class="topology-dep-type">{{ dep.dependency_type }}</span></td>
+            <td>{{ dep.port if dep.port else "—" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="topology-no-data">No dependency data available.</p>
+{% endif %}

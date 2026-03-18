@@ -1,0 +1,20 @@
+{% if services %}
+<div class="topology-grid">
+    {% for service in services %}
+    {% include "topology/_service_card.html" %}
+    {% endfor %}
+</div>
+
+{% if dependencies %}
+<div class="card">
+    <h3>Service Dependencies</h3>
+    {% include "topology/_dependency_graph.html" %}
+</div>
+{% endif %}
+{% else %}
+<div class="card">
+    <div class="topology-no-data">
+        <p>No topology data available yet. Topology is discovered automatically during investigations.</p>
+    </div>
+</div>
+{% endif %}

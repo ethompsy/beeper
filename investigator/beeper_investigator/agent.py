@@ -202,6 +202,7 @@ class InvestigatorAgent:
         from beeper_investigator.steps.resolution_recommendations import (
             ResolutionRecommendationStep,
         )
+        from beeper_investigator.steps.service_topology import ServiceTopologyStep
         from beeper_investigator.steps.signal_correlation import SignalCorrelationStep
 
         steps: list[InvestigationStep] = [
@@ -223,6 +224,12 @@ class InvestigatorAgent:
                 status_updater=self.status_updater,
             ),
             DeployCorrelationStep(
+                llm_client=self.llm_client,
+                context=self.context,
+                status_updater=self.status_updater,
+                pipeline_metadata=self._pipeline_metadata,
+            ),
+            ServiceTopologyStep(
                 llm_client=self.llm_client,
                 context=self.context,
                 status_updater=self.status_updater,

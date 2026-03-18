@@ -474,6 +474,9 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
     deploy_correlations = findings.get("deploy_correlations", []) if findings else []
     deploy_summary = findings.get("deploy_summary", "") if findings else ""
 
+    # Extract service topology data from pipeline findings
+    service_topology = findings.get("service_topology", {}) if findings else {}
+
     # Retrieve human interventions (annotations & redirects) from collaboration history
     human_interventions = []
     try:
@@ -501,6 +504,7 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
             timeline_events=timeline_events,
             deploy_correlations=deploy_correlations,
             deploy_summary=deploy_summary,
+            service_topology=service_topology,
             human_interventions=human_interventions,
         )
 
@@ -514,6 +518,7 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         timeline_events=timeline_events,
         deploy_correlations=deploy_correlations,
         deploy_summary=deploy_summary,
+        service_topology=service_topology,
         human_interventions=human_interventions,
     )
 
@@ -1202,6 +1207,25 @@ def _generate_detail_sse_events(
                     except Exception:
                         logger.debug(
                             "SSE: Failed to render deploy correlation for %s",
+                            investigation_id,
+                        )
+
+                # Update service topology card
+                service_topology = findings.get("service_topology", {})
+                if service_topology and service_topology.get("subject_service"):
+                    try:
+                        topo_html = render_template(
+                            "investigations/_service_topology.html",
+                            service_topology=service_topology,
+                        )
+                        topo_lines = "\n".join(
+                            f"data: {line}"
+                            for line in topo_html.split("\n")
+                        )
+                        yield f"event: topology-update\n{topo_lines}\n\n"
+                    except Exception:
+                        logger.debug(
+                            "SSE: Failed to render service topology for %s",
                             investigation_id,
                         )
 

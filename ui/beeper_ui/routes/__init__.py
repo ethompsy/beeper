@@ -22,6 +22,7 @@ def register_blueprints(app: Flask) -> None:
     from beeper_ui.routes.sources import sources_bp
     from beeper_ui.routes.spending import spending_bp
     from beeper_ui.routes.trust_config import trust_config_bp
+    from beeper_ui.routes.topology import topology_bp
     from beeper_ui.routes.trust_settings import trust_settings_bp
 
     app.register_blueprint(sources_bp)
@@ -38,3 +39,4 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(confidence_gates_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(handoff_bp)
+    app.register_blueprint(topology_bp)
