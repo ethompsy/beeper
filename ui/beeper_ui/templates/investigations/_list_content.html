@@ -50,6 +50,17 @@
                 {% endif %}
             </td>
             <td>
+                {% if inv.workflow_state %}
+                <span class="status-badge workflow-state-{{ inv.workflow_state }}">
+                    {% if inv.workflow_state == 'detected' %}Detected
+                    {% elif inv.workflow_state == 'investigating' %}Investigating
+                    {% elif inv.workflow_state == 'resolved' %}Resolved
+                    {% elif inv.workflow_state == 'verified' %}Verified
+                    {% elif inv.workflow_state == 'failed' %}Failed
+                    {% else %}{{ inv.workflow_state|replace('_', ' ')|title }}
+                    {% endif %}
+                </span>
+                {% else %}
                 <span class="status-badge investigation-status-{{ inv.status }}">
                     {% if inv.status == 'investigating' %}In Progress
                     {% elif inv.status == 'awaiting_confirmation' %}Awaiting Confirmation
@@ -58,6 +69,7 @@
                     {% else %}{{ inv.status|replace('_', ' ')|title }}
                     {% endif %}
                 </span>
+                {% endif %}
             </td>
             <td><a href="/investigations/{{ inv.id }}" class="investigation-link"><code>{{ inv.id }}</code></a></td>
             <td><span class="service-badge">{{ inv.service }}</span></td>

@@ -17,7 +17,7 @@ use tracing::{debug, warn};
 
 use crate::crds::{
     Investigation, InvestigationPhase, NotificationChannel, NotificationChannelCondition,
-    ServiceLevel, ServiceLevelCondition, Severity, SliType, Source,
+    ServiceLevel, ServiceLevelCondition, Severity, SliType, Source, WorkflowState,
 };
 use crate::detection::DetectionStats;
 use crate::ingestion::IngestionBuffer;
@@ -99,6 +99,10 @@ pub fn api_router_full(
         .route(
             "/api/v1/investigations/:id/resolve",
             post(resolve_investigation),
+        )
+        .route(
+            "/api/v1/investigations/:id/verify",
+            post(verify_investigation),
         )
         .route("/api/v1/slo/services", get(list_servicelevels))
         .route("/api/v1/slo/services/:name", get(get_servicelevel))
@@ -235,6 +239,10 @@ pub struct InvestigationResponse {
     pub triggered_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub impact_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_state_changed_at: Option<String>,
 }
 
 /// Response for a single investigation detail (extends list response)
@@ -253,6 +261,10 @@ pub struct InvestigationDetailResponse {
     pub job_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub impact_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_state_changed_at: Option<String>,
 }
 
 /// Map InvestigationPhase to UI-friendly status string
@@ -266,6 +278,16 @@ fn phase_to_status(phase: &Option<InvestigationPhase>) -> String {
         Some(InvestigationPhase::Failed) => "failed".to_string(),
         None => "investigating".to_string(),
     }
+}
+
+/// Map WorkflowState to string for API responses
+fn workflow_state_to_string(state: &Option<WorkflowState>) -> Option<String> {
+    state.as_ref().map(|s| {
+        serde_json::to_value(s)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| format!("{:?}", s).to_lowercase())
+    })
 }
 
 /// Map Severity to lowercase string
@@ -319,6 +341,8 @@ async fn list_investigations(
                         completed_at: status.completed_at,
                         triggered_at: spec.triggered_at,
                         impact_score: spec.impact_score,
+                        workflow_state: workflow_state_to_string(&status.workflow_state),
+                        workflow_state_changed_at: status.workflow_state_changed_at,
                     }
                 })
                 .collect();
@@ -404,6 +428,8 @@ async fn get_investigation(
                 error: status.error,
                 job_name: status.job_name,
                 impact_score: spec.impact_score,
+                workflow_state: workflow_state_to_string(&status.workflow_state),
+                workflow_state_changed_at: status.workflow_state_changed_at,
             };
 
             debug!(investigation_id = %response.id, "Got investigation detail");
@@ -753,6 +779,127 @@ async fn resolve_investigation(
                 Json(ProblemDetails {
                     error_type: "https://beeper.io/errors/investigation-resolve-failed".to_string(),
                     title: "Failed to resolve investigation".to_string(),
+                    status: 500,
+                    detail: format!("Could not retrieve investigation: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Verify an investigation (transition from Resolved to Verified)
+async fn verify_investigation(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+
+    match investigations_api.get(&id).await {
+        Ok(inv) => {
+            let current_workflow_state = inv
+                .status
+                .as_ref()
+                .and_then(|s| s.workflow_state.clone());
+
+            // Validate transition: only Resolved → Verified is allowed
+            match current_workflow_state {
+                Some(WorkflowState::Resolved) => {
+                    let now = chrono::Utc::now()
+                        .format("%Y-%m-%dT%H:%M:%SZ")
+                        .to_string();
+                    let patch = serde_json::json!({
+                        "status": {
+                            "workflow_state": "verified",
+                            "workflow_state_changed_at": now,
+                            "message": "Investigation verified — fix confirmed"
+                        }
+                    });
+
+                    match investigations_api
+                        .patch_status(
+                            &id,
+                            &kube::api::PatchParams::apply("beeper-ui"),
+                            &kube::api::Patch::Merge(patch),
+                        )
+                        .await
+                    {
+                        Ok(_) => {
+                            debug!(
+                                investigation_id = %id,
+                                "Investigation verified"
+                            );
+                            (
+                                StatusCode::OK,
+                                Json(ResolutionActionResponse {
+                                    status: "verified".to_string(),
+                                    message: format!("Investigation {} verified", id),
+                                }),
+                            )
+                                .into_response()
+                        }
+                        Err(e) => {
+                            warn!(error = %e, investigation_id = %id, "Failed to patch investigation for verification");
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(ProblemDetails {
+                                    error_type: "https://beeper.io/errors/investigation-verify-failed"
+                                        .to_string(),
+                                    title: "Failed to verify investigation".to_string(),
+                                    status: 500,
+                                    detail: format!("Could not update investigation status: {}", e),
+                                }),
+                            )
+                                .into_response()
+                        }
+                    }
+                }
+                _ => {
+                    let current_str = current_workflow_state
+                        .map(|s| format!("{:?}", s).to_lowercase())
+                        .unwrap_or_else(|| "none".to_string());
+                    warn!(
+                        investigation_id = %id,
+                        current_state = %current_str,
+                        "Cannot verify investigation — not in resolved state"
+                    );
+                    (
+                        StatusCode::CONFLICT,
+                        Json(ProblemDetails {
+                            error_type: "https://beeper.io/errors/invalid-state-transition"
+                                .to_string(),
+                            title: "Invalid state transition".to_string(),
+                            status: 409,
+                            detail: format!(
+                                "Cannot verify investigation in '{}' state. Only 'resolved' investigations can be verified.",
+                                current_str
+                            ),
+                        }),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        Err(kube::Error::Api(err)) if err.code == 404 => {
+            warn!(investigation_id = %id, "Investigation not found for verification");
+            (
+                StatusCode::NOT_FOUND,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-not-found".to_string(),
+                    title: "Investigation not found".to_string(),
+                    status: 404,
+                    detail: format!("No investigation found with ID: {}", id),
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, investigation_id = %id, "Failed to get investigation for verification");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ProblemDetails {
+                    error_type: "https://beeper.io/errors/investigation-verify-failed".to_string(),
+                    title: "Failed to verify investigation".to_string(),
                     status: 500,
                     detail: format!("Could not retrieve investigation: {}", e),
                 }),
@@ -1860,6 +2007,8 @@ mod tests {
             completed_at: None,
             triggered_at: Some("2026-02-09T11:55:00Z".to_string()),
             impact_score: None,
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1888,6 +2037,8 @@ mod tests {
             completed_at: Some("2026-02-09T10:15:00Z".to_string()),
             triggered_at: Some("2026-02-09T09:55:00Z".to_string()),
             impact_score: None,
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1907,6 +2058,8 @@ mod tests {
             completed_at: None,
             triggered_at: Some("2026-03-14T11:55:00Z".to_string()),
             impact_score: Some(0.85),
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1925,6 +2078,8 @@ mod tests {
             completed_at: None,
             triggered_at: None,
             impact_score: Some(0.85),
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
         let low_impact = InvestigationResponse {
             id: "inv-low".to_string(),
@@ -1936,6 +2091,8 @@ mod tests {
             completed_at: None,
             triggered_at: None,
             impact_score: Some(0.34),
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
         let no_impact = InvestigationResponse {
             id: "inv-none".to_string(),
@@ -1947,6 +2104,8 @@ mod tests {
             completed_at: None,
             triggered_at: None,
             impact_score: None,
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
 
         let mut investigations = vec![no_impact, low_impact, high_impact];
@@ -2043,6 +2202,8 @@ mod tests {
             error: None,
             job_name: Some("inv-detail-001-job".to_string()),
             impact_score: None,
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -2072,6 +2233,8 @@ mod tests {
             error: Some("LLM provider timeout".to_string()),
             job_name: None,
             impact_score: None,
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -2096,6 +2259,8 @@ mod tests {
             error: None,
             job_name: Some("inv-done-001-job".to_string()),
             impact_score: None,
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -2117,6 +2282,8 @@ mod tests {
             completed_at: None,
             triggered_at: None,
             impact_score: Some(0.5),
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
         let later = InvestigationResponse {
             id: "inv-later".to_string(),
@@ -2128,6 +2295,8 @@ mod tests {
             completed_at: None,
             triggered_at: None,
             impact_score: Some(0.5),
+            workflow_state: None,
+            workflow_state_changed_at: None,
         };
 
         let mut investigations = vec![earlier, later];

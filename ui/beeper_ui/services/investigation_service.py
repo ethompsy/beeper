@@ -28,6 +28,8 @@ class Investigation:
     started_at: str | None = None
     completed_at: str | None = None
     triggered_at: str | None = None
+    workflow_state: str | None = None
+    workflow_state_changed_at: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Investigation":
@@ -41,6 +43,8 @@ class Investigation:
             started_at=data.get("started_at"),
             completed_at=data.get("completed_at"),
             triggered_at=data.get("triggered_at"),
+            workflow_state=data.get("workflow_state"),
+            workflow_state_changed_at=data.get("workflow_state_changed_at"),
         )
 
 
@@ -67,6 +71,8 @@ class InvestigationDetail(Investigation):
             message=data.get("message"),
             error=data.get("error"),
             job_name=data.get("job_name"),
+            workflow_state=data.get("workflow_state"),
+            workflow_state_changed_at=data.get("workflow_state_changed_at"),
         )
 
 

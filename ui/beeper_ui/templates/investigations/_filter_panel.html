@@ -29,6 +29,25 @@
                 </select>
             </div>
 
+            {# Workflow State Filter #}
+            <div class="filter-group">
+                <label for="inv-filter-workflow-state">Workflow State</label>
+                <select name="workflow_state"
+                        id="inv-filter-workflow-state"
+                        hx-get="{{ url_for('investigations.list_investigations') }}"
+                        hx-trigger="change"
+                        hx-target="#investigation-list"
+                        hx-include="#investigation-filter-panel select"
+                        hx-push-url="true">
+                    <option value="">All states</option>
+                    <option value="detected" {% if selected_workflow_state == 'detected' %}selected{% endif %}>Detected{% if workflow_state_counts is defined and workflow_state_counts %} ({{ workflow_state_counts.get('detected', 0) }}){% endif %}</option>
+                    <option value="investigating" {% if selected_workflow_state == 'investigating' %}selected{% endif %}>Investigating{% if workflow_state_counts is defined and workflow_state_counts %} ({{ workflow_state_counts.get('investigating', 0) }}){% endif %}</option>
+                    <option value="resolved" {% if selected_workflow_state == 'resolved' %}selected{% endif %}>Resolved{% if workflow_state_counts is defined and workflow_state_counts %} ({{ workflow_state_counts.get('resolved', 0) }}){% endif %}</option>
+                    <option value="verified" {% if selected_workflow_state == 'verified' %}selected{% endif %}>Verified{% if workflow_state_counts is defined and workflow_state_counts %} ({{ workflow_state_counts.get('verified', 0) }}){% endif %}</option>
+                    <option value="failed" {% if selected_workflow_state == 'failed' %}selected{% endif %}>Failed{% if workflow_state_counts is defined and workflow_state_counts %} ({{ workflow_state_counts.get('failed', 0) }}){% endif %}</option>
+                </select>
+            </div>
+
             {# Service Filter #}
             <div class="filter-group">
                 <label for="inv-filter-service">Service</label>

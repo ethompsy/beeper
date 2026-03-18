@@ -18,7 +18,7 @@ use kube::{Api, Client, Resource};
 use serde_json::json;
 use tracing::{debug, info};
 
-use crate::crds::{Investigation, InvestigationPhase, InvestigationStatus};
+use crate::crds::{Investigation, InvestigationPhase, InvestigationStatus, WorkflowState};
 
 /// Configuration for investigator Jobs
 #[derive(Debug, Clone)]
@@ -333,6 +333,8 @@ pub async fn set_phase_pending(
     client: &Client,
     investigation: &Investigation,
 ) -> Result<(), InvestigatorJobError> {
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
     let status = InvestigationStatus {
         phase: Some(InvestigationPhase::Pending),
         started_at: None,
@@ -340,6 +342,8 @@ pub async fn set_phase_pending(
         job_name: None,
         error: None,
         message: None,
+        workflow_state: Some(WorkflowState::Detected),
+        workflow_state_changed_at: Some(now),
     };
 
     update_investigation_status(client, investigation, status).await
@@ -355,11 +359,13 @@ pub async fn set_phase_running(
 
     let status = InvestigationStatus {
         phase: Some(InvestigationPhase::Running),
-        started_at: Some(now),
+        started_at: Some(now.clone()),
         completed_at: None,
         job_name: Some(job_name.to_string()),
         error: None,
         message: None,
+        workflow_state: Some(WorkflowState::Investigating),
+        workflow_state_changed_at: Some(now),
     };
 
     update_investigation_status(client, investigation, status).await
@@ -378,10 +384,12 @@ pub async fn set_phase_completed(
     let status = InvestigationStatus {
         phase: Some(InvestigationPhase::Completed),
         started_at: current_status.started_at,
-        completed_at: Some(now),
+        completed_at: Some(now.clone()),
         job_name: current_status.job_name,
         error: None,
         message: None,
+        workflow_state: Some(WorkflowState::Resolved),
+        workflow_state_changed_at: Some(now),
     };
 
     update_investigation_status(client, investigation, status).await
@@ -401,10 +409,12 @@ pub async fn set_phase_failed(
     let status = InvestigationStatus {
         phase: Some(InvestigationPhase::Failed),
         started_at: current_status.started_at,
-        completed_at: Some(now),
+        completed_at: Some(now.clone()),
         job_name: current_status.job_name,
         error: Some(error_message.to_string()),
         message: None,
+        workflow_state: Some(WorkflowState::Failed),
+        workflow_state_changed_at: Some(now),
     };
 
     update_investigation_status(client, investigation, status).await

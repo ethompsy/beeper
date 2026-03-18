@@ -11,6 +11,7 @@ pub mod source;
 
 pub use investigation::{
     Investigation, InvestigationPhase, InvestigationSpec, InvestigationStatus, Severity,
+    WorkflowState,
 };
 pub use notification_channel::{
     ChannelType, NotificationChannel, NotificationChannelCondition, NotificationChannelSpec,

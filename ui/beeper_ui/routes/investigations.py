@@ -48,6 +48,7 @@ investigations_bp = Blueprint("investigations", __name__, url_prefix="/investiga
 
 # Valid filter values (security: prevent arbitrary values)
 VALID_STATUSES = {"investigating", "awaiting_confirmation", "completed", "failed"}
+VALID_WORKFLOW_STATES = {"detected", "investigating", "resolved", "verified", "failed"}
 VALID_SEVERITIES = {"low", "medium", "high", "critical"}
 VALID_DATE_RANGES = {"today", "7d", "30d", "90d"}
 
@@ -244,6 +245,9 @@ def list_investigations() -> str:
     sort_by = request.args.get("sort", "")
     if sort_by not in VALID_SORTS:
         sort_by = ""
+    workflow_state_filter = request.args.get("workflow_state", "")
+    if workflow_state_filter and workflow_state_filter not in VALID_WORKFLOW_STATES:
+        workflow_state_filter = ""
 
     svc = get_investigation_service()
     error_message: str | None = None
@@ -261,6 +265,20 @@ def list_investigations() -> str:
             investigations = filter_by_date_range(investigations, cutoff)
     except InvestigationServiceError:
         error_message = "Unable to connect to the Beeper operator."
+
+    # Compute workflow state counts (before filtering by workflow_state)
+    workflow_state_counts: dict[str, int] = {}
+    for inv in investigations:
+        ws = inv.workflow_state or "unknown"
+        workflow_state_counts[ws] = workflow_state_counts.get(ws, 0) + 1
+
+    # Apply workflow state filter (after counting)
+    if workflow_state_filter:
+        investigations = [
+            inv
+            for inv in investigations
+            if inv.workflow_state == workflow_state_filter
+        ]
 
     # Compute urgency scores for all investigations
     urgency_scores: dict[str, UrgencyScore] = {}
@@ -312,7 +330,7 @@ def list_investigations() -> str:
         )
 
     # Calculate if any filter is active
-    any_filter_active = bool(status or service or severity or date_range)
+    any_filter_active = bool(status or service or severity or date_range or workflow_state_filter)
 
     # Check if this is an HTMX request (for partial updates)
     if request.headers.get("HX-Request"):
@@ -321,6 +339,7 @@ def list_investigations() -> str:
             investigations=investigations,
             urgency_scores=urgency_scores,
             error_message=error_message,
+            workflow_state_counts=workflow_state_counts,
         )
 
     return render_template(
@@ -333,6 +352,8 @@ def list_investigations() -> str:
         selected_severity=severity,
         selected_date_range=date_range,
         selected_sort=sort_by,
+        selected_workflow_state=workflow_state_filter,
+        workflow_state_counts=workflow_state_counts,
         any_filter_active=any_filter_active,
     )
 
