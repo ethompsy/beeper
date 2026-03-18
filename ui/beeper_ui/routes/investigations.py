@@ -477,6 +477,10 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
     # Extract service topology data from pipeline findings
     service_topology = findings.get("service_topology", {}) if findings else {}
 
+    # Extract change event correlation data from pipeline findings
+    change_events = findings.get("change_events", []) if findings else []
+    change_summary = findings.get("change_summary", "") if findings else ""
+
     # Retrieve human interventions (annotations & redirects) from collaboration history
     human_interventions = []
     try:
@@ -505,6 +509,8 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
             deploy_correlations=deploy_correlations,
             deploy_summary=deploy_summary,
             service_topology=service_topology,
+            change_events=change_events,
+            change_summary=change_summary,
             human_interventions=human_interventions,
         )
 
@@ -519,6 +525,8 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
         deploy_correlations=deploy_correlations,
         deploy_summary=deploy_summary,
         service_topology=service_topology,
+        change_events=change_events,
+        change_summary=change_summary,
         human_interventions=human_interventions,
     )
 
@@ -1207,6 +1215,27 @@ def _generate_detail_sse_events(
                     except Exception:
                         logger.debug(
                             "SSE: Failed to render deploy correlation for %s",
+                            investigation_id,
+                        )
+
+                # Update change events card
+                change_events = findings.get("change_events", [])
+                change_summary = findings.get("change_summary", "")
+                if change_events or change_summary:
+                    try:
+                        change_html = render_template(
+                            "investigations/_change_events.html",
+                            change_events=change_events,
+                            change_summary=change_summary,
+                        )
+                        change_lines = "\n".join(
+                            f"data: {line}"
+                            for line in change_html.split("\n")
+                        )
+                        yield f"event: change-events-update\n{change_lines}\n\n"
+                    except Exception:
+                        logger.debug(
+                            "SSE: Failed to render change events for %s",
                             investigation_id,
                         )
 

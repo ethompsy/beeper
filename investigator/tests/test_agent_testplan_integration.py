@@ -43,16 +43,16 @@ class TestTestPlannerInPipeline:
         agent = _make_agent()
         steps = agent._build_steps()
 
-        assert len(steps) == 15
-        assert isinstance(steps[9], TestPlannerStep)
-        assert steps[9].name == "Test Plan Design"
+        assert len(steps) == 16
+        assert isinstance(steps[10], TestPlannerStep)
+        assert steps[10].name == "Test Plan Design"
 
     def test_pipeline_metadata_shared(self):
         """TestPlannerStep receives shared pipeline_metadata."""
         agent = _make_agent()
         steps = agent._build_steps()
 
-        testplan_step = steps[9]
+        testplan_step = steps[10]
         assert testplan_step.pipeline_metadata is agent._pipeline_metadata
 
     def test_step_always_included_regardless_of_trust_level(self):
@@ -80,7 +80,7 @@ class TestTestPlannerInPipeline:
 
         agent = _make_agent()
         steps = agent._build_steps()
-        testplan_step = steps[9]
+        testplan_step = steps[10]
 
         assert isinstance(testplan_step, InvestigationStep)
         assert hasattr(testplan_step, "name")

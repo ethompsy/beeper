@@ -43,16 +43,16 @@ class TestRunbookInPipeline:
         agent = _make_agent()
         steps = agent._build_steps()
 
-        assert len(steps) == 15
-        assert isinstance(steps[8], RunbookExecutorStep)
-        assert steps[8].name == "Runbook Execution"
+        assert len(steps) == 16
+        assert isinstance(steps[9], RunbookExecutorStep)
+        assert steps[9].name == "Runbook Execution"
 
     def test_pipeline_metadata_shared(self):
         """RunbookExecutorStep receives shared pipeline_metadata."""
         agent = _make_agent()
         steps = agent._build_steps()
 
-        runbook_step = steps[8]
+        runbook_step = steps[9]
         assert runbook_step.pipeline_metadata is agent._pipeline_metadata
 
     def test_trust_level_flows_to_step(self):
@@ -69,7 +69,7 @@ class TestRunbookInPipeline:
         agent = _make_agent(context=ctx)
         steps = agent._build_steps()
 
-        runbook_step = steps[8]
+        runbook_step = steps[9]
         assert runbook_step.context.trust_level == 4
         assert runbook_step.context.confidence_threshold == 0.85
 
@@ -79,7 +79,7 @@ class TestRunbookInPipeline:
 
         agent = _make_agent()
         steps = agent._build_steps()
-        runbook_step = steps[8]
+        runbook_step = steps[9]
 
         assert isinstance(runbook_step, InvestigationStep)
         assert hasattr(runbook_step, "name")

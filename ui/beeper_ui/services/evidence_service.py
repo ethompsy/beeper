@@ -151,6 +151,11 @@ class EvidenceService:
             investigation_id, findings, references, ref_index
         )
 
+        # 2.75 Extract change event correlation evidence (from change_event_correlation step)
+        ref_index = self._extract_change_event_references(
+            investigation_id, findings, references, ref_index
+        )
+
         # 3. Extract supporting evidence items (from rca_hypothesis step)
         ref_index = self._extract_supporting_evidence(
             investigation_id, findings, references, ref_index
@@ -320,6 +325,44 @@ class EvidenceService:
                     source_type="git_commit",
                     timestamp=timestamp,
                     raw_data=json.dumps(corr),
+                )
+            )
+            ref_index += 1
+
+        return ref_index
+
+    def _extract_change_event_references(
+        self,
+        investigation_id: str,
+        findings: dict[str, Any],
+        references: list[EvidenceReference],
+        ref_index: int,
+    ) -> int:
+        """Extract change event correlation evidence from change_event_correlation step."""
+        change_events = findings.get("change_events", [])
+        if not isinstance(change_events, list):
+            return ref_index
+
+        for event in change_events:
+            if not isinstance(event, dict):
+                continue
+            resource_type = event.get("resource_type", "unknown")
+            resource_name = event.get("resource_name", "unknown")
+            confidence = event.get("confidence", "unknown")
+            change_desc = event.get("change_description", "")
+            timestamp = event.get("timestamp", datetime.now(timezone.utc).isoformat())
+
+            references.append(
+                EvidenceReference(
+                    id=f"ev-{investigation_id}-{ref_index}",
+                    investigation_id=investigation_id,
+                    evidence_type="config_change",
+                    title=f"Config Change: {resource_type}/{resource_name} ({confidence})",
+                    content_preview=change_desc[:200] if change_desc else f"{resource_type} {resource_name} changed",
+                    source_ref=resource_name,
+                    source_type="config",
+                    timestamp=timestamp,
+                    raw_data=json.dumps(event),
                 )
             )
             ref_index += 1

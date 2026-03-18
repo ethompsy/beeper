@@ -1,0 +1,44 @@
+{% if change_events %}
+<div class="change-events-card">
+    <table class="change-table">
+        <thead>
+            <tr>
+                <th>Resource Type</th>
+                <th>Resource Name</th>
+                <th>Change Description</th>
+                <th>Timestamp</th>
+                <th>Time Gap</th>
+                <th>Confidence</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for event in change_events %}
+            <tr>
+                <td><span class="change-resource-type-badge">{{ event.resource_type }}</span></td>
+                <td>{{ event.resource_name }}</td>
+                <td>{{ event.change_description[:80] }}</td>
+                <td class="change-timestamp">{{ event.timestamp | replace('T', ' ') | truncate(19, True, '', 0) }}</td>
+                <td>
+                    {% set mins = event.time_gap_seconds // 60 %}
+                    {% set secs = event.time_gap_seconds % 60 %}
+                    {% if mins > 0 and secs > 0 %}{{ mins }} min {{ secs }} sec{% elif mins > 0 %}{{ mins }} min{% else %}{{ secs }} sec{% endif %}
+                </td>
+                <td>
+                    <span class="change-confidence-badge confidence-{{ event.confidence }}">
+                        {{ event.confidence }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% elif change_summary %}
+<div class="change-no-results">
+    <p>{{ change_summary }}</p>
+</div>
+{% else %}
+<div class="change-no-results">
+    <p>No recent change events found</p>
+</div>
+{% endif %}

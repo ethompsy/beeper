@@ -96,6 +96,14 @@
         </div>
     </div>
 
+    {# Change Event Correlation #}
+    <div class="card">
+        <h3>Change Event Correlation</h3>
+        <div id="change-events" sse-swap="change-events-update" hx-swap="innerHTML">
+            {% include "investigations/_change_events.html" %}
+        </div>
+    </div>
+
     {# Human Interventions — annotations and redirects visible during review #}
     {% if human_interventions %}
     <div class="card">

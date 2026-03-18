@@ -2993,3 +2993,76 @@ class TestInvestigationDetailDeployCorrelation:
             assert response.status_code == 200
             html = response.data.decode()
             assert "Topology data not available" in html
+
+    @respx.mock
+    def test_detail_passes_change_events_to_template(
+        self, client: FlaskClient
+    ) -> None:
+        """Test that investigation_detail() passes change_events to template context."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "change_events": [
+                {
+                    "resource_type": "ConfigMap",
+                    "resource_name": "payments-config",
+                    "change_description": "Updated TIMEOUT_MS from 5000 to 1000",
+                    "timestamp": "2026-03-17T12:00:00+00:00",
+                    "time_gap_seconds": 180,
+                    "confidence": "strong",
+                    "namespace": "default",
+                    "reason": "Modified",
+                }
+            ],
+            "change_summary": "1 change event found within lookback window (1 strong correlation)",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ), patch(
+            "beeper_ui.routes.investigations.get_evidence_service"
+        ) as mock_get_ev_svc:
+            mock_ev_svc = MagicMock()
+            mock_ev_svc.get_timeline_events.return_value = []
+            mock_get_ev_svc.return_value = mock_ev_svc
+
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            html = response.data.decode()
+            assert "Change Event Correlation" in html
+            assert "ConfigMap" in html
+            assert "payments-config" in html
+            assert "strong" in html
+
+    @respx.mock
+    def test_detail_change_events_no_data_shows_fallback(
+        self, client: FlaskClient
+    ) -> None:
+        """Test that empty change_events shows fallback message."""
+        respx.get(
+            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
+        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_DETAIL))
+
+        mock_findings = {
+            "change_events": [],
+            "change_summary": "",
+        }
+
+        with patch(
+            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
+            return_value=mock_findings,
+        ), patch(
+            "beeper_ui.routes.investigations.get_evidence_service"
+        ) as mock_get_ev_svc:
+            mock_ev_svc = MagicMock()
+            mock_ev_svc.get_timeline_events.return_value = []
+            mock_get_ev_svc.return_value = mock_ev_svc
+
+            response = client.get("/investigations/inv-detail-001")
+            assert response.status_code == 200
+            html = response.data.decode()
+            assert "change-no-results" in html
+            assert "No recent change events found" in html

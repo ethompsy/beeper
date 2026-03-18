@@ -108,7 +108,7 @@ development_status:
   6-6-unified-investigation-timeline: done
   6-7-deploy-correlation: done
   6-8-service-dependency-topology: done
-  6-9-change-event-ingestion-correlation: backlog
+  6-9-change-event-ingestion-correlation: review
   epic-6-retrospective: optional
 
   # Epic 7: Developer Experience & Analytics (Wave 4)
