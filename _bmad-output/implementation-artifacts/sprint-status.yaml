@@ -112,7 +112,7 @@ development_status:
   epic-6-retrospective: done
 
   # Epic 7: Developer Experience & Analytics (Wave 4)
-  epic-7: in-progress
+  epic-7: done
   7-1-command-palette-keyboard-shortcuts: done
   7-2-investigation-workflow-states: done
   7-3-remediation-progress-tracking: done
@@ -120,7 +120,7 @@ development_status:
   7-5-reliability-score-per-service: done
   7-6-mttr-impact-trust-trend-dashboards: done
   7-7-investor-ready-reports: done
-  epic-7-retrospective: optional
+  epic-7-retrospective: done
 
   # Epic 8: Investor Demo Platform (Cross-cutting)
   epic-8: backlog
