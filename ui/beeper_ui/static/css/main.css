@@ -5569,3 +5569,214 @@ details.evidence-timeline-item[open] {
     color: #9ca3af;
     font-style: italic;
 }
+
+/* ========================================
+   Command Palette
+   ======================================== */
+
+.command-palette-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 20vh;
+}
+
+.command-palette-overlay.active {
+    display: flex;
+}
+
+.command-palette {
+    width: 600px;
+    max-height: 400px;
+    background: #1a1a2e;
+    border: 1px solid #333355;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.command-palette input {
+    width: 100%;
+    padding: 16px;
+    background: transparent;
+    color: #f1f5f9;
+    border: none;
+    border-bottom: 1px solid #333355;
+    font-size: 1rem;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.command-palette input:focus {
+    border-bottom-color: #6366f1;
+}
+
+.command-palette input::placeholder {
+    color: #64748b;
+}
+
+#command-results {
+    list-style: none;
+    margin: 0;
+    padding: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.command-result-group {
+    color: #94a3b8;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 8px 16px 4px;
+    font-weight: 600;
+}
+
+.command-result-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #f1f5f9;
+}
+
+.command-result-item[aria-selected="true"],
+.command-result-item:hover {
+    background: #252540;
+}
+
+.command-result-label {
+    flex: 1;
+}
+
+.command-shortcut-badge {
+    background: #252540;
+    color: #94a3b8;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    margin-left: 8px;
+    border: 1px solid #333355;
+}
+
+/* ========================================
+   Keyboard Help Overlay
+   ======================================== */
+
+.keyboard-help-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 1001;
+    justify-content: center;
+    align-items: center;
+}
+
+.keyboard-help-overlay.active {
+    display: flex;
+}
+
+.keyboard-help {
+    width: 500px;
+    max-height: 80vh;
+    background: #1a1a2e;
+    border: 1px solid #333355;
+    border-radius: 12px;
+    padding: 24px;
+    overflow-y: auto;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.keyboard-help-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.keyboard-help-header h3 {
+    color: #f1f5f9;
+    margin: 0;
+    font-size: 1.125rem;
+}
+
+.keyboard-help-close {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.keyboard-help-close:hover {
+    background: #252540;
+    color: #f1f5f9;
+}
+
+.keyboard-help table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #f1f5f9;
+}
+
+.keyboard-help th {
+    text-align: left;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    border-bottom: 1px solid #333355;
+}
+
+.keyboard-help td {
+    padding: 6px 12px;
+    font-size: 0.875rem;
+}
+
+.keyboard-help-section {
+    color: #6366f1;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    padding-top: 12px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.keyboard-help kbd {
+    display: inline-block;
+    background: #252540;
+    border: 1px solid #333355;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: #f1f5f9;
+    min-width: 1.5em;
+    text-align: center;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .command-palette-overlay,
+    .keyboard-help-overlay {
+        backdrop-filter: none;
+    }
+}

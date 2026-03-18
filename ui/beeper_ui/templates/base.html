@@ -40,6 +40,9 @@
             {% endblock %}
         </div>
     </main>
+    {% include "components/_command_palette.html" %}
+    {% include "components/_keyboard_help.html" %}
+    <script src="{{ url_for('static', filename='js/command-palette.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

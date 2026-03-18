@@ -1,0 +1,41 @@
+<div id="keyboard-help-overlay" class="keyboard-help-overlay">
+    <div class="keyboard-help">
+        <div class="keyboard-help-header">
+            <h3>Keyboard Shortcuts</h3>
+            <button class="keyboard-help-close" onclick="document.getElementById('keyboard-help-overlay').classList.remove('active')" aria-label="Close keyboard shortcuts help">&times;</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Shortcut</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="2" class="keyboard-help-section">Command Palette</td></tr>
+                <tr><td><kbd>Cmd</kbd>+<kbd>K</kbd> / <kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Open command palette</td></tr>
+                <tr><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd></td><td>Navigate results</td></tr>
+                <tr><td><kbd>Enter</kbd></td><td>Select result</td></tr>
+                <tr><td><kbd>Esc</kbd></td><td>Close palette / help</td></tr>
+
+                <tr><td colspan="2" class="keyboard-help-section">Navigation</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>i</kbd></td><td>Go to Investigations</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>s</kbd></td><td>Go to SLO Dashboard</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>k</kbd></td><td>Go to Knowledge Base</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>n</kbd></td><td>Go to Notifications</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>t</kbd></td><td>Go to Topology</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>h</kbd></td><td>Go to Health</td></tr>
+                <tr><td><kbd>g</kbd> <kbd>m</kbd></td><td>Go to Metrics</td></tr>
+
+                <tr><td colspan="2" class="keyboard-help-section">Investigation Actions</td></tr>
+                <tr><td><kbd>n</kbd></td><td>Annotate</td></tr>
+                <tr><td><kbd>r</kbd></td><td>Redirect</td></tr>
+                <tr><td><kbd>a</kbd></td><td>Approve</td></tr>
+                <tr><td><kbd>x</kbd></td><td>Reject</td></tr>
+
+                <tr><td colspan="2" class="keyboard-help-section">General</td></tr>
+                <tr><td><kbd>?</kbd></td><td>Toggle this help</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
