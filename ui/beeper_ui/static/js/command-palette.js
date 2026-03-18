@@ -1,7 +1,7 @@
 /**
  * Beeper Command Palette & Keyboard Shortcuts
  *
- * Provides Cmd+K/Ctrl+K command palette with fuzzy filtering,
+ * Provides Cmd+K/Ctrl+K command palette with substring filtering,
  * chord keyboard shortcuts (g+i, g+s, etc.), and a help overlay.
  */
 (function () {
@@ -98,21 +98,18 @@
     // Action commands
     {
       label: "Request Handoff",
-      action: "navigate",
       href: "/handoff/",
       category: "action",
       keywords: ["handoff", "shift", "transfer"],
     },
     {
       label: "View SLO Dashboard",
-      action: "navigate",
       href: "/slo/",
       category: "action",
       keywords: ["slo", "dashboard", "compliance"],
     },
     {
       label: "View Topology Map",
-      action: "navigate",
       href: "/topology/",
       category: "action",
       keywords: ["topology", "service", "map"],
@@ -453,6 +450,14 @@
         if (e.target === helpOverlay) {
           closeHelp();
         }
+      });
+    }
+
+    // Close button for help overlay
+    var helpCloseBtn = document.getElementById("keyboard-help-close-btn");
+    if (helpCloseBtn) {
+      helpCloseBtn.addEventListener("click", function () {
+        closeHelp();
       });
     }
   });

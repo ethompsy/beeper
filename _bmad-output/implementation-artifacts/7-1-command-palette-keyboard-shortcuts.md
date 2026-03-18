@@ -1,6 +1,6 @@
 # Story 7.1: Command Palette & Keyboard Shortcuts
 
-Status: review
+Status: done
 
 ## Story
 

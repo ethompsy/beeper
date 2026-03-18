@@ -5595,6 +5595,7 @@ details.evidence-timeline-item[open] {
 
 .command-palette {
     width: 600px;
+    max-width: calc(100% - 32px);
     max-height: 400px;
     background: #1a1a2e;
     border: 1px solid #333355;
@@ -5694,6 +5695,7 @@ details.evidence-timeline-item[open] {
 
 .keyboard-help {
     width: 500px;
+    max-width: calc(100% - 32px);
     max-height: 80vh;
     background: #1a1a2e;
     border: 1px solid #333355;
