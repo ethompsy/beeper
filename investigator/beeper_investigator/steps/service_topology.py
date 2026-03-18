@@ -8,6 +8,7 @@ and downstream relationships and calculates blast radius (FR45).
 from __future__ import annotations
 
 import logging
+from collections import deque
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -234,6 +235,10 @@ class ServiceTopologyStep:
     ) -> list[tuple[str, str]]:
         """Find references to other services in a pod's environment variables.
 
+        Matches service names as hostnames (e.g., ``http://orders:8080``,
+        ``orders.default.svc``) rather than plain substrings to avoid false
+        positives (e.g., service "db" matching "DEBUG=true").
+
         Returns:
             List of (service_name, dependency_type) tuples.
         """
@@ -246,12 +251,28 @@ class ServiceTopologyStep:
         except ApiException:
             return refs
 
+        # Delimiters that indicate a service name is used as a hostname
+        _HOST_DELIMITERS = ("://", ":", ".", "/")
+
         for container in pod.spec.containers or []:
             for env_var in container.env or []:
                 if env_var.value:
                     for svc_name in service_names:
-                        if svc_name in env_var.value:
-                            refs.append((svc_name, "env_var"))
+                        # Match as hostname: preceded by :// or start,
+                        # followed by : . / or end
+                        val = env_var.value
+                        idx = val.find(svc_name)
+                        while idx != -1:
+                            before_ok = idx == 0 or val[idx - 1] in (":", "/", "@")
+                            end_idx = idx + len(svc_name)
+                            after_ok = (
+                                end_idx == len(val)
+                                or val[end_idx] in (":", ".", "/", ",", " ")
+                            )
+                            if before_ok and after_ok:
+                                refs.append((svc_name, "env_var"))
+                                break
+                            idx = val.find(svc_name, idx + 1)
         return refs
 
     def _get_service_health(self) -> dict[str, dict[str, Any]]:
@@ -365,10 +386,10 @@ class ServiceTopologyStep:
     ) -> list[str]:
         """Breadth-first traversal up to max_depth."""
         visited: set[str] = set()
-        queue: list[tuple[str, int]] = [(start, 0)]
+        queue: deque[tuple[str, int]] = deque([(start, 0)])
 
         while queue:
-            node, depth = queue.pop(0)
+            node, depth = queue.popleft()
             if depth >= max_depth:
                 continue
             for neighbor in adjacency.get(node, []):

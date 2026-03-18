@@ -267,6 +267,55 @@ class TestServiceTopologyStep:
         assert topo["health"]["payments"]["has_active_investigation"] is True
 
 
+class TestGetPodServiceReferences:
+    """Test hostname-based service reference matching in env vars."""
+
+    def test_matches_url_hostname(self):
+        """Service name in URL is matched (e.g., http://orders:8080)."""
+        step = _make_step()
+        step._core_api = MagicMock()
+        pod = MagicMock()
+        container = MagicMock()
+        env = MagicMock()
+        env.value = "http://orders:8080/api"
+        container.env = [env]
+        pod.spec.containers = [container]
+        step._core_api.read_namespaced_pod.return_value = pod
+
+        refs = step._get_pod_service_references("payments-pod", {"orders", "db"})
+        assert ("orders", "env_var") in refs
+
+    def test_rejects_substring_false_positive(self):
+        """Service name 'db' should NOT match env var 'DEBUG=true'."""
+        step = _make_step()
+        step._core_api = MagicMock()
+        pod = MagicMock()
+        container = MagicMock()
+        env = MagicMock()
+        env.value = "DEBUG=true"
+        container.env = [env]
+        pod.spec.containers = [container]
+        step._core_api.read_namespaced_pod.return_value = pod
+
+        refs = step._get_pod_service_references("payments-pod", {"db"})
+        assert refs == []
+
+    def test_matches_dns_hostname(self):
+        """Service name as K8s DNS hostname (orders.default.svc)."""
+        step = _make_step()
+        step._core_api = MagicMock()
+        pod = MagicMock()
+        container = MagicMock()
+        env = MagicMock()
+        env.value = "orders.default.svc.cluster.local:8080"
+        container.env = [env]
+        pod.spec.containers = [container]
+        step._core_api.read_namespaced_pod.return_value = pod
+
+        refs = step._get_pod_service_references("payments-pod", {"orders"})
+        assert ("orders", "env_var") in refs
+
+
 class TestBFS:
     """Test the BFS traversal used for topology classification."""
 

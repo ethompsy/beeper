@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +84,7 @@ class TopologyService:
                 limit=100,
                 with_payload=True,
             )[0]
-        except (UnexpectedResponse, Exception) as exc:
+        except Exception as exc:
             logger.warning("Failed to query Qdrant for topology: %s", exc)
             return {"services": [], "dependencies": [], "active_investigations": {}}
 
@@ -189,7 +188,7 @@ class TopologyService:
                 limit=10,
                 with_payload=True,
             )[0]
-        except (UnexpectedResponse, Exception) as exc:
+        except Exception as exc:
             logger.warning(
                 "Failed to query Qdrant for service %s topology: %s",
                 service_name, exc,

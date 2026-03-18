@@ -154,3 +154,20 @@ class TestTopologyRoutes:
         assert response.status_code == 200
         html = response.data.decode()
         assert "5.2x" in html
+
+    @patch("beeper_ui.routes.topology.get_topology_service")
+    def test_topology_nav_link_visible(self, mock_get_svc, client: FlaskClient):
+        """Topology link is present in main navigation."""
+        mock_svc = MagicMock()
+        mock_svc.get_all_services_topology.return_value = {
+            "services": [],
+            "dependencies": [],
+            "active_investigations": {},
+        }
+        mock_get_svc.return_value = mock_svc
+
+        response = client.get("/topology/")
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert 'href="/topology/"' in html
+        assert ">Topology<" in html

@@ -1,6 +1,6 @@
 # Story 6.8: Service Dependency Topology
 
-Status: review
+Status: done
 
 ## Story
 
