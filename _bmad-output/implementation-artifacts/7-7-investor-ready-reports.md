@@ -1,6 +1,6 @@
 # Story 7.7: Investor-Ready Reports
 
-Status: review
+Status: done
 
 ## Story
 

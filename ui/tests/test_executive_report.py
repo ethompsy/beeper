@@ -1,5 +1,6 @@
 """Tests for Investor-Ready Executive Reports (Story 7-7)."""
 
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -216,6 +217,23 @@ class TestComputeExecutiveMetrics:
         )
         assert result["total_resolved"] == 1
 
+    def test_mttr_improvement_with_data(self) -> None:
+        """MTTR improvement is computed from investigations in different weeks."""
+        invs = [
+            _inv("inv-1", status="completed", started_days_ago=3, duration_hours=1),
+            _inv("inv-2", status="completed", started_days_ago=10, duration_hours=4),
+        ]
+        result = compute_executive_metrics(
+            investigations=invs,
+            slo_services=[],
+            trust_configs=[],
+            false_page_rate=0.0,
+            period_days=30,
+        )
+        # With 2 investigations in different weeks, MTTR change should be computed
+        # (may be None if only 1 week has data, but with 2 different weeks it should have a value)
+        assert result["mttr_improvement_pct"] is not None
+
     def test_all_time_includes_everything(self) -> None:
         """period_days=None includes all investigations."""
         invs = [
@@ -348,6 +366,21 @@ class TestExecutiveReportServiceGetReportData:
             assert "date_to" in data
             assert data["period"] == "90d"
             assert data["period_label"] == "Last 90 Days"
+        finally:
+            svc.close()
+
+    @respx.mock
+    def test_90d_avoids_duplicate_noise_call(self) -> None:
+        """For 90d period, prev false page rate reuses current (same noise window)."""
+        _mock_executive_apis()
+        svc = ExecutiveReportService(operator_url="http://mock-operator:8080")
+        try:
+            with patch.object(svc, "_get_false_page_rate", return_value=0.08) as mock_fp:
+                data = svc.get_report_data(period="90d")
+            # Should only call _get_false_page_rate once (current), not twice
+            mock_fp.assert_called_once_with("90d")
+            # Comparison should show stable for false page (same data)
+            assert data["comparison"]["false_page_rate"]["direction"] == "stable"
         finally:
             svc.close()
 
@@ -556,7 +589,9 @@ class TestExecutiveTemplateContent:
             response = client.get("/reports/executive")
         html = response.data.decode()
         assert "Export PDF" in html
-        assert "window.print()" in html
+        assert "executive-export-pdf-btn" in html
+        # No inline onclick — CSP compliant (handled via addEventListener in JS)
+        assert 'onclick="window.print()"' not in html
 
     def test_print_only_branding(self, client: FlaskClient) -> None:
         mock_svc = self._mock_service()
@@ -613,14 +648,23 @@ class TestExecutiveTemplateContent:
         html = response.data.decode()
         assert '<a href="/reports/executive">Reports</a>' in html
 
-    def test_command_palette_has_executive(self, client: FlaskClient) -> None:
-        mock_svc = self._mock_service()
-        with patch(
-            "beeper_ui.routes.reports._get_executive_report_service",
-            return_value=mock_svc,
-        ):
-            response = client.get("/reports/executive")
-        html = response.data.decode()
-        assert "/reports/executive" in html
-        # Command palette JS is loaded externally — verify it's referenced
-        assert "command-palette.js" in html
+    def test_command_palette_has_executive_command(self) -> None:
+        """command-palette.js contains Executive Report entry with correct href and chord."""
+        js_path = os.path.join(
+            os.path.dirname(__file__),
+            "..", "beeper_ui", "static", "js", "command-palette.js",
+        )
+        content = open(js_path).read()
+        assert '"Executive Report"' in content
+        assert '"/reports/executive"' in content
+        assert 'e: "/reports/executive"' in content
+
+    def test_export_pdf_uses_event_listener(self) -> None:
+        """Export PDF button uses addEventListener, not inline onclick (CSP)."""
+        js_path = os.path.join(
+            os.path.dirname(__file__),
+            "..", "beeper_ui", "static", "js", "command-palette.js",
+        )
+        content = open(js_path).read()
+        assert "executive-export-pdf-btn" in content
+        assert "window.print()" in content

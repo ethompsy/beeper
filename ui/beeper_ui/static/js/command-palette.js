@@ -478,5 +478,13 @@
         closeHelp();
       });
     }
+
+    // Export PDF button (avoids inline onclick for CSP compliance)
+    var exportPdfBtn = document.getElementById("executive-export-pdf-btn");
+    if (exportPdfBtn) {
+      exportPdfBtn.addEventListener("click", function () {
+        window.print();
+      });
+    }
   });
 })();

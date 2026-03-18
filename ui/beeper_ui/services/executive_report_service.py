@@ -367,7 +367,13 @@ class ExecutiveReportService:
             # For "all" period, skip comparison
             prev_period = f"{period_days * 2}d" if period_days <= 90 else "90d"
             prev_noise_period = "90d" if prev_period not in {"7d", "30d", "90d"} else prev_period
-            prev_fp_rate = self._get_false_page_rate(prev_noise_period)
+            # Use distinct noise period for previous or fall back to current
+            # (NoiseReportService only supports 7d/30d/90d lookback from now)
+            current_noise_period = "90d" if period == "all" else period
+            if prev_noise_period == current_noise_period:
+                prev_fp_rate = current_fp_rate
+            else:
+                prev_fp_rate = self._get_false_page_rate(prev_noise_period)
 
             previous_metrics = compute_executive_metrics(
                 investigations=investigations,
