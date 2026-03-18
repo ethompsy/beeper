@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ service.name if service else 'Service' }} Health - Beeper{% endblock %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Home</a> &rsaquo; <a href="/services/">Services</a> &rsaquo; {{ service.name if service else 'Unknown' }}
+</div>
+{% if error_message is defined and error_message %}
+<div class="card error-card">
+    <p>{{ error_message }}</p>
+</div>
+{% elif service %}
+<div id="service-detail-content"
+     hx-ext="sse"
+     sse-connect="/services/{{ service.name }}/stream">
+{% include "services/_detail_content.html" %}
+</div>
+{% else %}
+<div class="card error-card">
+    <p>Service not found.</p>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/htmx-ext-sse.js') }}"></script>
+{% endblock %}

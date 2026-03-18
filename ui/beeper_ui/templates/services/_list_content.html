@@ -1,0 +1,61 @@
+{% if error_message %}
+<div class="card error-card">
+    <p>{{ error_message }}</p>
+</div>
+{% else %}
+<div class="service-health-filter-bar">
+    <button class="filter-btn {% if current_filter == 'all' %}active{% endif %}"
+            hx-get="/services/?status="
+            hx-target="#service-list-container"
+            hx-swap="innerHTML">All ({{ total_services }})</button>
+    <button class="filter-btn filter-btn-healthy {% if current_filter == 'healthy' %}active{% endif %}"
+            hx-get="/services/?status=healthy"
+            hx-target="#service-list-container"
+            hx-swap="innerHTML">Healthy ({{ healthy_count }})</button>
+    <button class="filter-btn filter-btn-warning {% if current_filter == 'warning' %}active{% endif %}"
+            hx-get="/services/?status=warning"
+            hx-target="#service-list-container"
+            hx-swap="innerHTML">Warning ({{ warning_count }})</button>
+    <button class="filter-btn filter-btn-critical {% if current_filter == 'critical' %}active{% endif %}"
+            hx-get="/services/?status=critical"
+            hx-target="#service-list-container"
+            hx-swap="innerHTML">Critical ({{ critical_count }})</button>
+</div>
+
+<div id="service-list-container">
+{% if services %}
+<div class="service-health-grid">
+    {% for svc in services %}
+    <div class="service-health-card {% if svc.has_active_investigations %}service-card-highlighted{% endif %}">
+        <div class="service-card-header">
+            <h3><a href="/services/{{ svc.name }}">{{ svc.name }}</a></h3>
+            <span class="health-badge health-{{ svc.health_status }}" aria-label="Health status: {{ svc.health_status }}">{{ svc.health_status | capitalize }}</span>
+        </div>
+        <div class="service-card-metrics">
+            <div class="service-metric">
+                <span class="service-metric-label">SLO Compliance</span>
+                <span class="service-metric-value">{{ format_compliance(svc.compliance) }}</span>
+            </div>
+            <div class="service-metric">
+                <span class="service-metric-label">Burn Rate</span>
+                <span class="service-metric-value">{{ format_burn_rate(svc.burn_rate) }}</span>
+            </div>
+            <div class="service-metric">
+                <span class="service-metric-label">Trust Level</span>
+                <span class="badge trust-tl{{ svc.trust_level }}">TL{{ svc.trust_level }}</span>
+            </div>
+            <div class="service-metric">
+                <span class="service-metric-label">Active Investigations</span>
+                <span class="service-metric-value {% if svc.active_investigation_count > 0 %}investigation-count-highlight{% endif %}">{{ svc.active_investigation_count }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <p class="empty-state">No services found{% if current_filter != 'all' %} matching filter "{{ current_filter }}"{% endif %}.</p>
+</div>
+{% endif %}
+</div>
+{% endif %}

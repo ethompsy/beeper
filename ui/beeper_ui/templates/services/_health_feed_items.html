@@ -1,0 +1,49 @@
+<div class="health-feed-section">
+    <h4>Active Investigations ({{ active_investigations | length }})</h4>
+    {% if active_investigations %}
+    {% for inv in active_investigations %}
+    <article role="article" class="feed-item feed-item-active">
+        <div class="feed-item-header">
+            <a href="/investigations/{{ inv.id }}" class="feed-item-id">{{ inv.id }}</a>
+            <span class="status-badge status-{{ inv.severity }}">{{ inv.severity | capitalize }}</span>
+            {% if inv.workflow_state %}
+            <span class="workflow-state-badge workflow-state-{{ inv.workflow_state }}">{{ inv.workflow_state | capitalize }}</span>
+            {% endif %}
+        </div>
+        <div class="feed-item-meta">
+            <span class="feed-item-condition">{{ inv.condition }}</span>
+            {% if inv.started_at %}
+            <time class="feed-item-time" datetime="{{ inv.started_at }}">Started: {{ inv.started_at }}</time>
+            {% endif %}
+        </div>
+    </article>
+    {% endfor %}
+    {% else %}
+    <p class="empty-state">No active investigations</p>
+    {% endif %}
+</div>
+
+<div class="health-feed-section">
+    <h4>Recently Resolved (Last 7 Days) ({{ recent_resolved | length }})</h4>
+    {% if recent_resolved %}
+    {% for inv in recent_resolved %}
+    <article role="article" class="feed-item feed-item-resolved">
+        <div class="feed-item-header">
+            <a href="/investigations/{{ inv.id }}" class="feed-item-id">{{ inv.id }}</a>
+            <span class="status-badge status-{{ inv.severity }}">{{ inv.severity | capitalize }}</span>
+            {% if inv.workflow_state %}
+            <span class="workflow-state-badge workflow-state-{{ inv.workflow_state }}">{{ inv.workflow_state | capitalize }}</span>
+            {% endif %}
+        </div>
+        <div class="feed-item-meta">
+            <span class="feed-item-condition">{{ inv.condition }}</span>
+            {% if inv.completed_at %}
+            <time class="feed-item-time" datetime="{{ inv.completed_at }}">Resolved: {{ inv.completed_at }}</time>
+            {% endif %}
+        </div>
+    </article>
+    {% endfor %}
+    {% else %}
+    <p class="empty-state">No resolved investigations in the last 7 days</p>
+    {% endif %}
+</div>

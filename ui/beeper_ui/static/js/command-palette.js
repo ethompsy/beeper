@@ -64,6 +64,13 @@
       shortcut: "g s",
     },
     {
+      label: "Services Health",
+      href: "/services/",
+      category: "navigation",
+      keywords: ["service", "health", "feed", "reliability"],
+      shortcut: "g v",
+    },
+    {
       label: "Topology",
       href: "/topology/",
       category: "navigation",
@@ -140,6 +147,7 @@
     t: "/topology/",
     h: "/health/",
     m: "/metrics/",
+    v: "/services/",
   };
 
   // --- DOM Helpers ---

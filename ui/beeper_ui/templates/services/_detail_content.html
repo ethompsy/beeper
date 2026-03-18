@@ -1,0 +1,40 @@
+<div class="service-detail-header">
+    <h2>{{ service.name }}</h2>
+    <div class="service-detail-badges">
+        <span class="health-badge health-{{ service.health_status }}" aria-label="Health status: {{ service.health_status }}">{{ service.health_status | capitalize }}</span>
+        <span class="badge trust-tl{{ service.trust_level }}">TL{{ service.trust_level }}</span>
+        {% if service.is_frozen %}
+        <span class="status-badge status-frozen">Frozen</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="service-summary-cards">
+    <div class="service-summary-card">
+        <span class="service-summary-label">SLO Compliance</span>
+        <span class="service-summary-value">{{ format_compliance(service.compliance) }}</span>
+    </div>
+    <div class="service-summary-card">
+        <span class="service-summary-label">Burn Rate</span>
+        <span class="service-summary-value">{{ format_burn_rate(service.burn_rate) }}</span>
+    </div>
+    <div class="service-summary-card">
+        <span class="service-summary-label">Error Budget Remaining</span>
+        <span class="service-summary-value">{{ format_budget_remaining(service.error_budget_remaining) }}</span>
+    </div>
+    <div class="service-summary-card">
+        <span class="service-summary-label">Active Investigations</span>
+        <span class="service-summary-value {% if service.active_investigation_count > 0 %}investigation-count-highlight{% endif %}">{{ service.active_investigation_count }}</span>
+    </div>
+</div>
+
+<div class="card" id="health-feed-section">
+    <h3>Health Feed</h3>
+    <div role="feed" aria-label="Service health feed for {{ service.name }}"
+         id="health-feed"
+         hx-get="/services/{{ service.name }}/feed-items"
+         hx-trigger="load"
+         sse-swap="investigation-update">
+        <p class="loading-text">Loading health feed...</p>
+    </div>
+</div>

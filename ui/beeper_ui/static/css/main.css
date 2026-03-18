@@ -6045,3 +6045,244 @@ details.evidence-timeline-item[open] {
         animation: none;
     }
 }
+
+/* =============================================================================
+   Service Health Pages
+   ============================================================================= */
+
+/* Filter bar */
+.service-health-filter-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 6px 16px;
+    border: 1px solid #d1d5db;
+    border-radius: 9999px;
+    background: #ffffff;
+    color: #374151;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.filter-btn:hover {
+    background: #f3f4f6;
+}
+
+.filter-btn.active {
+    background: #1e40af;
+    color: #ffffff;
+    border-color: #1e40af;
+}
+
+.filter-btn-healthy.active { background: #16a34a; border-color: #16a34a; }
+.filter-btn-warning.active { background: #d97706; border-color: #d97706; }
+.filter-btn-critical.active { background: #dc2626; border-color: #dc2626; }
+
+/* Service health card grid */
+.service-health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+.service-health-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    transition: box-shadow 0.15s;
+}
+
+.service-health-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.service-card-highlighted {
+    border-left: 4px solid #f59e0b;
+}
+
+.service-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.service-card-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.service-card-header h3 a {
+    color: #1e40af;
+    text-decoration: none;
+}
+
+.service-card-header h3 a:hover {
+    text-decoration: underline;
+}
+
+.service-card-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.service-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.service-metric-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.service-metric-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #111827;
+}
+
+/* Health badges */
+.health-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.health-healthy { background: #dcfce7; color: #166534; }
+.health-warning { background: #fef3c7; color: #92400e; }
+.health-critical { background: #fee2e2; color: #991b1b; }
+
+/* Investigation count highlight */
+.investigation-count-highlight {
+    color: #dc2626;
+    font-weight: 700;
+}
+
+/* Service detail */
+.service-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.service-detail-header h2 {
+    margin: 0;
+}
+
+.service-detail-badges {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* Summary cards */
+.service-summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.service-summary-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+}
+
+.service-summary-label {
+    display: block;
+    font-size: 0.75rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.service-summary-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #111827;
+}
+
+/* Health feed */
+.health-feed-section {
+    margin-bottom: 20px;
+}
+
+.health-feed-section h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.95rem;
+    color: #374151;
+}
+
+.feed-item {
+    border-left: 3px solid #d1d5db;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background: #fafafa;
+    border-radius: 0 4px 4px 0;
+}
+
+.feed-item-active {
+    border-left-color: #3b82f6;
+}
+
+.feed-item-resolved {
+    border-left-color: #22c55e;
+}
+
+.feed-item-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.feed-item-id {
+    font-weight: 600;
+    color: #1e40af;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.feed-item-id:hover {
+    text-decoration: underline;
+}
+
+.feed-item-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 4px;
+}
+
+.loading-text {
+    color: #6b7280;
+    font-style: italic;
+}
+
+.status-frozen {
+    background: #e0e7ff;
+    color: #3730a3;
+}
