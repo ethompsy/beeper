@@ -1,0 +1,26 @@
+apiVersion: beeper.dev/v1
+kind: ServiceLevel
+metadata:
+  name: demo-api-gateway-slo
+  namespace: beeper-demo
+  labels:
+    app.kubernetes.io/part-of: beeper-demo
+spec:
+  service: "demo-api-gateway"
+  sli:
+    type: Availability
+    metric: "demo_request_total"
+    good_selector: 'demo_request_total{service="api-gateway",status=~"2.."}'
+    total_selector: 'demo_request_total{service="api-gateway"}'
+  objective:
+    target: 0.995
+    window: "30m"
+  burn_rate_alerts:
+    - severity: warning
+      short_window: "5m"
+      long_window: "1h"
+      factor: 14.4
+    - severity: critical
+      short_window: "2m"
+      long_window: "15m"
+      factor: 14.4

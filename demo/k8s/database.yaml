@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-database
+  namespace: beeper-demo
+  labels:
+    app: demo-database
+    app.kubernetes.io/part-of: beeper-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-database
+  template:
+    metadata:
+      labels:
+        app: demo-database
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: database
+          image: beeper/demo-app:latest
+          ports:
+            - containerPort: 8082
+          env:
+            - name: SERVICE_ROLE
+              value: "database"
+            - name: SERVICE_PORT
+              value: "8082"
+            - name: FAULT_ENABLED
+              value: "false"
+            - name: FAULT_TYPE
+              value: "none"
+            - name: SYNTHETIC_TRAFFIC
+              value: "true"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-database
+  namespace: beeper-demo
+  labels:
+    app: demo-database
+    app.kubernetes.io/part-of: beeper-demo
+spec:
+  selector:
+    app: demo-database
+  ports:
+    - port: 8082
+      targetPort: 8082
+      protocol: TCP
