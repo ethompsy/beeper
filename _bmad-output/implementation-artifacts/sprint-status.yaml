@@ -99,7 +99,7 @@ development_status:
   epic-5-retrospective: done
 
   # Epic 6: Knowledge & Signal Intelligence (Wave 3)
-  epic-6: in-progress
+  epic-6: done
   6-1-automatic-kb-entry-creation: done
   6-2-bi-directional-kb-investigation-links: done
   6-3-per-service-knowledge-views: done
@@ -109,7 +109,7 @@ development_status:
   6-7-deploy-correlation: done
   6-8-service-dependency-topology: done
   6-9-change-event-ingestion-correlation: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   # Epic 7: Developer Experience & Analytics (Wave 4)
   epic-7: backlog
