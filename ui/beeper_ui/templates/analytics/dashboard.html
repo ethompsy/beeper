@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Analytics - Beeper{% endblock %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Home</a> &rsaquo; Analytics
+</div>
+<h2>Analytics Dashboard</h2>
+<div id="analytics-wrapper">
+{% include "analytics/_dashboard_content.html" %}
+</div>
+{% endblock %}

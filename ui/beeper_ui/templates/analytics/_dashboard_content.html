@@ -1,0 +1,145 @@
+{% if error_message %}
+<div class="card error-card">
+    <p>{{ error_message }}</p>
+</div>
+{% else %}
+<div class="analytics-filter-bar">
+    <span class="filter-label">Period:</span>
+    <button class="filter-btn {% if current_period == 4 %}active{% endif %}"
+            hx-get="/analytics/?period=4{% if current_service %}&service={{ current_service }}{% endif %}"
+            hx-target="#analytics-wrapper"
+            hx-swap="innerHTML">4 weeks</button>
+    <button class="filter-btn {% if current_period == 12 %}active{% endif %}"
+            hx-get="/analytics/?period=12{% if current_service %}&service={{ current_service }}{% endif %}"
+            hx-target="#analytics-wrapper"
+            hx-swap="innerHTML">12 weeks</button>
+    <button class="filter-btn {% if current_period == 26 %}active{% endif %}"
+            hx-get="/analytics/?period=26{% if current_service %}&service={{ current_service }}{% endif %}"
+            hx-target="#analytics-wrapper"
+            hx-swap="innerHTML">26 weeks</button>
+    {% if service_names %}
+    <span class="filter-separator">|</span>
+    <span class="filter-label">Service:</span>
+    <select class="analytics-service-select"
+            hx-get="/analytics/"
+            hx-target="#analytics-wrapper"
+            hx-swap="innerHTML"
+            hx-include="this"
+            name="service"
+            hx-vals='{"period": "{{ current_period }}"}'>
+        <option value="">All Services</option>
+        {% for svc_name in service_names %}
+        <option value="{{ svc_name }}" {% if current_service == svc_name %}selected{% endif %}>{{ svc_name }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+</div>
+
+<div class="analytics-dashboard">
+    <!-- MTTR Trends Section -->
+    <section role="region" aria-label="MTTR Trends" class="card analytics-section">
+        <div class="analytics-section-header">
+            <h3>MTTR Trends</h3>
+            {% if mttr_change_pct is not none %}
+            <span class="mttr-change-badge {% if mttr_change_pct < 0 %}mttr-improved{% else %}mttr-degraded{% endif %}"
+                  aria-label="MTTR {% if mttr_change_pct < 0 %}improved{% else %}degraded{% endif %} by {{ mttr_change_pct | abs }}%">
+                {% if mttr_change_pct < 0 %}&#9650; {{ mttr_change_pct | abs }}% improved{% else %}&#9660; {{ mttr_change_pct }}% degraded{% endif %}
+            </span>
+            {% endif %}
+        </div>
+        {% if mttr_trends %}
+        <div class="analytics-bar-chart" aria-label="Weekly MTTR bar chart">
+            {% for trend in mttr_trends %}
+            <div class="analytics-bar-row">
+                <span class="analytics-bar-label">{{ trend.week }}</span>
+                <div class="analytics-bar-track">
+                    <div class="analytics-bar analytics-bar-mttr"
+                         style="width: {{ (trend.avg_mttr_hours / max_mttr * 100) | round }}%"
+                         aria-label="Week {{ trend.week }}: {{ trend.avg_mttr_hours }} hours average MTTR ({{ trend.count }} resolved)">
+                    </div>
+                </div>
+                <span class="analytics-bar-value">{{ trend.avg_mttr_hours }}h ({{ trend.count }})</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-state">No resolved investigations in the selected period{% if current_service %} for {{ current_service }}{% endif %}.</p>
+        {% endif %}
+    </section>
+
+    <!-- Customer Impact Trends Section -->
+    <section role="region" aria-label="Customer Impact Trends" class="card analytics-section">
+        <h3>Customer Impact Trends</h3>
+        {% if impact_trends %}
+        <div class="analytics-bar-chart" aria-label="Weekly investigation count chart">
+            {% for trend in impact_trends %}
+            <div class="analytics-bar-row">
+                <span class="analytics-bar-label">{{ trend.week }}</span>
+                <div class="analytics-bar-track">
+                    <div class="analytics-bar analytics-bar-impact"
+                         style="width: {{ (trend.investigation_count / max_inv_count * 100) | round }}%"
+                         aria-label="Week {{ trend.week }}: {{ trend.investigation_count }} investigations">
+                    </div>
+                </div>
+                <span class="analytics-bar-value">{{ trend.investigation_count }} inv</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% if impact_trends[0].avg_compliance is not none %}
+        <div class="analytics-compliance-summary">
+            <span class="analytics-compliance-label">Avg SLO Compliance:</span>
+            <span class="analytics-compliance-value">{{ "%.2f" | format(impact_trends[0].avg_compliance * 100) }}%</span>
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="empty-state">No investigations in the selected period{% if current_service %} for {{ current_service }}{% endif %}.</p>
+        {% endif %}
+    </section>
+
+    <!-- Trust Level Progression Section -->
+    <section role="region" aria-label="Trust Level Progression" class="card analytics-section">
+        <h3>Trust Level Progression</h3>
+
+        {% if trust_distribution.total > 0 %}
+        <div class="trust-distribution-container" aria-label="Trust level distribution">
+            <div class="trust-distribution-bar">
+                {% for level in range(1, 6) %}
+                {% set count = trust_distribution.levels[level] %}
+                {% if count > 0 %}
+                <div class="trust-dist-segment trust-dist-tl{{ level }}"
+                     style="width: {{ (count / trust_distribution.total * 100) | round(1) }}%"
+                     aria-label="Trust Level {{ level }}: {{ count }} services ({{ (count / trust_distribution.total * 100) | round(1) }}%)"
+                     title="TL{{ level }}: {{ count }} services">
+                    TL{{ level }}: {{ count }}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <div class="trust-distribution-legend">
+                {% for level in range(1, 6) %}
+                <span class="trust-legend-item trust-legend-tl{{ level }}">TL{{ level }}: {{ trust_distribution.levels[level] }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <p class="empty-state">No trust level data available.</p>
+        {% endif %}
+
+        {% if trust_changes %}
+        <h4>Recent Trust Level Changes</h4>
+        <div class="trust-change-timeline">
+            {% for change in trust_changes %}
+            <div class="trust-change-entry">
+                <span class="trust-change-service">{{ change.service }}</span>
+                <span class="trust-change-arrow">TL{{ change.from_level }} &rarr; TL{{ change.to_level }}</span>
+                <span class="trust-change-date">{{ change.updated_at[:10] }}</span>
+                {% if change.reason %}
+                <span class="trust-change-reason">{{ change.reason }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endif %}

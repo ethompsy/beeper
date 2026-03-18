@@ -6437,3 +6437,248 @@ details.evidence-timeline-item[open] {
     color: #6b7280;
     margin-right: 4px;
 }
+
+/* ============================
+   Analytics Dashboard
+   ============================ */
+
+.analytics-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.analytics-section {
+    padding: 20px;
+}
+
+.analytics-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.analytics-section-header h3 {
+    margin: 0;
+}
+
+.analytics-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    max-width: calc(100% - 32px);
+}
+
+.filter-label {
+    font-size: 0.8125rem;
+    color: #6b7280;
+    margin-right: 4px;
+}
+
+.analytics-service-select {
+    padding: 4px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    background: white;
+    cursor: pointer;
+}
+
+/* Bar charts */
+.analytics-bar-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.analytics-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.analytics-bar-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    min-width: 80px;
+    text-align: right;
+    font-family: monospace;
+}
+
+.analytics-bar-track {
+    flex: 1;
+    background: #f3f4f6;
+    border-radius: 4px;
+    height: 20px;
+    overflow: hidden;
+}
+
+.analytics-bar {
+    height: 100%;
+    border-radius: 4px;
+    min-width: 2px;
+    transition: width 0.3s ease;
+}
+
+.analytics-bar-mttr {
+    background: #3b82f6;
+}
+
+.analytics-bar-impact {
+    background: #f59e0b;
+}
+
+.analytics-bar-value {
+    font-size: 0.75rem;
+    color: #374151;
+    min-width: 90px;
+    font-family: monospace;
+}
+
+/* MTTR change badge */
+.mttr-change-badge {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.mttr-improved {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.mttr-degraded {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Compliance summary */
+.analytics-compliance-summary {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.analytics-compliance-label {
+    font-size: 0.8125rem;
+    color: #6b7280;
+}
+
+.analytics-compliance-value {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #111827;
+}
+
+/* Trust distribution */
+.trust-distribution-container {
+    margin-bottom: 16px;
+}
+
+.trust-distribution-bar {
+    display: flex;
+    height: 32px;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.trust-dist-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: white;
+    min-width: 40px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trust-dist-tl1 { background: #ef4444; }
+.trust-dist-tl2 { background: #f59e0b; }
+.trust-dist-tl3 { background: #3b82f6; }
+.trust-dist-tl4 { background: #8b5cf6; }
+.trust-dist-tl5 { background: #10b981; }
+
+.trust-distribution-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.trust-legend-item {
+    font-size: 0.75rem;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.trust-legend-item::before {
+    content: "";
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+.trust-legend-tl1::before { background: #ef4444; }
+.trust-legend-tl2::before { background: #f59e0b; }
+.trust-legend-tl3::before { background: #3b82f6; }
+.trust-legend-tl4::before { background: #8b5cf6; }
+.trust-legend-tl5::before { background: #10b981; }
+
+/* Trust change timeline */
+.trust-change-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.trust-change-entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #f9fafb;
+    border-radius: 6px;
+    border-left: 3px solid #3b82f6;
+}
+
+.trust-change-service {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #111827;
+    min-width: 120px;
+}
+
+.trust-change-arrow {
+    font-size: 0.8125rem;
+    color: #6b7280;
+    font-family: monospace;
+}
+
+.trust-change-date {
+    font-size: 0.75rem;
+    color: #9ca3af;
+}
+
+.trust-change-reason {
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-style: italic;
+}

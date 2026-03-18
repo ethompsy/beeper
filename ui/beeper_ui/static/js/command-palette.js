@@ -102,6 +102,13 @@
       category: "navigation",
       keywords: ["report", "executive", "investor"],
     },
+    {
+      label: "Analytics Dashboard",
+      href: "/analytics/",
+      category: "navigation",
+      keywords: ["analytics", "mttr", "trend", "dashboard", "impact", "trust"],
+      shortcut: "g a",
+    },
     // Action commands
     {
       label: "Request Handoff",
@@ -148,6 +155,7 @@
     h: "/health/",
     m: "/metrics/",
     v: "/services/",
+    a: "/analytics/",
   };
 
   // --- DOM Helpers ---
