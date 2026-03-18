@@ -282,11 +282,12 @@ fn phase_to_status(phase: &Option<InvestigationPhase>) -> String {
 
 /// Map WorkflowState to string for API responses
 fn workflow_state_to_string(state: &Option<WorkflowState>) -> Option<String> {
-    state.as_ref().map(|s| {
-        serde_json::to_value(s)
-            .ok()
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| format!("{:?}", s).to_lowercase())
+    state.as_ref().map(|s| match s {
+        WorkflowState::Detected => "detected".to_string(),
+        WorkflowState::Investigating => "investigating".to_string(),
+        WorkflowState::Resolved => "resolved".to_string(),
+        WorkflowState::Verified => "verified".to_string(),
+        WorkflowState::Failed => "failed".to_string(),
     })
 }
 
@@ -2160,6 +2161,51 @@ mod tests {
         assert_eq!(severity_to_string(&Severity::Medium), "medium");
         assert_eq!(severity_to_string(&Severity::High), "high");
         assert_eq!(severity_to_string(&Severity::Critical), "critical");
+    }
+
+    #[test]
+    fn test_workflow_state_to_string_mapping() {
+        assert_eq!(
+            workflow_state_to_string(&Some(WorkflowState::Detected)),
+            Some("detected".to_string())
+        );
+        assert_eq!(
+            workflow_state_to_string(&Some(WorkflowState::Investigating)),
+            Some("investigating".to_string())
+        );
+        assert_eq!(
+            workflow_state_to_string(&Some(WorkflowState::Resolved)),
+            Some("resolved".to_string())
+        );
+        assert_eq!(
+            workflow_state_to_string(&Some(WorkflowState::Verified)),
+            Some("verified".to_string())
+        );
+        assert_eq!(
+            workflow_state_to_string(&Some(WorkflowState::Failed)),
+            Some("failed".to_string())
+        );
+        assert_eq!(workflow_state_to_string(&None), None);
+    }
+
+    #[test]
+    fn test_investigation_response_with_workflow_state() {
+        let response = InvestigationResponse {
+            id: "inv-ws-001".to_string(),
+            status: "investigating".to_string(),
+            service: "payments".to_string(),
+            severity: "high".to_string(),
+            condition: "High error rate".to_string(),
+            started_at: Some("2026-03-18T10:00:00Z".to_string()),
+            completed_at: None,
+            triggered_at: None,
+            impact_score: None,
+            workflow_state: Some("investigating".to_string()),
+            workflow_state_changed_at: Some("2026-03-18T10:00:00Z".to_string()),
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"workflow_state\":\"investigating\""));
+        assert!(json.contains("\"workflow_state_changed_at\":\"2026-03-18T10:00:00Z\""));
     }
 
     #[test]

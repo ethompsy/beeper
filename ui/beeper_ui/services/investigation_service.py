@@ -371,6 +371,51 @@ class InvestigationService:
                 f"Failed to connect to operator: {e}"
             ) from e
 
+    def verify_investigation(self, investigation_id: str) -> bool:
+        """Verify a resolved investigation (transition Resolved → Verified).
+
+        Args:
+            investigation_id: The investigation CRD name.
+
+        Returns:
+            True if verification succeeded, False if not found or invalid state.
+
+        Raises:
+            InvestigationServiceError: If the operator cannot be reached.
+        """
+        try:
+            response = self.client.post(
+                f"{self.operator_url}/api/v1/investigations/{investigation_id}/verify",
+            )
+            if response.status_code in (404, 409):
+                return False
+            response.raise_for_status()
+            return True
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "Timeout verifying investigation %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Timeout connecting to operator: {e}"
+            ) from e
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "Operator returned error verifying investigation %s: %s",
+                investigation_id, e.response.status_code,
+            )
+            raise InvestigationServiceError(
+                f"Operator returned error: {e.response.status_code}"
+            ) from e
+        except httpx.RequestError as e:
+            logger.warning(
+                "Failed to connect to operator for verification %s: %s",
+                investigation_id, e,
+            )
+            raise InvestigationServiceError(
+                f"Failed to connect to operator: {e}"
+            ) from e
+
     def resolve_investigation(
         self,
         investigation_id: str,

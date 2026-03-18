@@ -5776,64 +5776,89 @@ details.evidence-timeline-item[open] {
 }
 
 /* ===== Workflow State Badges ===== */
-.workflow-state-detected {
-    background: rgba(251, 191, 36, 0.15);
-    color: #fbbf24;
-    border: 1px solid rgba(251, 191, 36, 0.3);
+.workflow-state-detected,
+.workflow-state-investigating,
+.workflow-state-resolved,
+.workflow-state-verified,
+.workflow-state-failed {
     padding: 4px 10px;
     border-radius: 12px;
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: capitalize;
     display: inline-block;
+}
+
+.workflow-state-detected {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 .workflow-state-investigating {
     background: rgba(96, 165, 250, 0.15);
     color: #60a5fa;
     border: 1px solid rgba(96, 165, 250, 0.3);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: capitalize;
-    display: inline-block;
 }
 
 .workflow-state-resolved {
     background: rgba(52, 211, 153, 0.15);
     color: #34d399;
     border: 1px solid rgba(52, 211, 153, 0.3);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: capitalize;
-    display: inline-block;
 }
 
 .workflow-state-verified {
     background: rgba(167, 139, 250, 0.15);
     color: #a78bfa;
     border: 1px solid rgba(167, 139, 250, 0.3);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: capitalize;
-    display: inline-block;
 }
 
 .workflow-state-failed {
     background: rgba(248, 113, 113, 0.15);
     color: #f87171;
     border: 1px solid rgba(248, 113, 113, 0.3);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: capitalize;
-    display: inline-block;
+}
+
+/* Workflow State Group Headers */
+.list-view-controls {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+}
+
+.btn-toggle-group {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: var(--text-secondary, #94a3b8);
+    border: 1px solid var(--border-subtle, #333355);
+    background: transparent;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.btn-toggle-group:hover,
+.btn-toggle-group.active {
+    color: var(--text-primary, #f1f5f9);
+    border-color: var(--border-focus, #6366f1);
+}
+
+.workflow-state-group {
+    margin-bottom: 24px;
+}
+
+.workflow-state-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.workflow-state-group-count {
+    color: var(--text-secondary, #94a3b8);
+    font-size: 0.85rem;
+    font-weight: 400;
 }
 
 /* Reduced motion support */

@@ -248,6 +248,9 @@ def list_investigations() -> str:
     workflow_state_filter = request.args.get("workflow_state", "")
     if workflow_state_filter and workflow_state_filter not in VALID_WORKFLOW_STATES:
         workflow_state_filter = ""
+    group_by = request.args.get("group_by", "")
+    if group_by not in ("", "workflow_state"):
+        group_by = ""
 
     svc = get_investigation_service()
     error_message: str | None = None
@@ -332,6 +335,13 @@ def list_investigations() -> str:
     # Calculate if any filter is active
     any_filter_active = bool(status or service or severity or date_range or workflow_state_filter)
 
+    # Group investigations by workflow state if requested
+    grouped_investigations: dict[str, list[Investigation]] = {}
+    if group_by == "workflow_state":
+        for inv in investigations:
+            key = inv.workflow_state or "unknown"
+            grouped_investigations.setdefault(key, []).append(inv)
+
     # Check if this is an HTMX request (for partial updates)
     if request.headers.get("HX-Request"):
         return render_template(
@@ -340,6 +350,8 @@ def list_investigations() -> str:
             urgency_scores=urgency_scores,
             error_message=error_message,
             workflow_state_counts=workflow_state_counts,
+            group_by=group_by,
+            grouped_investigations=grouped_investigations,
         )
 
     return render_template(
@@ -355,6 +367,8 @@ def list_investigations() -> str:
         selected_workflow_state=workflow_state_filter,
         workflow_state_counts=workflow_state_counts,
         any_filter_active=any_filter_active,
+        group_by=group_by,
+        grouped_investigations=grouped_investigations,
     )
 
 
@@ -812,6 +826,40 @@ def confirm_resolution(investigation_id: str) -> str | tuple[str, int]:
             action="confirmed",
             comment=comment,
             confirmed_at=now,
+        )
+    except InvestigationServiceError:
+        return render_template(
+            "investigations/_confirmation_result.html",
+            action="error",
+            error_message="Unable to connect to the Beeper operator.",
+        ), 503
+    finally:
+        svc.close()
+
+
+@investigations_bp.route("/<investigation_id>/verify", methods=["POST"])
+@require_role("user")
+def verify_investigation(investigation_id: str) -> str | tuple[str, int]:
+    """Verify a resolved investigation (Resolved → Verified).
+
+    Calls the operator verify endpoint. Returns HTMX partial on success.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    svc = get_investigation_service()
+    try:
+        success = svc.verify_investigation(investigation_id)
+        if not success:
+            return render_template(
+                "investigations/_confirmation_result.html",
+                action="error",
+                error_message="Investigation not found or not in resolved state.",
+            ), 404
+
+        return render_template(
+            "investigations/_confirmation_result.html",
+            action="verified",
         )
     except InvestigationServiceError:
         return render_template(

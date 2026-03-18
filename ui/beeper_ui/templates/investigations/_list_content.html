@@ -1,10 +1,64 @@
-{% if error_message %}
-<div class="card error-card">
-    <h3>Unable to fetch investigations</h3>
-    <p>{{ error_message }}</p>
-    <p>Make sure the Beeper operator is running and accessible.</p>
-</div>
-{% elif investigations %}
+{% macro investigation_row(inv) %}
+<tr class="investigation-row investigation-row-link">
+    <td>
+        <span class="severity-indicator severity-{{ inv.severity }}"
+              role="img"
+              aria-label="{{ inv.severity }} severity"></span>
+        {{ inv.severity|capitalize }}
+    </td>
+    <td>
+        {% set urgency = urgency_scores.get(inv.id) if urgency_scores is defined and urgency_scores else None %}
+        {% if urgency %}
+            {% if urgency.score > 80 %}
+                {% set urgency_level = "critical" %}
+            {% elif urgency.score > 60 %}
+                {% set urgency_level = "high" %}
+            {% elif urgency.score > 40 %}
+                {% set urgency_level = "medium" %}
+            {% else %}
+                {% set urgency_level = "low" %}
+            {% endif %}
+            <span class="badge urgency-{{ urgency_level }}"
+                  title="Burn rate: {{ urgency.factors.burn_rate_component }} | Budget: {{ urgency.factors.budget_component }} | Severity: {{ urgency.factors.severity_component }}{% if urgency.factors.customer_impact_boost %} | Customer impact boost{% endif %}{% if urgency.factors.confidence_dampening %} | Dampened (low confidence){% endif %}">
+                {{ urgency.score|round(0)|int }}
+            </span>
+            {% if urgency.low_confidence %}
+            <span class="badge badge-warning" title="Low feedback accuracy (&lt;50%) — urgency dampened">low confidence</span>
+            {% endif %}
+        {% else %}
+            &mdash;
+        {% endif %}
+    </td>
+    <td>
+        {% if inv.workflow_state %}
+        <span class="status-badge workflow-state-{{ inv.workflow_state }}">
+            {% if inv.workflow_state == 'detected' %}Detected
+            {% elif inv.workflow_state == 'investigating' %}Investigating
+            {% elif inv.workflow_state == 'resolved' %}Resolved
+            {% elif inv.workflow_state == 'verified' %}Verified
+            {% elif inv.workflow_state == 'failed' %}Failed
+            {% else %}{{ inv.workflow_state|replace('_', ' ')|title }}
+            {% endif %}
+        </span>
+        {% else %}
+        <span class="status-badge investigation-status-{{ inv.status }}">
+            {% if inv.status == 'investigating' %}In Progress
+            {% elif inv.status == 'awaiting_confirmation' %}Awaiting Confirmation
+            {% elif inv.status == 'completed' %}Completed
+            {% elif inv.status == 'failed' %}Failed
+            {% else %}{{ inv.status|replace('_', ' ')|title }}
+            {% endif %}
+        </span>
+        {% endif %}
+    </td>
+    <td><a href="/investigations/{{ inv.id }}" class="investigation-link"><code>{{ inv.id }}</code></a></td>
+    <td><span class="service-badge">{{ inv.service }}</span></td>
+    <td class="investigation-condition">{{ inv.condition }}</td>
+    <td>{{ inv.started_at or 'Pending' }}</td>
+</tr>
+{% endmacro %}
+
+{% macro investigations_table(items) %}
 <table class="investigations-table">
     <thead>
         <tr>
@@ -18,67 +72,52 @@
         </tr>
     </thead>
     <tbody>
-        {% for inv in investigations %}
-        <tr class="investigation-row investigation-row-link">
-            <td>
-                <span class="severity-indicator severity-{{ inv.severity }}"
-                      role="img"
-                      aria-label="{{ inv.severity }} severity"></span>
-                {{ inv.severity|capitalize }}
-            </td>
-            <td>
-                {% set urgency = urgency_scores.get(inv.id) if urgency_scores is defined and urgency_scores else None %}
-                {% if urgency %}
-                    {% if urgency.score > 80 %}
-                        {% set urgency_level = "critical" %}
-                    {% elif urgency.score > 60 %}
-                        {% set urgency_level = "high" %}
-                    {% elif urgency.score > 40 %}
-                        {% set urgency_level = "medium" %}
-                    {% else %}
-                        {% set urgency_level = "low" %}
-                    {% endif %}
-                    <span class="badge urgency-{{ urgency_level }}"
-                          title="Burn rate: {{ urgency.factors.burn_rate_component }} | Budget: {{ urgency.factors.budget_component }} | Severity: {{ urgency.factors.severity_component }}{% if urgency.factors.customer_impact_boost %} | Customer impact boost{% endif %}{% if urgency.factors.confidence_dampening %} | Dampened (low confidence){% endif %}">
-                        {{ urgency.score|round(0)|int }}
-                    </span>
-                    {% if urgency.low_confidence %}
-                    <span class="badge badge-warning" title="Low feedback accuracy (&lt;50%) — urgency dampened">low confidence</span>
-                    {% endif %}
-                {% else %}
-                    &mdash;
-                {% endif %}
-            </td>
-            <td>
-                {% if inv.workflow_state %}
-                <span class="status-badge workflow-state-{{ inv.workflow_state }}">
-                    {% if inv.workflow_state == 'detected' %}Detected
-                    {% elif inv.workflow_state == 'investigating' %}Investigating
-                    {% elif inv.workflow_state == 'resolved' %}Resolved
-                    {% elif inv.workflow_state == 'verified' %}Verified
-                    {% elif inv.workflow_state == 'failed' %}Failed
-                    {% else %}{{ inv.workflow_state|replace('_', ' ')|title }}
-                    {% endif %}
-                </span>
-                {% else %}
-                <span class="status-badge investigation-status-{{ inv.status }}">
-                    {% if inv.status == 'investigating' %}In Progress
-                    {% elif inv.status == 'awaiting_confirmation' %}Awaiting Confirmation
-                    {% elif inv.status == 'completed' %}Completed
-                    {% elif inv.status == 'failed' %}Failed
-                    {% else %}{{ inv.status|replace('_', ' ')|title }}
-                    {% endif %}
-                </span>
-                {% endif %}
-            </td>
-            <td><a href="/investigations/{{ inv.id }}" class="investigation-link"><code>{{ inv.id }}</code></a></td>
-            <td><span class="service-badge">{{ inv.service }}</span></td>
-            <td class="investigation-condition">{{ inv.condition }}</td>
-            <td>{{ inv.started_at or 'Pending' }}</td>
-        </tr>
+        {% for inv in items %}
+        {{ investigation_row(inv) }}
         {% endfor %}
     </tbody>
 </table>
+{% endmacro %}
+
+{% if error_message %}
+<div class="card error-card">
+    <h3>Unable to fetch investigations</h3>
+    <p>{{ error_message }}</p>
+    <p>Make sure the Beeper operator is running and accessible.</p>
+</div>
+{% elif investigations %}
+<div class="list-view-controls">
+    {% if group_by is defined and group_by == 'workflow_state' %}
+    <a href="{{ url_for('investigations.list_investigations') }}"
+       hx-get="{{ url_for('investigations.list_investigations') }}"
+       hx-target="#investigation-list"
+       hx-include="#investigation-filter-panel select"
+       class="btn btn-sm btn-toggle-group active">Flat List</a>
+    {% else %}
+    <a href="{{ url_for('investigations.list_investigations', group_by='workflow_state') }}"
+       hx-get="{{ url_for('investigations.list_investigations', group_by='workflow_state') }}"
+       hx-target="#investigation-list"
+       hx-include="#investigation-filter-panel select"
+       class="btn btn-sm btn-toggle-group">Group by State</a>
+    {% endif %}
+</div>
+
+{% if group_by is defined and group_by == 'workflow_state' and grouped_investigations is defined and grouped_investigations %}
+    {% set state_order = ['detected', 'investigating', 'resolved', 'verified', 'failed', 'unknown'] %}
+    {% for state in state_order %}
+        {% if state in grouped_investigations %}
+        <div class="workflow-state-group">
+            <h3 class="workflow-state-group-header">
+                <span class="status-badge workflow-state-{{ state }}">{{ state|capitalize }}</span>
+                <span class="workflow-state-group-count">({{ grouped_investigations[state]|length }})</span>
+            </h3>
+            {{ investigations_table(grouped_investigations[state]) }}
+        </div>
+        {% endif %}
+    {% endfor %}
+{% else %}
+{{ investigations_table(investigations) }}
+{% endif %}
 {% else %}
 <div class="card empty-state">
     <p>No active investigations.</p>

@@ -350,3 +350,120 @@ class TestValidWorkflowStatesConstant:
             "verified",
             "failed",
         }
+
+
+class TestVerifyRoute:
+    """Test POST /investigations/<id>/verify route."""
+
+    @patch("beeper_ui.routes.investigations.get_investigation_service")
+    def test_verify_route_exists(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that verify route is registered and callable."""
+        mock_svc = MagicMock()
+        mock_svc.verify_investigation.return_value = True
+        mock_get_svc.return_value = mock_svc
+
+        response = client.post("/investigations/inv-test-001/verify")
+        # Should not 404 (route exists)
+        assert response.status_code != 404
+
+    @patch("beeper_ui.routes.investigations.get_investigation_service")
+    def test_verify_route_calls_service(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that verify route calls InvestigationService.verify_investigation."""
+        mock_svc = MagicMock()
+        mock_svc.verify_investigation.return_value = True
+        mock_get_svc.return_value = mock_svc
+
+        client.post("/investigations/inv-test-001/verify")
+        mock_svc.verify_investigation.assert_called_once_with("inv-test-001")
+
+    @patch("beeper_ui.routes.investigations.get_investigation_service")
+    def test_verify_route_not_found(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test verify returns 404 when investigation not found or wrong state."""
+        mock_svc = MagicMock()
+        mock_svc.verify_investigation.return_value = False
+        mock_get_svc.return_value = mock_svc
+
+        response = client.post("/investigations/inv-missing/verify")
+        assert response.status_code == 404
+
+
+class TestGroupByWorkflowState:
+    """Test group_by=workflow_state functionality."""
+
+    @patch("beeper_ui.routes.investigations.get_investigation_service")
+    def test_group_by_toggle_button_renders(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that Group by State toggle button appears."""
+        mock_svc = MagicMock()
+        mock_svc.list_investigations.return_value = [
+            Investigation.from_dict(d)
+            for d in _mock_investigations_with_workflow_states()
+        ]
+        mock_svc.get_investigation_findings.return_value = {}
+        mock_get_svc.return_value = mock_svc
+
+        response = client.get("/investigations/")
+        html = response.data.decode()
+        assert "Group by State" in html
+
+    @patch("beeper_ui.routes.investigations.get_investigation_service")
+    def test_group_by_shows_state_headers(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that group_by=workflow_state renders state group headers."""
+        mock_svc = MagicMock()
+        mock_svc.list_investigations.return_value = [
+            Investigation.from_dict(d)
+            for d in _mock_investigations_with_workflow_states()
+        ]
+        mock_svc.get_investigation_findings.return_value = {}
+        mock_get_svc.return_value = mock_svc
+
+        response = client.get("/investigations/?group_by=workflow_state")
+        html = response.data.decode()
+
+        assert "workflow-state-group-header" in html
+        assert "workflow-state-group-count" in html
+
+    @patch("beeper_ui.routes.investigations.get_investigation_service")
+    def test_flat_list_toggle_when_grouped(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that Flat List toggle appears when grouped."""
+        mock_svc = MagicMock()
+        mock_svc.list_investigations.return_value = [
+            Investigation.from_dict(d)
+            for d in _mock_investigations_with_workflow_states()
+        ]
+        mock_svc.get_investigation_findings.return_value = {}
+        mock_get_svc.return_value = mock_svc
+
+        response = client.get("/investigations/?group_by=workflow_state")
+        html = response.data.decode()
+        assert "Flat List" in html
+
+    @patch("beeper_ui.routes.investigations.get_investigation_service")
+    def test_invalid_group_by_ignored(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
+        """Test that invalid group_by values are ignored."""
+        mock_svc = MagicMock()
+        mock_svc.list_investigations.return_value = [
+            Investigation.from_dict(d)
+            for d in _mock_investigations_with_workflow_states()
+        ]
+        mock_svc.get_investigation_findings.return_value = {}
+        mock_get_svc.return_value = mock_svc
+
+        response = client.get("/investigations/?group_by=invalid")
+        html = response.data.decode()
+        # Should render flat list (invalid group_by ignored)
+        assert "Group by State" in html
+        assert "workflow-state-group-header" not in html
