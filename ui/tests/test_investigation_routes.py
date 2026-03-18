@@ -1774,11 +1774,11 @@ class TestRelatedKBNavigation:
         """Test SSE kb-update event is only sent once per stream.
 
         Iteration 1: findings with prior_research_summary → yields
-            step-update, findings-update, evidence-update, kb-update,
-            remediation-update (5 events)
+            step-update, findings-update, evidence-update, timeline-update,
+            kb-update (5 events)
         Iteration 2: findings with additional key → yields
-            findings-update, evidence-update, remediation-update (3 events,
-            NO second kb-update)
+            findings-update, evidence-update, timeline-update (3 events,
+            NO second kb-update, NO remediation-update since no remediation keys)
         """
         from unittest.mock import patch
 
@@ -1829,11 +1829,12 @@ class TestRelatedKBNavigation:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-detail-001"
                 )
-                # Iteration 1: step, findings, evidence, timeline, kb, remediation (6)
-                # Iteration 2: findings, evidence, timeline, remediation (4)
-                # Total: 10 events
+                # Iteration 1: step, findings, evidence, timeline, kb (5)
+                # Iteration 2: findings, evidence, timeline (3)
+                # No remediation-update (findings lack remediation keys, stage stays None)
+                # Total: 8 events
                 all_events_text = ""
-                for _ in range(10):
+                for _ in range(8):
                     event = next(gen)
                     all_events_text += event
 
@@ -1841,8 +1842,8 @@ class TestRelatedKBNavigation:
                 assert all_events_text.count("event: kb-update") == 1
                 # findings-update should appear twice (once per iteration)
                 assert all_events_text.count("event: findings-update") == 2
-                # remediation-update should appear twice (once per iteration)
-                assert all_events_text.count("event: remediation-update") == 2
+                # remediation-update should not appear (no remediation keys in findings)
+                assert all_events_text.count("event: remediation-update") == 0
 
                 gen.close()
 
@@ -2218,10 +2219,11 @@ class TestResolutionConfirmation:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-awaiting-002"
                 )
-                # Iteration 1: step-update, findings-update, evidence-update, evidence-timeline-update, remediation-update, confirmation-update
+                # Iteration 1: step-update, findings-update, evidence-update, evidence-timeline-update, confirmation-update
+                # (no remediation-update: findings lack remediation keys)
                 # Iteration 2: no key change, but resolution_action changed → confirmation-update
                 events = []
-                for _ in range(7):
+                for _ in range(6):
                     events.append(next(gen))
 
                 all_text = "\n".join(events)
@@ -2267,11 +2269,12 @@ class TestResolutionConfirmation:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-awaiting-001"
                 )
-                # Iteration 1 yields: step-update, findings-update, evidence-update, evidence-timeline-update, remediation-update
-                # Iteration 2 yields: findings-update, evidence-update, evidence-timeline-update, remediation-update, confirmation-update
-                # Total: 10 events
+                # Iteration 1 yields: step-update, findings-update, evidence-update, evidence-timeline-update
+                # Iteration 2 yields: findings-update, evidence-update, evidence-timeline-update, confirmation-update
+                # (no remediation-update: findings lack remediation keys)
+                # Total: 8 events
                 events = []
-                for _ in range(10):
+                for _ in range(8):
                     events.append(next(gen))
 
                 all_text = "\n".join(events)
@@ -2691,10 +2694,11 @@ class TestInvestigationResolution:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-res-002"
                 )
-                # Iteration 1: step-update, findings-update, evidence-update, evidence-timeline-update, remediation-update, resolution-update (6)
+                # Iteration 1: step-update, findings-update, evidence-update, evidence-timeline-update, resolution-update (5)
+                # (no remediation-update: findings lack remediation keys)
                 # Iteration 2: resolution-update only (value changed, no key change) (1)
                 events = []
-                for _ in range(7):
+                for _ in range(6):
                     events.append(next(gen))
 
                 all_text = "\n".join(events)

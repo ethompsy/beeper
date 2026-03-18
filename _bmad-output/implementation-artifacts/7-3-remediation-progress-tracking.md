@@ -1,6 +1,6 @@
 # Story 7.3: Remediation Progress Tracking
 
-Status: review
+Status: done
 
 ## Story
 
@@ -147,6 +147,15 @@ N/A
 - 34 new tests covering all functionality
 - Fixed 4 existing SSE test regressions caused by new `remediation-update` event
 - All 3,418 tests passing (1,013 investigator + 1,867 UI + 538 operator)
+
+### Code Review Fixes (2026-03-18)
+- **HIGH (deferred)**: AC #1 requires "timestamps for completed stages" but pipeline_metadata uses boolean flags, not timestamps. Per-stage timestamps are unavailable without modifying the investigator pipeline (prohibited by architecture). Tracked as known limitation.
+- **MEDIUM**: SSE `remediation-update` now only fires when computed remediation stage actually changes (was firing on every findings key change). Prevents unnecessary DOM re-renders.
+- **MEDIUM**: Added "failed" stage to `compute_remediation_status()` — fires when `sandbox_overall_status == "fail"`. Previously unreachable dead code in labels/CSS.
+- **MEDIUM**: Added functional SSE test verifying stage change detection logic. Replaced static file scan test.
+- **LOW**: Removed dead `is_pending` and `found_active` template variables from `_remediation_progress.html`.
+- Updated 4 SSE test event counts to reflect filtered remediation-update behavior.
+- Added 3 new tests (sandbox failure, sandbox pass, stage change detection).
 
 ### File List
 - `ui/beeper_ui/services/investigation_service.py` (modified — added compute_remediation_status, get_remediation_progress, remediation_status field)

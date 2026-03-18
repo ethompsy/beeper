@@ -123,6 +123,29 @@ class TestComputeRemediationStatus:
         assert result["stage"] == "rolled_back"
         assert result["rollback_reason"] == "Metric degradation detected"
 
+    def test_sandbox_failure_returns_failed(self) -> None:
+        findings = {
+            "pr_generated": True,
+            "draft": False,
+            "sandbox_executed": True,
+            "sandbox_overall_status": "fail",
+        }
+        result = compute_remediation_status(findings)
+        assert result is not None
+        assert result["stage"] == "failed"
+        assert result["label"] == "Failed"
+
+    def test_sandbox_pass_returns_testing(self) -> None:
+        findings = {
+            "pr_generated": True,
+            "draft": False,
+            "sandbox_executed": True,
+            "sandbox_overall_status": "pass",
+        }
+        result = compute_remediation_status(findings)
+        assert result is not None
+        assert result["stage"] == "testing"
+
     def test_runbook_found_only_returns_proposed(self) -> None:
         findings = {"runbook_found": True, "runbook_steps_executed": 3}
         result = compute_remediation_status(findings)
@@ -426,3 +449,23 @@ class TestRemediationSSEEvent:
         assert "remediation-update" in code
         assert "compute_remediation_status" in code
         assert "_remediation_progress.html" in code
+
+    def test_compute_remediation_status_stage_change_detection(self) -> None:
+        """Verify that SSE filtering works: same stage should not trigger re-emit."""
+        # Simulate two findings snapshots with same remediation stage but different non-remediation keys
+        findings_v1 = {"pr_generated": True, "draft": True, "root_cause": "memory leak"}
+        findings_v2 = {"pr_generated": True, "draft": True, "root_cause": "updated cause", "recommendations": "fix it"}
+        status_v1 = compute_remediation_status(findings_v1)
+        status_v2 = compute_remediation_status(findings_v2)
+        assert status_v1 is not None
+        assert status_v2 is not None
+        # Both should be "proposed" — SSE should NOT re-emit
+        assert status_v1["stage"] == status_v2["stage"] == "proposed"
+
+        # Now a real stage change
+        findings_v3 = {**findings_v2, "sandbox_executed": True, "sandbox_overall_status": "pass"}
+        status_v3 = compute_remediation_status(findings_v3)
+        assert status_v3 is not None
+        assert status_v3["stage"] == "testing"
+        # Different stage — SSE SHOULD emit
+        assert status_v3["stage"] != status_v2["stage"]

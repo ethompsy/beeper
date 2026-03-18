@@ -1224,6 +1224,7 @@ def _generate_detail_sse_events(
     last_message: str | None = None
     last_phase: str | None = None
     last_findings_keys: set[str] = set()
+    last_remediation_stage: str | None = None
     kb_update_sent = False
     last_resolution_action: str | None = None
     last_resolution_outcome: str | None = None
@@ -1407,19 +1408,22 @@ def _generate_detail_sse_events(
                         surfacing_svc.close()
                     kb_update_sent = True
 
-                # Update remediation progress card
+                # Update remediation progress card (only when stage changes)
                 try:
                     rem_status = compute_remediation_status(findings)
-                    rem_html = render_template(
-                        "investigations/_remediation_progress.html",
-                        remediation_status=rem_status,
-                        investigation_id=investigation_id,
-                    )
-                    rem_lines = "\n".join(
-                        f"data: {line}"
-                        for line in rem_html.split("\n")
-                    )
-                    yield f"event: remediation-update\n{rem_lines}\n\n"
+                    current_rem_stage = rem_status["stage"] if rem_status else None
+                    if current_rem_stage != last_remediation_stage:
+                        rem_html = render_template(
+                            "investigations/_remediation_progress.html",
+                            remediation_status=rem_status,
+                            investigation_id=investigation_id,
+                        )
+                        rem_lines = "\n".join(
+                            f"data: {line}"
+                            for line in rem_html.split("\n")
+                        )
+                        yield f"event: remediation-update\n{rem_lines}\n\n"
+                        last_remediation_stage = current_rem_stage
                 except Exception:
                     logger.debug(
                         "SSE: Failed to render remediation progress for %s",

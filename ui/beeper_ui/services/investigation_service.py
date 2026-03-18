@@ -812,7 +812,10 @@ def compute_remediation_status(findings: dict[str, Any]) -> dict[str, Any] | Non
     if findings.get("pr_generated"):
         stage = "proposed" if findings.get("draft") else "approved"
     if findings.get("sandbox_executed"):
-        stage = "testing"
+        if findings.get("sandbox_overall_status") == "fail":
+            stage = "failed"
+        else:
+            stage = "testing"
     if findings.get("trust_gate_evaluated"):
         stage = "applied"
     if findings.get("verification_executed"):

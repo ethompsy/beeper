@@ -18,14 +18,9 @@
         {% endif %}
     {% endfor %}
 
-    {% set found_active = {"v": false} %}
     {% for stage_key, stage_label in pipeline_stages %}
         {% set is_completed = completed_map.get(stage_key, false) %}
         {% set is_active = (stage_key == current_stage) %}
-        {% if is_active %}
-            {% set _ = found_active.update({"v": true}) %}
-        {% endif %}
-        {% set is_pending = (not is_completed and not is_active and not found_active.v) %}
 
         {% if is_rolled_back and stage_key == "verified" %}
         <div class="remediation-stage stage-rolled-back" aria-label="Rolled Back">
