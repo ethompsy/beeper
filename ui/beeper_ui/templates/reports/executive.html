@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Executive Report - Beeper{% endblock %}
+{% block content %}
+<div class="print-only executive-print-header">
+    <h1>Beeper Executive Report</h1>
+    <p class="executive-print-date">{{ date_from }} &mdash; {{ date_to }}</p>
+</div>
+<div class="card no-print">
+    <h2>Executive Report</h2>
+    <p>Investor-ready operational metrics and performance trends.</p>
+</div>
+<div id="executive-content">
+    {% include "reports/_executive_content.html" %}
+</div>
+{% endblock %}

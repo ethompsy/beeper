@@ -1,7 +1,6 @@
-"""Noise Report Dashboard routes.
+"""Report Dashboard routes.
 
-Provides a read-only dashboard showing signal-to-noise ratio,
-false page rate trends, and per-service breakdowns.
+Provides noise report dashboard and investor-ready executive reports.
 """
 
 import logging
@@ -9,9 +8,14 @@ import os
 import re
 from typing import Any
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, current_app, render_template, request
+from werkzeug.exceptions import HTTPException
 
 from beeper_ui.middleware.permissions import require_role
+from beeper_ui.services.executive_report_service import (
+    VALID_EXECUTIVE_PERIODS,
+    ExecutiveReportService,
+)
 from beeper_ui.services.noise_report_service import (
     VALID_PERIODS,
     NoiseReportService,
@@ -113,3 +117,85 @@ def _render_error_response(
     if request.headers.get("HX-Request"):
         return render_template("reports/_noise_content.html", **error_data)
     return render_template("reports/noise.html", **error_data)
+
+
+# =============================================================================
+# Executive Report
+# =============================================================================
+
+
+def _get_executive_report_service() -> ExecutiveReportService:
+    """Get configured ExecutiveReportService instance."""
+    return ExecutiveReportService(
+        operator_url=current_app.config["OPERATOR_URL"],
+        timeout=current_app.config.get("OPERATOR_TIMEOUT", 5.0),
+    )
+
+
+@reports_bp.route("/executive")
+@require_role("user")
+def executive_report() -> str:
+    """Render investor-ready executive report.
+
+    Query params:
+        period: Time period (30d, 90d, all). Defaults to 90d.
+
+    Returns:
+        Rendered template (full page or HTMX partial).
+    """
+    period = request.args.get("period", "90d")
+
+    # Validate period
+    if period not in VALID_EXECUTIVE_PERIODS:
+        period = "90d"
+
+    svc = _get_executive_report_service()
+    try:
+        data = svc.get_report_data(period=period)
+
+        template_data: dict[str, Any] = {
+            **data,
+            "selected_period": period,
+            "error_message": None,
+        }
+
+        if request.headers.get("HX-Request"):
+            return render_template(
+                "reports/_executive_content.html", **template_data
+            )
+        return render_template("reports/executive.html", **template_data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to load executive report: %s", e)
+        return _render_executive_error(period)
+    finally:
+        svc.close()
+
+
+def _render_executive_error(period: str) -> str:
+    """Render executive report error page."""
+    error_data: dict[str, Any] = {
+        "current_metrics": {
+            "total_resolved": 0,
+            "mttr_improvement_pct": None,
+            "avg_slo_compliance": None,
+            "trust_progression": {
+                "distribution": {"levels": {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}, "total": 0},
+                "changes_count": 0,
+                "changes": [],
+            },
+            "false_page_rate": 0,
+        },
+        "previous_metrics": {},
+        "comparison": {},
+        "period": period,
+        "period_label": period,
+        "date_from": "",
+        "date_to": "",
+        "selected_period": period,
+        "error_message": "Unable to load executive report data",
+    }
+    if request.headers.get("HX-Request"):
+        return render_template("reports/_executive_content.html", **error_data)
+    return render_template("reports/executive.html", **error_data)

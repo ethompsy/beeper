@@ -1,0 +1,146 @@
+{% if error_message %}
+<div class="card error-card" role="alert">
+    <p>{{ error_message }}</p>
+</div>
+{% else %}
+
+{# Period Filter Bar #}
+<div class="executive-filter-bar no-print">
+    {% for p in ["30d", "90d", "all"] %}
+    <button class="executive-period-btn{% if selected_period == p %} active{% endif %}"
+            hx-get="{{ url_for('reports.executive_report', period=p) }}"
+            hx-target="#executive-content"
+            hx-swap="innerHTML">
+        {% if p == "30d" %}30 days{% elif p == "90d" %}90 days{% else %}All time{% endif %}
+    </button>
+    {% endfor %}
+    <button class="executive-export-btn no-print" onclick="window.print()">Export PDF</button>
+</div>
+
+{# Report Header #}
+<div class="executive-report-header" role="region" aria-label="Report Period">
+    <h3>{{ period_label }}</h3>
+    <p class="executive-date-range">{{ date_from }} &mdash; {{ date_to }}</p>
+</div>
+
+{# Metric Cards Row #}
+<div class="executive-metrics-row" role="region" aria-label="Key Metrics">
+    {# Total Resolved #}
+    <div class="executive-metric-card">
+        <div class="executive-metric-label">Investigations Resolved</div>
+        <div class="executive-metric-value">{{ current_metrics.total_resolved }}</div>
+        {% if comparison and comparison.resolved %}
+        <div class="executive-comparison-badge badge-{{ comparison.resolved.direction }}">
+            {% if comparison.resolved.delta_pct is not none %}
+            {{ comparison.resolved.delta_pct }}% vs previous period
+            {% else %}
+            —
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {# MTTR Improvement #}
+    <div class="executive-metric-card">
+        <div class="executive-metric-label">MTTR Change</div>
+        <div class="executive-metric-value">
+            {% if current_metrics.mttr_improvement_pct is not none %}
+            {{ current_metrics.mttr_improvement_pct }}%
+            {% else %}
+            —
+            {% endif %}
+        </div>
+        {% if comparison and comparison.mttr %}
+        <div class="executive-comparison-badge badge-{{ comparison.mttr.direction }}">
+            {% if comparison.mttr.direction == "improved" %}Faster resolution{% elif comparison.mttr.direction == "declined" %}Slower resolution{% else %}Stable{% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {# SLO Compliance #}
+    <div class="executive-metric-card">
+        <div class="executive-metric-label">SLO Compliance</div>
+        <div class="executive-metric-value">
+            {% if current_metrics.avg_slo_compliance is not none %}
+            {{ "%.2f"|format(current_metrics.avg_slo_compliance * 100) }}%
+            {% else %}
+            —
+            {% endif %}
+        </div>
+        {% if comparison and comparison.slo_compliance %}
+        <div class="executive-comparison-badge badge-{{ comparison.slo_compliance.direction }}">
+            {% if comparison.slo_compliance.delta_pct is not none %}
+            {{ comparison.slo_compliance.delta_pct }}% vs previous period
+            {% else %}
+            —
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {# Trust Progression #}
+    <div class="executive-metric-card">
+        <div class="executive-metric-label">Trust Promotions</div>
+        <div class="executive-metric-value">{{ current_metrics.trust_progression.changes_count }}</div>
+        <div class="executive-comparison-badge badge-stable">
+            {{ current_metrics.trust_progression.distribution.total }} services tracked
+        </div>
+    </div>
+
+    {# False Page Rate #}
+    <div class="executive-metric-card">
+        <div class="executive-metric-label">False Page Rate</div>
+        <div class="executive-metric-value">
+            {{ "%.1f"|format(current_metrics.false_page_rate * 100) }}%
+        </div>
+        {% if comparison and comparison.false_page_rate %}
+        <div class="executive-comparison-badge badge-{{ comparison.false_page_rate.direction }}">
+            {% if comparison.false_page_rate.delta_pct is not none %}
+            {{ comparison.false_page_rate.delta_pct }}% vs previous period
+            {% else %}
+            —
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# Trust Level Distribution #}
+<div class="executive-section" role="region" aria-label="Trust Level Distribution">
+    <h3>Trust Level Distribution</h3>
+    {% set dist = current_metrics.trust_progression.distribution %}
+    {% if dist.total > 0 %}
+    <div class="executive-trust-bar">
+        {% for level in range(1, 6) %}
+        {% set count = dist.levels[level] %}
+        {% if count > 0 %}
+        <div class="executive-trust-segment executive-trust-tl{{ level }}"
+             style="width: {{ (count / dist.total * 100)|round(1) }}%"
+             title="TL{{ level }}: {{ count }} services">
+            TL{{ level }}: {{ count }}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="executive-empty-state">No trust level data available.</p>
+    {% endif %}
+
+    {# Recent Trust Changes #}
+    {% if current_metrics.trust_progression.changes %}
+    <div class="executive-trust-changes">
+        <h4>Recent Trust Level Changes</h4>
+        <ul class="executive-change-list">
+            {% for change in current_metrics.trust_progression.changes %}
+            <li class="executive-change-entry">
+                <strong>{{ change.service }}</strong>:
+                TL{{ change.from_level }} &rarr; TL{{ change.to_level }}
+                {% if change.reason %}<span class="executive-change-reason">— {{ change.reason }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+{% endif %}

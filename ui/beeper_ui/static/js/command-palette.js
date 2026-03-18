@@ -97,10 +97,11 @@
       keywords: ["trust", "settings", "config", "level"],
     },
     {
-      label: "Reports",
-      href: "/reports/",
+      label: "Executive Report",
+      href: "/reports/executive",
       category: "navigation",
-      keywords: ["report", "executive", "investor"],
+      keywords: ["executive", "investor", "report", "diana", "pdf"],
+      shortcut: "g e",
     },
     {
       label: "Analytics Dashboard",
@@ -156,6 +157,7 @@
     m: "/metrics/",
     v: "/services/",
     a: "/analytics/",
+    e: "/reports/executive",
   };
 
   // --- DOM Helpers ---

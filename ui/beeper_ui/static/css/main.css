@@ -6682,3 +6682,301 @@ details.evidence-timeline-item[open] {
     color: #6b7280;
     font-style: italic;
 }
+
+/* =============================================================================
+   Executive Report Styles
+   ============================================================================= */
+
+.executive-filter-bar {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.executive-period-btn {
+    padding: 0.5rem 1rem;
+    border: 1px solid #374151;
+    border-radius: 6px;
+    background: #1f2937;
+    color: #d1d5db;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.executive-period-btn:hover {
+    background: #374151;
+}
+
+.executive-period-btn.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+
+.executive-export-btn {
+    margin-left: auto;
+    padding: 0.5rem 1.25rem;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    background: #2563eb;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.executive-export-btn:hover {
+    background: #1d4ed8;
+}
+
+.executive-report-header {
+    margin-bottom: 1.5rem;
+}
+
+.executive-report-header h3 {
+    margin: 0 0 0.25rem;
+    font-size: 1.25rem;
+    color: #f9fafb;
+}
+
+.executive-date-range {
+    font-size: 0.875rem;
+    color: #9ca3af;
+    margin: 0;
+}
+
+.executive-metrics-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.executive-metric-card {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 1.25rem;
+    text-align: center;
+}
+
+.executive-metric-label {
+    font-size: 0.8125rem;
+    color: #9ca3af;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.executive-metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #f9fafb;
+    margin-bottom: 0.5rem;
+}
+
+.executive-comparison-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.badge-improved {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+}
+
+.badge-declined {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+}
+
+.badge-stable {
+    background: rgba(107, 114, 128, 0.15);
+    color: #9ca3af;
+}
+
+.executive-section {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.executive-section h3 {
+    margin: 0 0 1rem;
+    font-size: 1.125rem;
+    color: #f9fafb;
+}
+
+.executive-trust-bar {
+    display: flex;
+    height: 2.5rem;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.executive-trust-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #ffffff;
+    min-width: 3rem;
+}
+
+.executive-trust-tl1 { background: #ef4444; }
+.executive-trust-tl2 { background: #f59e0b; }
+.executive-trust-tl3 { background: #3b82f6; }
+.executive-trust-tl4 { background: #8b5cf6; }
+.executive-trust-tl5 { background: #10b981; }
+
+.executive-trust-changes h4 {
+    font-size: 0.9375rem;
+    color: #d1d5db;
+    margin: 1rem 0 0.5rem;
+}
+
+.executive-change-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.executive-change-entry {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #374151;
+    font-size: 0.875rem;
+    color: #d1d5db;
+}
+
+.executive-change-entry:last-child {
+    border-bottom: none;
+}
+
+.executive-change-reason {
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-style: italic;
+}
+
+.executive-empty-state {
+    color: #6b7280;
+    font-style: italic;
+}
+
+/* =============================================================================
+   Print Styles
+   ============================================================================= */
+
+.print-only {
+    display: none;
+}
+
+@media print {
+    .no-print,
+    header,
+    nav,
+    #command-palette-overlay,
+    #keyboard-help-overlay,
+    .executive-filter-bar,
+    .executive-export-btn {
+        display: none !important;
+    }
+
+    .print-only {
+        display: block !important;
+    }
+
+    body {
+        background: #ffffff;
+        color: #111827;
+        font-size: 12pt;
+    }
+
+    .container {
+        max-width: 100%;
+        padding: 0;
+    }
+
+    .executive-print-header {
+        text-align: center;
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #111827;
+    }
+
+    .executive-print-header h1 {
+        font-size: 24pt;
+        color: #111827;
+        margin: 0 0 0.5rem;
+    }
+
+    .executive-print-date {
+        font-size: 12pt;
+        color: #6b7280;
+    }
+
+    .executive-metric-card {
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        color: #111827;
+    }
+
+    .executive-metric-label {
+        color: #6b7280;
+    }
+
+    .executive-metric-value {
+        color: #111827;
+    }
+
+    .executive-section {
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        page-break-inside: avoid;
+    }
+
+    .executive-section h3 {
+        color: #111827;
+    }
+
+    .executive-report-header h3 {
+        color: #111827;
+    }
+
+    .executive-date-range {
+        color: #6b7280;
+    }
+
+    .executive-change-entry {
+        color: #374151;
+        border-color: #e5e7eb;
+    }
+
+    .badge-improved {
+        color: #047857;
+        background: #d1fae5;
+    }
+
+    .badge-declined {
+        color: #b91c1c;
+        background: #fee2e2;
+    }
+
+    .badge-stable {
+        color: #6b7280;
+        background: #f3f4f6;
+    }
+
+    .card {
+        display: none;
+    }
+}
