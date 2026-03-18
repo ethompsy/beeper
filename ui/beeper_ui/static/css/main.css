@@ -6315,6 +6315,10 @@ details.evidence-timeline-item[open] {
     color: #d97706;
 }
 
+.reliability-critical .reliability-score-value {
+    color: #dc2626;
+}
+
 .reliability-score-label {
     font-size: 0.875rem;
     color: #6b7280;
@@ -6400,6 +6404,10 @@ details.evidence-timeline-item[open] {
     color: #d97706;
 }
 
+.reliability-score-inline.reliability-critical {
+    color: #dc2626;
+}
+
 .reliability-trend-icon {
     font-size: 0.75rem;
     margin-left: 2px;
@@ -6413,6 +6421,10 @@ details.evidence-timeline-item[open] {
 
 .reliability-warning-card {
     border-left: 3px solid #d97706;
+}
+
+.reliability-critical-card {
+    border-left: 3px solid #dc2626;
 }
 
 .filter-separator {

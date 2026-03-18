@@ -1,6 +1,6 @@
 # Story 7.5: Reliability Score per Service
 
-Status: review
+Status: done
 
 ## Story
 

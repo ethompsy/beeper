@@ -111,7 +111,7 @@ def compute_reliability_score(
                         window_resolutions.append(
                             (c - s).total_seconds() / 3600
                         )
-        if not window_invs and not window_resolutions:
+        if not window_invs:
             return None
         w_freq = max(0.0, 30.0 - (len(window_invs) * 30.0 / max_incidents))
         if window_resolutions:
@@ -143,13 +143,22 @@ def compute_reliability_score(
     else:
         trend = "stable"
 
+    below = score < threshold
+    if score <= 40:
+        score_class = "critical"
+    elif below:
+        score_class = "warning"
+    else:
+        score_class = "good"
+
     return {
         "score": score,
         "trend": trend,
         "slo_component": round(slo_component, 1),
         "frequency_component": round(frequency_component, 1),
         "mttr_component": round(mttr_component, 1),
-        "below_threshold": score < threshold,
+        "below_threshold": below,
+        "score_class": score_class,
     }
 
 

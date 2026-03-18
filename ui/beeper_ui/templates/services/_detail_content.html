@@ -35,7 +35,7 @@
     <div class="reliability-score-header">
         <div role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ rs.score }}"
              aria-label="Reliability score: {{ rs.score }} out of 100"
-             class="reliability-score-meter {% if rs.below_threshold %}reliability-warning{% endif %}">
+             class="reliability-score-meter {% if rs.score_class == 'critical' %}reliability-critical{% elif rs.score_class == 'warning' %}reliability-warning{% endif %}">
             <span class="reliability-score-value">{{ rs.score }}</span>
             <span class="reliability-score-label">/ 100</span>
         </div>

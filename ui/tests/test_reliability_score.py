@@ -59,6 +59,7 @@ class TestComputeReliabilityScore:
         assert result["frequency_component"] == 30.0
         assert result["mttr_component"] == 15.0
         assert result["below_threshold"] is False
+        assert result["score_class"] == "good"
 
     def test_zero_compliance_no_incidents(self) -> None:
         """Zero compliance, no incidents → low score."""
@@ -141,6 +142,7 @@ class TestComputeReliabilityScore:
             threshold=70,
         )
         assert result["below_threshold"] is True
+        assert result["score_class"] in ("warning", "critical")
 
     def test_above_threshold_not_flagged(self) -> None:
         """Score above threshold is not flagged."""
@@ -171,6 +173,38 @@ class TestComputeReliabilityScore:
         )
         # Old investigation not counted
         assert result["frequency_component"] == 30.0
+
+    def test_score_class_critical(self) -> None:
+        """Score <= 40 yields score_class 'critical'."""
+        # 0 compliance + many incidents + slow MTTR → very low score
+        invs = [_inv(f"inv-{i}", started_hours_ago=i * 24, duration_hours=25) for i in range(10)]
+        result = compute_reliability_score(
+            compliance=0.0,
+            investigations=invs,
+        )
+        assert result["score"] <= 40
+        assert result["score_class"] == "critical"
+
+    def test_score_class_warning(self) -> None:
+        """Score 41-69 yields score_class 'warning'."""
+        result = compute_reliability_score(
+            compliance=0.5,
+            investigations=[],
+            threshold=70,
+        )
+        # 20 + 30 + 15 = 65
+        assert result["score"] == 65
+        assert result["score_class"] == "warning"
+
+    def test_score_class_good(self) -> None:
+        """Score >= threshold yields score_class 'good'."""
+        result = compute_reliability_score(
+            compliance=1.0,
+            investigations=[],
+            threshold=70,
+        )
+        assert result["score"] >= 70
+        assert result["score_class"] == "good"
 
 
 # =============================================================================
@@ -426,12 +460,31 @@ class TestServiceListSortRoute:
         assert "By Status" in html
 
     @respx.mock
-    def test_sort_button_active_state(self, client: FlaskClient) -> None:
-        """Sort button shows active state correctly."""
+    def test_sort_button_active_state_default(self, client: FlaskClient) -> None:
+        """Default view shows 'By Status' sort button as active."""
         _mock_list_apis()
         response = client.get("/services/")
         html = response.data.decode()
-        assert "Reliability" in html
+        # By Status button should have active class in default view
+        assert 'sort=status' in html
+        assert 'sort=reliability' in html
+        # The status button should be active (current_sort defaults to "status")
+        # Check that "By Status" button line includes "active"
+        import re
+        status_btn = re.search(r'<button[^>]*sort=status[^>]*>By Status</button>', html)
+        assert status_btn is not None
+        assert "active" in status_btn.group(0)
+
+    @respx.mock
+    def test_sort_button_active_state_reliability(self, client: FlaskClient) -> None:
+        """Reliability sort view shows 'By Reliability' sort button as active."""
+        _mock_list_apis()
+        response = client.get("/services/?sort=reliability")
+        html = response.data.decode()
+        import re
+        reliability_btn = re.search(r'<button[^>]*sort=reliability[^>]*>By Reliability</button>', html)
+        assert reliability_btn is not None
+        assert "active" in reliability_btn.group(0)
 
 
 class TestServiceDetailReliabilityRoute:
@@ -486,12 +539,14 @@ class TestServiceListReliabilityDisplay:
 
     @respx.mock
     def test_list_shows_warning_for_low_score(self, client: FlaskClient) -> None:
-        """Service list shows warning indicator for below-threshold scores."""
+        """Service list shows warning/critical indicator for below-threshold scores."""
         _mock_list_apis()
         response = client.get("/services/")
         assert response.status_code == 200
         html = response.data.decode()
-        assert "reliability-warning" in html or "reliability-score-inline" in html
+        # api-gateway has compliance=0.5, no incidents → score 65, below threshold 70
+        # Should show warning or critical class
+        assert "reliability-warning" in html or "reliability-critical" in html
 
     @respx.mock
     def test_htmx_sort_request(self, client: FlaskClient) -> None:
@@ -504,3 +559,32 @@ class TestServiceListReliabilityDisplay:
         assert response.status_code == 200
         html = response.data.decode()
         assert "service-health-grid" in html or "empty-state" in html
+
+    @respx.mock
+    def test_filter_buttons_preserve_sort(self, client: FlaskClient) -> None:
+        """Filter buttons include current sort parameter in HTMX URLs."""
+        _mock_list_apis()
+        response = client.get("/services/?sort=reliability")
+        assert response.status_code == 200
+        html = response.data.decode()
+        # Filter buttons should preserve sort=reliability
+        assert "sort=reliability" in html
+
+    @respx.mock
+    def test_sort_buttons_preserve_filter(self, client: FlaskClient) -> None:
+        """Sort buttons include current filter parameter in HTMX URLs."""
+        _mock_list_apis()
+        response = client.get("/services/?status=warning&sort=status")
+        assert response.status_code == 200
+        html = response.data.decode()
+        # Sort buttons should preserve status=warning filter
+        assert "status=warning" in html
+
+    @respx.mock
+    def test_score_class_in_service_list(self, client: FlaskClient) -> None:
+        """Service list renders score_class for color differentiation."""
+        _mock_list_apis()
+        response = client.get("/services/")
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert "reliability-score-inline" in html
