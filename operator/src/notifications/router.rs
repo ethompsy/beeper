@@ -11,7 +11,7 @@ use chrono::{NaiveTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-use crate::crds::notification_channel::{ChannelType, NotificationChannelSpec, QuietHoursConfig, RoutingConfig};
+use crate::crds::notification_channel::{ChannelType, NotificationChannelSpec, QuietHoursConfig};
 use super::outbox::OutboxEntry;
 
 /// Error type for routing operations
@@ -354,6 +354,7 @@ fn parse_hh_mm(s: &str) -> Result<NaiveTime, RouterError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crds::notification_channel::RoutingConfig;
     use std::collections::HashMap;
 
     // ===== Helper functions =====
