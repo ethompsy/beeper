@@ -118,7 +118,7 @@ development_status:
   7-3-remediation-progress-tracking: done
   7-4-per-service-health-feeds: done
   7-5-reliability-score-per-service: done
-  7-6-mttr-impact-trust-trend-dashboards: review
+  7-6-mttr-impact-trust-trend-dashboards: done
   7-7-investor-ready-reports: backlog
   epic-7-retrospective: optional
 

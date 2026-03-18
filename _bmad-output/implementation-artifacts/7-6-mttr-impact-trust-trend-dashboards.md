@@ -1,6 +1,6 @@
 # Story 7.6: MTTR, Impact & Trust Trend Dashboards
 
-Status: review
+Status: done
 
 ## Story
 

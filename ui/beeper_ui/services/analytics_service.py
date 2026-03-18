@@ -107,8 +107,8 @@ def compute_mttr_change_pct(
     """
     if len(trends) < 2:
         return None
-    oldest = trends[0]["avg_mttr_hours"]
-    newest = trends[-1]["avg_mttr_hours"]
+    oldest: float = trends[0]["avg_mttr_hours"]
+    newest: float = trends[-1]["avg_mttr_hours"]
     if oldest == 0:
         return None
     return round((newest - oldest) / oldest * 100, 1)
@@ -276,7 +276,7 @@ class AnalyticsService:
                 data = response.json()
                 if isinstance(data, list):
                     return data
-        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+        except httpx.RequestError as e:
             logger.warning("Failed to fetch trust levels: %s", e)
         return []
 

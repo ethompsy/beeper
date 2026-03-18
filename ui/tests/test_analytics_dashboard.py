@@ -1,6 +1,7 @@
 """Tests for MTTR, Impact & Trust Trend Dashboards (Story 7-6)."""
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import respx
 from flask.testing import FlaskClient
@@ -547,8 +548,8 @@ class TestAnalyticsTemplateContent:
         _mock_analytics_apis()
         response = client.get("/analytics/")
         html = response.data.decode()
-        # Badge should be rendered if there are trends
-        assert "mttr-change-badge" in html or "No resolved investigations" in html
+        # Mock data has 2 completed investigations in different weeks — badge must render
+        assert "mttr-change-badge" in html
 
     @respx.mock
     def test_aria_region_landmarks(self, client: FlaskClient) -> None:
@@ -590,3 +591,42 @@ class TestAnalyticsCommandPalette:
         response = client.get("/analytics/")
         html = response.data.decode()
         assert '<a href="/analytics/">Analytics</a>' in html
+
+
+# =============================================================================
+# Error Fallback Tests
+# =============================================================================
+
+
+class TestAnalyticsErrorFallback:
+    """Tests for analytics dashboard error handling."""
+
+    def test_error_renders_error_message(self, client: FlaskClient) -> None:
+        """When service raises, the dashboard renders with error message."""
+        mock_svc = MagicMock()
+        mock_svc.get_dashboard_data.side_effect = RuntimeError("service down")
+        with patch(
+            "beeper_ui.routes.analytics._get_analytics_service",
+            return_value=mock_svc,
+        ):
+            response = client.get("/analytics/")
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert "Unable to load analytics data" in html
+        mock_svc.close.assert_called_once()
+
+    def test_error_htmx_returns_partial(self, client: FlaskClient) -> None:
+        """HTMX error fallback returns partial template, not full page."""
+        mock_svc = MagicMock()
+        mock_svc.get_dashboard_data.side_effect = RuntimeError("service down")
+        with patch(
+            "beeper_ui.routes.analytics._get_analytics_service",
+            return_value=mock_svc,
+        ):
+            response = client.get(
+                "/analytics/", headers={"HX-Request": "true"}
+            )
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert "Unable to load analytics data" in html
+        assert "<!DOCTYPE html>" not in html
