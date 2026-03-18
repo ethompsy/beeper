@@ -28,6 +28,52 @@
     </div>
 </div>
 
+{% if service.reliability_score %}
+{% set rs = service.reliability_score %}
+<div class="card reliability-score-card">
+    <h3>Reliability Score</h3>
+    <div class="reliability-score-header">
+        <div role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ rs.score }}"
+             aria-label="Reliability score: {{ rs.score }} out of 100"
+             class="reliability-score-meter {% if rs.below_threshold %}reliability-warning{% endif %}">
+            <span class="reliability-score-value">{{ rs.score }}</span>
+            <span class="reliability-score-label">/ 100</span>
+        </div>
+        <span class="reliability-trend reliability-trend-{{ rs.trend }}"
+              aria-label="Trend: {{ rs.trend }}">
+            {% if rs.trend == 'improving' %}&#9650;{% elif rs.trend == 'declining' %}&#9660;{% else %}&#8212;{% endif %}
+            {{ rs.trend | capitalize }}
+        </span>
+        {% if rs.below_threshold %}
+        <span class="reliability-threshold-warning" aria-label="Below reliability threshold">Below threshold</span>
+        {% endif %}
+    </div>
+    <div class="reliability-breakdown">
+        <div class="reliability-factor">
+            <span class="reliability-factor-label">SLO Compliance (40%)</span>
+            <div class="reliability-factor-bar-bg">
+                <div class="reliability-factor-bar" style="width: {{ (rs.slo_component / 40 * 100) | round }}%"></div>
+            </div>
+            <span class="reliability-factor-value">{{ rs.slo_component }}</span>
+        </div>
+        <div class="reliability-factor">
+            <span class="reliability-factor-label">Incident Frequency (30%)</span>
+            <div class="reliability-factor-bar-bg">
+                <div class="reliability-factor-bar" style="width: {{ (rs.frequency_component / 30 * 100) | round }}%"></div>
+            </div>
+            <span class="reliability-factor-value">{{ rs.frequency_component }}</span>
+        </div>
+        <div class="reliability-factor">
+            <span class="reliability-factor-label">MTTR (30%)</span>
+            <div class="reliability-factor-bar-bg">
+                <div class="reliability-factor-bar" style="width: {{ (rs.mttr_component / 30 * 100) | round }}%"></div>
+            </div>
+            <span class="reliability-factor-value">{{ rs.mttr_component }}</span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="card" id="health-feed-section">
     <h3>Health Feed</h3>
     <div role="feed" aria-label="Service health feed for {{ service.name }}"

@@ -6286,3 +6286,142 @@ details.evidence-timeline-item[open] {
     background: #e0e7ff;
     color: #3730a3;
 }
+
+/* Reliability Score */
+.reliability-score-card {
+    margin-top: 16px;
+}
+
+.reliability-score-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.reliability-score-meter {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.reliability-score-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #059669;
+}
+
+.reliability-warning .reliability-score-value {
+    color: #d97706;
+}
+
+.reliability-score-label {
+    font-size: 0.875rem;
+    color: #6b7280;
+}
+
+.reliability-trend {
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.reliability-trend-improving {
+    color: #059669;
+    background: #ecfdf5;
+}
+
+.reliability-trend-stable {
+    color: #6b7280;
+    background: #f3f4f6;
+}
+
+.reliability-trend-declining {
+    color: #dc2626;
+    background: #fef2f2;
+}
+
+.reliability-threshold-warning {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #d97706;
+    background: #fffbeb;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.reliability-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.reliability-factor {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.reliability-factor-label {
+    font-size: 0.8125rem;
+    color: #374151;
+    min-width: 180px;
+}
+
+.reliability-factor-bar-bg {
+    flex: 1;
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.reliability-factor-bar {
+    height: 100%;
+    background: #059669;
+    border-radius: 4px;
+    transition: width 0.3s;
+}
+
+.reliability-factor-value {
+    font-size: 0.8125rem;
+    color: #6b7280;
+    min-width: 32px;
+    text-align: right;
+}
+
+/* Reliability in list view */
+.reliability-score-inline {
+    font-weight: 600;
+}
+
+.reliability-score-inline.reliability-warning {
+    color: #d97706;
+}
+
+.reliability-trend-icon {
+    font-size: 0.75rem;
+    margin-left: 2px;
+}
+
+.reliability-threshold-icon {
+    color: #d97706;
+    font-size: 0.75rem;
+    margin-left: 2px;
+}
+
+.reliability-warning-card {
+    border-left: 3px solid #d97706;
+}
+
+.filter-separator {
+    color: #d1d5db;
+    margin: 0 4px;
+}
+
+.sort-label {
+    font-size: 0.8125rem;
+    color: #6b7280;
+    margin-right: 4px;
+}

@@ -41,8 +41,9 @@ def service_list() -> str:
     svc = _get_service_health_service()
     try:
         status_filter = request.args.get("status")
+        sort_by = request.args.get("sort")
         # Fetch all services once, compute counts, then filter
-        all_services = svc.get_service_list()
+        all_services = svc.get_service_list(sort_by=sort_by)
         total = len(all_services)
         healthy_count = sum(
             1 for s in all_services if s["health_status"] == "healthy"
@@ -67,6 +68,7 @@ def service_list() -> str:
             "warning_count": warning_count,
             "critical_count": critical_count,
             "current_filter": status_filter or "all",
+            "current_sort": sort_by or "status",
             "error_message": None,
         }
 
@@ -82,6 +84,7 @@ def service_list() -> str:
             "warning_count": 0,
             "critical_count": 0,
             "current_filter": "all",
+            "current_sort": "status",
             "error_message": "Unable to load service health data",
         }
         if request.headers.get("HX-Request"):

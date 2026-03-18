@@ -19,6 +19,139 @@ from beeper_ui.services.slo_service import SloService, SloServiceError
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_RELIABILITY_THRESHOLD = 70
+DEFAULT_LOOKBACK_DAYS = 30
+DEFAULT_MAX_INCIDENTS = 10
+DEFAULT_MAX_MTTR_HOURS = 24
+
+
+def compute_reliability_score(
+    compliance: float | None,
+    investigations: list["Investigation"],
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    threshold: int = DEFAULT_RELIABILITY_THRESHOLD,
+    max_incidents: int = DEFAULT_MAX_INCIDENTS,
+    max_mttr_hours: float = DEFAULT_MAX_MTTR_HOURS,
+) -> dict[str, Any]:
+    """Compute a 0-100 reliability score as a weighted composite.
+
+    Components:
+        - SLO compliance (40%): compliance * 100 * 0.4
+        - Incident frequency trend (30%): fewer incidents = higher score
+        - MTTR trend (30%): faster resolution = higher score
+
+    Args:
+        compliance: SLO compliance value (0.0-1.0), or None.
+        investigations: List of Investigation objects for this service.
+        lookback_days: Number of days to look back for frequency/MTTR.
+        threshold: Score below which service is flagged.
+        max_incidents: Number of incidents that yields 0 frequency score.
+        max_mttr_hours: MTTR in hours that yields 0 MTTR score.
+
+    Returns:
+        Dict with score, trend, component breakdown, and threshold flag.
+    """
+    now = datetime.now(timezone.utc)
+    lookback_start = now - timedelta(days=lookback_days)
+    week_ago = now - timedelta(days=7)
+    two_weeks_ago = now - timedelta(days=14)
+
+    # SLO component (max 40 points)
+    slo_component = (compliance if compliance is not None else 0.0) * 100 * 0.4
+
+    # Parse investigation timestamps into lookback window
+    def _parse_dt(ts: str | None) -> datetime | None:
+        if not ts:
+            return None
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None
+
+    lookback_investigations = []
+    for inv in investigations:
+        started = _parse_dt(inv.started_at)
+        if started and started >= lookback_start:
+            lookback_investigations.append(inv)
+
+    # Incident frequency component (max 30 points)
+    incident_count = len(lookback_investigations)
+    frequency_component = max(0.0, 30.0 - (incident_count * 30.0 / max_incidents))
+
+    # MTTR component (max 30 points)
+    resolution_hours: list[float] = []
+    for inv in lookback_investigations:
+        if inv.status == "completed" and inv.completed_at and inv.started_at:
+            started = _parse_dt(inv.started_at)
+            completed = _parse_dt(inv.completed_at)
+            if started and completed and completed > started:
+                hours = (completed - started).total_seconds() / 3600
+                resolution_hours.append(hours)
+
+    if resolution_hours:
+        avg_mttr = sum(resolution_hours) / len(resolution_hours)
+        mttr_component = max(0.0, 30.0 - (avg_mttr * 30.0 / max_mttr_hours))
+    else:
+        mttr_component = 15.0  # neutral when no data
+
+    score = round(slo_component + frequency_component + mttr_component)
+    score = max(0, min(100, score))
+
+    # Trend: compare current 7-day window vs previous 7-day window
+    def _window_score(start: datetime, end: datetime) -> float | None:
+        window_invs = []
+        window_resolutions: list[float] = []
+        for inv in investigations:
+            s = _parse_dt(inv.started_at)
+            if s and start <= s < end:
+                window_invs.append(inv)
+                if inv.status == "completed" and inv.completed_at:
+                    c = _parse_dt(inv.completed_at)
+                    if c and s and c > s:
+                        window_resolutions.append(
+                            (c - s).total_seconds() / 3600
+                        )
+        if not window_invs and not window_resolutions:
+            return None
+        w_freq = max(0.0, 30.0 - (len(window_invs) * 30.0 / max_incidents))
+        if window_resolutions:
+            w_mttr = max(
+                0.0,
+                30.0
+                - (
+                    sum(window_resolutions)
+                    / len(window_resolutions)
+                    * 30.0
+                    / max_mttr_hours
+                ),
+            )
+        else:
+            w_mttr = 15.0
+        return slo_component + w_freq + w_mttr
+
+    current_window = _window_score(week_ago, now)
+    previous_window = _window_score(two_weeks_ago, week_ago)
+
+    if current_window is not None and previous_window is not None:
+        diff = current_window - previous_window
+        if diff > 5:
+            trend = "improving"
+        elif diff < -5:
+            trend = "declining"
+        else:
+            trend = "stable"
+    else:
+        trend = "stable"
+
+    return {
+        "score": score,
+        "trend": trend,
+        "slo_component": round(slo_component, 1),
+        "frequency_component": round(frequency_component, 1),
+        "mttr_component": round(mttr_component, 1),
+        "below_threshold": score < threshold,
+    }
+
 
 def compute_health_status(condition: str, active_count: int) -> str:
     """Compute overall health status from SLO condition and active investigation count.
@@ -127,15 +260,19 @@ class ServiceHealthService:
         return 1
 
     def get_service_list(
-        self, status_filter: str | None = None
+        self,
+        status_filter: str | None = None,
+        sort_by: str | None = None,
     ) -> list[dict[str, Any]]:
         """Get all services with aggregated health data.
 
         Args:
             status_filter: Optional filter by health status (healthy/warning/critical).
+            sort_by: Sort order — "reliability" for ascending reliability score,
+                     default sorts by health status (critical first).
 
         Returns:
-            List of service health dicts sorted by health status (critical first).
+            List of service health dicts.
         """
         # Fetch SLO services
         try:
@@ -174,6 +311,11 @@ class ServiceHealthService:
 
             health_status = compute_health_status(condition, active_count)
 
+            reliability = compute_reliability_score(
+                compliance=svc.get("compliance"),
+                investigations=service_investigations,
+            )
+
             services.append(
                 {
                     "name": name,
@@ -187,6 +329,7 @@ class ServiceHealthService:
                     "has_active_investigations": active_count > 0,
                     "trust_level": trust_level,
                     "is_frozen": svc.get("is_frozen", False),
+                    "reliability_score": reliability,
                 }
             )
 
@@ -196,9 +339,16 @@ class ServiceHealthService:
                 s for s in services if s["health_status"] == status_filter
             ]
 
-        # Sort: critical first, then warning, then healthy
-        status_order = {"critical": 0, "warning": 1, "healthy": 2}
-        services.sort(key=lambda s: status_order.get(s["health_status"], 3))
+        # Sort
+        if sort_by == "reliability":
+            services.sort(
+                key=lambda s: s.get("reliability_score", {}).get("score", 0)
+            )
+        else:
+            status_order = {"critical": 0, "warning": 1, "healthy": 2}
+            services.sort(
+                key=lambda s: status_order.get(s["health_status"], 3)
+            )
 
         return services
 
@@ -274,6 +424,11 @@ class ServiceHealthService:
         condition = slo_detail.get("condition", "unknown")
         health_status = compute_health_status(condition, len(active))
 
+        reliability = compute_reliability_score(
+            compliance=slo_detail.get("compliance"),
+            investigations=investigations,
+        )
+
         return {
             "name": name,
             "slo_name": slo_name,
@@ -291,4 +446,5 @@ class ServiceHealthService:
             "active_investigation_count": len(active),
             "slo_detail": slo_detail,
             "budget": budget,
+            "reliability_score": reliability,
         }
