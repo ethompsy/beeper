@@ -41,10 +41,8 @@ def service_list() -> str:
     svc = _get_service_health_service()
     try:
         status_filter = request.args.get("status")
-        services = svc.get_service_list(status_filter=status_filter)
-
-        # Compute summary counts
-        all_services = svc.get_service_list() if status_filter else services
+        # Fetch all services once, compute counts, then filter
+        all_services = svc.get_service_list()
         total = len(all_services)
         healthy_count = sum(
             1 for s in all_services if s["health_status"] == "healthy"
@@ -55,6 +53,12 @@ def service_list() -> str:
         critical_count = sum(
             1 for s in all_services if s["health_status"] == "critical"
         )
+        if status_filter and status_filter in ("healthy", "warning", "critical"):
+            services = [
+                s for s in all_services if s["health_status"] == status_filter
+            ]
+        else:
+            services = all_services
 
         template_data: dict[str, Any] = {
             "services": services,
@@ -90,7 +94,7 @@ def service_list() -> str:
 @services_bp.route("/<name>")
 def service_detail(name: str) -> str:
     """Render per-service health detail page."""
-    if not _SERVICE_NAME_RE.match(name):
+    if not name or len(name) > 100 or not _SERVICE_NAME_RE.match(name):
         abort(404)
 
     svc = _get_service_health_service()
@@ -118,7 +122,7 @@ def service_detail(name: str) -> str:
 @services_bp.route("/<name>/feed-items")
 def service_feed_items(name: str) -> str:
     """Render feed items partial for a service (HTMX lazy-load)."""
-    if not _SERVICE_NAME_RE.match(name):
+    if not name or len(name) > 100 or not _SERVICE_NAME_RE.match(name):
         abort(404)
 
     svc = _get_service_health_service()
@@ -150,7 +154,7 @@ def service_feed_items(name: str) -> str:
 @services_bp.route("/<name>/stream")
 def service_health_stream(name: str) -> Response:
     """SSE stream for real-time service health updates."""
-    if not _SERVICE_NAME_RE.match(name):
+    if not name or len(name) > 100 or not _SERVICE_NAME_RE.match(name):
         abort(404)
 
     def generate() -> Any:

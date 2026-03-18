@@ -1,6 +1,6 @@
 # Story 7.4: Per-Service Health Feeds
 
-Status: review
+Status: done
 
 ## Story
 

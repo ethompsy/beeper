@@ -116,7 +116,7 @@ development_status:
   7-1-command-palette-keyboard-shortcuts: done
   7-2-investigation-workflow-states: done
   7-3-remediation-progress-tracking: done
-  7-4-per-service-health-feeds: review
+  7-4-per-service-health-feeds: done
   7-5-reliability-score-per-service: backlog
   7-6-mttr-impact-trust-trend-dashboards: backlog
   7-7-investor-ready-reports: backlog

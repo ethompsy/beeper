@@ -6,19 +6,19 @@
 <div class="service-health-filter-bar">
     <button class="filter-btn {% if current_filter == 'all' %}active{% endif %}"
             hx-get="/services/?status="
-            hx-target="#service-list-container"
+            hx-target="#services-wrapper"
             hx-swap="innerHTML">All ({{ total_services }})</button>
     <button class="filter-btn filter-btn-healthy {% if current_filter == 'healthy' %}active{% endif %}"
             hx-get="/services/?status=healthy"
-            hx-target="#service-list-container"
+            hx-target="#services-wrapper"
             hx-swap="innerHTML">Healthy ({{ healthy_count }})</button>
     <button class="filter-btn filter-btn-warning {% if current_filter == 'warning' %}active{% endif %}"
             hx-get="/services/?status=warning"
-            hx-target="#service-list-container"
+            hx-target="#services-wrapper"
             hx-swap="innerHTML">Warning ({{ warning_count }})</button>
     <button class="filter-btn filter-btn-critical {% if current_filter == 'critical' %}active{% endif %}"
             hx-get="/services/?status=critical"
-            hx-target="#service-list-container"
+            hx-target="#services-wrapper"
             hx-swap="innerHTML">Critical ({{ critical_count }})</button>
 </div>
 

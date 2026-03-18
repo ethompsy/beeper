@@ -378,6 +378,18 @@ class TestServiceListRoute:
         assert b"auth-service" in response.data
 
     @respx.mock
+    def test_service_list_htmx_filter_targets_wrapper(
+        self, client: FlaskClient
+    ) -> None:
+        """Test HTMX filter buttons target services-wrapper to avoid nesting."""
+        _mock_all_apis()
+        response = client.get("/services/")
+        assert response.status_code == 200
+        assert b'hx-target="#services-wrapper"' in response.data
+        # Ensure old target is not present
+        assert b'hx-target="#service-list-container"' not in response.data
+
+    @respx.mock
     def test_service_list_empty_state(self, client: FlaskClient) -> None:
         """Test empty state when no services exist."""
         respx.get("http://mock-operator:8080/api/v1/slo/services").mock(
@@ -452,6 +464,12 @@ class TestServiceDetailRoute:
     def test_service_detail_invalid_name(self, client: FlaskClient) -> None:
         """Test 404 for invalid service name."""
         response = client.get("/services/invalid%20name!")
+        assert response.status_code == 404
+
+    def test_service_detail_name_too_long(self, client: FlaskClient) -> None:
+        """Test 404 for service name exceeding 100 characters."""
+        long_name = "a" * 101
+        response = client.get(f"/services/{long_name}")
         assert response.status_code == 404
 
 

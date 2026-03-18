@@ -5,7 +5,6 @@ to provide a unified per-service health view.
 """
 
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -19,8 +18,6 @@ from beeper_ui.services.investigation_service import (
 from beeper_ui.services.slo_service import SloService, SloServiceError
 
 logger = logging.getLogger(__name__)
-
-_SERVICE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 def compute_health_status(condition: str, active_count: int) -> str:
