@@ -64,6 +64,18 @@
         </div>
     </div>
 
+    {# Remediation Progress #}
+    <div class="card">
+        <h3>Remediation Progress</h3>
+        <div id="remediation-progress"
+             hx-get="/investigations/{{ investigation.id }}/remediation-progress"
+             hx-trigger="load"
+             hx-swap="innerHTML"
+             sse-swap="remediation-update">
+            <span class="htmx-indicator">Loading remediation progress...</span>
+        </div>
+    </div>
+
     {# Findings #}
     <div class="card">
         <h3>Findings</h3>

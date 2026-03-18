@@ -36,6 +36,7 @@ from beeper_ui.services.investigation_service import (
     InvestigationDetail,
     InvestigationService,
     InvestigationServiceError,
+    compute_remediation_status,
 )
 from beeper_ui.services.kb_service import KBEntry, KBServiceError
 from beeper_ui.services.kb_surfacing_service import KBSurfacingService
@@ -322,6 +323,13 @@ def list_investigations() -> str:
         finally:
             slo_svc.close()
             urgency_svc.close()
+
+        # Compute remediation status from already-fetched findings
+        for inv in investigations:
+            if inv.workflow_state in ("investigating", "resolved"):
+                inv.remediation_status = compute_remediation_status(
+                    findings_map.get(inv.id, {})
+                )
 
     # Sort by urgency if requested
     if sort_by == "urgency" and urgency_scores:
@@ -787,6 +795,31 @@ def investigation_urgency(investigation_id: str) -> str:
         "investigations/_urgency_card.html",
         urgency=urgency,
         error_message=error_message,
+    )
+
+
+@investigations_bp.route("/<investigation_id>/remediation-progress")
+def investigation_remediation_progress(investigation_id: str) -> str:
+    """Return remediation progress tracker partial for an investigation.
+
+    Returns HTMX partial showing the remediation pipeline stages.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    svc = get_investigation_service()
+    try:
+        remediation_status = svc.get_remediation_progress(investigation_id)
+    except Exception:
+        logger.warning("Failed to get remediation progress for %s", investigation_id)
+        remediation_status = None
+    finally:
+        svc.close()
+
+    return render_template(
+        "investigations/_remediation_progress.html",
+        remediation_status=remediation_status,
+        investigation_id=investigation_id,
     )
 
 
@@ -1373,6 +1406,25 @@ def _generate_detail_sse_events(
                     finally:
                         surfacing_svc.close()
                     kb_update_sent = True
+
+                # Update remediation progress card
+                try:
+                    rem_status = compute_remediation_status(findings)
+                    rem_html = render_template(
+                        "investigations/_remediation_progress.html",
+                        remediation_status=rem_status,
+                        investigation_id=investigation_id,
+                    )
+                    rem_lines = "\n".join(
+                        f"data: {line}"
+                        for line in rem_html.split("\n")
+                    )
+                    yield f"event: remediation-update\n{rem_lines}\n\n"
+                except Exception:
+                    logger.debug(
+                        "SSE: Failed to render remediation progress for %s",
+                        investigation_id,
+                    )
 
                 last_findings_keys = current_keys
 

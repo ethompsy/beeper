@@ -51,6 +51,16 @@
         </span>
         {% endif %}
     </td>
+    <td>
+        {% if inv.remediation_status %}
+        <a href="/investigations/{{ inv.id }}#remediation-progress"
+           class="remediation-badge remediation-stage-{{ inv.remediation_status.stage }}">
+            {{ inv.remediation_status.label }}
+        </a>
+        {% else %}
+        &mdash;
+        {% endif %}
+    </td>
     <td><a href="/investigations/{{ inv.id }}" class="investigation-link"><code>{{ inv.id }}</code></a></td>
     <td><span class="service-badge">{{ inv.service }}</span></td>
     <td class="investigation-condition">{{ inv.condition }}</td>
@@ -65,6 +75,7 @@
             <th>Severity</th>
             <th>Urgency</th>
             <th>Status</th>
+            <th>Remediation</th>
             <th>ID</th>
             <th>Service</th>
             <th>Condition</th>

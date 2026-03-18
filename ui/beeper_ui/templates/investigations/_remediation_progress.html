@@ -1,0 +1,128 @@
+{% if remediation_status %}
+<div class="remediation-timeline" role="group" aria-label="Remediation progress">
+    {% set pipeline_stages = [
+        ("proposed", "Proposed"),
+        ("approved", "Approved"),
+        ("testing", "Testing"),
+        ("applied", "Applied"),
+        ("verifying", "Verifying"),
+        ("verified", "Verified"),
+    ] %}
+    {% set current_stage = remediation_status.stage %}
+    {% set is_rolled_back = current_stage == "rolled_back" %}
+    {% set is_failed = current_stage == "failed" %}
+    {% set completed_map = {} %}
+    {% for sc in remediation_status.stages_completed %}
+        {% if sc.status == "completed" %}
+            {% set _ = completed_map.update({sc.name: true}) %}
+        {% endif %}
+    {% endfor %}
+
+    {% set found_active = {"v": false} %}
+    {% for stage_key, stage_label in pipeline_stages %}
+        {% set is_completed = completed_map.get(stage_key, false) %}
+        {% set is_active = (stage_key == current_stage) %}
+        {% if is_active %}
+            {% set _ = found_active.update({"v": true}) %}
+        {% endif %}
+        {% set is_pending = (not is_completed and not is_active and not found_active.v) %}
+
+        {% if is_rolled_back and stage_key == "verified" %}
+        <div class="remediation-stage stage-rolled-back" aria-label="Rolled Back">
+            <div class="stage-indicator">
+                <span class="stage-icon stage-icon-rolled-back">&#8617;</span>
+            </div>
+            <div class="stage-content">
+                <span class="stage-label">Rolled Back</span>
+            </div>
+        </div>
+        {% elif is_active %}
+        <div class="remediation-stage stage-active" aria-current="step" aria-label="{{ stage_label }} (active)">
+            <div class="stage-indicator">
+                <span class="stage-icon stage-icon-active"></span>
+            </div>
+            <div class="stage-content">
+                <span class="stage-label">{{ stage_label }}</span>
+            </div>
+        </div>
+        {% elif is_completed %}
+        <div class="remediation-stage stage-completed" aria-label="{{ stage_label }} (completed)">
+            <div class="stage-indicator">
+                <span class="stage-icon stage-icon-completed">&#10003;</span>
+            </div>
+            <div class="stage-content">
+                <span class="stage-label">{{ stage_label }}</span>
+            </div>
+        </div>
+        {% else %}
+        <div class="remediation-stage stage-pending" aria-label="{{ stage_label }} (pending)">
+            <div class="stage-indicator">
+                <span class="stage-icon stage-icon-pending"></span>
+            </div>
+            <div class="stage-content">
+                <span class="stage-label">{{ stage_label }}</span>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if not loop.last %}
+        <div class="remediation-connector{% if is_completed %} connector-completed{% endif %}"></div>
+        {% endif %}
+    {% endfor %}
+</div>
+
+{# Rollback details section #}
+{% if is_rolled_back %}
+<div class="rollback-details">
+    <h4>Rollback Details</h4>
+    {% if remediation_status.rollback_reason %}
+    <p><strong>Reason:</strong> {{ remediation_status.rollback_reason }}</p>
+    {% endif %}
+    {% if remediation_status.verification_results %}
+    <table class="metric-comparison-table">
+        <thead>
+            <tr>
+                <th>Metric</th>
+                <th>Pre-Fix</th>
+                <th>Post-Fix</th>
+                <th>Delta</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for result in remediation_status.verification_results %}
+            <tr>
+                <td>{{ result.get("metric", "Unknown") }}</td>
+                <td>{{ result.get("pre_value", "—") }}</td>
+                <td>{{ result.get("post_value", "—") }}</td>
+                <td>{{ result.get("delta", "—") }}</td>
+                <td>
+                    <span class="status-badge {% if result.get('status') == 'improved' %}workflow-state-resolved{% elif result.get('status') == 'degraded' %}workflow-state-failed{% else %}workflow-state-detected{% endif %}">
+                        {{ result.get("status", "unknown")|capitalize }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endif %}
+
+{# Action links #}
+{% if remediation_status.pr_url or remediation_status.proven_fix_entry_id %}
+<div class="remediation-actions">
+    {% if remediation_status.pr_url %}
+    <a href="{{ remediation_status.pr_url }}" target="_blank" rel="noopener noreferrer"
+       class="btn btn-sm btn-outline">View PR</a>
+    {% endif %}
+    {% if remediation_status.proven_fix_entry_id %}
+    <a href="/knowledge/{{ remediation_status.proven_fix_entry_id }}"
+       class="btn btn-sm btn-outline">View KB Entry</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<p class="empty-state-text">No remediation actions for this investigation.</p>
+{% endif %}

@@ -5861,10 +5861,187 @@ details.evidence-timeline-item[open] {
     font-weight: 400;
 }
 
+/* ========== Remediation Progress Tracker ========== */
+
+.remediation-timeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 12px 0;
+    overflow-x: auto;
+}
+
+.remediation-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.remediation-connector {
+    flex: 1;
+    height: 2px;
+    background: var(--border-color, #334155);
+    min-width: 20px;
+}
+
+.remediation-connector.connector-completed {
+    background: #34d399;
+}
+
+.stage-indicator {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 6px;
+}
+
+.stage-icon {
+    font-size: 0.85rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.stage-completed .stage-indicator {
+    background: rgba(52, 211, 153, 0.15);
+    border: 2px solid #34d399;
+}
+
+.stage-completed .stage-icon-completed {
+    color: #34d399;
+}
+
+.stage-active .stage-indicator {
+    background: rgba(96, 165, 250, 0.15);
+    border: 2px solid #60a5fa;
+    animation: stage-pulse 2s infinite;
+}
+
+.stage-active .stage-icon-active {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #60a5fa;
+}
+
+.stage-pending .stage-indicator {
+    background: rgba(148, 163, 184, 0.1);
+    border: 2px solid rgba(148, 163, 184, 0.3);
+}
+
+.stage-pending .stage-icon-pending {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.3);
+}
+
+.stage-rolled-back .stage-indicator {
+    background: rgba(251, 146, 60, 0.15);
+    border: 2px solid #fb923c;
+}
+
+.stage-rolled-back .stage-icon-rolled-back {
+    color: #fb923c;
+}
+
+.stage-failed .stage-indicator {
+    background: rgba(248, 113, 113, 0.15);
+    border: 2px solid #f87171;
+}
+
+.stage-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary, #94a3b8);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.stage-active .stage-label {
+    color: #60a5fa;
+    font-weight: 600;
+}
+
+@keyframes stage-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(96, 165, 250, 0); }
+}
+
+/* Remediation list badges */
+.remediation-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-decoration: none;
+    text-transform: capitalize;
+    white-space: nowrap;
+}
+
+.remediation-stage-proposed { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
+.remediation-stage-approved { background: rgba(96, 165, 250, 0.15); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.3); }
+.remediation-stage-testing { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
+.remediation-stage-applied { background: rgba(45, 212, 191, 0.15); color: #2dd4bf; border: 1px solid rgba(45, 212, 191, 0.3); }
+.remediation-stage-verifying { background: rgba(167, 139, 250, 0.15); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.3); }
+.remediation-stage-verified { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
+.remediation-stage-rolled_back { background: rgba(251, 146, 60, 0.15); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.3); }
+.remediation-stage-failed { background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); }
+
+/* Rollback details */
+.rollback-details {
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(251, 146, 60, 0.05);
+    border: 1px solid rgba(251, 146, 60, 0.2);
+    border-radius: 8px;
+}
+
+.rollback-details h4 {
+    margin: 0 0 8px;
+    font-size: 0.85rem;
+    color: #fb923c;
+}
+
+.metric-comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 0.8rem;
+}
+
+.metric-comparison-table th,
+.metric-comparison-table td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color, #334155);
+}
+
+.metric-comparison-table th {
+    color: var(--text-secondary, #94a3b8);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+}
+
+/* Remediation action links */
+.remediation-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
     .command-palette-overlay,
     .keyboard-help-overlay {
         backdrop-filter: none;
+    }
+    .stage-active .stage-indicator {
+        animation: none;
     }
 }

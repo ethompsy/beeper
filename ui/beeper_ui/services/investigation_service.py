@@ -30,6 +30,7 @@ class Investigation:
     triggered_at: str | None = None
     workflow_state: str | None = None
     workflow_state_changed_at: str | None = None
+    remediation_status: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Investigation":
@@ -262,6 +263,22 @@ class InvestigationService:
             )
             return {}
 
+
+    def get_remediation_progress(
+        self, investigation_id: str
+    ) -> dict[str, Any] | None:
+        """Get remediation progress for an investigation.
+
+        Fetches findings from Qdrant and computes remediation status.
+
+        Args:
+            investigation_id: The investigation ID.
+
+        Returns:
+            Remediation status dict or None if no remediation.
+        """
+        findings = self.get_investigation_findings(investigation_id)
+        return compute_remediation_status(findings)
 
     def confirm_resolution(
         self, investigation_id: str, comment: str | None = None
@@ -762,6 +779,83 @@ class InvestigationService:
                 "Failed to save resolution feedback for %s: %s",
                 investigation_id, e,
             )
+
+
+_REMEDIATION_STAGE_LABELS: dict[str, str] = {
+    "proposed": "PR Open",
+    "approved": "PR Approved",
+    "testing": "Sandbox Testing",
+    "applied": "Fix Applied",
+    "verifying": "Verifying",
+    "verified": "Verified",
+    "rolled_back": "Rolled Back",
+    "failed": "Failed",
+}
+
+_REMEDIATION_KEYS = {
+    "runbook_found", "sandbox_executed", "verification_executed",
+    "pr_generated", "trust_gate_evaluated", "kb_entry_created",
+}
+
+
+def compute_remediation_status(findings: dict[str, Any]) -> dict[str, Any] | None:
+    """Compute remediation progress from Qdrant pipeline_metadata.
+
+    Returns None if no remediation was attempted, or a dict with stage,
+    label, stages_completed, pr_url, rollback_reason, verification_results.
+    """
+    if not findings or not _REMEDIATION_KEYS.intersection(findings):
+        return None
+
+    # Determine current stage (later stages override earlier ones)
+    stage = "proposed"
+    if findings.get("pr_generated"):
+        stage = "proposed" if findings.get("draft") else "approved"
+    if findings.get("sandbox_executed"):
+        stage = "testing"
+    if findings.get("trust_gate_evaluated"):
+        stage = "applied"
+    if findings.get("verification_executed"):
+        v_status = findings.get("verification_status", "")
+        if v_status == "confirmed":
+            stage = "verified"
+        elif v_status == "degraded":
+            stage = "rolled_back"
+        else:
+            stage = "verifying"
+
+    # Build completed stages list
+    pipeline_stages = [
+        ("proposed", findings.get("pr_generated") or findings.get("runbook_found")),
+        ("approved", findings.get("pr_generated") and not findings.get("draft")),
+        ("testing", findings.get("sandbox_executed")),
+        ("applied", findings.get("trust_gate_evaluated")),
+        ("verifying", findings.get("verification_executed")),
+        ("verified", findings.get("verification_status") == "confirmed"),
+    ]
+    stages_completed = []
+    for name, completed in pipeline_stages:
+        status = "completed" if completed else "pending"
+        stages_completed.append({"name": name, "status": status})
+
+    # Rollback reason
+    rollback_reason: str | None = None
+    if stage == "rolled_back":
+        rollback_paths = findings.get("trust_gate_rollback_paths", [])
+        if rollback_paths and isinstance(rollback_paths, list):
+            rollback_reason = rollback_paths[0].get("reason", "Metric degradation detected")
+        else:
+            rollback_reason = "Metric degradation detected"
+
+    return {
+        "stage": stage,
+        "label": _REMEDIATION_STAGE_LABELS.get(stage, stage),
+        "stages_completed": stages_completed,
+        "pr_url": findings.get("pr_url"),
+        "rollback_reason": rollback_reason,
+        "verification_results": findings.get("verification_results"),
+        "proven_fix_entry_id": findings.get("proven_fix_entry_id"),
+    }
 
 
 class InvestigationServiceError(Exception):

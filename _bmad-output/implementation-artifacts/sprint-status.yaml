@@ -115,7 +115,7 @@ development_status:
   epic-7: in-progress
   7-1-command-palette-keyboard-shortcuts: done
   7-2-investigation-workflow-states: done
-  7-3-remediation-progress-tracking: backlog
+  7-3-remediation-progress-tracking: review
   7-4-per-service-health-feeds: backlog
   7-5-reliability-score-per-service: backlog
   7-6-mttr-impact-trust-trend-dashboards: backlog
