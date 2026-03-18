@@ -1,6 +1,6 @@
 # Story 6.9: Change Event Ingestion & Correlation
 
-Status: review
+Status: done
 
 ## Story
 

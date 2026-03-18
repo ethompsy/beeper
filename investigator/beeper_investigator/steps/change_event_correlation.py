@@ -461,7 +461,7 @@ class ChangeEventCorrelationStep:
                 continue
 
             duplicate = False
-            for existing in events:
+            for existing in combined:
                 if existing["resource_name"] != mod_name:
                     continue
                 try:

@@ -390,6 +390,50 @@ class TestChangeEventCorrelationStep:
 
     @patch("beeper_investigator.steps.change_event_correlation.client")
     @patch("beeper_investigator.steps.change_event_correlation.config")
+    def test_deduplication_across_label_selectors(
+        self, mock_config: MagicMock, mock_client: MagicMock
+    ) -> None:
+        """Same resource found via both label selectors is deduplicated."""
+        now = datetime.now(timezone.utc)
+        ts = now - timedelta(minutes=3)
+
+        # ConfigMap matched by BOTH app= and app.kubernetes.io/name= selectors
+        mock_cm = MagicMock()
+        mock_cm.metadata.name = "payments-config"
+        mock_field = MagicMock()
+        mock_field.time = ts
+        mock_cm.metadata.managed_fields = [mock_field]
+
+        mock_core = MagicMock()
+        mock_core.list_namespaced_event.return_value = MagicMock(items=[])
+        # Both label selector queries return the same ConfigMap
+        mock_core.list_namespaced_config_map.return_value = MagicMock(items=[mock_cm])
+        mock_core.list_namespaced_secret.return_value = MagicMock(items=[])
+        mock_client.CoreV1Api.return_value = mock_core
+
+        mock_autoscaling = MagicMock()
+        mock_autoscaling.list_namespaced_horizontal_pod_autoscaler.return_value = (
+            MagicMock(items=[])
+        )
+        mock_client.AutoscalingV1Api.return_value = mock_autoscaling
+
+        mock_networking = MagicMock()
+        mock_networking.list_namespaced_ingress.return_value = MagicMock(items=[])
+        mock_client.NetworkingV1Api.return_value = mock_networking
+
+        mock_custom = MagicMock()
+        mock_custom.list_namespaced_custom_object.return_value = {"items": []}
+        mock_client.CustomObjectsApi.return_value = mock_custom
+
+        step = _make_step()
+        result = step.execute()
+
+        # Should be deduplicated — ConfigMap returned by both selectors, but only 1 result
+        assert len(result.data["change_events"]) == 1
+        assert result.data["change_events"][0]["resource_name"] == "payments-config"
+
+    @patch("beeper_investigator.steps.change_event_correlation.client")
+    @patch("beeper_investigator.steps.change_event_correlation.config")
     def test_filters_non_watched_resource_types(
         self, mock_config: MagicMock, mock_client: MagicMock
     ) -> None:

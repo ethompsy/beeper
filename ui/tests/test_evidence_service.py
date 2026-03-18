@@ -699,3 +699,56 @@ class TestExtractDeployCorrelationReferences:
         refs = service.extract_evidence_references("inv-1", findings)
         deploy_refs = [r for r in refs if r.evidence_type == "deploy"]
         assert len(deploy_refs) == 3
+
+
+class TestExtractChangeEventReferences:
+    """Test change event correlation evidence extraction."""
+
+    def test_change_events_extracted(self, service):
+        findings = {
+            "change_events": [
+                {
+                    "resource_type": "ConfigMap",
+                    "resource_name": "payments-config",
+                    "confidence": "strong",
+                    "change_description": "Updated TIMEOUT_MS from 5000 to 1000",
+                    "timestamp": "2026-03-17T12:00:00+00:00",
+                    "time_gap_seconds": 180,
+                    "namespace": "default",
+                    "reason": "Modified",
+                }
+            ],
+        }
+        refs = service.extract_evidence_references("inv-1", findings)
+        change_refs = [r for r in refs if r.evidence_type == "config_change"]
+        assert len(change_refs) == 1
+        assert change_refs[0].source_type == "config"
+        assert change_refs[0].source_ref == "payments-config"
+        assert "ConfigMap" in change_refs[0].title
+        assert "strong" in change_refs[0].title
+
+    def test_no_change_events_produces_no_evidence(self, service):
+        findings = {"change_events": []}
+        refs = service.extract_evidence_references("inv-1", findings)
+        change_refs = [r for r in refs if r.evidence_type == "config_change"]
+        assert len(change_refs) == 0
+
+    def test_multiple_change_events_all_extracted(self, service):
+        findings = {
+            "change_events": [
+                {
+                    "resource_type": f"Type{i}",
+                    "resource_name": f"resource-{i}",
+                    "confidence": "moderate",
+                    "change_description": f"Change {i}",
+                    "timestamp": "2026-03-17T12:00:00+00:00",
+                    "time_gap_seconds": 60 * i,
+                    "namespace": "default",
+                    "reason": "",
+                }
+                for i in range(1, 4)
+            ],
+        }
+        refs = service.extract_evidence_references("inv-1", findings)
+        change_refs = [r for r in refs if r.evidence_type == "config_change"]
+        assert len(change_refs) == 3
