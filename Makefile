@@ -5,7 +5,7 @@ DEMO_NAMESPACE := beeper-demo
 DEMO_IMAGE := beeper/demo-app:latest
 DEMO_DIR := demo
 
-.PHONY: demo-build demo-deploy demo-teardown demo-status demo-logs demo-fault demo-recover demo-fault-status demo-fault-list
+.PHONY: demo-build demo-deploy demo-teardown demo-status demo-logs demo-fault demo-recover demo-fault-status demo-fault-list demo-lifecycle demo-lifecycle-status demo-lifecycle-reset demo-lifecycle-timeline
 
 ## Build the demo application Docker image
 demo-build:
@@ -123,3 +123,61 @@ demo-fault-list:
 	@echo ""
 	@echo "Usage: make demo-fault TYPE=<type> SERVICE=<service>"
 	@echo "       make demo-recover [SERVICE=<service>]"
+
+## Start a full lifecycle demonstration
+## Usage: make demo-lifecycle FAULT=memory-leak [SERVICE=backend] [TRUST=5]
+demo-lifecycle:
+	@test -n "$(FAULT)" || (echo "Error: FAULT is required (memory-leak, bad-deploy, cascading-failure, scale-dependent)" && exit 1)
+	$(eval LIFECYCLE_SERVICE := $(or $(SERVICE),backend))
+	$(eval LIFECYCLE_TRUST := $(or $(TRUST),5))
+	@echo "==> Starting full lifecycle demo: fault=$(FAULT), service=$(LIFECYCLE_SERVICE), trust_level=$(LIFECYCLE_TRUST)..."
+	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
+		wget -qO- --post-data='{"fault_type":"$(FAULT)","trust_level":$(LIFECYCLE_TRUST)}' \
+		--header='Content-Type: application/json' \
+		http://localhost:8080/lifecycle/start 2>/dev/null || \
+		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
+		wget -qO- --post-data='{"fault_type":"$(FAULT)","trust_level":$(LIFECYCLE_TRUST)}' \
+		--header='Content-Type: application/json' \
+		http://localhost:8081/lifecycle/start 2>/dev/null || \
+		echo "  Failed to start lifecycle. Is the demo deployed?"
+	@echo ""
+	@echo "==> Lifecycle started. Monitor with: make demo-lifecycle-status"
+
+## Show lifecycle demonstration status
+## Usage: make demo-lifecycle-status [SERVICE=backend]
+demo-lifecycle-status:
+	$(eval LIFECYCLE_SERVICE := $(or $(SERVICE),backend))
+	@echo "==> Lifecycle Status ($(LIFECYCLE_SERVICE)):"
+	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
+		wget -qO- http://localhost:8080/lifecycle/status 2>/dev/null || \
+		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
+		wget -qO- http://localhost:8081/lifecycle/status 2>/dev/null || \
+		echo "  unavailable"
+
+## Reset lifecycle demonstration
+## Usage: make demo-lifecycle-reset [SERVICE=backend]
+demo-lifecycle-reset:
+	$(eval LIFECYCLE_SERVICE := $(or $(SERVICE),backend))
+	@echo "==> Resetting lifecycle on $(LIFECYCLE_SERVICE)..."
+	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
+		wget -qO- --post-data='{}' \
+		--header='Content-Type: application/json' \
+		http://localhost:8080/lifecycle/reset 2>/dev/null || \
+		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
+		wget -qO- --post-data='{}' \
+		--header='Content-Type: application/json' \
+		http://localhost:8081/lifecycle/reset 2>/dev/null || \
+		echo "  Failed to reset lifecycle."
+	@echo ""
+	@echo "==> Lifecycle reset complete."
+
+## Show full lifecycle timeline with narration
+## Usage: make demo-lifecycle-timeline [SERVICE=backend]
+demo-lifecycle-timeline:
+	$(eval LIFECYCLE_SERVICE := $(or $(SERVICE),backend))
+	@echo "==> Lifecycle Timeline ($(LIFECYCLE_SERVICE)):"
+	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
+		wget -qO- http://localhost:8080/lifecycle/timeline 2>/dev/null || \
+		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
+		wget -qO- http://localhost:8081/lifecycle/timeline 2>/dev/null || \
+		echo "  unavailable"
