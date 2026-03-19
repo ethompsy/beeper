@@ -502,6 +502,22 @@ class TestScenarioEdgeCases:
         data = resp.get_json()
         assert data["total_runs"] == 0
 
+    def test_run_history_capped_at_100(self):
+        """Verify run history is capped at 100 entries to prevent memory growth."""
+        app = create_app(role="backend")
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        for _ in range(105):
+            client.post("/scenarios/run", json={"scenario": "memory-leak"})
+
+        resp = client.get("/scenarios/status")
+        data = resp.get_json()
+        assert data["total_runs"] == 105
+        assert len(data["runs"]) == 100
+        # Oldest runs should be trimmed — first run number should be 6
+        assert data["runs"][0]["run_number"] == 6
+
     def test_mixed_scenario_and_lifecycle_operations(self, scenario_client):
         """Run a scenario, then a direct lifecycle, then another scenario."""
         resp1 = scenario_client.post(

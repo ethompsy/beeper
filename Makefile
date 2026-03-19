@@ -198,7 +198,7 @@ demo-scenario:
 		http://localhost:8081/scenarios/run 2>/dev/null || \
 		echo "  Failed to run scenario. Is the demo deployed?"
 	@echo ""
-	@echo "==> Scenario complete. Check results with: make demo-scenario-status"
+	@echo "==> Scenario complete."
 
 ## List available demo scenarios
 demo-list:

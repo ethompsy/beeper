@@ -1,6 +1,6 @@
 # Story 8.4: Scripted Repeatable Demo Scenarios
 
-Status: in-progress
+Status: done
 
 ## Story
 
@@ -146,3 +146,30 @@ Claude Opus 4.6
 - Makefile (MODIFIED) — Added demo-scenario, demo-list, demo-all targets
 - _bmad-output/implementation-artifacts/8-4-scripted-repeatable-demo-scenarios.md (NEW) — Story spec with task completion
 - _bmad-output/implementation-artifacts/sprint-status.yaml (MODIFIED) — Updated 8-4 status to in-progress
+
+## Senior Developer Review (AI)
+
+### Review Date: 2026-03-18
+
+**Issues Found:** 1 HIGH, 3 MEDIUM, 3 LOW
+
+### Fixed Issues
+
+1. **[HIGH] Scenario runs list grows unboundedly** — `state["runs"]` appended without limit in `_run_scenario()`. Capped at 100 entries with FIFO eviction. Added test `test_run_history_capped_at_100` verifying cap behavior.
+2. **[MEDIUM] `scenario_run` endpoint doesn't reset `scenario_active` on exception** — Added try/finally to ensure `scenario_active` and `current_scenario` are always reset.
+3. **[MEDIUM] `scenario_run_all` endpoint doesn't reset `run_all_active` on exception** — Added try/finally to ensure `run_all_active`, `scenario_active`, and `current_scenario` are always reset.
+4. **[MEDIUM] Makefile `demo-scenario` references non-existent `demo-scenario-status` target** — Removed misleading help text referencing non-existent target.
+
+### Accepted Issues (LOW)
+
+5. **[LOW] YAML scenario files are reference-only, never loaded by server** — Design decision: embedded dict is source of truth, YAML files are documentation for human readability.
+6. **[LOW] `test_list_works_for_all_roles` uses conftest `client` fixture** — Works correctly, just different fixture naming convention. No action needed.
+7. **[LOW] f-string in error response detail field** — This is a user-facing API response, not logging. Pattern is consistent with fault control API. No action needed.
+
+### Post-Review Test Results
+
+- Demo: 311 passed (67 scenario tests including 1 new review test)
+- Investigator: 1001 passed (12 pre-existing async env failures)
+- UI: 2023 passed
+- Operator: 538 passed
+- Total: 3,873 tests, no regressions

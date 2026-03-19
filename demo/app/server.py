@@ -716,6 +716,9 @@ def _run_scenario(app, active_role, scenario_name):
     }
 
     state["runs"].append(run_result)
+    # Cap stored run history to prevent unbounded memory growth
+    if len(state["runs"]) > 100:
+        state["runs"] = state["runs"][-100:]
     return run_result
 
 
@@ -1241,10 +1244,11 @@ def _register_scenario_routes(app, active_role, logger):
 
         logger.info("Scenario started: %s", scenario_name)
 
-        result = _run_scenario(app, active_role, scenario_name)
-
-        state["scenario_active"] = False
-        state["current_scenario"] = None
+        try:
+            result = _run_scenario(app, active_role, scenario_name)
+        finally:
+            state["scenario_active"] = False
+            state["current_scenario"] = None
 
         logger.info(
             "Scenario completed: %s, success=%s, duration_ms=%d",
@@ -1284,21 +1288,24 @@ def _register_scenario_routes(app, active_role, logger):
 
         results = []
         all_success = True
-        for scenario_name in DEMO_SCENARIOS:
-            state["scenario_active"] = True
-            state["current_scenario"] = scenario_name
+        try:
+            for scenario_name in DEMO_SCENARIOS:
+                state["scenario_active"] = True
+                state["current_scenario"] = scenario_name
 
-            logger.info("Run-all: starting scenario %s", scenario_name)
-            result = _run_scenario(app, active_role, scenario_name)
-            results.append(result)
+                logger.info("Run-all: starting scenario %s", scenario_name)
+                result = _run_scenario(app, active_role, scenario_name)
+                results.append(result)
 
+                state["scenario_active"] = False
+                state["current_scenario"] = None
+
+                if not result["success"]:
+                    all_success = False
+        finally:
+            state["run_all_active"] = False
             state["scenario_active"] = False
             state["current_scenario"] = None
-
-            if not result["success"]:
-                all_success = False
-
-        state["run_all_active"] = False
         state["run_all_results"] = results
 
         total_duration_ms = sum(r["duration_ms"] for r in results)
