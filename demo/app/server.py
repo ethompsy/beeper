@@ -5,7 +5,7 @@ A multi-role Flask HTTP server that serves as all four demo microservices
 (api-gateway, backend, database, worker) based on the SERVICE_ROLE env var.
 
 Each role exposes Prometheus metrics, structured JSON logging, health endpoints,
-and configurable fault injection hooks (disabled by default, activated in story 8-2).
+and configurable fault injection with runtime control via REST API.
 """
 
 import json
@@ -14,6 +14,7 @@ import os
 import random
 import threading
 import time
+from datetime import datetime, timezone
 from functools import wraps
 
 from flask import Flask, jsonify, request
@@ -103,11 +104,103 @@ ACTIVE_CONNECTIONS = Gauge(
     registry=registry,
 )
 
+# Fault injection metrics (Task 3)
+FAULT_INJECTION_ACTIVE = Gauge(
+    "demo_fault_injection_active",
+    "Whether a fault injection is currently active (1=active, 0=inactive)",
+    ["service", "fault_type"],
+    registry=registry,
+)
+
+FAULT_INJECTION_TOTAL = Counter(
+    "demo_fault_injection_total",
+    "Total number of fault injections triggered",
+    ["service", "fault_type"],
+    registry=registry,
+)
+
+MEMORY_LEAK_BYTES = Gauge(
+    "demo_memory_leak_bytes",
+    "Bytes accumulated by memory leak fault injection",
+    ["service"],
+    registry=registry,
+)
+
 # ---------------------------------------------------------------------------
-# Fault Injection Hooks (dormant — activated by story 8-2)
+# Fault Type Catalog (Task 2)
 # ---------------------------------------------------------------------------
 
-_memory_leak_store: list = []
+FAULT_TYPES = {
+    "memory-leak": {
+        "description": "Gradual memory leak — accumulates configurable chunks per request, "
+                       "simulating a memory leak leading to eventual OOM.",
+        "default_params": {"chunk_size_kb": 100},
+        "expected_beeper_response": "Detect memory anomaly via container metrics, "
+                                   "investigate OOM risk, propose resource limit adjustment or restart.",
+    },
+    "bad-deploy": {
+        "description": "Bad deployment simulation — returns HTTP 500 errors at a high rate, "
+                       "simulating a broken code deploy.",
+        "default_params": {"error_rate": 0.8},
+        "expected_beeper_response": "Detect error rate spike via SLO burn rate alert, "
+                                   "investigate recent deployment, propose rollback.",
+    },
+    "cascading-failure": {
+        "description": "Cascading failure — errors propagate from the injected service "
+                       "to its upstream dependents, simulating real-world failure cascades.",
+        "default_params": {"error_rate": 0.9},
+        "expected_beeper_response": "Detect correlated failures across services, "
+                                   "trace dependency chain to identify root cause service.",
+    },
+    "scale-dependent": {
+        "description": "Scale-dependent latency — response time increases proportionally "
+                       "with concurrent request count, simulating resource contention under load.",
+        "default_params": {"base_latency_ms": 50, "per_connection_ms": 200},
+        "expected_beeper_response": "Detect latency anomaly via SLO burn rate, "
+                                   "investigate scaling metrics, propose HPA or resource adjustment.",
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Runtime Fault State (Task 1)
+# ---------------------------------------------------------------------------
+
+
+def _create_fault_state():
+    """Create a fresh fault state dict."""
+    return {
+        "fault_active": False,
+        "fault_type": "none",
+        "params": {},
+        "started_at": None,
+        "memory_leak_store": [],
+        "memory_leak_bytes": 0,
+    }
+
+
+# Default state initialized from env vars
+_default_fault_state = _create_fault_state()
+if FAULT_ENABLED and FAULT_TYPE != "none":
+    _default_fault_state["fault_active"] = True
+    _default_fault_state["fault_type"] = FAULT_TYPE
+    _default_fault_state["started_at"] = datetime.now(timezone.utc).isoformat()
+    if FAULT_TYPE in FAULT_TYPES:
+        _default_fault_state["params"] = dict(FAULT_TYPES[FAULT_TYPE]["default_params"])
+
+
+def _get_fault_state(app):
+    """Get the fault state from the app config, falling back to default."""
+    if "fault_state" not in app.config:
+        app.config["fault_state"] = dict(_default_fault_state)
+        app.config["fault_state"]["memory_leak_store"] = list(
+            _default_fault_state["memory_leak_store"]
+        )
+    return app.config["fault_state"]
+
+
+# ---------------------------------------------------------------------------
+# Fault Injection Middleware (refactored for runtime control)
+# ---------------------------------------------------------------------------
 
 
 def fault_middleware(f):
@@ -115,28 +208,51 @@ def fault_middleware(f):
 
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not FAULT_ENABLED:
+        from flask import current_app
+
+        state = _get_fault_state(current_app)
+
+        if not state["fault_active"]:
             return f(*args, **kwargs)
 
-        if FAULT_TYPE == "memory-leak":
-            # Gradually consume memory
-            _memory_leak_store.append(b"x" * 1024 * 100)  # 100KB per request
+        fault_type = state["fault_type"]
+        params = state["params"]
+        active_role = current_app.config.get("ACTIVE_ROLE", SERVICE_ROLE)
 
-        if FAULT_TYPE == "error-rate":
-            # Randomly return 500 errors
-            if random.random() < 0.5:
-                ERROR_COUNT.labels(service=SERVICE_ROLE, error_type="injected").inc()
-                return jsonify({"error": "internal_server_error", "detail": "Injected fault"}), 500
+        if fault_type == "memory-leak":
+            chunk_size = params.get("chunk_size_kb", 100) * 1024
+            state["memory_leak_store"].append(b"x" * chunk_size)
+            state["memory_leak_bytes"] += chunk_size
+            MEMORY_LEAK_BYTES.labels(service=active_role).set(state["memory_leak_bytes"])
 
-        if FAULT_TYPE == "latency":
-            # Add artificial latency
-            time.sleep(random.uniform(1.0, 3.0))
+        if fault_type == "bad-deploy":
+            error_rate = params.get("error_rate", 0.8)
+            if random.random() < error_rate:
+                ERROR_COUNT.labels(service=active_role, error_type="injected_bad_deploy").inc()
+                return jsonify({
+                    "error": "internal_server_error",
+                    "detail": "Injected fault: bad-deploy",
+                }), 500
 
-        if FAULT_TYPE == "resource-exhaustion":
-            # Simulate high CPU via busy loop
-            end = time.time() + 0.1
-            while time.time() < end:
-                pass
+        if fault_type == "cascading-failure":
+            error_rate = params.get("error_rate", 0.9)
+            if random.random() < error_rate:
+                ERROR_COUNT.labels(service=active_role, error_type="injected_cascade").inc()
+                return jsonify({
+                    "error": "service_unavailable",
+                    "detail": "Injected fault: cascading-failure",
+                }), 503
+
+        if fault_type == "scale-dependent":
+            base_ms = params.get("base_latency_ms", 50)
+            per_conn_ms = params.get("per_connection_ms", 200)
+            try:
+                active = ACTIVE_CONNECTIONS.labels(service=active_role)._value.get()
+            except Exception:
+                active = 1
+            delay_s = (base_ms + per_conn_ms * max(active, 1)) / 1000.0
+            if not current_app.config.get("TESTING"):
+                time.sleep(delay_s)
 
         return f(*args, **kwargs)
 
@@ -196,6 +312,7 @@ def create_app(role=None):
     """Create and configure the Flask demo application for the given role."""
     app = Flask(__name__)
     active_role = role or SERVICE_ROLE
+    app.config["ACTIVE_ROLE"] = active_role
 
     logger = logging.getLogger("demo")
 
@@ -203,16 +320,21 @@ def create_app(role=None):
 
     @app.route("/health")
     def health():
+        state = _get_fault_state(app)
         return jsonify({
-            "status": "healthy",
+            "status": "healthy" if not state["fault_active"] else "degraded",
             "service": active_role,
-            "fault_enabled": FAULT_ENABLED,
-            "fault_type": FAULT_TYPE if FAULT_ENABLED else "none",
+            "fault_enabled": state["fault_active"],
+            "fault_type": state["fault_type"] if state["fault_active"] else "none",
         })
 
     @app.route("/metrics")
     def metrics():
         return generate_latest(registry), 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+    # ---- Fault Control API (Task 1) --------------------------------------
+
+    _register_fault_control_routes(app, active_role, logger)
 
     # ---- Role-Specific Endpoints -----------------------------------------
 
@@ -226,6 +348,108 @@ def create_app(role=None):
         _register_worker_routes(app, logger)
 
     return app
+
+
+# ---------------------------------------------------------------------------
+# Fault Control API (Task 1)
+# ---------------------------------------------------------------------------
+
+
+def _register_fault_control_routes(app, active_role, logger):
+    """Register fault injection control endpoints."""
+
+    @app.route("/fault/inject", methods=["POST"])
+    def fault_inject():
+        data = request.get_json(force=True, silent=True) or {}
+        fault_type = data.get("fault_type", "")
+
+        if fault_type not in FAULT_TYPES:
+            return jsonify({
+                "error": "invalid_fault_type",
+                "detail": f"Unknown fault type: {fault_type}",
+                "available_types": list(FAULT_TYPES.keys()),
+            }), 400
+
+        params = data.get("params", {})
+        merged_params = dict(FAULT_TYPES[fault_type]["default_params"])
+        merged_params.update(params)
+
+        state = _get_fault_state(app)
+        state["fault_active"] = True
+        state["fault_type"] = fault_type
+        state["params"] = merged_params
+        state["started_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Update metrics
+        FAULT_INJECTION_ACTIVE.labels(service=active_role, fault_type=fault_type).set(1)
+        FAULT_INJECTION_TOTAL.labels(service=active_role, fault_type=fault_type).inc()
+
+        logger.warning("Fault injected: type=%s, params=%s", fault_type, merged_params)
+
+        return jsonify({
+            "status": "injected",
+            "fault_type": fault_type,
+            "service": active_role,
+            "params": merged_params,
+        })
+
+    @app.route("/fault/recover", methods=["POST"])
+    def fault_recover():
+        state = _get_fault_state(app)
+        previous_type = state["fault_type"]
+        was_active = state["fault_active"]
+
+        # Clear fault state
+        state["fault_active"] = False
+        state["fault_type"] = "none"
+        state["params"] = {}
+        state["started_at"] = None
+        state["memory_leak_store"].clear()
+        state["memory_leak_bytes"] = 0
+
+        # Clear metrics
+        MEMORY_LEAK_BYTES.labels(service=active_role).set(0)
+        if was_active and previous_type in FAULT_TYPES:
+            FAULT_INJECTION_ACTIVE.labels(
+                service=active_role, fault_type=previous_type
+            ).set(0)
+
+        logger.warning("Fault recovered: previous_type=%s", previous_type)
+
+        return jsonify({
+            "status": "recovered",
+            "service": active_role,
+            "cleared_fault": previous_type if was_active else "none",
+        })
+
+    @app.route("/fault/status", methods=["GET"])
+    def fault_status():
+        state = _get_fault_state(app)
+        result = {
+            "service": active_role,
+            "fault_active": state["fault_active"],
+            "fault_type": state["fault_type"],
+            "started_at": state["started_at"],
+            "params": state["params"],
+            "memory_leak_bytes": state["memory_leak_bytes"],
+        }
+        if state["fault_active"] and state["fault_type"] in FAULT_TYPES:
+            ft = FAULT_TYPES[state["fault_type"]]
+            result["description"] = ft["description"]
+            result["expected_beeper_response"] = ft["expected_beeper_response"]
+        return jsonify(result)
+
+    @app.route("/fault/types", methods=["GET"])
+    def fault_types():
+        types_list = []
+        for ft_name, ft_info in FAULT_TYPES.items():
+            types_list.append({
+                "type": ft_name,
+                "description": ft_info["description"],
+                "default_params": ft_info["default_params"],
+                "expected_beeper_response": ft_info["expected_beeper_response"],
+            })
+        return jsonify({"fault_types": types_list})
 
 
 # ---------------------------------------------------------------------------
@@ -381,8 +605,8 @@ def _run_synthetic_traffic(app):
                 client.post(endpoint, json={"data": "synthetic"})
             else:
                 client.get(endpoint)
-        except Exception as e:
-            logger.warning(f"Synthetic traffic error: {e}")
+        except Exception:
+            logger.warning("Synthetic traffic error")
         time.sleep(random.uniform(0.5, 2.0))
 
 
@@ -397,7 +621,7 @@ def main():
     logger = logging.getLogger("demo")
 
     app = create_app()
-    logger.info(f"Starting demo {SERVICE_ROLE} on port {SERVICE_PORT}")
+    logger.info("Starting demo %s on port %d", SERVICE_ROLE, SERVICE_PORT)
 
     if SYNTHETIC_TRAFFIC:
         traffic_thread = threading.Thread(target=_run_synthetic_traffic, args=(app,), daemon=True)
