@@ -572,6 +572,28 @@ class TestFaultEdgeCases:
         # Cleanup
         fault_client.post("/fault/recover")
 
+    def test_inject_overwrite_clears_previous_metric_gauge(self, fault_client):
+        """Overwriting a fault clears the previous fault type's active gauge."""
+        from server import FAULT_INJECTION_ACTIVE
+
+        fault_client.post("/fault/inject", json={"fault_type": "memory-leak"})
+        assert FAULT_INJECTION_ACTIVE.labels(
+            service="backend", fault_type="memory-leak"
+        )._value.get() == 1
+
+        # Overwrite with bad-deploy
+        fault_client.post("/fault/inject", json={"fault_type": "bad-deploy"})
+        # Previous gauge should be cleared
+        assert FAULT_INJECTION_ACTIVE.labels(
+            service="backend", fault_type="memory-leak"
+        )._value.get() == 0
+        # New gauge should be active
+        assert FAULT_INJECTION_ACTIVE.labels(
+            service="backend", fault_type="bad-deploy"
+        )._value.get() == 1
+        # Cleanup
+        fault_client.post("/fault/recover")
+
     def test_multiple_recover_calls_safe(self, fault_client):
         """Multiple recover calls are idempotent and safe."""
         fault_client.post("/fault/inject", json={"fault_type": "memory-leak"})

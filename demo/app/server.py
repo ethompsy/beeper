@@ -225,7 +225,7 @@ def fault_middleware(f):
             state["memory_leak_bytes"] += chunk_size
             MEMORY_LEAK_BYTES.labels(service=active_role).set(state["memory_leak_bytes"])
 
-        if fault_type == "bad-deploy":
+        elif fault_type == "bad-deploy":
             error_rate = params.get("error_rate", 0.8)
             if random.random() < error_rate:
                 ERROR_COUNT.labels(service=active_role, error_type="injected_bad_deploy").inc()
@@ -234,7 +234,7 @@ def fault_middleware(f):
                     "detail": "Injected fault: bad-deploy",
                 }), 500
 
-        if fault_type == "cascading-failure":
+        elif fault_type == "cascading-failure":
             error_rate = params.get("error_rate", 0.9)
             if random.random() < error_rate:
                 ERROR_COUNT.labels(service=active_role, error_type="injected_cascade").inc()
@@ -243,7 +243,7 @@ def fault_middleware(f):
                     "detail": "Injected fault: cascading-failure",
                 }), 503
 
-        if fault_type == "scale-dependent":
+        elif fault_type == "scale-dependent":
             base_ms = params.get("base_latency_ms", 50)
             per_conn_ms = params.get("per_connection_ms", 200)
             try:
@@ -375,6 +375,13 @@ def _register_fault_control_routes(app, active_role, logger):
         merged_params.update(params)
 
         state = _get_fault_state(app)
+
+        # Clear previous fault's active gauge if overwriting
+        if state["fault_active"] and state["fault_type"] in FAULT_TYPES:
+            FAULT_INJECTION_ACTIVE.labels(
+                service=active_role, fault_type=state["fault_type"]
+            ).set(0)
+
         state["fault_active"] = True
         state["fault_type"] = fault_type
         state["params"] = merged_params
