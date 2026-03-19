@@ -1,6 +1,6 @@
 # Story 8.3: Full Lifecycle Demonstration
 
-Status: review
+Status: done
 
 ## Story
 

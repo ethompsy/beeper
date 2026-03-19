@@ -353,9 +353,8 @@ def _advance_lifecycle(app, active_role):
         return
 
     if idx >= len(LIFECYCLE_STAGES) - 1:
-        # Already at final stage — lifecycle complete
+        # Already at final stage — no further advancement needed
         state["lifecycle_active"] = False
-        LIFECYCLE_RUNS_TOTAL.labels(service=active_role).inc()
         return
 
     now = datetime.now(timezone.utc)
@@ -729,6 +728,11 @@ def _register_lifecycle_routes(app, active_role, logger):
             }), 400
 
         trust_level = data.get("trust_level", 5)
+        if not isinstance(trust_level, int) or trust_level < 1 or trust_level > 5:
+            return jsonify({
+                "error": "invalid_trust_level",
+                "detail": "trust_level must be an integer between 1 and 5",
+            }), 400
         custom_timing = data.get("timing", {})
         timing = dict(DEFAULT_LIFECYCLE_TIMING)
         timing.update(custom_timing)
@@ -772,7 +776,9 @@ def _register_lifecycle_routes(app, active_role, logger):
         FAULT_INJECTION_ACTIVE.labels(service=active_role, fault_type=fault_type).set(1)
         FAULT_INJECTION_TOTAL.labels(service=active_role, fault_type=fault_type).inc()
 
-        # Set lifecycle metrics
+        # Clear all previous stage metrics before setting new one
+        for stage in LIFECYCLE_STAGES:
+            LIFECYCLE_STAGE.labels(service=active_role, stage=stage).set(0)
         LIFECYCLE_STAGE.labels(service=active_role, stage="fault_injected").set(1)
         LIFECYCLE_DURATION.labels(service=active_role).set(0)
 
@@ -782,6 +788,9 @@ def _register_lifecycle_routes(app, active_role, logger):
             "Lifecycle started: fault_type=%s, trust_level=%d, estimated=%ds",
             fault_type, trust_level, estimated,
         )
+
+        # Capture initial stage for response before sync execution mutates state
+        initial_stage = state["current_stage"]
 
         # In TESTING mode, run synchronously; otherwise schedule timer
         if app.config.get("TESTING"):
@@ -798,7 +807,7 @@ def _register_lifecycle_routes(app, active_role, logger):
             "fault_type": fault_type,
             "trust_level": trust_level,
             "service": active_role,
-            "current_stage": state["current_stage"],
+            "current_stage": initial_stage,
             "estimated_duration_seconds": estimated,
         })
 
