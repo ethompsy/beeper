@@ -123,9 +123,9 @@ development_status:
   epic-7-retrospective: done
 
   # Epic 8: Investor Demo Platform (Cross-cutting)
-  epic-8: in-progress
+  epic-8: done
   8-1-chaotic-demo-application-deployment: done
   8-2-configurable-fault-injection: done
   8-3-full-lifecycle-demonstration: done
   8-4-scripted-repeatable-demo-scenarios: done
-  epic-8-retrospective: optional
+  epic-8-retrospective: done
