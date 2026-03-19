@@ -1,0 +1,34 @@
+# Demo Scenario: Cascading Failure
+# Demonstrates cascading failure detection across dependent services.
+#
+# Usage: make demo-scenario SCENARIO=cascading-failure
+
+name: cascading-failure
+description: >
+  Demonstrates cascading failure detection where errors propagate
+  across dependent services. Beeper correlates failures and traces
+  the dependency chain to identify the root cause service.
+
+fault_type: cascading-failure
+trust_level: 4
+duration_estimate_seconds: 62
+
+timing:
+  detect_seconds: 10
+  investigate_seconds: 20
+  fix_propose_seconds: 5
+  fix_apply_seconds: 5
+  verify_seconds: 12
+  recover_seconds: 5
+  kb_create_seconds: 5
+
+expected_stages:
+  - healthy
+  - fault_injected
+  - detecting
+  - investigating
+  - fix_proposed
+  - fix_applied
+  - verifying
+  - recovered
+  - kb_created

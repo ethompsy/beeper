@@ -5,7 +5,7 @@ DEMO_NAMESPACE := beeper-demo
 DEMO_IMAGE := beeper/demo-app:latest
 DEMO_DIR := demo
 
-.PHONY: demo-build demo-deploy demo-teardown demo-status demo-logs demo-fault demo-recover demo-fault-status demo-fault-list demo-lifecycle demo-lifecycle-status demo-lifecycle-reset demo-lifecycle-timeline
+.PHONY: demo-build demo-deploy demo-teardown demo-status demo-logs demo-fault demo-recover demo-fault-status demo-fault-list demo-lifecycle demo-lifecycle-status demo-lifecycle-reset demo-lifecycle-timeline demo-scenario demo-list demo-all
 
 ## Build the demo application Docker image
 demo-build:
@@ -181,3 +181,50 @@ demo-lifecycle-timeline:
 		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
 		wget -qO- http://localhost:8081/lifecycle/timeline 2>/dev/null || \
 		echo "  unavailable"
+
+## Run a scripted demo scenario
+## Usage: make demo-scenario SCENARIO=memory-leak [SERVICE=backend]
+demo-scenario:
+	@test -n "$(SCENARIO)" || (echo "Error: SCENARIO is required (memory-leak, bad-deploy, cascading-failure, scale-dependent)" && exit 1)
+	$(eval SCENARIO_SERVICE := $(or $(SERVICE),backend))
+	@echo "==> Running demo scenario '$(SCENARIO)' on $(SCENARIO_SERVICE)..."
+	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SCENARIO_SERVICE) -- \
+		wget -qO- --post-data='{"scenario":"$(SCENARIO)"}' \
+		--header='Content-Type: application/json' \
+		http://localhost:8080/scenarios/run 2>/dev/null || \
+		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SCENARIO_SERVICE) -- \
+		wget -qO- --post-data='{"scenario":"$(SCENARIO)"}' \
+		--header='Content-Type: application/json' \
+		http://localhost:8081/scenarios/run 2>/dev/null || \
+		echo "  Failed to run scenario. Is the demo deployed?"
+	@echo ""
+	@echo "==> Scenario complete. Check results with: make demo-scenario-status"
+
+## List available demo scenarios
+demo-list:
+	@echo "==> Available Demo Scenarios:"
+	@echo ""
+	@echo "  memory-leak          Gradual memory leak → OOM detection & remediation         (~53s)"
+	@echo "  bad-deploy           Broken deploy → error rate spike → rollback proposal      (~42s)"
+	@echo "  cascading-failure    Cascading failure → dependency tracing → root cause fix   (~62s)"
+	@echo "  scale-dependent      Load-triggered latency → SLO burn rate → HPA scaling     (~53s)"
+	@echo ""
+	@echo "Usage: make demo-scenario SCENARIO=<name> [SERVICE=backend]"
+	@echo "       make demo-all [SERVICE=backend]"
+
+## Run all demo scenarios in sequence
+## Usage: make demo-all [SERVICE=backend]
+demo-all:
+	$(eval SCENARIO_SERVICE := $(or $(SERVICE),backend))
+	@echo "==> Running all demo scenarios on $(SCENARIO_SERVICE)..."
+	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SCENARIO_SERVICE) -- \
+		wget -qO- --post-data='{}' \
+		--header='Content-Type: application/json' \
+		http://localhost:8080/scenarios/run-all 2>/dev/null || \
+		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SCENARIO_SERVICE) -- \
+		wget -qO- --post-data='{}' \
+		--header='Content-Type: application/json' \
+		http://localhost:8081/scenarios/run-all 2>/dev/null || \
+		echo "  Failed to run scenarios. Is the demo deployed?"
+	@echo ""
+	@echo "==> All scenarios complete."

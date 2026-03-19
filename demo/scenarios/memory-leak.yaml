@@ -1,0 +1,34 @@
+# Demo Scenario: Memory Leak
+# Demonstrates detection and remediation of a gradual memory leak.
+#
+# Usage: make demo-scenario SCENARIO=memory-leak
+
+name: memory-leak
+description: >
+  Demonstrates detection and remediation of a gradual memory leak
+  leading to OOM risk. Beeper detects via container metrics,
+  investigates OOM risk, and proposes resource adjustment.
+
+fault_type: memory-leak
+trust_level: 5
+duration_estimate_seconds: 53
+
+timing:
+  detect_seconds: 8
+  investigate_seconds: 15
+  fix_propose_seconds: 5
+  fix_apply_seconds: 5
+  verify_seconds: 10
+  recover_seconds: 5
+  kb_create_seconds: 5
+
+expected_stages:
+  - healthy
+  - fault_injected
+  - detecting
+  - investigating
+  - fix_proposed
+  - fix_applied
+  - verifying
+  - recovered
+  - kb_created

@@ -148,6 +148,28 @@ LIFECYCLE_RUNS_TOTAL = Counter(
     registry=registry,
 )
 
+# Scenario demonstration metrics (Story 8-4, Task 3)
+SCENARIO_RUNS_TOTAL = Counter(
+    "demo_scenario_runs_total",
+    "Total number of scenario runs executed",
+    ["service", "scenario"],
+    registry=registry,
+)
+
+SCENARIO_SUCCESS_TOTAL = Counter(
+    "demo_scenario_success_total",
+    "Total number of scenario runs that completed successfully",
+    ["service", "scenario"],
+    registry=registry,
+)
+
+SCENARIO_DURATION = Gauge(
+    "demo_scenario_duration_seconds",
+    "Duration of the most recent scenario run",
+    ["service", "scenario"],
+    registry=registry,
+)
+
 # ---------------------------------------------------------------------------
 # Fault Type Catalog (Task 2)
 # ---------------------------------------------------------------------------
@@ -180,6 +202,101 @@ FAULT_TYPES = {
         "default_params": {"base_latency_ms": 50, "per_connection_ms": 200},
         "expected_beeper_response": "Detect latency anomaly via SLO burn rate, "
                                    "investigate scaling metrics, propose HPA or resource adjustment.",
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Demo Scenario Definitions (Story 8-4, Task 1)
+# ---------------------------------------------------------------------------
+
+DEMO_SCENARIOS = {
+    "memory-leak": {
+        "name": "memory-leak",
+        "description": "Demonstrates detection and remediation of a gradual memory leak "
+                       "leading to OOM risk. Beeper detects via container metrics, "
+                       "investigates OOM risk, and proposes resource adjustment.",
+        "fault_type": "memory-leak",
+        "trust_level": 5,
+        "timing": {
+            "detect_seconds": 8,
+            "investigate_seconds": 15,
+            "fix_propose_seconds": 5,
+            "fix_apply_seconds": 5,
+            "verify_seconds": 10,
+            "recover_seconds": 5,
+            "kb_create_seconds": 5,
+        },
+        "duration_estimate_seconds": 53,
+        "expected_stages": [
+            "healthy", "fault_injected", "detecting", "investigating",
+            "fix_proposed", "fix_applied", "verifying", "recovered", "kb_created",
+        ],
+    },
+    "bad-deploy": {
+        "name": "bad-deploy",
+        "description": "Simulates a broken code deployment causing HTTP 500 error rate "
+                       "spike. Beeper detects via SLO burn rate alert, traces to recent "
+                       "deployment, and proposes rollback.",
+        "fault_type": "bad-deploy",
+        "trust_level": 5,
+        "timing": {
+            "detect_seconds": 6,
+            "investigate_seconds": 12,
+            "fix_propose_seconds": 4,
+            "fix_apply_seconds": 4,
+            "verify_seconds": 8,
+            "recover_seconds": 4,
+            "kb_create_seconds": 4,
+        },
+        "duration_estimate_seconds": 42,
+        "expected_stages": [
+            "healthy", "fault_injected", "detecting", "investigating",
+            "fix_proposed", "fix_applied", "verifying", "recovered", "kb_created",
+        ],
+    },
+    "cascading-failure": {
+        "name": "cascading-failure",
+        "description": "Demonstrates cascading failure detection where errors propagate "
+                       "across dependent services. Beeper correlates failures and traces "
+                       "the dependency chain to identify the root cause service.",
+        "fault_type": "cascading-failure",
+        "trust_level": 4,
+        "timing": {
+            "detect_seconds": 10,
+            "investigate_seconds": 20,
+            "fix_propose_seconds": 5,
+            "fix_apply_seconds": 5,
+            "verify_seconds": 12,
+            "recover_seconds": 5,
+            "kb_create_seconds": 5,
+        },
+        "duration_estimate_seconds": 62,
+        "expected_stages": [
+            "healthy", "fault_injected", "detecting", "investigating",
+            "fix_proposed", "fix_applied", "verifying", "recovered", "kb_created",
+        ],
+    },
+    "scale-dependent": {
+        "name": "scale-dependent",
+        "description": "Demonstrates latency anomaly detection under load. Response time "
+                       "increases with concurrent requests, simulating resource contention. "
+                       "Beeper detects via SLO burn rate and proposes HPA scaling.",
+        "fault_type": "scale-dependent",
+        "trust_level": 5,
+        "timing": {
+            "detect_seconds": 8,
+            "investigate_seconds": 15,
+            "fix_propose_seconds": 5,
+            "fix_apply_seconds": 5,
+            "verify_seconds": 10,
+            "recover_seconds": 5,
+            "kb_create_seconds": 5,
+        },
+        "duration_estimate_seconds": 53,
+        "expected_stages": [
+            "healthy", "fault_injected", "detecting", "investigating",
+            "fix_proposed", "fix_applied", "verifying", "recovered", "kb_created",
+        ],
     },
 }
 
@@ -433,6 +550,176 @@ def _run_lifecycle_sync(app, active_role):
 
 
 # ---------------------------------------------------------------------------
+# Scenario Runner State (Story 8-4, Task 2)
+# ---------------------------------------------------------------------------
+
+
+def _create_scenario_state():
+    """Create a fresh scenario runner state dict."""
+    return {
+        "scenario_active": False,
+        "current_scenario": None,
+        "run_number": 0,
+        "runs": [],
+        "run_all_active": False,
+        "run_all_results": [],
+    }
+
+
+def _get_scenario_state(app):
+    """Get the scenario state from the app config, falling back to default."""
+    if "scenario_state" not in app.config:
+        app.config["scenario_state"] = _create_scenario_state()
+    return app.config["scenario_state"]
+
+
+def _run_scenario(app, active_role, scenario_name):
+    """Execute a single scenario run: reset → lifecycle → verify → record.
+
+    Returns a dict with run result details.
+    """
+    scenario = DEMO_SCENARIOS[scenario_name]
+    state = _get_scenario_state(app)
+    lifecycle_state = _get_lifecycle_state(app)
+
+    # Reset lifecycle if active
+    if lifecycle_state["lifecycle_active"] or lifecycle_state["current_stage"] != "healthy":
+        for timer in lifecycle_state.get("timers", []):
+            timer.cancel()
+        for stage in LIFECYCLE_STAGES:
+            LIFECYCLE_STAGE.labels(service=active_role, stage=stage).set(0)
+        LIFECYCLE_DURATION.labels(service=active_role).set(0)
+        fault_state = _get_fault_state(app)
+        if fault_state["fault_active"]:
+            prev_type = fault_state["fault_type"]
+            fault_state["fault_active"] = False
+            fault_state["fault_type"] = "none"
+            fault_state["params"] = {}
+            fault_state["started_at"] = None
+            fault_state["memory_leak_store"].clear()
+            fault_state["memory_leak_bytes"] = 0
+            MEMORY_LEAK_BYTES.labels(service=active_role).set(0)
+            if prev_type in FAULT_TYPES:
+                FAULT_INJECTION_ACTIVE.labels(
+                    service=active_role, fault_type=prev_type
+                ).set(0)
+        app.config["lifecycle_state"] = _create_lifecycle_state()
+
+    run_start = datetime.now(timezone.utc)
+    state["run_number"] += 1
+    run_number = state["run_number"]
+
+    # Start lifecycle with scenario config
+    lifecycle_state = _get_lifecycle_state(app)
+    now = datetime.now(timezone.utc)
+    timing = dict(scenario["timing"])
+
+    lifecycle_state["lifecycle_active"] = True
+    lifecycle_state["current_stage"] = "fault_injected"
+    lifecycle_state["fault_type"] = scenario["fault_type"]
+    lifecycle_state["trust_level"] = scenario["trust_level"]
+    lifecycle_state["timing"] = timing
+    lifecycle_state["started_at"] = now.isoformat()
+    lifecycle_state["stage_history"] = [
+        {
+            "stage": "healthy",
+            "timestamp": now.isoformat(),
+            "duration_ms": 0,
+            "narrative": _get_narrative("healthy", scenario["fault_type"],
+                                        scenario["trust_level"], 0),
+        },
+        {
+            "stage": "fault_injected",
+            "timestamp": now.isoformat(),
+            "duration_ms": None,
+            "narrative": _get_narrative("fault_injected", scenario["fault_type"],
+                                        scenario["trust_level"], 0),
+        },
+    ]
+    lifecycle_state["timers"] = []
+
+    # Inject the fault
+    fault_state = _get_fault_state(app)
+    if fault_state["fault_active"] and fault_state["fault_type"] in FAULT_TYPES:
+        FAULT_INJECTION_ACTIVE.labels(
+            service=active_role, fault_type=fault_state["fault_type"]
+        ).set(0)
+    fault_params = dict(FAULT_TYPES[scenario["fault_type"]]["default_params"])
+    fault_state["fault_active"] = True
+    fault_state["fault_type"] = scenario["fault_type"]
+    fault_state["params"] = fault_params
+    fault_state["started_at"] = now.isoformat()
+    FAULT_INJECTION_ACTIVE.labels(
+        service=active_role, fault_type=scenario["fault_type"]
+    ).set(1)
+    FAULT_INJECTION_TOTAL.labels(
+        service=active_role, fault_type=scenario["fault_type"]
+    ).inc()
+
+    # Set lifecycle metrics
+    for stage in LIFECYCLE_STAGES:
+        LIFECYCLE_STAGE.labels(service=active_role, stage=stage).set(0)
+    LIFECYCLE_STAGE.labels(service=active_role, stage="fault_injected").set(1)
+    LIFECYCLE_DURATION.labels(service=active_role).set(0)
+
+    # Run lifecycle (synchronously in TESTING mode, timer-based otherwise)
+    if app.config.get("TESTING"):
+        _run_lifecycle_sync(app, active_role)
+    else:
+        delay = timing.get("detect_seconds", 8)
+        timer = threading.Timer(delay, _advance_lifecycle, args=(app, active_role))
+        timer.daemon = True
+        lifecycle_state["timers"].append(timer)
+        timer.start()
+
+    run_end = datetime.now(timezone.utc)
+    duration_ms = int((run_end - run_start).total_seconds() * 1000)
+
+    # Verify completion
+    lifecycle_state = _get_lifecycle_state(app)
+    stages_completed = [s["stage"] for s in lifecycle_state["stage_history"]]
+    lifecycle_complete = (
+        not lifecycle_state["lifecycle_active"]
+        and lifecycle_state["current_stage"] == "kb_created"
+    )
+
+    success = lifecycle_complete and stages_completed == scenario["expected_stages"]
+
+    # Build diagnostics
+    diagnostics = None
+    if not success:
+        diagnostics = {
+            "lifecycle_complete": lifecycle_complete,
+            "expected_stages": scenario["expected_stages"],
+            "actual_stages": stages_completed,
+            "lifecycle_active": lifecycle_state["lifecycle_active"],
+            "current_stage": lifecycle_state["current_stage"],
+        }
+
+    # Update metrics
+    SCENARIO_RUNS_TOTAL.labels(service=active_role, scenario=scenario_name).inc()
+    if success:
+        SCENARIO_SUCCESS_TOTAL.labels(service=active_role, scenario=scenario_name).inc()
+    SCENARIO_DURATION.labels(
+        service=active_role, scenario=scenario_name
+    ).set(duration_ms / 1000.0)
+
+    run_result = {
+        "run_number": run_number,
+        "scenario": scenario_name,
+        "success": success,
+        "stages_completed": stages_completed,
+        "duration_ms": duration_ms,
+        "started_at": run_start.isoformat(),
+        "ended_at": run_end.isoformat(),
+        "diagnostics": diagnostics,
+    }
+
+    state["runs"].append(run_result)
+    return run_result
+
+
+# ---------------------------------------------------------------------------
 # Fault Injection Middleware (refactored for runtime control)
 # ---------------------------------------------------------------------------
 
@@ -573,6 +860,10 @@ def create_app(role=None):
     # ---- Lifecycle Demonstration API (Story 8-3) -------------------------
 
     _register_lifecycle_routes(app, active_role, logger)
+
+    # ---- Scenario Runner API (Story 8-4) ---------------------------------
+
+    _register_scenario_routes(app, active_role, logger)
 
     # ---- Role-Specific Endpoints -----------------------------------------
 
@@ -900,6 +1191,130 @@ def _register_lifecycle_routes(app, active_role, logger):
             "fault_type": state["fault_type"],
             "trust_level": state["trust_level"],
             "stages": state["stage_history"],
+        })
+
+
+# ---------------------------------------------------------------------------
+# Scenario Runner API (Story 8-4)
+# ---------------------------------------------------------------------------
+
+
+def _register_scenario_routes(app, active_role, logger):
+    """Register demo scenario runner endpoints."""
+
+    @app.route("/scenarios", methods=["GET"])
+    def scenarios_list():
+        scenarios = []
+        for name, defn in DEMO_SCENARIOS.items():
+            scenarios.append({
+                "name": name,
+                "description": defn["description"],
+                "fault_type": defn["fault_type"],
+                "trust_level": defn["trust_level"],
+                "duration_estimate_seconds": defn["duration_estimate_seconds"],
+            })
+        return jsonify({"scenarios": scenarios, "total": len(scenarios)})
+
+    @app.route("/scenarios/run", methods=["POST"])
+    def scenario_run():
+        data = request.get_json(force=True, silent=True) or {}
+        scenario_name = data.get("scenario", "")
+
+        if scenario_name not in DEMO_SCENARIOS:
+            return jsonify({
+                "error": "invalid_scenario",
+                "detail": f"Unknown scenario: {scenario_name}",
+                "available_scenarios": list(DEMO_SCENARIOS.keys()),
+            }), 400
+
+        state = _get_scenario_state(app)
+        if state["scenario_active"]:
+            return jsonify({
+                "error": "scenario_already_active",
+                "detail": "A scenario is already running. Wait for it to complete "
+                          "or check status with GET /scenarios/status.",
+                "current_scenario": state["current_scenario"],
+            }), 409
+
+        state["scenario_active"] = True
+        state["current_scenario"] = scenario_name
+
+        logger.info("Scenario started: %s", scenario_name)
+
+        result = _run_scenario(app, active_role, scenario_name)
+
+        state["scenario_active"] = False
+        state["current_scenario"] = None
+
+        logger.info(
+            "Scenario completed: %s, success=%s, duration_ms=%d",
+            scenario_name, result["success"], result["duration_ms"],
+        )
+
+        return jsonify({
+            "status": "completed",
+            "scenario": scenario_name,
+            "service": active_role,
+            "result": result,
+        })
+
+    @app.route("/scenarios/status", methods=["GET"])
+    def scenario_status():
+        state = _get_scenario_state(app)
+        return jsonify({
+            "service": active_role,
+            "scenario_active": state["scenario_active"],
+            "current_scenario": state["current_scenario"],
+            "total_runs": state["run_number"],
+            "runs": state["runs"],
+        })
+
+    @app.route("/scenarios/run-all", methods=["POST"])
+    def scenario_run_all():
+        state = _get_scenario_state(app)
+
+        if state["scenario_active"] or state["run_all_active"]:
+            return jsonify({
+                "error": "scenario_already_active",
+                "detail": "A scenario or run-all is already in progress.",
+            }), 409
+
+        state["run_all_active"] = True
+        state["run_all_results"] = []
+
+        results = []
+        all_success = True
+        for scenario_name in DEMO_SCENARIOS:
+            state["scenario_active"] = True
+            state["current_scenario"] = scenario_name
+
+            logger.info("Run-all: starting scenario %s", scenario_name)
+            result = _run_scenario(app, active_role, scenario_name)
+            results.append(result)
+
+            state["scenario_active"] = False
+            state["current_scenario"] = None
+
+            if not result["success"]:
+                all_success = False
+
+        state["run_all_active"] = False
+        state["run_all_results"] = results
+
+        total_duration_ms = sum(r["duration_ms"] for r in results)
+
+        logger.info(
+            "Run-all completed: %d scenarios, all_success=%s, total_ms=%d",
+            len(results), all_success, total_duration_ms,
+        )
+
+        return jsonify({
+            "status": "completed",
+            "service": active_role,
+            "all_success": all_success,
+            "scenarios_run": len(results),
+            "total_duration_ms": total_duration_ms,
+            "results": results,
         })
 
 
