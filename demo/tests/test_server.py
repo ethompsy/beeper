@@ -1,14 +1,10 @@
 """Unit tests for the demo application server."""
 
 import json
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
-
-from server import JsonFormatter, create_app, registry  # noqa: E402
+from server import JsonFormatter, create_app, registry
 
 
 # ---------------------------------------------------------------------------

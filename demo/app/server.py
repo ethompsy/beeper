@@ -283,21 +283,12 @@ def _register_backend_routes(app, logger):
     @fault_middleware
     def process():
         logger.info("Processing request")
-        # Simulate processing time
-        time.sleep(random.uniform(0.01, 0.05))
+        if not app.config.get("TESTING"):
+            time.sleep(random.uniform(0.01, 0.05))
         return jsonify({
             "result": "processed",
             "processing_time_ms": random.randint(10, 50),
             "service": "backend",
-        })
-
-    @app.route("/health")
-    def backend_health():
-        return jsonify({
-            "status": "healthy",
-            "service": "backend",
-            "fault_enabled": FAULT_ENABLED,
-            "fault_type": FAULT_TYPE if FAULT_ENABLED else "none",
         })
 
 
@@ -324,26 +315,16 @@ def _register_database_routes(app, logger):
     @track_metrics("/query")
     @fault_middleware
     def query():
-        # Simulate query latency
-        time.sleep(random.uniform(0.005, 0.02))
+        if not app.config.get("TESTING"):
+            time.sleep(random.uniform(0.005, 0.02))
         table = request.args.get("table", "orders")
         data = _data_store.get(table, [])
-        logger.info(f"Query on table={table}, rows={len(data)}")
+        logger.info("Query on table=%s, rows=%d", table, len(data))
         return jsonify({
             "table": table,
             "rows": data,
             "count": len(data),
             "query_time_ms": random.randint(1, 15),
-        })
-
-    @app.route("/health")
-    def db_health():
-        return jsonify({
-            "status": "healthy",
-            "service": "database",
-            "fault_enabled": FAULT_ENABLED,
-            "fault_type": FAULT_TYPE if FAULT_ENABLED else "none",
-            "tables": list(_data_store.keys()),
         })
 
 
@@ -365,22 +346,12 @@ def _register_worker_routes(app, logger):
     @track_metrics("/jobs")
     @fault_middleware
     def jobs():
-        logger.info(f"Job queue status: {len(_job_queue)} jobs")
+        logger.info("Job queue status: %d jobs", len(_job_queue))
         return jsonify({
             "jobs": _job_queue,
             "total": len(_job_queue),
             "running": sum(1 for j in _job_queue if j["status"] == "running"),
             "queued": sum(1 for j in _job_queue if j["status"] == "queued"),
-        })
-
-    @app.route("/health")
-    def worker_health():
-        return jsonify({
-            "status": "healthy",
-            "service": "worker",
-            "fault_enabled": FAULT_ENABLED,
-            "fault_type": FAULT_TYPE if FAULT_ENABLED else "none",
-            "queue_depth": len(_job_queue),
         })
 
 

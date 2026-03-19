@@ -1,6 +1,6 @@
 # Story 8.1: Chaotic Demo Application Deployment
 
-Status: review
+Status: done
 
 ## Story
 
