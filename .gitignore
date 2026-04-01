@@ -55,6 +55,7 @@ dmypy.json
 .project
 .pydevproject
 .settings/
+.history/
 
 # OS
 .DS_Store
