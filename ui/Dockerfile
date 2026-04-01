@@ -13,7 +13,7 @@ COPY pyproject.toml ./
 RUN poetry config virtualenvs.create false
 
 # Install dependencies (--only main replaces deprecated --no-dev)
-RUN poetry install --only main --no-interaction --no-ansi
+RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 # Runtime stage
 FROM python:3.11-slim-bookworm

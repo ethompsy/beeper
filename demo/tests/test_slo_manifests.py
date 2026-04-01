@@ -1,4 +1,4 @@
-"""Validate ServiceLevel CRD manifest structure."""
+"""Validate ServiceLevel CRD manifest structure for OTel demo services."""
 
 import os
 
@@ -8,13 +8,14 @@ import yaml
 K8S_DIR = os.path.join(os.path.dirname(__file__), "..", "k8s")
 
 SLO_FILES = [
-    ("slo-api-gateway.yaml", "demo-api-gateway", 0.995),
-    ("slo-backend.yaml", "demo-backend", 0.999),
-    ("slo-database.yaml", "demo-database", 0.9995),
-    ("slo-worker.yaml", "demo-worker", 0.99),
+    ("slo-checkout.yaml", "checkoutservice", 0.999),
+    ("slo-cart.yaml", "cartservice", 0.999),
+    ("slo-payment.yaml", "paymentservice", 0.9995),
+    ("slo-frontend.yaml", "frontend", 0.995),
+    ("slo-productcatalog.yaml", "productcatalogservice", 0.999),
 ]
 
-VALID_SLI_TYPES = ["Availability", "Latency", "ErrorRate"]
+VALID_SLI_TYPES = ["availability", "latency", "error_rate"]
 
 
 def load_slo(filename):
@@ -22,11 +23,6 @@ def load_slo(filename):
     filepath = os.path.join(K8S_DIR, filename)
     with open(filepath) as f:
         return yaml.safe_load(f)
-
-
-# ---------------------------------------------------------------------------
-# ServiceLevel CRD Structure Tests
-# ---------------------------------------------------------------------------
 
 
 class TestServiceLevelCRDs:
@@ -52,9 +48,9 @@ class TestServiceLevelCRDs:
 
     @pytest.mark.parametrize("filename,service,target", SLO_FILES)
     def test_namespace(self, filename, service, target):
-        """SLO is in beeper-demo namespace."""
+        """SLO is in otel-demo namespace."""
         doc = load_slo(filename)
-        assert doc["metadata"]["namespace"] == "beeper-demo"
+        assert doc["metadata"]["namespace"] == "otel-demo"
 
     @pytest.mark.parametrize("filename,service,target", SLO_FILES)
     def test_service_name(self, filename, service, target):
@@ -108,7 +104,7 @@ class TestServiceLevelCRDs:
 
     @pytest.mark.parametrize("filename,service,target", SLO_FILES)
     def test_part_of_label(self, filename, service, target):
-        """SLO has beeper-demo part-of label."""
+        """SLO has otel-demo part-of label."""
         doc = load_slo(filename)
         labels = doc["metadata"]["labels"]
-        assert labels["app.kubernetes.io/part-of"] == "beeper-demo"
+        assert labels["app.kubernetes.io/part-of"] == "otel-demo"

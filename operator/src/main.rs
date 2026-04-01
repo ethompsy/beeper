@@ -28,7 +28,7 @@ use beeper_operator::{
     ingestion::{ingestion_router, IngestionBuffer},
     notifications::OutboxWorker,
     slo::{budget::new_budget_policy_state, new_slo_cache, run_slo_engine},
-    InvestigatorConfig,
+    InvestigatorConfig, LlmConfig, LlmManager, LlmProvider,
 };
 
 /// Default health server port
@@ -113,6 +113,55 @@ async fn main() -> anyhow::Result<()> {
     // Create budget policy state (shared between SLO engine and API server)
     let budget_policy_state = new_budget_policy_state();
 
+    // Initialize LLM manager from environment variables
+    let llm_manager: Option<Arc<LlmManager>> = {
+        let provider_str = env::var("LLM_PROVIDER").unwrap_or_default();
+        let model = env::var("LLM_MODEL").unwrap_or_default();
+        let api_key_secret = env::var("LLM_API_KEY_SECRET")
+            .ok()
+            .or_else(|| {
+                // Fall back: if LLM_API_KEY env var is set directly, the secret
+                // was mounted via the Helm chart's secretKeyRef, so use the
+                // secret name from the chart values (default: llm-credentials).
+                if env::var("LLM_API_KEY").is_ok() {
+                    Some("llm-credentials".to_string())
+                } else {
+                    None
+                }
+            });
+
+        if provider_str.is_empty() {
+            info!("LLM provider not configured (LLM_PROVIDER not set)");
+            None
+        } else {
+            let provider = match provider_str.as_str() {
+                "anthropic" => Some(LlmProvider::Anthropic),
+                "openai" => Some(LlmProvider::Openai),
+                "azure" => Some(LlmProvider::Azure),
+                "ollama" => Some(LlmProvider::Ollama),
+                other => {
+                    warn!(provider = other, "Unknown LLM provider, LLM will be unconfigured");
+                    None
+                }
+            };
+            provider.map(|p| {
+                let config = LlmConfig {
+                    provider: p,
+                    model: if model.is_empty() { p.default_model().to_string() } else { model },
+                    api_key_secret,
+                    api_key_secret_key: "api-key".to_string(),
+                    endpoint: env::var("LLM_ENDPOINT").ok(),
+                };
+                info!(
+                    provider = %config.provider,
+                    model = %config.model,
+                    "LLM manager initialized"
+                );
+                Arc::new(LlmManager::new(Arc::clone(&client), config, "beeper".to_string()))
+            })
+        }
+    };
+
     // Start health + API server in background (combined on same port)
     let health_client = Arc::clone(&client);
     let api_buffer = Arc::clone(&buffer);
@@ -120,6 +169,7 @@ async fn main() -> anyhow::Result<()> {
     let api_slo_cache = slo_cache.clone();
     let api_budget_policy_state = budget_policy_state.clone();
     let api_qdrant_endpoint = qdrant_endpoint.clone();
+    let api_llm_manager = llm_manager.clone();
     let health_handle = tokio::spawn(async move {
         if let Err(e) =
             start_health_api_server(
@@ -129,6 +179,7 @@ async fn main() -> anyhow::Result<()> {
                 api_slo_cache,
                 api_budget_policy_state,
                 api_qdrant_endpoint,
+                api_llm_manager,
                 health_port,
             )
                 .await
@@ -298,12 +349,13 @@ async fn start_health_api_server(
     slo_cache: beeper_operator::slo::SloCache,
     budget_policy_state: beeper_operator::slo::budget::BudgetPolicyState,
     qdrant_endpoint: String,
+    llm_manager: Option<Arc<LlmManager>>,
     port: u16,
 ) -> anyhow::Result<()> {
     use beeper_operator::api::api_router_full;
     // Combine health and API routers
     let health = health_router(Arc::clone(&client));
-    let api = api_router_full(client, buffer, None, Some(detection_stats), Some(slo_cache), Some(budget_policy_state), Some(qdrant_endpoint));
+    let api = api_router_full(client, buffer, llm_manager, Some(detection_stats), Some(slo_cache), Some(budget_policy_state), Some(qdrant_endpoint));
     let app: Router = health.merge(api);
 
     let addr = format!("0.0.0.0:{}", port);

@@ -1,0 +1,106 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: repositories.beeper.dev
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+spec:
+  group: beeper.dev
+  names:
+    kind: Repository
+    listKind: RepositoryList
+    plural: repositories
+    singular: repository
+    shortNames:
+      - repo
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - url
+                - provider
+                - credentials_secret
+              properties:
+                url:
+                  type: string
+                  description: Repository URL (e.g., https://github.com/org/service)
+                provider:
+                  type: string
+                  description: Git provider type
+                  enum:
+                    - github
+                    - gitlab
+                credentials_secret:
+                  type: string
+                  description: Name of the K8s Secret containing per-repo scoped credentials
+                branch_policy:
+                  type: object
+                  properties:
+                    base_branch:
+                      type: string
+                      description: Base branch for PRs (defaults to main)
+                    pr_branch_prefix:
+                      type: string
+                      description: Prefix for fix branches (defaults to beeper/)
+                    require_pr:
+                      type: boolean
+                      description: Whether PRs are required (defaults to true)
+                coding_standards:
+                  type: object
+                  properties:
+                    language:
+                      type: string
+                      description: Programming language
+                    linter:
+                      type: string
+                      description: Linter tool (e.g., ruff, eslint)
+                    test_command:
+                      type: string
+                      description: Test command (e.g., pytest, cargo test)
+            status:
+              type: object
+              properties:
+                condition:
+                  type: string
+                  description: Current condition of the repository connection
+                  enum:
+                    - pending
+                    - connected
+                    - auth_error
+                    - not_found
+                    - error
+                last_checked:
+                  type: string
+                  format: date-time
+                  description: Last time the repository was checked (ISO 8601)
+                error:
+                  type: string
+                  description: Error message if validation or connectivity check failed
+                default_branch_detected:
+                  type: string
+                  description: Detected default branch from repository
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Provider
+          type: string
+          jsonPath: .spec.provider
+        - name: URL
+          type: string
+          jsonPath: .spec.url
+        - name: Condition
+          type: string
+          jsonPath: .status.condition
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

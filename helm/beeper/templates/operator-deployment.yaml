@@ -7,6 +7,11 @@ metadata:
     app.kubernetes.io/component: operator
 spec:
   replicas: {{ .Values.operator.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       {{- include "beeper.selectorLabels" . | nindent 6 }}
@@ -32,9 +37,18 @@ spec:
             - name: health
               containerPort: 8080
               protocol: TCP
+            - name: ingestion
+              containerPort: {{ .Values.operator.ingestion.port | default 9090 }}
+              protocol: TCP
           env:
             - name: RUST_LOG
-              value: info
+              value: "info,beeper_operator::ingestion::buffer=error,beeper_operator::controllers::servicelevel=warn,beeper_operator::controllers::investigation=warn"
+            - name: BEEPER_INGESTION_BUFFER_SIZE
+              value: {{ .Values.operator.ingestion.bufferSize | default 10000 | quote }}
+            - name: QDRANT_URL
+              value: "http://{{ include "beeper.fullname" . }}-qdrant:6333"
+            - name: PROMETHEUS_URL
+              value: "http://prometheus.otel-demo.svc:9090"
             - name: LLM_PROVIDER
               value: {{ .Values.llm.provider }}
             - name: LLM_MODEL
@@ -42,9 +56,19 @@ spec:
             - name: LLM_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.llm.secretName }}
-                  key: {{ .Values.llm.secretKey }}
+                  name: {{ .Values.llm.apiKeySecret }}
+                  key: {{ .Values.llm.apiKeySecretKey }}
                   optional: true
+            - name: BEEPER_DETECTION_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: BEEPER_INVESTIGATOR_IMAGE
+              value: {{ include "beeper.investigator.image" . }}
+            - name: BEEPER_INVESTIGATOR_IMAGE_PULL_POLICY
+              value: {{ .Values.investigator.image.pullPolicy }}
+            - name: BEEPER_INVESTIGATOR_QDRANT_HOST
+              value: "{{ include "beeper.fullname" . }}-qdrant"
+            - name: BEEPER_INVESTIGATOR_SERVICE_ACCOUNT
+              value: {{ include "beeper.investigatorServiceAccountName" . }}
           livenessProbe:
             httpGet:
               path: /healthz

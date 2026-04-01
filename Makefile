@@ -1,230 +1,255 @@
-# Beeper Demo Application Makefile
-# Targets for deploying, managing, and tearing down the demo environment.
+# Beeper + OTel Astronomy Shop Demo Makefile
+#
+# Deploys the OpenTelemetry Astronomy Shop as a real-world target application
+# for Beeper to monitor, detect anomalies, and investigate root causes.
+#
+# Prerequisites:
+#   - docker (for building images)
+#   - helm 3.x installed
+#   - For full K8s demo: kind (installed automatically by demo-cluster)
 
-DEMO_NAMESPACE := beeper-demo
-DEMO_IMAGE := beeper/demo-app:latest
+DEMO_NAMESPACE := otel-demo
+BEEPER_NAMESPACE := beeper
+DEMO_RELEASE := otel-demo
+BEEPER_RELEASE := beeper
 DEMO_DIR := demo
+HELM_CHART := open-telemetry/opentelemetry-demo
+KIND_CLUSTER := beeper-demo
+KIND_CONFIG := kind-config.yaml
+BEEPER_TAG := dev
 
-.PHONY: demo-build demo-deploy demo-teardown demo-status demo-logs demo-fault demo-recover demo-fault-status demo-fault-list demo-lifecycle demo-lifecycle-status demo-lifecycle-reset demo-lifecycle-timeline demo-scenario demo-list demo-all
+.PHONY: demo-up demo-down demo-cluster demo-build demo-beeper \
+        demo-deploy demo-teardown demo-status demo-logs \
+        demo-fault demo-recover demo-fault-status demo-fault-list \
+        demo-ui demo-helm-repo
 
-## Build the demo application Docker image
+# ── One-command setup/teardown ───────────────────────────────────────────────
+
+## Full demo setup: cluster + images + Beeper + OTel demo
+demo-up: demo-cluster demo-build demo-helm-repo demo-beeper demo-deploy
+	@echo ""
+	@echo "============================================"
+	@echo "  Beeper demo is ready!"
+	@echo "  Run 'make demo-ui' to open the UIs."
+	@echo "  Run 'make demo-fault FAULT=payment-failure' to inject a fault."
+	@echo "============================================"
+
+## Delete the kind cluster entirely
+demo-down:
+	@echo "==> Deleting kind cluster '$(KIND_CLUSTER)'..."
+	kind delete cluster --name $(KIND_CLUSTER) 2>/dev/null || true
+	@echo "==> Cluster deleted."
+
+# ── Cluster management ───────────────────────────────────────────────────────
+
+## Create a kind cluster for the demo (installs kind if missing)
+demo-cluster:
+	@if ! command -v kind &>/dev/null; then \
+		echo "==> kind not found. Installing via Homebrew..."; \
+		brew install kind; \
+	fi
+	@if kind get clusters 2>/dev/null | grep -q '^$(KIND_CLUSTER)$$'; then \
+		echo "==> kind cluster '$(KIND_CLUSTER)' already exists."; \
+	else \
+		echo "==> Creating kind cluster '$(KIND_CLUSTER)'..."; \
+		kind create cluster --name $(KIND_CLUSTER) --config $(KIND_CONFIG); \
+	fi
+	@kubectl cluster-info --context kind-$(KIND_CLUSTER) >/dev/null 2>&1 || \
+		(echo "Error: kubectl context kind-$(KIND_CLUSTER) not working" && exit 1)
+	@echo "==> Cluster ready."
+
+## Build Docker images and load into kind
 demo-build:
-	docker build -t $(DEMO_IMAGE) $(DEMO_DIR)/app/
+	@echo "==> Building Beeper Docker images (tag: $(BEEPER_TAG))..."
+	docker build -t beeper/operator:$(BEEPER_TAG) ./operator
+	docker build -t beeper/ui:$(BEEPER_TAG) ./ui
+	docker build -t beeper/investigator:$(BEEPER_TAG) ./investigator
+	@echo "==> Loading images into kind cluster '$(KIND_CLUSTER)'..."
+	kind load docker-image beeper/operator:$(BEEPER_TAG) --name $(KIND_CLUSTER)
+	kind load docker-image beeper/ui:$(BEEPER_TAG) --name $(KIND_CLUSTER)
+	kind load docker-image beeper/investigator:$(BEEPER_TAG) --name $(KIND_CLUSTER)
+	@echo "==> Images loaded."
 
-## Deploy the demo application to Kubernetes
+# ── Beeper deployment ────────────────────────────────────────────────────────
+
+## Deploy Beeper itself (operator, UI, Qdrant, CRDs) via Helm
+demo-beeper:
+	@echo "==> Creating namespace $(BEEPER_NAMESPACE)..."
+	kubectl create namespace $(BEEPER_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+	@# Create LLM credentials secret from ANTHROPIC_API_KEY or BEEPER_LLM_API_KEY
+	@LLM_KEY="$${ANTHROPIC_API_KEY:-$${BEEPER_LLM_API_KEY:-}}"; \
+	if [ -z "$$LLM_KEY" ]; then \
+		echo ""; \
+		echo "ERROR: ANTHROPIC_API_KEY (or BEEPER_LLM_API_KEY) must be set."; \
+		echo "  Investigations require an LLM API key to complete."; \
+		echo "  Export your key and re-run:"; \
+		echo "    export ANTHROPIC_API_KEY=sk-ant-..."; \
+		echo "    make demo-up"; \
+		echo ""; \
+		echo "  Without an API key, SLO monitoring and fault injection still work,"; \
+		echo "  but investigator jobs will fail."; \
+		exit 1; \
+	fi; \
+	echo "==> Creating LLM credentials secret..."; \
+	kubectl create secret generic llm-credentials \
+		--namespace $(BEEPER_NAMESPACE) \
+		--from-literal=api-key="$$LLM_KEY" \
+		--dry-run=client -o yaml | kubectl apply -f -
+	@echo "==> Installing Beeper Helm chart..."
+	helm upgrade --install $(BEEPER_RELEASE) ./helm/beeper \
+		--namespace $(BEEPER_NAMESPACE) \
+		--set operator.image.tag=$(BEEPER_TAG) \
+		--set operator.image.pullPolicy=Never \
+		--set ui.image.tag=$(BEEPER_TAG) \
+		--set ui.image.pullPolicy=Never \
+		--set investigator.image.tag=$(BEEPER_TAG) \
+		--set investigator.image.pullPolicy=Never \
+		--timeout 5m \
+		--wait
+	@echo "==> Beeper deployed."
+
+# ── OTel demo deployment ────────────────────────────────────────────────────
+
+## Add the OTel Helm chart repo (run once)
+demo-helm-repo:
+	@echo "==> Adding OpenTelemetry Helm chart repo..."
+	helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts 2>/dev/null || true
+	helm repo update
+	@echo "==> Helm repo ready."
+
+## Deploy the OTel Astronomy Shop + Beeper SLOs
 demo-deploy:
-	@echo "==> Deploying demo application to namespace $(DEMO_NAMESPACE)..."
-	kubectl apply -f $(DEMO_DIR)/k8s/namespace.yaml
-	kubectl apply -f $(DEMO_DIR)/k8s/api-gateway.yaml
-	kubectl apply -f $(DEMO_DIR)/k8s/backend.yaml
-	kubectl apply -f $(DEMO_DIR)/k8s/database.yaml
-	kubectl apply -f $(DEMO_DIR)/k8s/worker.yaml
-	kubectl apply -f $(DEMO_DIR)/k8s/slo-api-gateway.yaml
-	kubectl apply -f $(DEMO_DIR)/k8s/slo-backend.yaml
-	kubectl apply -f $(DEMO_DIR)/k8s/slo-database.yaml
-	kubectl apply -f $(DEMO_DIR)/k8s/slo-worker.yaml
-	@echo "==> Waiting for rollout..."
-	kubectl -n $(DEMO_NAMESPACE) rollout status deployment/demo-api-gateway --timeout=60s
-	kubectl -n $(DEMO_NAMESPACE) rollout status deployment/demo-backend --timeout=60s
-	kubectl -n $(DEMO_NAMESPACE) rollout status deployment/demo-database --timeout=60s
-	kubectl -n $(DEMO_NAMESPACE) rollout status deployment/demo-worker --timeout=60s
-	@echo "==> Demo application deployed successfully!"
+	@echo "==> Checking for Beeper CRDs..."
+	@kubectl get crd servicelevels.beeper.dev >/dev/null 2>&1 || \
+		(echo "Error: ServiceLevel CRD not found. Run 'make demo-beeper' first." && exit 1)
+	@echo "==> Creating namespace $(DEMO_NAMESPACE)..."
+	kubectl create namespace $(DEMO_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+	@echo "==> Installing OTel Astronomy Shop via Helm..."
+	helm upgrade --install $(DEMO_RELEASE) $(HELM_CHART) \
+		--namespace $(DEMO_NAMESPACE) \
+		--values $(DEMO_DIR)/otel-demo-values.yaml \
+		--timeout 10m \
+		--wait
+	@echo "==> Initializing Qdrant collections..."
+	kubectl -n $(BEEPER_NAMESPACE) port-forward svc/beeper-qdrant 6333:6333 &
+	sleep 2
+	python3 scripts/init-collections.py --host localhost --port 6333
+	python3 scripts/seed_kb.py --host localhost --port 6333
+	kill %1 2>/dev/null || true
+	@echo "==> Applying ServiceLevel CRDs..."
+	kubectl apply -f $(DEMO_DIR)/k8s/slo-checkout.yaml
+	kubectl apply -f $(DEMO_DIR)/k8s/slo-cart.yaml
+	kubectl apply -f $(DEMO_DIR)/k8s/slo-payment.yaml
+	kubectl apply -f $(DEMO_DIR)/k8s/slo-frontend.yaml
+	kubectl apply -f $(DEMO_DIR)/k8s/slo-productcatalog.yaml
+	@echo "==> Applying Source CRD..."
+	kubectl apply -f $(DEMO_DIR)/k8s/source-prometheus.yaml
+	@echo ""
+	@echo "==> Demo deployed! Run 'make demo-status' to check pods."
+	@echo "    Run 'make demo-ui' to port-forward the UIs."
 
-## Tear down the demo application (deletes entire namespace)
+## Tear down the demo (deletes namespace + Beeper release)
 demo-teardown:
-	@echo "==> Tearing down demo application..."
+	@echo "==> Uninstalling OTel demo Helm release..."
+	helm uninstall $(DEMO_RELEASE) --namespace $(DEMO_NAMESPACE) 2>/dev/null || true
+	@echo "==> Deleting namespace $(DEMO_NAMESPACE)..."
 	kubectl delete namespace $(DEMO_NAMESPACE) --ignore-not-found
-	@echo "==> Demo application removed."
+	@echo "==> Cleaning up Source CRD..."
+	kubectl delete -f $(DEMO_DIR)/k8s/source-prometheus.yaml --ignore-not-found 2>/dev/null || true
+	@echo "==> Uninstalling Beeper Helm release..."
+	helm uninstall $(BEEPER_RELEASE) --namespace $(BEEPER_NAMESPACE) 2>/dev/null || true
+	kubectl delete namespace $(BEEPER_NAMESPACE) --ignore-not-found
+	@echo "==> Demo removed."
 
-## Show demo application status
+## Show demo pod/service status
 demo-status:
-	@echo "==> Pod Status:"
-	@kubectl -n $(DEMO_NAMESPACE) get pods -o wide 2>/dev/null || echo "  Namespace $(DEMO_NAMESPACE) not found"
+	@echo "==> Beeper Pods ($(BEEPER_NAMESPACE)):"
+	@kubectl -n $(BEEPER_NAMESPACE) get pods 2>/dev/null || echo "  Namespace $(BEEPER_NAMESPACE) not found"
+	@echo ""
+	@echo "==> OTel Demo Pods ($(DEMO_NAMESPACE)):"
+	@kubectl -n $(DEMO_NAMESPACE) get pods 2>/dev/null || echo "  Namespace $(DEMO_NAMESPACE) not found"
 	@echo ""
 	@echo "==> Services:"
 	@kubectl -n $(DEMO_NAMESPACE) get services 2>/dev/null || echo "  Namespace $(DEMO_NAMESPACE) not found"
 	@echo ""
 	@echo "==> ServiceLevels:"
 	@kubectl -n $(DEMO_NAMESPACE) get servicelevels 2>/dev/null || echo "  No ServiceLevel CRDs found"
+	@echo ""
+	@echo "==> Sources ($(BEEPER_NAMESPACE)):"
+	@kubectl -n $(BEEPER_NAMESPACE) get sources 2>/dev/null || echo "  No Source CRDs found"
 
-## Tail logs from all demo pods
+## Tail logs from demo pods
 demo-logs:
-	kubectl -n $(DEMO_NAMESPACE) logs -l app.kubernetes.io/part-of=beeper-demo --all-containers --follow --prefix
+	kubectl -n $(DEMO_NAMESPACE) logs -l app.kubernetes.io/instance=$(DEMO_RELEASE) --all-containers --follow --prefix --max-log-requests=20
 
-## Inject a fault into a demo service
-## Usage: make demo-fault TYPE=memory-leak SERVICE=backend
+## Inject a fault via feature flag
+## Usage: make demo-fault FAULT=payment-failure
 demo-fault:
-	@test -n "$(TYPE)" || (echo "Error: TYPE is required (memory-leak, bad-deploy, cascading-failure, scale-dependent)" && exit 1)
-	@test -n "$(SERVICE)" || (echo "Error: SERVICE is required (api-gateway, backend, database, worker)" && exit 1)
-	@echo "==> Injecting fault '$(TYPE)' into $(SERVICE)..."
-	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SERVICE) -- \
-		wget -qO- --post-data='{"fault_type":"$(TYPE)"}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8080/fault/inject 2>/dev/null || \
-		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SERVICE) -- \
-		wget -qO- --post-data='{"fault_type":"$(TYPE)"}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8081/fault/inject 2>/dev/null || \
-		echo "  Failed to inject fault. Is the demo deployed?"
-	@echo ""
-	@echo "==> Fault injected. Monitor with: make demo-fault-status"
+	@test -n "$(FAULT)" || (echo "Error: FAULT is required. Run 'make demo-fault-list' for options." && exit 1)
+	@echo "==> Enabling fault '$(FAULT)'..."
+	@case "$(FAULT)" in \
+		payment-failure) FLAG_KEY=paymentFailure ;; \
+		cart-failure)    FLAG_KEY=cartFailure ;; \
+		kafka-problems)  FLAG_KEY=kafkaQueueProblems ;; \
+		slow-images)     FLAG_KEY=imageSlowLoad ;; \
+		high-cpu)        FLAG_KEY=adHighCpu ;; \
+		*) echo "Error: Unknown fault '$(FAULT)'. Run 'make demo-fault-list' for options." && exit 1 ;; \
+	esac && \
+	kubectl -n $(DEMO_NAMESPACE) get configmap flagd-config -o json | \
+		python3 -c "import sys,json; \
+cm=json.load(sys.stdin); \
+flags=json.loads(cm['data']['demo.flagd.json']); \
+flags['flags']['$$FLAG_KEY']['state']='ENABLED'; \
+flags['flags']['$$FLAG_KEY']['defaultVariant']='on'; \
+cm['data']['demo.flagd.json']=json.dumps(flags); \
+json.dump(cm,sys.stdout)" | \
+		kubectl apply -f - && \
+	kubectl -n $(DEMO_NAMESPACE) rollout restart deploy/flagd
+	@echo "==> Fault '$(FAULT)' enabled. The load generator will trigger failures."
+	@echo "    Monitor with: make demo-fault-status"
 
-## Recover all services from fault injection
-## Usage: make demo-recover [SERVICE=backend]
+## Recover from all fault injection (reset feature flags)
 demo-recover:
-	@echo "==> Recovering from fault injection..."
-	@if [ -n "$(SERVICE)" ]; then \
-		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SERVICE) -- \
-			wget -qO- --post-data='{}' \
-			--header='Content-Type: application/json' \
-			http://localhost:8080/fault/recover 2>/dev/null || \
-			kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SERVICE) -- \
-			wget -qO- --post-data='{}' \
-			--header='Content-Type: application/json' \
-			http://localhost:8081/fault/recover 2>/dev/null || \
-			echo "  Failed to recover $(SERVICE)"; \
-	else \
-		for svc in api-gateway backend database worker; do \
-			echo "  Recovering demo-$$svc..."; \
-			kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$$svc -- \
-				wget -qO- --post-data='{}' \
-				--header='Content-Type: application/json' \
-				http://localhost:8080/fault/recover 2>/dev/null || \
-				kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$$svc -- \
-				wget -qO- --post-data='{}' \
-				--header='Content-Type: application/json' \
-				http://localhost:8081/fault/recover 2>/dev/null || \
-				echo "  Failed to recover $$svc"; \
-		done; \
-	fi
-	@echo "==> Recovery complete."
+	@echo "==> Resetting all feature flags to defaults..."
+	@kubectl -n $(DEMO_NAMESPACE) get configmap flagd-config -o json | \
+		python3 -c "exec(\"import sys,json\ncm=json.load(sys.stdin)\nflags=json.loads(cm['data']['demo.flagd.json'])\nfor f in flags.get('flags',{}).values():\n    f['state']='DISABLED'\n    f['defaultVariant']='off'\ncm['data']['demo.flagd.json']=json.dumps(flags)\njson.dump(cm,sys.stdout)\")" | \
+		kubectl apply -f -
+	@kubectl -n $(DEMO_NAMESPACE) rollout restart deploy/flagd
+	@echo "==> All faults cleared. Services will recover shortly."
 
-## Show fault injection status across all services
+## Show current feature flag (fault injection) status
 demo-fault-status:
-	@echo "==> Fault Injection Status:"
-	@for svc in api-gateway backend database worker; do \
-		echo ""; \
-		echo "  $$svc:"; \
-		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$$svc -- \
-			wget -qO- http://localhost:8080/fault/status 2>/dev/null || \
-			kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$$svc -- \
-			wget -qO- http://localhost:8081/fault/status 2>/dev/null || \
-			echo "    unavailable"; \
-	done
+	@echo "==> Feature Flag Status:"
+	@kubectl -n $(DEMO_NAMESPACE) get configmap flagd-config -o json 2>/dev/null | \
+		python3 -c "exec(\"import sys,json\ncm=json.load(sys.stdin)\nflags=json.loads(cm['data']['demo.flagd.json'])\nprint()\nfor name,cfg in sorted(flags.get('flags',{}).items()):\n    state=cfg.get('state','DISABLED')\n    default=cfg.get('defaultVariant','off')\n    marker='ON' if state=='ENABLED' and default=='on' else 'off'\n    print(f'  {name:30s} [{marker}]')\")" \
+		|| echo "  Could not read flagd config. Is the demo deployed?"
 
-## List available fault types
+## List available faults
 demo-fault-list:
-	@echo "==> Available Fault Types:"
+	@echo "==> Available Faults (OTel Astronomy Shop feature flags):"
 	@echo ""
-	@echo "  memory-leak       Gradual memory leak leading to OOM"
-	@echo "  bad-deploy        HTTP 500 error rate spike (simulates broken deploy)"
-	@echo "  cascading-failure Error propagation across dependent services"
-	@echo "  scale-dependent   Latency increases with concurrent request count"
+	@echo "  payment-failure   Payment service charge method errors"
+	@echo "  cart-failure      Cart service EmptyCart failures"
+	@echo "  kafka-problems    Kafka queue overload + consumer delays"
+	@echo "  slow-images       Deliberate image loading delays"
+	@echo "  high-cpu          Ad service high CPU consumption"
 	@echo ""
-	@echo "Usage: make demo-fault TYPE=<type> SERVICE=<service>"
-	@echo "       make demo-recover [SERVICE=<service>]"
+	@echo "Usage: make demo-fault FAULT=<name>"
+	@echo "       make demo-recover"
+	@echo "       make demo-fault-status"
 
-## Start a full lifecycle demonstration
-## Usage: make demo-lifecycle FAULT=memory-leak [SERVICE=backend] [TRUST=5]
-demo-lifecycle:
-	@test -n "$(FAULT)" || (echo "Error: FAULT is required (memory-leak, bad-deploy, cascading-failure, scale-dependent)" && exit 1)
-	$(eval LIFECYCLE_SERVICE := $(or $(SERVICE),backend))
-	$(eval LIFECYCLE_TRUST := $(or $(TRUST),5))
-	@echo "==> Starting full lifecycle demo: fault=$(FAULT), service=$(LIFECYCLE_SERVICE), trust_level=$(LIFECYCLE_TRUST)..."
-	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
-		wget -qO- --post-data='{"fault_type":"$(FAULT)","trust_level":$(LIFECYCLE_TRUST)}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8080/lifecycle/start 2>/dev/null || \
-		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
-		wget -qO- --post-data='{"fault_type":"$(FAULT)","trust_level":$(LIFECYCLE_TRUST)}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8081/lifecycle/start 2>/dev/null || \
-		echo "  Failed to start lifecycle. Is the demo deployed?"
+## Port-forward UIs for local access
+demo-ui:
+	@echo "==> Port-forwarding demo UIs..."
 	@echo ""
-	@echo "==> Lifecycle started. Monitor with: make demo-lifecycle-status"
-
-## Show lifecycle demonstration status
-## Usage: make demo-lifecycle-status [SERVICE=backend]
-demo-lifecycle-status:
-	$(eval LIFECYCLE_SERVICE := $(or $(SERVICE),backend))
-	@echo "==> Lifecycle Status ($(LIFECYCLE_SERVICE)):"
-	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
-		wget -qO- http://localhost:8080/lifecycle/status 2>/dev/null || \
-		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
-		wget -qO- http://localhost:8081/lifecycle/status 2>/dev/null || \
-		echo "  unavailable"
-
-## Reset lifecycle demonstration
-## Usage: make demo-lifecycle-reset [SERVICE=backend]
-demo-lifecycle-reset:
-	$(eval LIFECYCLE_SERVICE := $(or $(SERVICE),backend))
-	@echo "==> Resetting lifecycle on $(LIFECYCLE_SERVICE)..."
-	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
-		wget -qO- --post-data='{}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8080/lifecycle/reset 2>/dev/null || \
-		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
-		wget -qO- --post-data='{}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8081/lifecycle/reset 2>/dev/null || \
-		echo "  Failed to reset lifecycle."
+	@echo "  Beeper UI:       http://localhost:5050"
+	@echo "  OTel Shop:       http://localhost:8080"
+	@echo "  Feature Flags:   http://localhost:8080/feature"
+	@echo "  Jaeger:          http://localhost:16686"
 	@echo ""
-	@echo "==> Lifecycle reset complete."
-
-## Show full lifecycle timeline with narration
-## Usage: make demo-lifecycle-timeline [SERVICE=backend]
-demo-lifecycle-timeline:
-	$(eval LIFECYCLE_SERVICE := $(or $(SERVICE),backend))
-	@echo "==> Lifecycle Timeline ($(LIFECYCLE_SERVICE)):"
-	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
-		wget -qO- http://localhost:8080/lifecycle/timeline 2>/dev/null || \
-		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(LIFECYCLE_SERVICE) -- \
-		wget -qO- http://localhost:8081/lifecycle/timeline 2>/dev/null || \
-		echo "  unavailable"
-
-## Run a scripted demo scenario
-## Usage: make demo-scenario SCENARIO=memory-leak [SERVICE=backend]
-demo-scenario:
-	@test -n "$(SCENARIO)" || (echo "Error: SCENARIO is required (memory-leak, bad-deploy, cascading-failure, scale-dependent)" && exit 1)
-	$(eval SCENARIO_SERVICE := $(or $(SERVICE),backend))
-	@echo "==> Running demo scenario '$(SCENARIO)' on $(SCENARIO_SERVICE)..."
-	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SCENARIO_SERVICE) -- \
-		wget -qO- --post-data='{"scenario":"$(SCENARIO)"}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8080/scenarios/run 2>/dev/null || \
-		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SCENARIO_SERVICE) -- \
-		wget -qO- --post-data='{"scenario":"$(SCENARIO)"}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8081/scenarios/run 2>/dev/null || \
-		echo "  Failed to run scenario. Is the demo deployed?"
+	@echo "Press Ctrl+C to stop."
 	@echo ""
-	@echo "==> Scenario complete."
-
-## List available demo scenarios
-demo-list:
-	@echo "==> Available Demo Scenarios:"
-	@echo ""
-	@echo "  memory-leak          Gradual memory leak → OOM detection & remediation         (~53s)"
-	@echo "  bad-deploy           Broken deploy → error rate spike → rollback proposal      (~42s)"
-	@echo "  cascading-failure    Cascading failure → dependency tracing → root cause fix   (~62s)"
-	@echo "  scale-dependent      Load-triggered latency → SLO burn rate → HPA scaling     (~53s)"
-	@echo ""
-	@echo "Usage: make demo-scenario SCENARIO=<name> [SERVICE=backend]"
-	@echo "       make demo-all [SERVICE=backend]"
-
-## Run all demo scenarios in sequence
-## Usage: make demo-all [SERVICE=backend]
-demo-all:
-	$(eval SCENARIO_SERVICE := $(or $(SERVICE),backend))
-	@echo "==> Running all demo scenarios on $(SCENARIO_SERVICE)..."
-	@kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SCENARIO_SERVICE) -- \
-		wget -qO- --post-data='{}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8080/scenarios/run-all 2>/dev/null || \
-		kubectl -n $(DEMO_NAMESPACE) exec deploy/demo-$(SCENARIO_SERVICE) -- \
-		wget -qO- --post-data='{}' \
-		--header='Content-Type: application/json' \
-		http://localhost:8081/scenarios/run-all 2>/dev/null || \
-		echo "  Failed to run scenarios. Is the demo deployed?"
-	@echo ""
-	@echo "==> All scenarios complete."
+	@kubectl -n $(DEMO_NAMESPACE) port-forward svc/frontend-proxy 8080:8080 &
+	@kubectl -n $(DEMO_NAMESPACE) port-forward svc/jaeger 16686:16686 &
+	@kubectl -n $(BEEPER_NAMESPACE) port-forward svc/beeper-ui 5050:80 2>/dev/null &
+	@wait

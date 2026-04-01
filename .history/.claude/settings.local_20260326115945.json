@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(poetry run:*)",
+      "Bash(/Users/ethompsy/Projects/beeper/investigator/.venv/bin/python:*)",
+      "Bash(pip3 list:*)",
+      "Bash(pip3 install:*)",
+      "Bash(ruff check:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker info:*)",
+      "Bash(pip install:*)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(./scripts/demo.sh:*)",
+      "Bash(command:*)",
+      "Bash(kubectl:*)",
+      "Bash(helm version:*)",
+      "Bash(xargs cat:*)",
+      "Bash(make:*)",
+      "Bash(helm template:*)",
+      "Bash(docker build:*)",
+      "Bash(kind load:*)",
+      "Bash(helm search:*)",
+      "Bash(helm show:*)",
+      "Bash(helm *)",
+      "Bash(ls:*)"
+    ]
+  }
+}

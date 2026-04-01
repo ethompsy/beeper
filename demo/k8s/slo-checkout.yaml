@@ -1,17 +1,17 @@
 apiVersion: beeper.dev/v1
 kind: ServiceLevel
 metadata:
-  name: demo-backend-slo
-  namespace: beeper-demo
+  name: otel-checkout-slo
+  namespace: otel-demo
   labels:
-    app.kubernetes.io/part-of: beeper-demo
+    app.kubernetes.io/part-of: otel-demo
 spec:
-  service: "demo-backend"
+  service: "checkoutservice"
   sli:
-    type: Availability
-    metric: "demo_request_total"
-    good_selector: 'demo_request_total{service="backend",status=~"2.."}'
-    total_selector: 'demo_request_total{service="backend"}'
+    type: availability
+    metric: "http_server_request_duration_seconds_count"
+    good_selector: '{service_name="checkoutservice",http_status_code=~"2.."}'
+    total_selector: '{service_name="checkoutservice"}'
   objective:
     target: 0.999
     window: "30m"

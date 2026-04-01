@@ -9,10 +9,10 @@ metadata:
 rules:
   # Beeper CRDs - full CRUD + status
   - apiGroups: ["beeper.dev"]
-    resources: ["sources", "investigations", "servicelevels"]
+    resources: ["sources", "investigations", "servicelevels", "notificationchannels", "repositories"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["beeper.dev"]
-    resources: ["sources/status", "investigations/status", "servicelevels/status"]
+    resources: ["sources/status", "investigations/status", "servicelevels/status", "notificationchannels/status", "repositories/status"]
     verbs: ["get", "update", "patch"]
   # Jobs - for spawning investigator pods
   - apiGroups: ["batch"]

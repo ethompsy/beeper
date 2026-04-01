@@ -31,6 +31,7 @@ beeper/
 - Python 3.11+
 - Poetry 1.7+
 - Docker and Docker Compose
+- For K8s demo: `kind` (installed automatically by `make demo-cluster`), `helm` 3.x, `ANTHROPIC_API_KEY` env var (for investigations)
 - Kubernetes cluster (for production deployment)
 
 ### Local Development
@@ -69,6 +70,54 @@ beeper/
    # UI
    cd ui && poetry run flask run
    ```
+
+## Demo Environment
+
+Beeper ships with a demo that uses the [OpenTelemetry Astronomy Shop](https://github.com/open-telemetry/opentelemetry-demo) — a real polyglot e-commerce application (16+ microservices) with built-in fault injection via feature flags.
+
+### Quick Start (K8s)
+
+```bash
+# Set your LLM API key (required for investigations to complete)
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# One command: create kind cluster, build images, deploy Beeper + OTel demo
+make demo-up
+
+# Port-forward the UIs
+make demo-ui
+# → Beeper UI:     http://localhost:5050
+# → OTel Shop:     http://localhost:8080
+# → Feature Flags: http://localhost:8080/feature
+# → Jaeger:        http://localhost:16686
+
+# Tear everything down (deletes the kind cluster)
+make demo-down
+```
+
+### Quick Start (Local UI only)
+
+```bash
+./scripts/demo.sh              # Qdrant + seed KB + Flask UI
+./scripts/demo.sh --k8s        # Also deploy OTel demo to K8s
+```
+
+### Fault Injection
+
+Inject real failures into the running application and watch Beeper detect and investigate them:
+
+```bash
+make demo-fault FAULT=payment-failure   # Payment service errors
+make demo-fault FAULT=cart-failure      # Cart service failures
+make demo-fault FAULT=kafka-problems    # Kafka queue overload
+make demo-fault FAULT=slow-images       # Image loading delays
+make demo-fault FAULT=high-cpu          # Ad service CPU spike
+
+make demo-fault-status                  # Check which faults are active
+make demo-recover                       # Clear all faults
+```
+
+See [demo/README.md](demo/README.md) for full details on architecture, SLOs, and all available Makefile targets.
 
 ## Development
 

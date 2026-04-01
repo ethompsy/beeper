@@ -15,10 +15,13 @@ operator:
   resources:
     limits:
       cpu: 500m
-      memory: 256Mi
+      memory: 1Gi
     requests:
       cpu: 100m
       memory: 128Mi
+  ingestion:
+    port: 9090
+    bufferSize: 10000
   serviceAccount:
     create: true
     name: ""
@@ -37,10 +40,10 @@ ui:
   resources:
     limits:
       cpu: 500m
-      memory: 256Mi
+      memory: 512Mi
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 192Mi
   ingress:
     enabled: false
     className: ""

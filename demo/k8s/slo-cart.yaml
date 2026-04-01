@@ -1,0 +1,26 @@
+apiVersion: beeper.dev/v1
+kind: ServiceLevel
+metadata:
+  name: otel-cart-slo
+  namespace: otel-demo
+  labels:
+    app.kubernetes.io/part-of: otel-demo
+spec:
+  service: "cartservice"
+  sli:
+    type: availability
+    metric: "http_server_request_duration_seconds_count"
+    good_selector: '{service_name="cartservice",http_status_code=~"2.."}'
+    total_selector: '{service_name="cartservice"}'
+  objective:
+    target: 0.999
+    window: "30m"
+  burn_rate_alerts:
+    - severity: warning
+      short_window: "5m"
+      long_window: "1h"
+      factor: 14.4
+    - severity: critical
+      short_window: "2m"
+      long_window: "15m"
+      factor: 14.4

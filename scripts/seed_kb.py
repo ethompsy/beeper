@@ -47,165 +47,193 @@ def generate_placeholder_embedding(entry_id: str) -> list[float]:
     return [random.uniform(-1, 1) for _ in range(VECTOR_DIM)]
 
 
-# Sample runbook entries
+# Sample runbook entries (OTel Astronomy Shop services)
 SAMPLE_RUNBOOKS = [
     {
         "entry_id": "rb-001",
         "entry_type": "runbook",
-        "title": "High CPU Usage Investigation",
-        "content": """# High CPU Usage Investigation Runbook
+        "title": "Payment Service Failure Investigation",
+        "content": """# Payment Service Failure Investigation Runbook
 
 ## Symptoms
-- CPU usage consistently above 80% for more than 5 minutes
-- Increased response latency
-- Potential service degradation
+- Checkout requests failing with payment errors
+- Increased error rate on paymentservice
+- Customers unable to complete orders
 
 ## Investigation Steps
-1. Identify the process consuming CPU: `top -o %CPU`
-2. Check for runaway queries or infinite loops
-3. Review recent deployments
-4. Check for traffic spikes in metrics
+1. Check paymentservice logs for charge method errors
+2. Query Prometheus: rate(http_server_request_duration_seconds_count{service_name="paymentservice",http_status_code=~"5.."}[5m])
+3. Check if paymentServiceFailure feature flag is enabled in flagd
+4. Review distributed traces in Jaeger for failed checkout flows
 
 ## Common Root Causes
-- Inefficient database queries
-- Memory pressure causing GC thrashing
-- Traffic spike without autoscaling
-- Bug in recent deployment
+- Feature flag paymentServiceFailure enabled (fault injection)
+- Upstream payment gateway timeout
+- Invalid payment data from checkoutservice
 
 ## Resolution Actions
-- Scale horizontally if traffic-related
-- Rollback if deployment-related
-- Optimize queries if database-related
+- Disable paymentServiceFailure feature flag if enabled
+- Restart paymentservice pods if unresponsive
+- Check checkoutservice for malformed payment requests
 """,
-        "service": "payments",
+        "service": "paymentservice",
         "created_at": "2026-01-15T10:00:00Z",
     },
     {
         "entry_id": "rb-002",
         "entry_type": "runbook",
-        "title": "Database Connection Pool Exhaustion",
-        "content": """# Database Connection Pool Exhaustion Runbook
+        "title": "Cart Service Error Handling",
+        "content": """# Cart Service Error Handling Runbook
 
 ## Symptoms
-- "Connection pool exhausted" errors in logs
-- Increased latency on database operations
-- Timeout errors from application
+- EmptyCart operations failing
+- Cart state inconsistencies
+- Frontend showing stale cart data
 
 ## Investigation Steps
-1. Check current connection count: `SELECT count(*) FROM pg_stat_activity`
-2. Identify long-running queries
-3. Check for connection leaks in application logs
-4. Review pool configuration
+1. Check cartservice logs for gRPC errors
+2. Query Prometheus: rate(http_server_request_duration_seconds_count{service_name="cartservice",http_status_code=~"5.."}[5m])
+3. Check Valkey (Redis) cache connectivity from cartservice
+4. Check if cartServiceFailure feature flag is enabled
 
 ## Common Root Causes
-- Connection leak in application code
-- Long-running transactions
-- Sudden traffic spike
-- Pool size too small for load
+- Feature flag cartServiceFailure enabled (fault injection)
+- Valkey cache connection timeout or eviction
+- Cart data serialization errors
 
 ## Resolution Actions
-- Restart affected pods to release connections
-- Kill long-running queries
-- Increase pool size if warranted
-- Deploy fix for connection leak
+- Disable cartServiceFailure feature flag if enabled
+- Restart cartservice pods
+- Check Valkey health and memory usage
 """,
-        "service": "database",
+        "service": "cartservice",
         "created_at": "2026-01-20T14:30:00Z",
     },
     {
         "entry_id": "rb-003",
         "entry_type": "runbook",
-        "title": "Kubernetes Pod CrashLoopBackOff",
-        "content": """# Kubernetes Pod CrashLoopBackOff Runbook
+        "title": "Kafka Queue Problems Investigation",
+        "content": """# Kafka Queue Problems Investigation Runbook
 
 ## Symptoms
-- Pod status shows CrashLoopBackOff
-- Container restarts increasing
-- Service unavailability
+- Order processing delays
+- Kafka consumer lag increasing
+- Checkout completes but order confirmation delayed
 
 ## Investigation Steps
-1. Check pod events: `kubectl describe pod <name>`
-2. Review container logs: `kubectl logs <pod> --previous`
-3. Check resource limits and requests
-4. Verify ConfigMaps and Secrets are mounted
+1. Check Kafka consumer group lag metrics
+2. Review checkoutservice and accountingservice logs for Kafka errors
+3. Check if kafkaQueueProblems feature flag is enabled
+4. Monitor Kafka broker health and partition distribution
 
 ## Common Root Causes
-- Application startup failure
-- Missing configuration or secrets
-- Resource limits too restrictive
-- Liveness probe misconfiguration
+- Feature flag kafkaQueueProblems enabled (queue overload + consumer delays)
+- Kafka broker resource exhaustion
+- Consumer processing too slow for incoming rate
+- Network partition between services and Kafka
 
 ## Resolution Actions
-- Fix application startup issue
-- Update ConfigMaps/Secrets
-- Adjust resource limits
-- Fix liveness probe configuration
+- Disable kafkaQueueProblems feature flag if enabled
+- Scale Kafka consumers (increase accountingservice replicas)
+- Check Kafka broker disk and memory usage
+- Restart affected consumer pods
 """,
-        "service": "kubernetes",
+        "service": "kafka",
         "created_at": "2026-01-22T09:15:00Z",
     },
     {
         "entry_id": "rb-004",
         "entry_type": "runbook",
-        "title": "API Gateway 502 Bad Gateway Errors",
-        "content": """# API Gateway 502 Bad Gateway Errors Runbook
+        "title": "Frontend Slow Loading Investigation",
+        "content": """# Frontend Slow Loading Investigation Runbook
 
 ## Symptoms
-- Clients receiving 502 errors
-- Backend services may be healthy
-- Intermittent failures
+- Page load times significantly increased
+- Images loading slowly or timing out
+- User-facing latency SLO violations
 
 ## Investigation Steps
-1. Check backend service health endpoints
-2. Review API gateway logs for upstream errors
-3. Check network connectivity between gateway and backends
-4. Verify load balancer configuration
+1. Check frontend p99 latency: histogram_quantile(0.99, rate(http_server_request_duration_seconds_bucket{service_name="frontend"}[5m]))
+2. Check if imageSlowLoad feature flag is enabled
+3. Review image provider (nginx) response times
+4. Check frontend proxy (Envoy) for upstream timeouts
 
 ## Common Root Causes
-- Backend service unhealthy or restarting
-- Network timeout between gateway and backend
-- Misconfigured health checks
-- Backend returning invalid responses
+- Feature flag imageSlowLoad enabled (deliberate image delays)
+- Image provider resource constraints
+- Frontend proxy connection limits
+- CDN or network latency
 
 ## Resolution Actions
-- Restart unhealthy backend pods
-- Increase timeout settings
-- Fix health check configuration
-- Debug backend response format
+- Disable imageSlowLoad feature flag if enabled
+- Restart image provider pods
+- Check frontend proxy configuration and limits
 """,
-        "service": "api-gateway",
+        "service": "frontend",
         "created_at": "2026-01-25T16:45:00Z",
+    },
+    {
+        "entry_id": "rb-005",
+        "entry_type": "runbook",
+        "title": "Ad Service High CPU Investigation",
+        "content": """# Ad Service High CPU Investigation Runbook
+
+## Symptoms
+- adservice CPU usage spiking to limits
+- Ad loading slow or timing out
+- Pod throttling or OOMKill events
+
+## Investigation Steps
+1. Check adservice CPU metrics: container_cpu_usage_seconds_total{container="adservice"}
+2. Check if adServiceHighCpu feature flag is enabled
+3. Review adservice JVM metrics (heap usage, GC pressure)
+4. Check pod resource limits vs actual usage
+
+## Common Root Causes
+- Feature flag adServiceHighCpu enabled (fault injection)
+- JVM garbage collection pressure
+- Inefficient ad matching algorithm under load
+- Resource limits too low for traffic volume
+
+## Resolution Actions
+- Disable adServiceHighCpu feature flag if enabled
+- Increase adservice CPU/memory limits
+- Restart adservice pods to clear JVM state
+- Scale adservice horizontally if load-related
+""",
+        "service": "adservice",
+        "created_at": "2026-01-28T11:00:00Z",
     },
 ]
 
-# Sample completed investigation entries
+# Sample completed investigation entries (OTel Astronomy Shop)
 SAMPLE_INVESTIGATIONS = [
     {
         "investigation_id": "inv-001",
         "status": "resolved",
-        "service": "payments",
+        "service": "paymentservice",
         "started_at": "2026-01-28T08:30:00Z",
-        "title": "Payment Service Latency Spike",
-        "root_cause": "Database connection pool exhaustion due to long-running transaction",
-        "resolution": "Identified and killed blocking transaction; implemented query timeout",
+        "title": "Payment Processing Failures During Checkout",
+        "root_cause": "paymentServiceFailure feature flag was enabled, causing charge method to return errors",
+        "resolution": "Disabled paymentServiceFailure feature flag via flagd; confirmed error rate returned to baseline",
     },
     {
         "investigation_id": "inv-002",
         "status": "resolved",
-        "service": "api-gateway",
+        "service": "cartservice",
         "started_at": "2026-01-30T14:00:00Z",
-        "title": "API Gateway Intermittent 502 Errors",
-        "root_cause": "Backend health check misconfiguration causing false positives",
-        "resolution": "Updated health check endpoint and timeout configuration",
+        "title": "Cart Service EmptyCart Errors",
+        "root_cause": "cartServiceFailure feature flag enabled, causing EmptyCart gRPC method to fail",
+        "resolution": "Disabled cartServiceFailure flag; restarted cartservice pods to clear stale state",
     },
     {
         "investigation_id": "inv-003",
         "status": "resolved",
-        "service": "orders",
+        "service": "checkoutservice",
         "started_at": "2026-02-01T11:15:00Z",
-        "title": "Order Processing Failures",
-        "root_cause": "Kafka consumer lag due to partition rebalancing",
-        "resolution": "Increased consumer instances and optimized partition assignment",
+        "title": "Order Confirmation Delays from Kafka Backlog",
+        "root_cause": "kafkaQueueProblems feature flag caused queue overload and consumer-side delays",
+        "resolution": "Disabled kafkaQueueProblems flag; consumer lag cleared within 2 minutes",
     },
 ]
 

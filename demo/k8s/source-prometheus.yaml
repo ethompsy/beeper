@@ -1,0 +1,8 @@
+apiVersion: beeper.dev/v1
+kind: Source
+metadata:
+  name: otel-demo-prometheus
+  namespace: beeper
+spec:
+  source_type: prometheus
+  endpoint: http://prometheus.otel-demo.svc:9090

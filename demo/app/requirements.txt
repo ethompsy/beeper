@@ -1,2 +1,0 @@
-flask>=3.0,<4.0
-prometheus-client>=0.20,<1.0

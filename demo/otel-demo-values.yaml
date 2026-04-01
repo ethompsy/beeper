@@ -1,0 +1,63 @@
+# Helm values overlay for OpenTelemetry Astronomy Shop
+# Used with: helm install otel-demo open-telemetry/opentelemetry-demo -f demo/otel-demo-values.yaml
+#
+# This configures the OTel demo to forward metrics and logs to Beeper's
+# operator ingestion endpoint, and keeps the deployment lean for demos.
+
+# --- OTel Collector: default pipeline (no remote write to Beeper) ---
+# The SLO engine queries Prometheus directly; no need for ingestion forwarding.
+# Re-enable prometheusremotewrite/beeper when the ingestion pipeline is optimized.
+
+# --- Components ---
+components:
+  # Feature flags (flagd) — allows fault injection via UI or API
+  flagd:
+    enabled: true
+
+  # Load generator — Locust-based, generates realistic user traffic
+  load-generator:
+    enabled: true
+
+  # Service resource overrides (keep demo lean)
+  frontend:
+    resources:
+      limits:
+        cpu: 300m
+        memory: 256Mi
+
+  cart:
+    resources:
+      limits:
+        cpu: 300m
+        memory: 256Mi
+
+  checkout:
+    resources:
+      limits:
+        cpu: 300m
+        memory: 256Mi
+
+  payment:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+  ad:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# --- Observability backends (keep minimal for demos) ---
+jaeger:
+  enabled: true
+
+grafana:
+  enabled: false
+
+opensearch:
+  enabled: false
+
+prometheus:
+  enabled: true

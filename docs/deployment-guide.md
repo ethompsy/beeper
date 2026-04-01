@@ -709,6 +709,79 @@ helm uninstall beeper
 
 ---
 
+## Demo Environment
+
+Beeper includes a demo environment that deploys the [OpenTelemetry Astronomy Shop](https://github.com/open-telemetry/opentelemetry-demo) — a polyglot e-commerce application with 16+ microservices — as a real-world target for Beeper to monitor and investigate.
+
+### Deploying the Demo
+
+```bash
+# One-time: add the OTel Helm chart repo
+make demo-helm-repo
+
+# Deploy the OTel Astronomy Shop + ServiceLevel CRDs + Source CRD
+make demo-deploy
+
+# Port-forward UIs for local access
+make demo-ui
+```
+
+This deploys the OTel demo into the `otel-demo` namespace and configures its OTel Collector to forward metrics and logs to Beeper's operator ingestion endpoint (port 9090).
+
+### Signal Flow
+
+```
+OTel Astronomy Shop services
+  → OTel Collector (in otel-demo namespace)
+    → prometheusremotewrite exporter → Beeper operator :9090/api/v1/write
+    → loki exporter                  → Beeper operator :9090/loki/api/v1/push
+```
+
+### Injecting Faults
+
+The OTel demo uses [flagd](https://flagd.dev/) feature flags for fault injection. The Makefile wraps this into simple commands:
+
+```bash
+make demo-fault FAULT=payment-failure   # Payment service errors
+make demo-fault FAULT=cart-failure      # Cart service failures
+make demo-fault FAULT=kafka-problems    # Kafka queue overload
+make demo-fault FAULT=slow-images       # Image loading delays
+make demo-fault FAULT=high-cpu          # Ad service CPU spike
+
+make demo-fault-status                  # Show active faults
+make demo-recover                       # Reset all flags
+```
+
+The demo includes a Locust-based load generator that runs continuously, so injected faults produce real error metrics and traces immediately.
+
+### ServiceLevel CRDs
+
+Pre-configured SLOs are applied for key services:
+
+| Service | SLO Target | Metric |
+|---------|-----------|--------|
+| checkoutservice | 99.9% availability | `http_server_request_duration_seconds_count` |
+| cartservice | 99.9% availability | `http_server_request_duration_seconds_count` |
+| paymentservice | 99.95% availability | `http_server_request_duration_seconds_count` |
+| frontend | 99.5% availability | `http_server_request_duration_seconds_count` |
+| productcatalogservice | 99.9% availability | `http_server_request_duration_seconds_count` |
+
+### Tearing Down
+
+```bash
+make demo-teardown
+```
+
+This uninstalls the Helm release, deletes the `otel-demo` namespace, and removes the Source CRD.
+
+### Resource Requirements
+
+The OTel demo requires approximately 4GB RAM and 4 CPU cores. It works on Docker Desktop Kubernetes, minikube, kind, or any cloud K8s cluster.
+
+See [demo/README.md](../demo/README.md) for full details.
+
+---
+
 ## Troubleshooting
 
 ### Operator Pod Not Starting

@@ -1,17 +1,17 @@
 apiVersion: beeper.dev/v1
 kind: ServiceLevel
 metadata:
-  name: demo-database-slo
-  namespace: beeper-demo
+  name: otel-payment-slo
+  namespace: otel-demo
   labels:
-    app.kubernetes.io/part-of: beeper-demo
+    app.kubernetes.io/part-of: otel-demo
 spec:
-  service: "demo-database"
+  service: "paymentservice"
   sli:
-    type: Availability
-    metric: "demo_request_total"
-    good_selector: 'demo_request_total{service="database",status=~"2.."}'
-    total_selector: 'demo_request_total{service="database"}'
+    type: availability
+    metric: "http_server_request_duration_seconds_count"
+    good_selector: '{service_name="paymentservice",http_status_code=~"2.."}'
+    total_selector: '{service_name="paymentservice"}'
   objective:
     target: 0.9995
     window: "30m"

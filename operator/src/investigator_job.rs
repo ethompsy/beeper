@@ -64,14 +64,59 @@ pub struct InvestigatorConfig {
 impl InvestigatorConfig {
     /// Build config from environment variables, falling back to defaults.
     ///
-    /// Reads:
-    /// - `BEEPER_PROMETHEUS_URL` → `prometheus_url` (default: empty)
-    /// - `BEEPER_LOKI_URL` → `loki_url` (default: empty)
+    /// Each field can be overridden via `BEEPER_INVESTIGATOR_*` env vars.
+    /// `prometheus_url` and `loki_url` also fall back to the non-prefixed
+    /// `PROMETHEUS_URL` / `LOKI_URL` vars already set in the operator
+    /// deployment. Similarly, `llm_provider` / `llm_model` fall back to
+    /// `LLM_PROVIDER` / `LLM_MODEL`.
     pub fn from_env() -> Self {
         Self {
-            prometheus_url: std::env::var("BEEPER_PROMETHEUS_URL").unwrap_or_default(),
+            image: std::env::var("BEEPER_INVESTIGATOR_IMAGE")
+                .unwrap_or_else(|_| "beeper/investigator:latest".to_string()),
+            image_pull_policy: std::env::var("BEEPER_INVESTIGATOR_IMAGE_PULL_POLICY")
+                .unwrap_or_else(|_| "IfNotPresent".to_string()),
+            backoff_limit: std::env::var("BEEPER_INVESTIGATOR_BACKOFF_LIMIT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2),
+            active_deadline_seconds: std::env::var("BEEPER_INVESTIGATOR_ACTIVE_DEADLINE_SECONDS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1800),
+            ttl_seconds_after_finished: std::env::var(
+                "BEEPER_INVESTIGATOR_TTL_SECONDS_AFTER_FINISHED",
+            )
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3600),
+            cpu_limit: std::env::var("BEEPER_INVESTIGATOR_CPU_LIMIT")
+                .unwrap_or_else(|_| "1000m".to_string()),
+            memory_limit: std::env::var("BEEPER_INVESTIGATOR_MEMORY_LIMIT")
+                .unwrap_or_else(|_| "512Mi".to_string()),
+            cpu_request: std::env::var("BEEPER_INVESTIGATOR_CPU_REQUEST")
+                .unwrap_or_else(|_| "200m".to_string()),
+            memory_request: std::env::var("BEEPER_INVESTIGATOR_MEMORY_REQUEST")
+                .unwrap_or_else(|_| "256Mi".to_string()),
+            qdrant_host: std::env::var("BEEPER_INVESTIGATOR_QDRANT_HOST")
+                .unwrap_or_else(|_| "qdrant".to_string()),
+            qdrant_port: std::env::var("BEEPER_INVESTIGATOR_QDRANT_PORT")
+                .unwrap_or_else(|_| "6333".to_string()),
+            llm_provider: std::env::var("BEEPER_INVESTIGATOR_LLM_PROVIDER")
+                .or_else(|_| std::env::var("LLM_PROVIDER"))
+                .unwrap_or_else(|_| "anthropic".to_string()),
+            llm_model: std::env::var("BEEPER_INVESTIGATOR_LLM_MODEL")
+                .or_else(|_| std::env::var("LLM_MODEL"))
+                .unwrap_or_else(|_| "claude-sonnet-4".to_string()),
+            llm_api_key_secret: std::env::var("BEEPER_INVESTIGATOR_LLM_API_KEY_SECRET")
+                .unwrap_or_else(|_| "llm-credentials".to_string()),
+            llm_api_key_secret_key: std::env::var("BEEPER_INVESTIGATOR_LLM_API_KEY_SECRET_KEY")
+                .unwrap_or_else(|_| "api-key".to_string()),
+            service_account_name: std::env::var("BEEPER_INVESTIGATOR_SERVICE_ACCOUNT")
+                .unwrap_or_else(|_| "beeper-investigator".to_string()),
+            prometheus_url: std::env::var("BEEPER_PROMETHEUS_URL")
+                .or_else(|_| std::env::var("PROMETHEUS_URL"))
+                .unwrap_or_default(),
             loki_url: std::env::var("BEEPER_LOKI_URL").unwrap_or_default(),
-            ..Default::default()
         }
     }
 }
@@ -739,34 +784,140 @@ mod tests {
         assert!(is_job_failed(&job));
     }
 
+    // Env-var tests must be serialized because they share process-wide state.
+    use std::sync::Mutex;
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Remove all env vars that `InvestigatorConfig::from_env()` reads.
+    fn clear_investigator_env_vars() {
+        for var in [
+            "BEEPER_PROMETHEUS_URL",
+            "BEEPER_LOKI_URL",
+            "PROMETHEUS_URL",
+            "LLM_PROVIDER",
+            "LLM_MODEL",
+            "BEEPER_INVESTIGATOR_IMAGE",
+            "BEEPER_INVESTIGATOR_IMAGE_PULL_POLICY",
+            "BEEPER_INVESTIGATOR_QDRANT_HOST",
+            "BEEPER_INVESTIGATOR_QDRANT_PORT",
+            "BEEPER_INVESTIGATOR_LLM_PROVIDER",
+            "BEEPER_INVESTIGATOR_LLM_MODEL",
+            "BEEPER_INVESTIGATOR_LLM_API_KEY_SECRET",
+            "BEEPER_INVESTIGATOR_LLM_API_KEY_SECRET_KEY",
+            "BEEPER_INVESTIGATOR_SERVICE_ACCOUNT",
+            "BEEPER_INVESTIGATOR_BACKOFF_LIMIT",
+            "BEEPER_INVESTIGATOR_ACTIVE_DEADLINE_SECONDS",
+            "BEEPER_INVESTIGATOR_TTL_SECONDS_AFTER_FINISHED",
+            "BEEPER_INVESTIGATOR_CPU_LIMIT",
+            "BEEPER_INVESTIGATOR_MEMORY_LIMIT",
+            "BEEPER_INVESTIGATOR_CPU_REQUEST",
+            "BEEPER_INVESTIGATOR_MEMORY_REQUEST",
+        ] {
+            std::env::remove_var(var);
+        }
+    }
+
     #[test]
     fn test_investigator_config_from_env() {
-        // Set env vars before calling from_env
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_investigator_env_vars();
+
+        // Set all BEEPER_INVESTIGATOR_* env vars
         std::env::set_var("BEEPER_PROMETHEUS_URL", "http://prometheus:9090");
         std::env::set_var("BEEPER_LOKI_URL", "http://loki:3100");
+        std::env::set_var("BEEPER_INVESTIGATOR_IMAGE", "custom/investigator:v2");
+        std::env::set_var("BEEPER_INVESTIGATOR_IMAGE_PULL_POLICY", "Always");
+        std::env::set_var("BEEPER_INVESTIGATOR_QDRANT_HOST", "beeper-qdrant");
+        std::env::set_var("BEEPER_INVESTIGATOR_QDRANT_PORT", "6334");
+        std::env::set_var("BEEPER_INVESTIGATOR_LLM_PROVIDER", "openai");
+        std::env::set_var("BEEPER_INVESTIGATOR_LLM_MODEL", "gpt-4o");
+        std::env::set_var("BEEPER_INVESTIGATOR_LLM_API_KEY_SECRET", "my-secret");
+        std::env::set_var("BEEPER_INVESTIGATOR_LLM_API_KEY_SECRET_KEY", "my-key");
+        std::env::set_var("BEEPER_INVESTIGATOR_SERVICE_ACCOUNT", "custom-sa");
+        std::env::set_var("BEEPER_INVESTIGATOR_BACKOFF_LIMIT", "5");
+        std::env::set_var("BEEPER_INVESTIGATOR_ACTIVE_DEADLINE_SECONDS", "900");
+        std::env::set_var("BEEPER_INVESTIGATOR_TTL_SECONDS_AFTER_FINISHED", "7200");
 
         let config = InvestigatorConfig::from_env();
 
         assert_eq!(config.prometheus_url, "http://prometheus:9090");
         assert_eq!(config.loki_url, "http://loki:3100");
-        // Other fields should be defaults
-        assert_eq!(config.image, "beeper/investigator:latest");
+        assert_eq!(config.image, "custom/investigator:v2");
+        assert_eq!(config.image_pull_policy, "Always");
+        assert_eq!(config.qdrant_host, "beeper-qdrant");
+        assert_eq!(config.qdrant_port, "6334");
+        assert_eq!(config.llm_provider, "openai");
+        assert_eq!(config.llm_model, "gpt-4o");
+        assert_eq!(config.llm_api_key_secret, "my-secret");
+        assert_eq!(config.llm_api_key_secret_key, "my-key");
+        assert_eq!(config.service_account_name, "custom-sa");
+        assert_eq!(config.backoff_limit, 5);
+        assert_eq!(config.active_deadline_seconds, 900);
+        assert_eq!(config.ttl_seconds_after_finished, 7200);
 
-        // Clean up env
-        std::env::remove_var("BEEPER_PROMETHEUS_URL");
-        std::env::remove_var("BEEPER_LOKI_URL");
+        clear_investigator_env_vars();
     }
 
     #[test]
     fn test_investigator_config_from_env_defaults_when_unset() {
-        // Ensure vars are unset
-        std::env::remove_var("BEEPER_PROMETHEUS_URL");
-        std::env::remove_var("BEEPER_LOKI_URL");
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_investigator_env_vars();
 
         let config = InvestigatorConfig::from_env();
 
         assert_eq!(config.prometheus_url, "");
         assert_eq!(config.loki_url, "");
+        assert_eq!(config.image, "beeper/investigator:latest");
+        assert_eq!(config.image_pull_policy, "IfNotPresent");
+        assert_eq!(config.qdrant_host, "qdrant");
+        assert_eq!(config.qdrant_port, "6333");
+        assert_eq!(config.llm_provider, "anthropic");
+        assert_eq!(config.llm_model, "claude-sonnet-4");
+        assert_eq!(config.llm_api_key_secret, "llm-credentials");
+        assert_eq!(config.llm_api_key_secret_key, "api-key");
+        assert_eq!(config.service_account_name, "beeper-investigator");
+        assert_eq!(config.backoff_limit, 2);
+        assert_eq!(config.active_deadline_seconds, 1800);
+        assert_eq!(config.ttl_seconds_after_finished, 3600);
+    }
+
+    #[test]
+    fn test_investigator_config_from_env_fallback_vars() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_investigator_env_vars();
+
+        // Test that prometheus_url falls back to PROMETHEUS_URL
+        // and llm_provider/llm_model fall back to LLM_PROVIDER/LLM_MODEL
+        std::env::set_var("PROMETHEUS_URL", "http://fallback-prom:9090");
+        std::env::set_var("LLM_PROVIDER", "openai");
+        std::env::set_var("LLM_MODEL", "gpt-4-turbo");
+
+        let config = InvestigatorConfig::from_env();
+
+        assert_eq!(config.prometheus_url, "http://fallback-prom:9090");
+        assert_eq!(config.llm_provider, "openai");
+        assert_eq!(config.llm_model, "gpt-4-turbo");
+
+        clear_investigator_env_vars();
+    }
+
+    #[test]
+    fn test_investigator_config_from_env_prefixed_takes_priority() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_investigator_env_vars();
+
+        // BEEPER_PROMETHEUS_URL should take priority over PROMETHEUS_URL
+        std::env::set_var("BEEPER_PROMETHEUS_URL", "http://prefixed:9090");
+        std::env::set_var("PROMETHEUS_URL", "http://fallback:9090");
+        std::env::set_var("BEEPER_INVESTIGATOR_LLM_PROVIDER", "anthropic");
+        std::env::set_var("LLM_PROVIDER", "openai");
+
+        let config = InvestigatorConfig::from_env();
+
+        assert_eq!(config.prometheus_url, "http://prefixed:9090");
+        assert_eq!(config.llm_provider, "anthropic");
+
+        clear_investigator_env_vars();
     }
 
     #[test]

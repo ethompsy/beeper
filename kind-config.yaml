@@ -1,0 +1,22 @@
+# kind cluster configuration for Beeper demo
+# Creates a single-node cluster with port mappings for the demo UIs.
+#
+# Usage:
+#   kind create cluster --name beeper-demo --config kind-config.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # OTel Shop frontend proxy
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
+      # Jaeger UI
+      - containerPort: 30686
+        hostPort: 16686
+        protocol: TCP
+      # Beeper UI
+      - containerPort: 30050
+        hostPort: 5050
+        protocol: TCP

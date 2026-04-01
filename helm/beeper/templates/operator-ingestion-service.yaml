@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "beeper.fullname" . }}-operator-ingestion
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "beeper.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+  ports:
+    - name: ingestion
+      port: {{ .Values.operator.ingestion.port | default 9090 }}
+      targetPort: ingestion
+      protocol: TCP

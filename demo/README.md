@@ -1,73 +1,113 @@
-# Beeper Demo Application
+# Beeper Demo Environment
 
-Purpose-built chaotic microservices application for demonstrating Beeper's
-detect → investigate → fix → prove lifecycle during investor presentations.
+Uses the [OpenTelemetry Astronomy Shop](https://github.com/open-telemetry/opentelemetry-demo)
+as a real-world polyglot microservices application for Beeper to monitor and investigate.
 
 ## Architecture
 
-Four services running from a single Docker image, differentiated by `SERVICE_ROLE`:
+16+ microservices (Go, Python, Java, .NET, Rust, C++, etc.) forming an e-commerce
+application with built-in fault injection via feature flags.
 
-| Service | Role | Port | Purpose |
-|---------|------|------|---------|
-| API Gateway | `api-gateway` | 8080 | Routes requests, exposes `/api/v1/orders` |
-| Backend | `backend` | 8081 | Business logic, processes orders |
-| Database | `database` | 8082 | Simulated data store with query latency |
-| Worker | `worker` | 8083 | Background job processor |
+**Signal flow:**
+```
+OTel Astronomy Shop → OTel Collector → Beeper Operator (:9090 ingestion)
+                                            ↓
+                                    Investigation CRDs → Investigator Jobs
+```
+
+## Prerequisites
+
+- Docker (for building images)
+- `helm` 3.x
+- `kind` (installed automatically by `make demo-cluster`)
+- ~4GB RAM available for the demo pods
+- `ANTHROPIC_API_KEY` env var — required for investigations to complete (without it, SLO monitoring and fault injection still work, but investigator jobs will fail)
 
 ## Quick Start
 
 ```bash
-# Deploy to Kubernetes
-make demo-deploy
+# Set your LLM API key (required for investigations)
+export ANTHROPIC_API_KEY=sk-ant-...
 
-# Check status
-make demo-status
+# One command: kind cluster + build images + deploy Beeper + OTel demo
+make demo-up
 
-# View logs
-make demo-logs
+# Open the UIs
+make demo-ui
+# → Beeper UI:     http://localhost:5050
+# → OTel Shop:     http://localhost:8080
+# → Feature Flags: http://localhost:8080/feature
+# → Jaeger:        http://localhost:16686
 
-# Tear down
-make demo-teardown
+# Inject a fault
+make demo-fault FAULT=payment-failure
+
+# Check fault status
+make demo-fault-status
+
+# Recover
+make demo-recover
+
+# Tear down (deletes kind cluster)
+make demo-down
 ```
 
-## Local Development
+## Available Faults
 
-```bash
-# Run a single service locally
-cd demo/app
-pip install -r requirements.txt
-SERVICE_ROLE=backend SERVICE_PORT=8080 python server.py
+Faults are injected via [flagd](https://flagd.dev/) feature flags. The built-in
+load generator (Locust) continuously sends traffic, so failures appear immediately.
+
+| Fault | Flag | Effect |
+|-------|------|--------|
+| `payment-failure` | `paymentServiceFailure` | Payment charge method returns errors |
+| `cart-failure` | `cartServiceFailure` | Cart EmptyCart method fails |
+| `kafka-problems` | `kafkaQueueProblems` | Kafka queue overload + consumer delays |
+| `slow-images` | `imageSlowLoad` | Deliberate image loading delays |
+| `high-cpu` | `adServiceHighCpu` | Ad service high CPU consumption |
+
+## SLOs
+
+ServiceLevel CRDs are deployed for key services:
+
+| Service | Target | Window |
+|---------|--------|--------|
+| checkoutservice | 99.9% availability | 30m |
+| cartservice | 99.9% availability | 30m |
+| paymentservice | 99.95% availability | 30m |
+| frontend | 99.5% availability | 30m |
+| productcatalogservice | 99.9% availability | 30m |
+
+## Makefile Targets
+
+| Target | Description |
+|--------|-------------|
+| **`demo-up`** | **Full setup: cluster + images + Beeper + OTel demo** |
+| **`demo-down`** | **Delete kind cluster entirely** |
+| `demo-cluster` | Create kind cluster (installs kind if missing) |
+| `demo-build` | Build Docker images + load into kind |
+| `demo-beeper` | Deploy Beeper Helm chart (operator, UI, Qdrant, CRDs) |
+| `demo-helm-repo` | Add OTel Helm chart repo (run once) |
+| `demo-deploy` | Deploy OTel demo + SLOs + Source CRD |
+| `demo-teardown` | Uninstall OTel demo + Beeper releases |
+| `demo-status` | Show pods, services, SLOs |
+| `demo-logs` | Tail demo pod logs |
+| `demo-fault FAULT=<name>` | Enable a fault via feature flag |
+| `demo-recover` | Reset all feature flags |
+| `demo-fault-status` | Show current flag states |
+| `demo-fault-list` | List available faults |
+| `demo-ui` | Port-forward Beeper UI, Shop, Jaeger |
+
+## Files
+
 ```
-
-## Endpoints
-
-All services expose:
-- `GET /health` — Health check (JSON)
-- `GET /metrics` — Prometheus metrics
-
-Role-specific:
-- **api-gateway:** `GET/POST /api/v1/orders`, `GET /api/v1/health`
-- **backend:** `POST /process`
-- **database:** `GET/POST /query?table=orders`
-- **worker:** `GET /jobs`
-
-## Prometheus Metrics
-
-- `demo_request_total{service, method, endpoint, status}` — request counter
-- `demo_request_duration_seconds{service, endpoint}` — latency histogram
-- `demo_error_total{service, error_type}` — error counter
-- `demo_active_connections{service}` — connection gauge
-
-## Fault Injection
-
-Faults are controlled via environment variables (see Story 8-2):
-- `FAULT_ENABLED=true` — Enable fault injection
-- `FAULT_TYPE=memory-leak|error-rate|latency|resource-exhaustion`
-
-## ServiceLevel CRDs
-
-Pre-configured SLOs are deployed alongside the application:
-- API Gateway: 99.5% availability, 500ms p99 latency
-- Backend: 99.9% availability, 200ms p99 latency
-- Database: 99.95% availability, 50ms p99 latency
-- Worker: 99% availability
+demo/
+├── otel-demo-values.yaml       # Helm values overlay (collector → Beeper)
+├── k8s/
+│   ├── slo-checkout.yaml       # ServiceLevel CRDs
+│   ├── slo-cart.yaml
+│   ├── slo-payment.yaml
+│   ├── slo-frontend.yaml
+│   ├── slo-productcatalog.yaml
+│   └── source-prometheus.yaml  # Source CRD pointing at demo Prometheus
+└── README.md
+```
