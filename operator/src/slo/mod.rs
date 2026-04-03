@@ -313,6 +313,13 @@ pub async fn run_slo_engine(
                                 "SLO calculation complete"
                             );
 
+                            if result.total_count == 0.0 {
+                                info!(
+                                    service = %result.service,
+                                    "SLO has zero total_count — no matching metrics in Prometheus"
+                                );
+                            }
+
                             // Write snapshot to Qdrant
                             let snapshot = SloSnapshot::from(&result);
                             if collection_init {

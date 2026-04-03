@@ -61,3 +61,17 @@ opensearch:
 
 prometheus:
   enabled: true
+
+# --- OTel Collector: log forwarding to Beeper via OTLP HTTP ---
+opentelemetry-collector:
+  config:
+    exporters:
+      otlphttp/beeper:
+        endpoint: http://beeper-operator-ingestion.beeper.svc:9090
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        logs:
+          processors: [memory_limiter, resourcedetection, resource, batch]
+          exporters: [otlphttp/beeper, debug]

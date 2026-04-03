@@ -4,7 +4,7 @@
 //! compliance percentage and burn rate using the Google SRE model.
 
 use chrono::Utc;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::crds::ServiceLevelSpec;
 use crate::sources::PrometheusClient;
@@ -79,6 +79,14 @@ impl SloCalculator {
         debug!(promql = %promql, "Querying Prometheus for SLO count");
 
         let result = self.prometheus.query(&promql).await?;
+
+        if result.results.is_empty() {
+            info!(
+                promql = %promql,
+                service = %spec.service,
+                "SLO query returned no data — metric may not exist in Prometheus"
+            );
+        }
 
         // Sum all result values (handles multi-instance metrics)
         let mut total = 0.0;

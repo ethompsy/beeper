@@ -3,15 +3,18 @@
 //! Provides HTTP endpoints for receiving pushed metric and log data:
 //! - Prometheus remote_write at `/api/v1/write`
 //! - Loki push at `/loki/api/v1/push`
+//! - OTLP HTTP logs at `/v1/logs`
 //!
 //! Data is buffered asynchronously for processing by the investigation engine.
 
 pub mod buffer;
 pub mod loki;
+pub mod otlp;
 pub mod prometheus;
 
 pub use buffer::{IngestionBuffer, IngestionData};
 pub use loki::loki_push_handler;
+pub use otlp::otlp_logs_handler;
 pub use prometheus::prometheus_write_handler;
 
 use axum::{routing::post, Router};
@@ -22,6 +25,7 @@ pub fn ingestion_router(buffer: Arc<IngestionBuffer>) -> Router {
     Router::new()
         .route("/api/v1/write", post(prometheus_write_handler))
         .route("/loki/api/v1/push", post(loki_push_handler))
+        .route("/v1/logs", post(otlp_logs_handler))
         .with_state(buffer)
 }
 

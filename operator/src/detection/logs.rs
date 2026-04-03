@@ -14,7 +14,7 @@ use super::types::{AnomalyEvent, AnomalyType};
 const ERROR_LEVELS: &[&str] = &["error", "err", "fatal", "critical", "panic"];
 
 /// Labels to check for service name extraction (in priority order)
-const SERVICE_LABELS: &[&str] = &["service", "app", "job", "namespace"];
+const SERVICE_LABELS: &[&str] = &["service", "service_name", "app", "job", "namespace"];
 
 /// Per-service error tracking state
 struct ServiceState {
@@ -388,6 +388,19 @@ mod tests {
 
         // No panic, no corruption — detector continues operating
         assert_eq!(detector.tracked_count(), 1);
+    }
+
+    #[test]
+    fn test_service_name_with_underscore() {
+        let mut labels = StdHashMap::new();
+        labels.insert("service_name".to_string(), "cartservice".to_string());
+        labels.insert("level".to_string(), "error".to_string());
+        let entry = LogEntry {
+            labels,
+            line: "test".to_string(),
+            timestamp_ns: 1_000_000_000,
+        };
+        assert_eq!(LogDetector::extract_service(&entry), "cartservice");
     }
 
     #[test]

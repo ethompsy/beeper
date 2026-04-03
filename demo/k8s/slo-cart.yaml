@@ -9,8 +9,8 @@ spec:
   service: "cartservice"
   sli:
     type: availability
-    metric: "http_server_request_duration_seconds_count"
-    good_selector: '{service_name="cartservice",http_status_code=~"2.."}'
+    metric: "rpc_server_duration_milliseconds_count"
+    good_selector: '{service_name="cartservice",rpc_grpc_status_code="0"}'
     total_selector: '{service_name="cartservice"}'
   objective:
     target: 0.999
