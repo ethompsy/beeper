@@ -31,8 +31,11 @@ demo-up: demo-cluster demo-build demo-helm-repo demo-beeper demo-deploy
 	@echo "============================================"
 	@echo "  Beeper demo is ready!"
 	@echo "  Run 'make demo-ui' to open the UIs."
-	@echo "  Run 'make demo-fault FAULT=payment-failure' to inject a fault."
+	@echo "  Run 'make demo-fault FAULT=cart-failure' to inject a fault."
 	@echo "============================================"
+	@echo ""
+	@echo "  NOTE: Detection needs ~10 minutes of log data flowing before"
+	@echo "        anomalies can be detected. Wait before injecting faults."
 
 ## Delete the kind cluster entirely
 demo-down:
@@ -139,7 +142,6 @@ demo-deploy:
 	@echo "==> Applying ServiceLevel CRDs..."
 	kubectl apply -f $(DEMO_DIR)/k8s/slo-checkout.yaml
 	kubectl apply -f $(DEMO_DIR)/k8s/slo-cart.yaml
-	kubectl apply -f $(DEMO_DIR)/k8s/slo-payment.yaml
 	kubectl apply -f $(DEMO_DIR)/k8s/slo-frontend.yaml
 	kubectl apply -f $(DEMO_DIR)/k8s/slo-productcatalog.yaml
 	@echo "==> Applying Source CRD..."
@@ -207,6 +209,8 @@ json.dump(cm,sys.stdout)" | \
 	kubectl -n $(DEMO_NAMESPACE) rollout restart deploy/flagd
 	@echo "==> Fault '$(FAULT)' enabled. The load generator will trigger failures."
 	@echo "    Monitor with: make demo-fault-status"
+	@echo "    NOTE: Detection needs ~10 minutes of baseline log data before"
+	@echo "          anomalies can be detected (applies after demo-up or operator restart)."
 
 ## Recover from all fault injection (reset feature flags)
 demo-recover:

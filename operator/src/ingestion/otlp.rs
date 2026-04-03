@@ -5,7 +5,8 @@
 //! - Content-Type: `application/json`
 //! - Body: JSON `ExportLogsServiceRequest`
 //!
-//! The `otlphttp` exporter in OTel Collector sends JSON by default to
+//! The `otlphttp` exporter in OTel Collector sends protobuf by default;
+//! Beeper's collector config sets `encoding: json` so it sends JSON to
 //! `{endpoint}/v1/logs`. This handler parses that format and converts
 //! each LogRecord into the existing `LogEntry` struct for buffering.
 

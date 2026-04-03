@@ -182,6 +182,7 @@ impl QdrantWriter {
             "points": [
                 {
                     "id": point_id,
+                    "vector": {},
                     "payload": snapshot
                 }
             ]
@@ -481,6 +482,35 @@ mod tests {
             let inner = cache.read().await;
             assert!(inner.is_empty());
         });
+    }
+
+    #[test]
+    fn test_write_snapshot_body_includes_vector_field() {
+        // Qdrant payload-only collections require "vector": {} in upsert points.
+        // Regression guard: removing this field causes "missing field vector" errors.
+        let snapshot = SloSnapshot {
+            service: "test-svc".to_string(),
+            sli_type: "availability".to_string(),
+            compliance: 0.999,
+            burn_rate: 1.0,
+            error_budget_remaining: 1.0,
+            good_count: 999.0,
+            total_count: 1000.0,
+            timestamp: "2026-04-03T12:00:00Z".to_string(),
+        };
+        let point_id = QdrantWriter::point_id(&snapshot.service, &snapshot.timestamp);
+        let body = serde_json::json!({
+            "points": [
+                {
+                    "id": point_id,
+                    "vector": {},
+                    "payload": snapshot
+                }
+            ]
+        });
+        let point = &body["points"][0];
+        assert!(point.get("vector").is_some(), "upsert point must include 'vector' field");
+        assert_eq!(point["vector"], serde_json::json!({}));
     }
 
     #[test]

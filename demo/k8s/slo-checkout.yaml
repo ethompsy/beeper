@@ -6,12 +6,12 @@ metadata:
   labels:
     app.kubernetes.io/part-of: otel-demo
 spec:
-  service: "checkoutservice"
+  service: "checkout"
   sli:
     type: availability
     metric: "rpc_server_duration_milliseconds_count"
-    good_selector: '{service_name="checkoutservice",rpc_grpc_status_code="0"}'
-    total_selector: '{service_name="checkoutservice"}'
+    good_selector: '{service_name="checkout",rpc_grpc_status_code="0"}'
+    total_selector: '{service_name="checkout"}'
   objective:
     target: 0.999
     window: "30m"

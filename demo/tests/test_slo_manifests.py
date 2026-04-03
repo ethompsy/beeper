@@ -8,11 +8,10 @@ import yaml
 K8S_DIR = os.path.join(os.path.dirname(__file__), "..", "k8s")
 
 SLO_FILES = [
-    ("slo-checkout.yaml", "checkoutservice", 0.999),
-    ("slo-cart.yaml", "cartservice", 0.999),
-    ("slo-payment.yaml", "paymentservice", 0.9995),
+    ("slo-checkout.yaml", "checkout", 0.999),
+    ("slo-cart.yaml", "cart", 0.999),
     ("slo-frontend.yaml", "frontend", 0.995),
-    ("slo-productcatalog.yaml", "productcatalogservice", 0.999),
+    ("slo-productcatalog.yaml", "product-catalog", 0.999),
 ]
 
 VALID_SLI_TYPES = ["availability", "latency", "error_rate"]

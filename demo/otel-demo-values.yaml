@@ -68,6 +68,7 @@ opentelemetry-collector:
     exporters:
       otlphttp/beeper:
         endpoint: http://beeper-operator-ingestion.beeper.svc:9090
+        encoding: json
         tls:
           insecure: true
     service:

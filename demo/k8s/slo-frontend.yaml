@@ -9,7 +9,8 @@ spec:
   service: "frontend"
   sli:
     type: availability
-    metric: "http_server_request_duration_seconds_count"
+    metric: "http_server_duration_milliseconds_count"
+    # Frontend (Node.js) uses old OTel semconv label; 2xx+3xx are "good" (redirects expected)
     good_selector: '{service_name="frontend",http_status_code=~"[23].."}'
     total_selector: '{service_name="frontend"}'
   objective:

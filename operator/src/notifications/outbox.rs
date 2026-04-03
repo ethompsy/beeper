@@ -173,6 +173,7 @@ impl OutboxWorker {
             "points": [
                 {
                     "id": point_id,
+                    "vector": {},
                     "payload": entry
                 }
             ]
@@ -727,6 +728,37 @@ mod tests {
         let id1 = OutboxWorker::point_id("inv-123", "2026-03-14T12:00:00Z");
         let id2 = OutboxWorker::point_id("inv-123", "2026-03-14T13:00:00Z");
         assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_write_notification_body_includes_vector_field() {
+        // Qdrant payload-only collections require "vector": {} in upsert points.
+        // Regression guard: removing this field causes "missing field vector" errors.
+        let entry = OutboxEntry {
+            investigation_id: "inv-test".to_string(),
+            event_type: "test_event".to_string(),
+            severity: "low".to_string(),
+            service: "test-svc".to_string(),
+            payload: serde_json::json!({}),
+            status: "pending".to_string(),
+            retry_count: 0,
+            created_at: "2026-04-03T12:00:00Z".to_string(),
+            next_retry_at: "2026-04-03T12:00:00Z".to_string(),
+            last_error: None,
+        };
+        let point_id = OutboxWorker::point_id(&entry.investigation_id, &entry.created_at);
+        let body = serde_json::json!({
+            "points": [
+                {
+                    "id": point_id,
+                    "vector": {},
+                    "payload": entry
+                }
+            ]
+        });
+        let point = &body["points"][0];
+        assert!(point.get("vector").is_some(), "upsert point must include 'vector' field");
+        assert_eq!(point["vector"], serde_json::json!({}));
     }
 
     #[test]

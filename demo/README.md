@@ -71,11 +71,13 @@ ServiceLevel CRDs are deployed for key services:
 
 | Service | Target | Window |
 |---------|--------|--------|
-| checkoutservice | 99.9% availability | 30m |
-| cartservice | 99.9% availability | 30m |
-| paymentservice | 99.95% availability | 30m |
+| checkout | 99.9% availability | 30m |
+| cart | 99.9% availability | 30m |
 | frontend | 99.5% availability | 30m |
-| productcatalogservice | 99.9% availability | 30m |
+| product-catalog | 99.9% availability | 30m |
+
+> **Note:** The payment service has no SLO — it lacks suitable server-side request metrics.
+> Payment errors are detected via the OTLP log error rate detection path instead.
 
 ## Makefile Targets
 
@@ -105,7 +107,6 @@ demo/
 ├── k8s/
 │   ├── slo-checkout.yaml       # ServiceLevel CRDs
 │   ├── slo-cart.yaml
-│   ├── slo-payment.yaml
 │   ├── slo-frontend.yaml
 │   ├── slo-productcatalog.yaml
 │   └── source-prometheus.yaml  # Source CRD pointing at demo Prometheus
