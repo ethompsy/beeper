@@ -1,5 +1,5 @@
 # kind cluster configuration for Beeper demo
-# Creates a single-node cluster with port mappings for the demo UIs.
+# Creates a two-node cluster with port mappings for the demo UIs.
 #
 # Usage:
 #   kind create cluster --name beeper-demo --config kind-config.yaml
@@ -20,3 +20,4 @@ nodes:
       - containerPort: 30050
         hostPort: 5050
         protocol: TCP
+  - role: worker

@@ -5,13 +5,12 @@ stepsCompleted:
   - step-03-success
   - step-04-journeys
   - step-05-domain
-  - step-06-innovation
+  - step-06-innovation-skipped
   - step-07-project-type
   - step-08-scoping
   - step-09-functional
   - step-10-nonfunctional
   - step-11-polish
-  - step-12-complete
 classification:
   projectType: saas_b2b
   domain: Agentic AI for SRE
@@ -36,599 +35,316 @@ documentCounts:
   projectDocs: 7
 ---
 
-# Product Requirements Document - Beeper v0.2.0
+# Product Requirements Document — Beeper Pipeline Fix & UI Overhaul
 
 **Author:** eric
-**Date:** 2026-03-10
+**Date:** 2026-04-04
 
 ## Executive Summary
 
-Beeper is an open-source agentic AI platform for Site Reliability Engineering, deployed as a K8s operator. It autonomously detects anomalies, investigates root causes, proposes evidence-backed fixes, and compounds operational knowledge — closing the full reliability loop that no existing tool addresses.
+Beeper is an agentic AI SRE platform that autonomously detects anomalies in Kubernetes clusters, investigates root causes by querying Prometheus metrics and Loki logs, and produces evidence-backed findings via LLM analysis. The end-to-end pipeline — from OTEL telemetry ingestion through anomaly detection, investigation execution, and UI display — is currently broken. Investigations either don't fire or produce vague "insufficient data" results.
 
-**Core Thesis:** As AI generates more code and infrastructure, human ability to maintain system context degrades irreversibly. Beeper is the necessary consequence of AI-driven development — inevitable infrastructure, not a nice-to-have.
-
-**Target Users:** SRE teams (on-call engineers, team leads, developers, junior SREs, VP Engineering) operating K8s-based microservices architectures. Beeper serves as the always-on-call team member with perfect memory and continuity across shifts, incidents, and investigations.
-
-**Key Differentiators:**
-
-- **Fourth category creation** — not alerting, not observability, not runbook automation. Autonomous SRE Agent.
-- **Self-designed experiments** — formulates and executes its own test plans to validate hypotheses
-- **Human-language runbook execution** — zero-friction adoption, no DSL translation required
-- **Compounding knowledge flywheel** — every investigation makes Beeper smarter about YOUR infrastructure. The flywheel is the moat.
-
-**v0.2.0 Purpose:** Proof-of-existence release. The investor pitch says "Beeper is inevitable" — v0.2.0 IS the evidence. A purpose-built demo application showcases the full detect → investigate → fix → prove lifecycle on AI-complex infrastructure.
+This PRD scopes two parallel workstreams to restore Beeper to demo-ready state: (1) a sequential pipeline diagnostic fix from OTEL Collector ingestion through to LLM-backed root cause output, and (2) a UI overhaul converting the fixed-width top-nav layout to a responsive sidebar-navigated interface. Definition of done: `payment-failure` fault injection produces a specific, evidence-backed investigation 3/3 consecutive runs in a clean, responsive UI.
 
 ## Success Criteria
 
 ### User Success
 
-| Persona | "Worth It" Moment | Measurable Outcome |
-|---|---|---|
-| Sam (On-Call SRE) | Approves a Beeper fix at 2am based on evidence trail alone — doesn't need to investigate | Time from page to resolution < 5 min with Beeper collaboration |
-| Priya (Team Lead) | Graduates first service to Trust Level 3 — the system earned it | At least 1 service at TL3+ within 90 days of deployment |
-| Marcus (Developer) | Merges an auto-PR and the service health feed confirms resolution | Auto-PR merge rate > 50% (merged without major revision) |
-| Jordan (Junior SRE) | Handles a complex incident on second on-call rotation with Beeper guidance | Time to first independent resolution < 30 days |
-| Diana (VP Eng) | Shows investor demo and gets follow-up meeting | Demo runs reliably, end-to-end, every time |
-| On-Call Rotation | Shift handoff takes 30 seconds instead of 30 minutes | Handoff summary generated automatically, no Slack archaeology |
+- **Investor/Evaluator (Diana persona):** Watches a repeatable, scripted demo: inject `payment-failure` → Beeper detects within 5 minutes → investigation completes with specific root cause referencing "payment service" and "error rate" → evidence includes real Prometheus metrics and Loki log excerpts
+- **SRE (Sam persona):** Opens the Beeper UI on laptop/tablet, navigates cleanly through grouped sidebar nav (Observe / Learn / Manage) — no clutter, investigation view owns the screen during live demos
+- **Demo script is rehearsable:** The full fault → detect → investigate → display cycle is repeatable and completes within a predictable window every time
 
 ### Business Success
 
-**The core thesis: Beeper is inevitable.**
-
-v0.2.0 proves that thesis live. AI-driven applications and infrastructure create complexity only an AI agent can maintain. Beeper closes the full loop.
-
-**3-month (demo-ready):**
-- Investor demo runs reliably: fault injection → detection → investigation → evidence-backed fix → sandbox verification → resolution — on an AI-complex test application
-- The demo tells the inevitability story: "this system was built by AI, modified by AI, and only Beeper can maintain the context to fix it"
-- Full trust ladder visible (TL1-5) with behavior changing at each level
-- SLO dashboard with customer impact scoring live
-
-**6-month (community + investor traction):**
-- GitHub stars and community adoption growing
-- Seed round conversations initiated, backed by working demo
-- Conference demo at SREcon or KubeCon
-- Architecture spikes complete, Wave 2 features shipping
-
-**12-month (pre-commercial validation):**
-- Beta users on real production infrastructure
-- Trust level progression data from real deployments
-- KB flywheel metrics proving compounding intelligence
-- SaaS architecture designed
+- **3-month demo-ready target back on track:** End-to-end demo is reliable, scripted, and repeatable for investor conversations
+- **Credibility restored:** Every investigation produces specific, evidence-backed findings — zero "insufficient data" results when faults are active
+- **First impressions:** UI feels professional — clean sidebar navigation, investigation view is the hero, responsive across laptop/tablet/conference screen sizes
 
 ### Technical Success
 
-- All v0.1.0 tests continue passing (1,032 baseline)
-- Demo application reliably produces and recovers from injected faults
-- Auto-remediation pipeline functional: detect → investigate → propose fix → test → apply
-- Trust level system correctly gates actions by confidence threshold
-- SLO engine calculates burn rates and correlates customer impact in real-time
-- Notification engine delivers to Slack, PagerDuty, email, webhook without false pages
-- KB flywheel: investigations produce reusable entries that surface in subsequent investigations
-- Collaboration: real-time investigation interaction without data loss or race conditions
+Pipeline diagnostic checkpoints (each must pass independently) and UI targets are consolidated in the measurable outcomes table below. ServiceLevel CRDs already exist in demo config — verify they're wired into the operator's SLO controller; fix as part of pipeline work if broken.
 
 ### Measurable Outcomes
 
-| Metric | Target | Validation Method |
-|---|---|---|
-| Demo reliability | 100% successful end-to-end runs | Scripted demo, repeated 10x |
-| MTTR (demo env) | < 5 min from fault injection to verified resolution | Timed demo runs |
-| KB reuse rate | > 0 (at least 1 entry referenced in a subsequent investigation) | Demo scenario with recurring fault |
-| Trust graduation | TL1 → TL3 demonstrable in single demo session | Trust level progression script |
-| Auto-PR accuracy | Fix resolves the injected fault, verified by sandbox test | Automated verification |
-| False page rate | 0 in demo environment | Notification audit |
-| Inevitability proof | Investor says "there's no other way to do this" | Qualitative — the demo tells the story |
+| Outcome | Target |
+|---------|--------|
+| Ingestion receiving data | `GET /api/v1/ingestion/stats` shows `metrics_received > 0` AND `logs_received > 0` within 5 min of deploy |
+| Detection fires on fault | Investigation CRD created within 5 min of `make demo-fault FAULT=payment-failure` |
+| Investigator gathers real signals | Investigator Job logs confirm successful Prometheus PromQL + Loki LogQL queries (non-empty results) |
+| LLM receives real signal data | Investigation findings reference specific metric values, service names, and log patterns |
+| End-to-end in UI | Investigation visible in dashboard with real root cause hypothesis and actionable recommendations |
+| Zero vague investigations | 0% "insufficient data" when faults active |
+| Repeatable demo script | Payment-failure scenario completes reliably 3/3 consecutive runs |
+| UI responsive | Usable at 768px–1920px+, no breakage at 768px tablet |
+| Navigation grouped | Observe / Learn / Manage sidebar categories with collapsible hamburger |
 
 ## Product Scope
 
-### MVP — v0.2.0 (All 4 Waves)
-
-All 10 epics ship as v0.2.0, delivered in wave sequence:
-- **Wave 1:** SLO Platform + Notification Engine (foundation)
-- **Wave 2:** Trust & Anti-Noise + Auto-Remediation (the headline)
-- **Wave 3:** Collaborative Investigations + KB Enhancement + Signal Expansion (intelligence)
-- **Wave 4:** Developer Experience + Analytics & Gamification (delight)
-- **Cross-cutting:** Investor demo application (the proof)
-- **Prerequisites:** 3 architecture spikes (pluggable vector backend, WebSocket, agent framework)
-
-### Growth Features (Post-MVP)
-
-SaaS offering, multi-cluster support, advanced RBAC, community marketplace, security certifications. See [Post-MVP Features](#post-mvp-features) for detailed phasing.
-
-### Vision (Future)
-
-Beeper becomes the operating system for AI-era reliability — cross-organization learning, custom agent extensions, enterprise features, mobile companion. As AI generates more of the systems we operate, Beeper's context advantage compounds. The knowledge flywheel is the moat. Beeper is inevitable.
-
-## User Journeys
-
-### Journey 1: Sam — The 3am Page (Primary, Success Path)
-
-**Opening Scene:** It's 3:12am. Sam's phone buzzes. PagerDuty: "Payment service latency spike — SLO burn rate critical." Sam groans, grabs the laptop, and opens Beeper's UI.
-
-**Rising Action:** Beeper's already on it. The investigation pane shows: anomaly detected 47 seconds ago, investigation started immediately. Beeper has correlated the latency spike with a memory leak in the payment-processor pod, cross-referenced a similar incident from the KB three weeks ago, and identified the root cause — a connection pool exhaustion triggered by a deploy 22 minutes earlier. The evidence trail shows exact log lines, metric correlations, and the specific commit that introduced the regression.
-
-**Climax:** Beeper proposes a fix: rollback the deployment, with a confidence score of 94%. It's already designed a test plan and — because Priya configured the payments service sandbox — has executed the rollback in staging and verified latency returned to baseline. Sam sees the green checkmark: "Fix verified in sandbox." Sam clicks "Approve."
-
-**Resolution:** The rollback executes in production. SLO burn rate stabilizes within 90 seconds. Beeper auto-generates a KB entry linking the incident to the commit, the connection pool pattern, and the proven fix. Sam's total engagement time: 4 minutes. Sam goes back to sleep. The morning Slack channel shows a clean summary: "Incident resolved autonomously with human approval. Evidence trail available."
-
-**Requirements revealed:** Real-time investigation UI, evidence presentation with references, confidence scoring, sandbox test execution, one-click approval, auto-KB generation, notification integration (PagerDuty), SLO burn rate alerting.
-
----
-
-### Journey 2: Sam — The Unknown Failure (Primary, Edge Case)
-
-**Opening Scene:** Sam gets paged for a service they've never touched — the recommendation engine, built by another team using a new ML framework. Sam has zero context.
-
-**Rising Action:** Sam opens Beeper. The investigation is already deep — Beeper has correlated OOM kills with a spike in model inference latency, traced it to a memory leak in the embedding cache, and surfaced a KB entry from a similar pattern in a different service two months ago. But this time, the root cause is novel — the ML framework has a known issue with batch sizes over 512 that nobody on the team documented.
-
-**Climax:** Beeper's confidence score is 72% — below the auto-fix threshold. It presents its hypothesis with evidence and a recommended test plan: "Reduce batch size to 256 in staging and measure memory growth over 15 minutes." Beeper can't fix this one alone, but it's given Sam everything needed to make the call.
-
-**Resolution:** Sam follows the test plan, confirms the hypothesis, and applies the fix manually. Beeper logs the entire investigation, creates a KB entry with the confirmed root cause and proven fix, and tags it for the recommendation engine team. Next time this happens, Beeper's confidence will be 95%.
-
-**Requirements revealed:** Investigation of unfamiliar services, KB cross-referencing, confidence scoring with thresholds, advisory test plans (no sandbox path), manual fix workflow, KB feedback loop, service tagging.
-
----
-
-### Journey 3: Priya — The Trust Architect (Admin/Configuration)
-
-**Opening Scene:** Priya's team has been running Beeper for 6 weeks. The payments service has had 14 investigations — 12 accurate, 2 corrected by the team. Priya opens the trust configuration dashboard.
-
-**Rising Action:** She reviews the evidence: 86% accuracy on payments, all corrections fed back into the KB. The SLO dashboard shows payments has maintained 99.95% availability. She checks the notification audit — zero false pages in the last 3 weeks. The noise report shows signal-to-noise improving monthly.
-
-**Climax:** Priya graduates the payments service from Trust Level 2 (notify + recommend) to Trust Level 3 (auto-fix with post-action review). She configures the confidence gate: only fixes with 90%+ confidence execute automatically. She sets up the sandbox requirement: all code fixes must pass sandbox verification before production apply.
-
-**Resolution:** That night, Beeper resolves a connection timeout issue on payments autonomously — detected, investigated, fixed, sandbox-verified, applied, documented — without paging anyone. Priya reads the summary with her morning coffee and confirms: correct diagnosis, clean fix, evidence trail solid. She starts thinking about Trust Level 4.
-
-**Requirements revealed:** Trust level configuration UI per service, accuracy tracking, SLO dashboard, notification audit/noise report, confidence gate configuration, sandbox requirement settings, post-action review workflow, trust graduation workflow.
-
----
-
-### Journey 4: Marcus — The Auto-PR (Developer Path)
-
-**Opening Scene:** Marcus is mid-sprint on the payments service. He gets a Slack notification from Beeper: "I found the cause of the intermittent timeout your team reported last sprint. PR #347 ready for review."
-
-**Rising Action:** Marcus opens the PR. It's clean — follows his team's coding standards, small diff. But what catches his eye is the description: Beeper cites the exact production log correlation that proves the race condition, shows the 3 incidents over the past month that trace to this code path, includes the connection pool metrics that confirm the pattern, and links to the KB entry documenting the investigation chain. The PR also includes sandbox test results: "Ran 500 concurrent requests for 10 minutes — zero timeouts post-fix vs. 23 timeouts pre-fix."
-
-**Climax:** Marcus reviews the code. The fix is exactly what he would have written — it adds a mutex around the pool checkout. But he couldn't reproduce it locally for months. Beeper caught it in production, proved it with data, and tested it at scale.
-
-**Resolution:** Marcus merges the PR. The service health feed confirms: timeout rate drops to zero within the hour. He adds a comment: "Nice catch." He starts checking Beeper's service health feed for his other services, not just when PRs arrive. Trust builds incrementally.
-
-**Requirements revealed:** Auto-PR generation, Repository CRD (coding standards, branch policies), evidence trail in PR description, KB entry linking, sandbox test results in PR, Slack notification for PRs, service health feed, PR-investigation linkage.
-
----
-
-### Journey 5: Jordan — The Guided First Shift (Secondary, Onboarding)
-
-**Opening Scene:** Jordan starts their third on-call shift. It's the first time they're primary. They open Beeper and ask: "What's the current state?"
-
-**Rising Action:** Beeper delivers a handoff summary: "2 active investigations (auth-service latency trending up, minor; catalog-service error rate spike, resolved 2 hours ago by Sam, TL3 auto-fix). 1 item to watch: deploy scheduled for order-service at 6pm — I'll monitor SLO impact." Jordan has full context in 30 seconds.
-
-**Climax:** At 8pm, the order-service deploy triggers an anomaly. Jordan sees Beeper's investigation in real time — it's correlating the deploy event with a 15% increase in 500 errors. Beeper surfaces a KB entry: "Similar pattern after order-service deploy last month — root cause was missing DB migration." Jordan sees the evidence, sees Beeper's recommended check, and runs the verification. Confirmed — migration was missed.
-
-**Resolution:** Jordan applies the migration fix with Beeper's guidance. The investigation documented everything — Jordan's first independent resolution is clean, fast, and fully auditable. The next morning, Priya reviews and sees Jordan handled it like a veteran. Jordan learned more in one shift with Beeper than a month of reading docs.
-
-**Requirements revealed:** Shift handoff summary, active investigation status, watch list, deploy correlation, KB surfacing during live investigations, guided resolution workflow, investigation documentation, onboarding experience.
-
----
-
-### Journey 6: Diana — The Investor Demo (Executive/Evaluator)
-
-**Opening Scene:** Diana is presenting to three potential seed investors. She opens Beeper's demo environment — a chaotic microservices application running in K8s, built to showcase the full lifecycle.
-
-**Rising Action:** Diana narrates: "This application was designed by AI and deployed by AI. Watch what happens when things go wrong." She triggers a fault injection — a memory leak in the payment processor, the kind of bug that AI-generated code commonly produces. Beeper detects the anomaly within seconds. The investigation pane shows Beeper correlating memory growth with request latency, cross-referencing the deployment manifest, and identifying the root cause.
-
-**Climax:** Beeper proposes a fix with 96% confidence. It designs a test: "Verify memory stabilization under load in sandbox." The sandbox test runs — green. Beeper opens a PR with the fix, evidence trail, and test results. Diana clicks "Apply." The application recovers. Total time: 3 minutes. Diana says: "This is what AI-maintained reliability looks like. As AI builds more of our systems, only AI can maintain the context to fix them. Beeper is inevitable."
-
-**Resolution:** The investors ask questions. Diana pulls up the SLO dashboard showing customer impact correlation, the KB showing compounding knowledge, the trust level configuration showing graduated autonomy. One investor asks: "What happens if we don't adopt something like this?" Diana: "Your SRE team falls further behind every time AI ships new code. The context gap only grows."
-
-**Requirements revealed:** Demo application with fault injection, scriptable demo scenarios, full lifecycle visibility in UI, investor-friendly presentation flow, SLO dashboard, KB visualization, trust level demonstration.
-
----
-
-### Journey Requirements Summary
-
-| Journey | Key Capabilities Revealed |
-|---|---|
-| Sam — 3am Page | Real-time investigation, evidence trail, confidence scoring, sandbox execution, one-click approval, SLO alerting, auto-KB |
-| Sam — Unknown Failure | Cross-service investigation, KB cross-reference, advisory test plans, manual fix workflow, feedback loop |
-| Priya — Trust Architect | Trust level config UI, accuracy tracking, SLO dashboard, noise report, confidence gates, sandbox requirements |
-| Marcus — Auto-PR | Auto-PR generation, Repository CRD, evidence in PR, sandbox test results, Slack notification, service health feed |
-| Jordan — First Shift | Shift handoff summary, deploy correlation, KB surfacing, guided resolution, investigation documentation |
-| Diana — Investor Demo | Demo app, fault injection, scriptable scenarios, full lifecycle UI, SLO dashboard, KB visualization |
-
-**Cross-cutting capabilities:** Notification engine (Slack, PagerDuty), KB flywheel (create → reuse → improve), trust system (TL1-5), SLO-driven prioritization, collaboration (real-time + async).
-
-## Domain-Specific Requirements
-
-Domain requirements define policies and constraints specific to the Agentic AI for SRE space. These intentionally overlap with Functional Requirements (capability contract) and Non-Functional Requirements (measurable targets) — this traceability ensures domain-critical concerns are addressed at every level.
-
-### Safety & Trust
-
-- Trust level system must be airtight — misconfigured trust levels cannot lead to unauthorized autonomous actions
-- Confidence thresholds must be calibrated with conservative defaults (high threshold, team dials down as trust grows)
-- Every action Beeper takes must be rollback-capable — no irreversible autonomous actions without explicit human approval
-- False positive auto-fix is treated as a critical bug — equivalent to a production outage caused by tooling
-
-### Security
-
-- Beeper requires broad cluster access (logs, metrics, deployments, pod management) — attack surface must be minimized through least-privilege RBAC
-- Repository access for auto-PRs requires scoped credentials (per-repo tokens, not org-wide)
-- API keys for Slack, PagerDuty, LLM providers stored in K8s Secrets with encryption at rest
-- Trust level configuration restricted to authorized roles — not every team member can dial to TL5
-- Investigation data may contain sensitive information (PII in logs, credentials in error messages) — scrub before sending to LLM providers
-
-### AI-Specific
-
-- LLM hallucination risk in root cause analysis — evidence trail with specific references (log lines, metrics, KB entries) provides auditability but confidence scoring must reflect uncertainty
-- Model provider dependency — Beeper must gracefully degrade if LLM provider is unavailable (queue investigations, fall back to pattern matching, alert humans)
-- Tiered model strategy (screening → investigation → remediation) must balance cost, latency, and accuracy
-- KB data quality — feedback loop must filter and weight entries by validation status (human-confirmed vs. AI-generated vs. corrected)
-
-### Operational
-
-- Beeper must not become a single point of failure — if Beeper goes down, existing alerting, monitoring, and manual incident response must continue unaffected
-- Resource consumption — LLM inference costs tracked and budgetable; investigation depth bounded by configurable limits
-- Sandbox environment isolation must be provable — a sandbox test must never leak state, traffic, or data into production
-- Demo environment must be fully isolated from any real infrastructure
-
-### Risk Mitigations
-
-| Risk | Impact | Mitigation |
-|---|---|---|
-| False positive auto-fix | Beeper causes outage | Conservative confidence defaults, sandbox verification required, rollback on any degradation |
-| LLM provider outage | Investigations stall | Graceful degradation, queue-and-retry, human escalation |
-| KB poisoning (bad data) | Future investigations corrupted | Human validation status, correction tracking, weighted trust in KB entries |
-| Credential exposure | Security breach | Least-privilege RBAC, scoped tokens, secret encryption, PII scrubbing |
-| Runaway resource consumption | Cost spike | Configurable investigation depth limits, LLM cost tracking, budget alerts |
-| Sandbox leak to production | Data corruption or outage | Network isolation, separate namespaces, verification before sandbox creation |
-
-## Innovation & Novel Patterns
-
-### Detected Innovation Areas
-
-1. **Fourth Category: Autonomous SRE Agent** — Beeper doesn't compete in existing categories (alerting, observability, runbook automation). It creates a new one by closing the full loop: detect → investigate → hypothesize → fix → prove → learn. No existing tool does this.
-
-2. **Self-Designed Experiments** — Beeper formulates its own test plans to validate hypotheses. Existing tools execute human-written playbooks. Beeper designs the experiment, and when a sandbox is available, executes it autonomously.
-
-3. **Human-Language Runbook Execution** — Teams point Beeper at existing plain-language runbooks — no DSL translation, no YAML rewrite, no playbook migration. Zero-friction adoption that Shoreline and Rundeck can't match.
-
-4. **The Inevitability Thesis** — Market-timing insight: as AI generates more code and infrastructure, human ability to maintain system context degrades irreversibly. Beeper isn't an optional productivity tool — it's the necessary consequence of AI-driven development. This positions Beeper as inevitable infrastructure, not a nice-to-have.
-
-5. **Compounding Knowledge Flywheel** — Every investigation makes Beeper smarter about the specific infrastructure it operates on. This isn't a generic AI model — it's personalized, compounding operational intelligence that becomes harder to replace over time. The flywheel is the moat.
-
-### Market Context & Competitive Landscape
-
-| Competitor Category | Examples | Innovation Gap Beeper Fills |
-|---|---|---|
-| Alert + Triage | PagerDuty, Rootly, FireHydrant | These notify. Beeper investigates, fixes, and proves. |
-| Observability | Datadog, Grafana, New Relic | These visualize. Beeper reasons and acts. |
-| Runbook Automation | Shoreline, Rundeck | These require DSLs and human-authored playbooks. Beeper reads English and innovates beyond runbooks. |
-| AIOps | Moogsoft, BigPanda | These correlate alerts. Beeper performs deep multi-layer investigation and generates fixes. |
-
-No existing tool combines autonomous investigation, self-designed experiments, human-language runbook execution, auto-remediation with evidence, and compounding knowledge base. Beeper closes the full loop.
-
-### Validation Approach
-
-| Innovation | Validation Method | Success Signal |
-|---|---|---|
-| Full-loop autonomy | Investor demo: fault → fix → proof in < 5 min | Investor says "there's no other way" |
-| Self-designed experiments | Demo scenario with sandbox test execution | Test plan is coherent, test passes, fix is verified |
-| Human-language runbooks | Seed Beeper with real team runbooks, measure execution accuracy | Beeper follows runbook steps correctly without DSL translation |
-| Inevitability thesis | Demo on AI-generated application specifically | Complexity is visibly beyond human ability to maintain |
-| Knowledge flywheel | Recurring fault scenario in demo | Second occurrence resolved faster with KB reuse |
-
-### Risk Mitigation
-
-| Innovation Risk | Fallback |
-|---|---|
-| Full-loop autonomy too ambitious for v0.2.0 | Trust levels gate risk — TL1 (advisory only) is always safe, teams opt into autonomy |
-| Self-designed experiments produce bad tests | Sandbox isolation prevents production impact; human review at lower trust levels |
-| Human-language runbook parsing unreliable | Structured runbook format as progressive enhancement; plain-language as best-effort |
-| Inevitability thesis doesn't resonate with investors | Fall back to concrete ROI story: MTTR reduction, fewer pages, developer time saved |
-| KB compounds bad data | Validation status tracking, human correction weighting, confidence decay on unverified entries |
-
-## SaaS B2B Specific Requirements
-
-### Project-Type Overview
-
-Beeper v0.2.0 is an open-source B2B platform deployed as a single-instance-per-cluster K8s application — collaborative AI SRE agent with web UI, REST APIs, and outbound integrations. Commercial SaaS deferred; v0.2.0 targets investor demo readiness.
-
-### Technical Architecture Considerations
-
-**Tenant Model:** Single-tenant, single-cluster. One Beeper instance manages one K8s cluster. Multi-cluster and multi-tenant architecture deferred to v0.3.0+. No tenant isolation, shared resource pools, or cross-tenant data concerns in v0.2.0.
-
-**Permission Model (2-tier):**
-
-| Role | Capabilities |
-|---|---|
-| **Admin** | Configure trust levels per service, manage ServiceLevel and Repository CRDs, set confidence gates, manage sandbox settings, access all dashboards and reports, manage user access |
-| **User** | View investigations, collaborate during incidents, approve/reject Beeper-proposed fixes (within trust level), view SLO dashboard, configure NotificationChannel CRDs and notification rules, interact with KB, review auto-PRs |
-
-Admin controls the safety envelope (trust levels, confidence gates, what Beeper is allowed to do). Users control the communication layer (how and when they get notified) plus operational interaction (investigations, approvals, KB). Jordan can set up a new Slack channel integration or adjust notification preferences without needing Priya.
-
-**Subscription Tiers:** Not applicable for v0.2.0. Open-source community edition only. No billing, metering, or tier gating. All features available to all users.
-
-### Integration Requirements
-
-| Integration | Type | Protocol | v0.2.0 Scope |
-|---|---|---|---|
-| **Slack** | Notification + ChatOps | Slack API (Bot Token) | Rich messages, threads, @mentions, action buttons |
-| **PagerDuty** | Escalation | PagerDuty Events API v2 | Create/acknowledge/auto-resolve incidents, bidirectional |
-| **Email** | Notification | SMTP | Alert digests, investigation summaries |
-| **Webhooks** | Generic integration | HTTP POST | Trigger CD pipelines, Jira, status pages |
-| **Git Repositories** | Auto-PR | Git provider API (GitHub/GitLab) | Clone, branch, commit, open PR with evidence |
-| **LLM Providers** | AI inference | Provider-specific APIs | Tiered model strategy (screening → investigation → remediation) |
-| **K8s API** | Cluster operations | K8s API server | Pod management, deployments, CRDs, events, logs, metrics |
-| **Qdrant** | Vector DB | gRPC/REST | KB storage, semantic search, investigation vectors |
-
-No additional integrations for v0.2.0. OTel collector compatibility, Jira native integration, and other signal sources deferred to Wave 3+ or v0.3.0.
-
-### Implementation Considerations
-
-- **Existing v0.1.0 architecture** is the foundation: Rust K8s operator + Python investigator + Flask/HTMX UI + Qdrant. v0.2.0 extends, not replaces.
-- **CRD additions:** `ServiceLevel`, `NotificationChannel`, `Repository` — all managed by the Rust operator
-- **WebSocket spike required** before collaboration features (Wave 3) — HTMX SSE may not be sufficient for real-time bidirectional interaction
-- **Agent framework spike required** before auto-remediation (Wave 2) — investigator needs multi-step tool-use capability
-- **Admin/user permission enforcement** needed across all APIs and UI routes — implement early in Wave 1 as foundation
-- **Integration credentials** stored as K8s Secrets, referenced by CRDs — no credential storage in Beeper's database
-
-## Project Scoping & Phased Development
-
 ### MVP Strategy & Philosophy
 
-**MVP Approach:** Proof-of-Existence Release
+**MVP Approach:** Problem-Solving MVP — restore the existing design to working state
+**Resource:** Solo developer (Eric)
+**Definition of Done:** `payment-failure` fault scenario completes 3/3 reliably with evidence-backed root cause in a responsive, sidebar-navigated UI
 
-v0.1.0 proved the concept — autonomous anomaly detection and investigation works. v0.2.0 proves the *thesis*: an AI agent can close the full detect-investigate-fix-prove loop, and this capability is inevitable as AI-generated systems grow beyond human ability to maintain.
+### MVP Feature Set (Phase 1) — This PRD
 
-"Beeper is inevitable" sounds too good to be true without evidence. v0.2.0 IS the evidence. The demo is the product.
+**Core User Journeys Supported:** All 5 (Diana investor, Eric demo operator, Sam daily SRE, Jordan new user, Eric troubleshooting)
 
-**Resource Requirements:** Solo developer (eric) with AI-assisted development. Architecture spikes complete before the features they inform. Waves ship sequentially — each builds on the previous.
+**Workstream 1: Pipeline Fix (prerequisite, sequential):**
+1. **OTEL Demo Verification** — Confirm OTEL Astronomy Shop runs correctly, Collector exports configured properly
+2. **Beeper Ingestion Fix** — Verify/fix Prometheus remote write and Loki push handlers accept OTEL Collector output
+3. **Detection Calibration** — Verify/fix EWMA thresholds and log patterns fire on demo traffic anomalies
+4. **Investigator Signal Gathering Fix** — Verify/fix investigator Jobs can reach Prometheus/Loki inside the cluster and pull real signals
+5. **LLM Prompt/Context Fix** — Verify/fix investigation steps pass real signal data to LLM, producing specific root causes
+6. **ServiceLevel CRD Integration** — Verify/fix SLO controller wiring with existing demo ServiceLevel CRDs
 
-### MVP Feature Set (v0.2.0 — All 4 Waves)
+**Workstream 2: UI Overhaul (parallel after checkpoint 1 passes):**
+7. **UI Responsive Layout** — Convert fixed-width layout to responsive CSS (768px–1920px+)
+8. **UI Navigation Overhaul** — Replace top nav with collapsible left sidebar hamburger menu grouped into Observe / Learn / Manage
 
-**Core User Journeys Supported:**
+**New capabilities added by this PRD:**
+- Detection stats in ingestion stats endpoint (`anomalies_detected`, `anomalies_suppressed`, `active_metric_detectors`, `ewma_warmup_samples`)
+- Inline Related KB entries panel on investigation detail view
 
-| Journey | Waves Required | Demo-Critical? |
-|---|---|---|
-| Sam — 3am Page (success path) | 1, 2, 3 | Yes — this IS the demo |
-| Sam — Unknown Failure (edge case) | 1, 2, 3 | Yes — shows advisory mode |
-| Priya — Trust Architect | 1, 2 | Yes — shows graduated autonomy |
-| Marcus — Auto-PR | 2 | Yes — shows code-level remediation |
-| Jordan — Guided First Shift | 3 | Yes — shows continuity/handoff |
-| Diana — Investor Demo | All | Yes — the wrapper for everything |
+### Post-MVP Features (Phase 2)
 
-**Must-Have Capabilities (by wave):**
+- Trust levels and auto-remediation
+- Collaborative investigations
+- Notification engine (Slack, PagerDuty)
+- True mobile responsive (320px+)
+- Demo script automation with fault → recovery verification
 
-**Wave 1 — Foundation:**
-- ServiceLevel CRD, SLO burn rate calculation, customer impact scoring
-- SLO compliance dashboard
-- NotificationChannel CRD, Slack integration, PagerDuty integration, email, webhooks
-- Notification rules engine with customer impact routing
-- Admin/user permission model (2-tier)
+### Expansion (Phase 3 — v0.2.0)
 
-**Wave 2 — Trust + Action:**
-- Architecture spikes complete (agent framework, WebSocket, pluggable vector)
-- Trust levels 1-5 per service with confidence gates
-- Adaptive alert thresholds, customer impact weighting
-- Repository CRD, auto-PR generation with evidence trails
-- Human-language runbook execution
-- Advisory test plan (always), sandbox test execution (when available)
-- Fix verification loop
-
-**Wave 3 — Intelligence:**
-- Real-time investigation collaboration (WebSocket-based)
-- Evidence presentation with references
-- Shift handoff summaries
-- KB bi-directional links, investigation-to-KB pipeline
-- Unified investigation timeline, deploy correlation
-- Topology-aware investigation
-
-**Wave 4 — Delight:**
-- Keyboard-first UI (Cmd+K)
-- Investigation workflow states
-- Remediation tracking
-- Service health feed improvements
-- Reliability score per service
-- MTTR trends, customer impact trends, trust progression dashboards
-
-**Demo Application (cross-cutting):**
-- Chaotic microservices app in K8s
-- Configurable fault injection
-- Scriptable end-to-end demo scenarios
-- Full lifecycle: healthy → fault → detect → investigate → fix → prove → recover
-
-### Nice-to-Have (ship if time allows, cut first if tight)
-
-| Feature | Wave | Why Deferrable |
-|---|---|---|
-| Onboarding quests | 4 | Polish, not proof |
-| Team streaks & gamification | 4 | Delight, not evidence |
-| KB contribution scores / leaderboard | 4 | Community feature, not demo-critical |
-| AI accuracy XP | 4 | Interesting but not investor-facing |
-| Notification digest mode | 1 | Convenience, not capability |
-| Custom views & saved filters | 3 | Personalization, not proof |
-
-### Post-MVP Features
-
-**Phase 2 (v0.3.0 — Scale & Commercial):**
-- SaaS offering with managed hosting and metered billing
-- Multi-cluster and multi-environment support
-- Advanced RBAC with team-level permissions and approval chains
-- Community marketplace for runbooks and integrations
-- Security certifications (SOC2)
-- Multi-tenant architecture
-
-**Phase 3 (v0.4.0+ — Platform):**
-- Third-party integrations ecosystem
-- Custom agent extensions for domain-specific investigators
-- Cross-organization anonymized learning
-- Mobile companion app
-- Enterprise features: audit trails, compliance reporting, SSO
+- Full v0.2.0 feature set per `prd-v0.2.0.md`
+- Full investor demo script with detect → investigate → fix → prove lifecycle
 
 ### Risk Mitigation Strategy
 
-**Technical Risks:**
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| OTEL format incompatibility requires code change (not just config) | Medium | High | Test ingestion endpoint with real OTEL Collector output first; worst case is adding a format adapter |
+| EWMA thresholds don't calibrate cleanly on demo traffic | Medium | Medium | Capture real demo traffic baseline first; lower thresholds or increase sensitivity for demo |
+| "Insufficient data" is an LLM prompt issue, not signal gathering | Low | Medium | Check investigator logs for actual signal payloads before touching prompts |
+| UI CSS overhaul breaks existing Jinja templates | Low | Medium | Work in feature branch; test on each template |
+| Scope creep into v0.2.0 features during fix work | Medium | Medium | PRD is the guard — anything not in the 8 MVP items is post-MVP |
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Architecture spikes reveal blockers | Wave 2-3 features delayed | Spikes run first; fallback designs identified before committing |
-| WebSocket adds significant complexity | Collaboration features delayed | HTMX SSE as fallback for one-directional updates; WebSocket for full bidirectional |
-| Agent framework redesign too large | Auto-remediation delayed | Incremental extension of existing investigator; full agent framework as progressive enhancement |
-| Demo app too complex to maintain | Demo unreliable | Keep demo app minimal — 3-4 microservices, 2-3 fault scenarios, scriptable |
+## User Journeys
 
-**Market Risks:**
+### Journey 1: Diana Watches the Demo (Investor/Evaluator — Success Path)
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Inevitability thesis doesn't land | Investor pitch falls flat | Fallback to concrete ROI: MTTR reduction, fewer pages, developer hours saved |
-| Competitors ship similar capabilities | Differentiation erodes | Open-source moat + compounding KB flywheel = hard to replicate |
-| AI trust backlash in SRE community | Adoption resistance | Graduated autonomy + evidence-first = trust is earned, not assumed |
+**Diana** is VP of Engineering at a Series B startup. She's been pitched six "AI for ops" tools this quarter. All of them showed dashboards. None of them showed the AI actually doing anything.
 
-**Resource Risks:**
+**Opening Scene:** Diana joins a video call. Eric shares his screen showing the Beeper UI — clean sidebar on the left, investigation list front and center. "Let me show you what happens when a payment service fails." He runs `make demo-fault FAULT=payment-failure`. The screen is calm. The OTEL demo app is humming along with live traffic from the load generator.
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Solo developer bandwidth | Waves ship slower than planned | Wave sequence provides natural cut points — ship what's done, demo what's ready |
-| AI-assisted development hits limits | Implementation slows | v0.1.0 proved the AI-assisted approach works; architecture spikes de-risk complexity early |
-| Scope too ambitious for timeline | Not all waves complete | Nice-to-have list provides clear cut candidates; demo can work with Waves 1-3 if Wave 4 slips |
+**Rising Action:** Within a couple of minutes, the investigation list updates — a new investigation appears. Diana sees it move from "Pending" to "Running." The sidebar stays out of the way. Eric clicks into the investigation. The detail view fills the screen — step-by-step progress: customer impact assessment, KB query, signal correlation, root cause hypothesis. Each step populates with real data: "HTTP 5xx error rate spiked to 34% on paymentservice," "Correlated with checkout service upstream errors," specific Prometheus metric values and Loki log excerpts inline.
+
+**Climax:** The investigation completes. Root cause: "Payment service returning HTTP 500 errors due to injected failure condition. Error rate correlated across checkout and frontend services. Customer impact: checkout flow unavailable." Recommendations are specific and actionable. Diana leans forward — this isn't a dashboard summarizing alerts. The AI actually investigated, correlated signals across services, and explained what happened with evidence.
+
+**Resolution:** Eric recovers the fault with `make demo-recover`. Diana asks to see it again with a different fault. It works again. Same flow, different root cause, same quality of evidence. Diana schedules a follow-up with her CTO. "This is the first demo where the AI actually showed its work."
+
+**Capabilities revealed:** Reliable end-to-end pipeline, real-time UI updates, evidence-backed investigations, repeatable demo flow, clean distraction-free UI during presentation.
+
+### Journey 2: Eric Runs the Demo (Demo Operator — Setup & Execution)
+
+**Eric** is about to demo Beeper to an investor in 30 minutes. He needs confidence it will work.
+
+**Opening Scene:** Eric opens his terminal. The kind cluster is running. He runs `make demo-deploy` — the OTEL Astronomy Shop spins up with its 16+ microservices, the Collector is configured to forward to Beeper's ingestion endpoint, and ServiceLevel CRDs are applied.
+
+**Rising Action:** Eric runs `make demo-ui` — which sets up port-forwards for the Beeper UI, operator API, and the OTEL demo frontend. He opens the Beeper UI at `localhost:8080`. He checks pipeline health in the UI itself: Observe → Ingestion Stats shows metrics and logs arriving. He opens Observe → Sources — Prometheus and Loki both show connected. He waits 2-3 minutes for EWMA warmup, then injects a fault: `make demo-fault FAULT=payment-failure`. He watches the investigation list — within minutes, a new investigation appears and begins progressing through steps.
+
+**Climax:** The investigation completes with a specific, evidence-backed root cause. Eric runs it two more times with different faults — `cart-failure`, `high-cpu`. Each time: detection fires, investigation runs, specific root cause with real evidence. 3/3 reliable.
+
+**Resolution:** Eric joins the investor call with confidence. The demo script is a known quantity — not a prayer.
+
+**Capabilities revealed:** Reliable demo setup, pipeline health verification via UI, fault injection works predictably, multiple fault scenarios produce distinct investigations, repeatable 3/3, port-forward setup via Makefile.
+
+### Journey 3: Sam Uses the New UI (On-Call SRE — Daily Usage)
+
+**Sam** is mid-level SRE, on-call this week. Beeper has been running against the team's staging environment.
+
+**Opening Scene:** Sam opens Beeper on a laptop. The left sidebar is collapsed — just a hamburger icon. The investigation list is the main view. Three investigations from overnight. Sam scans the list — severity, service name, status — all visible without scrolling horizontally.
+
+**Rising Action:** Sam clicks into a high-severity investigation on `checkout-service`. The detail view expands — the sidebar auto-collapses to give maximum screen real estate to the evidence. Sam reads the root cause hypothesis, scrolls through correlated signals (Prometheus metrics showing latency spike, Loki logs showing connection timeouts). Below the evidence section, a **"Related Knowledge"** panel shows KB entries the investigator already found during its `KBQueryStep` — a past investigation with a matching connection timeout pattern. Sam didn't have to leave the page.
+
+**Climax:** The related KB entry confirms this is a known issue with a documented resolution. Sam confirms the resolution and closes the investigation without ever opening the sidebar.
+
+**Resolution:** For a different investigation where the KB match isn't enough, Sam opens the sidebar (clicks hamburger), navigates to Learn → Knowledge Base for a broader search. The grouped navigation gets Sam there in two clicks. Back to Investigations via Observe → Investigations. The workflow is: inline KB for triage speed, sidebar KB for deeper research. The responsive layout worked on the 13" laptop without horizontal scrolling.
+
+**Capabilities revealed:** Collapsible sidebar maximizes investigation view, grouped navigation (Observe/Learn/Manage) supports natural SRE workflow, inline Related KB panel on investigation detail, responsive layout on laptop, investigation detail shows real evidence, KB search accessible from sidebar.
+
+### Journey 4: Jordan Orients in the UI (Junior SRE — First Time)
+
+**Jordan** joined the SRE team two months ago. First time opening Beeper.
+
+**Opening Scene:** Jordan opens the URL. The investigation list loads — it's the default view. On Jordan's wide monitor (1440px), the left sidebar is **expanded by default** showing the three groups: Observe, Learn, Manage.
+
+**Rising Action:** Jordan sees the structure immediately: **Observe** (Investigations, Sources, Ingestion Stats), **Learn** (Knowledge Base, Metrics), **Manage** (Spending). No guessing. Jordan clicks "Knowledge Base" and browses existing entries to understand what Beeper knows about their services.
+
+**Climax:** An investigation fires while Jordan is browsing. Jordan navigates back to Investigations. They click into the live investigation and watch it progress step by step — customer impact, signal correlation, root cause. It's like reading over a senior engineer's shoulder. The evidence is specific enough that Jordan learns something about the service. The Related Knowledge panel shows a similar past incident — instant context.
+
+**Resolution:** Jordan bookmarks the KB and starts their on-call shift feeling like they have a senior engineer's notes available. The sidebar grouping meant they found everything without asking a teammate "where do I find X?"
+
+**Capabilities revealed:** Sidebar defaults expanded on wide screens (1200px+), discoverable grouped navigation, KB as learning tool, live investigation as teaching tool, inline Related KB for context, intuitive information architecture for new users.
+
+### Journey 5: Eric Troubleshoots a Silent Pipeline (Demo Operator — Failure Recovery)
+
+**Eric** injected `payment-failure` three minutes ago. No investigation has appeared. The investor call is in 20 minutes.
+
+**Opening Scene:** Eric stares at the investigation list. Nothing new. Heart rate rising. He needs to diagnose — fast.
+
+**Rising Action:** Eric opens the sidebar, clicks Observe → Ingestion Stats. The page shows: `metrics_received: 12,847`, `logs_received: 3,201` — data is flowing. Good, not an ingestion problem. He scans further: `anomalies_detected: 0`, `anomalies_suppressed: 0`, `active_metric_detectors: 23`. Zero anomalies detected means the EWMA detectors aren't seeing anything unusual yet. Either the fault hasn't produced enough divergent samples (warmup), or the demo traffic is too noisy for the current thresholds.
+
+**Climax:** Eric checks `ewma_warmup_samples` — most detectors show 8-9 samples against the 10-sample minimum. The fault was injected too recently. He waits 60 more seconds. The stats page updates: `anomalies_detected: 2`. Seconds later, an investigation appears in the list. The pipeline isn't broken — it was warming up.
+
+**Resolution:** Eric now knows: after deploying the demo, wait 2-3 minutes for EWMA warmup before injecting faults. He adds this to his demo prep checklist. If `anomalies_detected` stays at 0 after 5 minutes with an active fault, THAT's a real problem to debug.
+
+**Capabilities revealed:** Detection pipeline visibility via ingestion stats (anomalies detected/suppressed, EWMA warmup status), diagnostic path for "data flowing but no investigations" scenario, exposed via existing `/api/v1/ingestion/stats` endpoint (lightweight addition).
+
+### Journey Requirements Summary
+
+| Journey | Key Capabilities Required |
+|---------|--------------------------|
+| Diana (Investor Demo) | Reliable pipeline, real-time UI updates, evidence-backed investigations, clean presentation-ready UI |
+| Eric (Demo Operator) | Pipeline health verification via UI, predictable fault injection, repeatable demo script, port-forward setup via Makefile |
+| Sam (Daily SRE) | Collapsible sidebar, grouped nav, inline Related KB panel on investigation detail, responsive layout |
+| Jordan (New User) | Sidebar defaults expanded on wide screens (1200px+), discoverable grouped navigation, KB browsing, live investigation progress |
+| Eric (Troubleshooting) | Detection stats in ingestion stats view (anomalies detected/suppressed, EWMA warmup), diagnostic workflow for silent pipeline |
+
+## Technical Context
+
+### Deployment Model
+
+**Single-tenant K8s operator** — one Beeper instance per cluster. No multi-tenancy, no cross-cluster isolation required. Each deployment is self-contained with its own Qdrant StatefulSet, operator, investigator job pool, and UI. Horizontal scaling not in scope for this PRD.
+
+### Permission Model
+
+No authentication or authorization layer in this PRD scope. The UI and operator REST API are unauthenticated — access is controlled at the network/infrastructure level (port-forwarding for demo, cluster-internal for production). Auth deferred to post-MVP.
+
+### Integration Requirements
+
+| Integration | Direction | Protocol | Status |
+|-------------|-----------|----------|--------|
+| OTEL Collector → Beeper | Inbound | Prometheus remote write (snappy+protobuf) | **Fix required** |
+| OTEL Collector → Beeper | Inbound | Loki push API (JSON) | **Fix required** |
+| Beeper → Prometheus | Outbound (investigator) | HTTP PromQL query API | **Fix required** |
+| Beeper → Loki | Outbound (investigator) | HTTP LogQL query API | **Fix required** |
+| Beeper → LLM provider | Outbound (investigator) | LiteLLM → Anthropic/OpenAI/etc. | Verify working |
+| Beeper → Kubernetes API | Bidirectional (operator) | kube-rs controller | Verify working |
+| Beeper → Qdrant | Bidirectional (investigator + UI) | Qdrant HTTP/gRPC client | Verify working |
+
+**Integration priorities for this PRD:**
+1. OTEL Collector → Beeper ingestion (inbound): verify format compatibility — the OTEL Collector's `prometheusremotewrite` exporter must produce exactly the snappy+protobuf format Beeper's ingestion handler expects
+2. Beeper → Prometheus/Loki (outbound from investigator Jobs): verify cross-namespace DNS resolution and correct endpoint configuration in Source CRDs
+3. All others: verify connectivity, fix if broken
+
+### Compliance
+
+None required. No HIPAA, PCI-DSS, SOC2, or GDPR obligations for this open-source demo deployment.
 
 ## Functional Requirements
 
-### SLO & Customer Impact (Wave 1)
+### Telemetry Ingestion
 
-- FR1: Admins can define SLIs and SLO targets per service via ServiceLevel CRD
-- FR2: System can calculate SLO burn rates in real-time from ingested metrics
-- FR3: System can trigger investigations when SLO burn rate exceeds configured thresholds
-- FR4: System can score anomalies by customer impact using SLO data rather than static severity labels
-- FR5: Admins can define error budget policies that trigger notifications or deployment freezes
-- FR6: Users can view SLO compliance, burn rate trends, and error budgets on a dashboard
-- FR7: System can prioritize investigations by SLO impact severity
+- FR1: Operator can receive Prometheus remote write metrics from OTEL Collector in snappy+protobuf format
+- FR2: Operator can receive Loki push logs from OTEL Collector in JSON format
+- FR3: Operator can buffer incoming telemetry and expose ingestion statistics via API
+- FR4: Operator can report per-source ingestion health (bytes received, parse errors, last received timestamp)
 
-### Notification & Integration (Wave 1)
+### Anomaly Detection
 
-- FR8: Users can configure outbound notification channels via NotificationChannel CRD (Slack, PagerDuty, email, webhook)
-- FR9: Users can define notification routing rules based on severity, service, SLO state, and time of day
-- FR10: System can send rich Slack messages with threads, @mentions, and action buttons
-- FR11: System can create, acknowledge, and auto-resolve PagerDuty incidents bidirectionally
-- FR12: System can send email alert digests and investigation summaries
-- FR13: System can trigger webhooks to external systems (CD pipelines, Jira, status pages)
-- FR14: Users can configure quiet hours and escalation tiers that respect on-call schedules
-- FR15: System can justify every notification with evidence — false pages are tracked as bugs
+- FR5: Operator can run EWMA-based anomaly detection on buffered metric streams
+- FR6: Operator can run pattern-based anomaly detection on buffered log streams
+- FR7: Operator can create Investigation CRDs when anomaly thresholds are crossed
+- FR8: Operator can suppress duplicate investigations for the same service within a cooldown window
+- FR9: Operator can expose detection status metrics (anomalies_detected, anomalies_suppressed, active_metric_detectors, ewma_warmup_samples) via ingestion stats API
 
-### Trust & Autonomy (Wave 2)
+### Investigation Lifecycle
 
-- FR16: Admins can configure trust levels (1-5) per service, controlling Beeper's autonomy from advisory to fully autonomous
-- FR17: System can gate actions by confidence threshold — only act when evidence meets the configured trust level's requirements
-- FR18: System can adapt alert thresholds based on investigation outcome feedback from SREs
-- FR19: Users can provide one-click investigation feedback (accurate / inaccurate / not-an-issue)
-- FR20: Admins can view a noise report showing signal-to-noise ratio and false page trends
-- FR21: System can weight escalation urgency by confirmed customer impact rather than theoretical severity
-- FR22: Admins can configure confidence gate thresholds per trust level
+- FR10: Operator can transition investigations through defined lifecycle states (Pending → Running → Completed/Failed)
+- FR11: Operator can spawn investigator Jobs for new investigations
+- FR12: Operator can track and surface investigator Job failures in the investigation status
+- FR13: Operator can clean up completed investigator Jobs after investigation completion
 
-### Auto-Remediation (Wave 2)
+### Investigation Execution
 
-- FR23: Admins can register code repositories via Repository CRD with branch policies and coding standards
-- FR24: System can execute human-language runbooks without requiring DSL translation
-- FR25: System can generate auto-PRs with full evidence trails (log correlation, root cause analysis, production conditions)
-- FR26: System can always produce an advisory test plan describing how to verify a hypothesis
-- FR27: System can design sandbox-specific tests and execute them when a sandbox environment is available
-- FR28: System can verify that a fix resolves the issue by monitoring post-fix metrics
-- FR29: System can gate remediation actions to the configured trust level and confidence tier
-- FR30: System can link PRs to investigations with full audit trail (anomaly → investigation → fix → verification)
-- FR31: System can accumulate proven fixes in the KB for future reference
+- FR14: Investigator can query Prometheus for relevant metrics using PromQL within the cluster
+- FR15: Investigator can query Loki for relevant logs using LogQL within the cluster
+- FR16: Investigator can verify data availability before committing to LLM analysis
+- FR17: Investigator can search the Knowledge Base for similar past incidents
+- FR18: Investigator can generate root cause hypotheses using LLM with real signal data
+- FR19: Investigator can generate specific, actionable resolution recommendations
 
-### Collaborative Investigation (Wave 3)
+### SLO Integration
 
-- FR32: Users can interact with Beeper in real-time during active investigations
-- FR33: System can present evidence with references to specific metrics, logs, and prior KB entries
-- FR34: Users can annotate, redirect, and comment on active investigations
-- FR35: Users can approve or reject Beeper-proposed fixes within their permission level
-- FR36: System can generate shift handoff summaries with active investigations, resolved incidents, and items to watch
-- FR37: System can surface relevant past KB entries during live investigations
+- FR20: Operator can read ServiceLevel CRDs to determine SLO targets per service
+- FR21: Investigator can incorporate SLO breach data into investigation context
 
-### Knowledge Base Enhancement (Wave 3)
+### Investigation Display
 
-- FR38: System can create KB entries automatically from resolved investigations
-- FR39: System can link KB entries bi-directionally to investigations and related entries
-- FR40: System can provide per-service knowledge views through service catalog integration
-- FR41: System can weight KB entries by validation status (human-confirmed, AI-generated, corrected)
-- FR42: Users can review, edit, and correct Beeper's KB entries as a feedback mechanism
+- FR22: Users can view a list of investigations filterable by status groups (active: Pending/Running, resolved: Completed, failed: Failed)
+- FR23: Users can view investigation detail with step-by-step execution progress
+- FR24: Users can view real-time investigation updates via SSE without page refresh
+- FR25: Users can view evidence inline (Prometheus metric values, Loki log excerpts) within investigation steps
+- FR26: Users can view related Knowledge Base entries inline on investigation detail page
+- FR27: UI can automatically reconnect SSE streams after network interruption
 
-### Signal & Observability (Wave 3)
+### Knowledge Base
 
-- FR43: System can display a unified investigation timeline correlating logs, metrics, deploys, and K8s events
-- FR44: System can correlate anomalies with recent deployments ("anomaly started 4 min after deploy #847")
-- FR45: System can discover and display service dependency topology
-- FR46: System can ingest and correlate change events (config changes, scaling, DNS, certs)
+- FR28: Users can browse Knowledge Base entries
+- FR29: Users can search Knowledge Base by keyword or service name
+- FR30: Investigator can store investigation outcomes as new Knowledge Base entries
+- FR31: Users can view Knowledge Base entry details including past incident context
 
-### Developer Experience (Wave 4)
+### System Health & Diagnostics
 
-- FR47: Users can navigate the UI via keyboard shortcuts and a command palette (Cmd+K)
-- FR48: System can track investigations through workflow states (detected → investigating → resolved → verified)
-- FR49: Users can track remediation progress from detection through fix verification
-- FR50: Users can view per-service health feeds with recent investigations, SLO status, and trends
+- FR32: Users can view ingestion statistics showing metrics_received and logs_received counts
+- FR33: Users can view detection statistics (anomalies_detected, anomalies_suppressed, active_metric_detectors, ewma_warmup_samples)
+- FR34: Users can view data source connection status (Prometheus, Loki connected/disconnected)
+- FR35: Users can view LLM provider configuration and spending metrics
 
-### Analytics & Reporting (Wave 4)
+### Demo Environment
 
-- FR51: System can calculate a reliability score per service (composite of SLO compliance, incident frequency, MTTR)
-- FR52: Users can view MTTR trends, customer impact trends, and trust progression dashboards
-- FR53: Diana can view investor-ready reports derived from Beeper's operational data
+- FR36: Demo operator can deploy the full demo environment via single Makefile target
+- FR37: Demo operator can inject named fault scenarios via Makefile target
+- FR38: Demo operator can recover from fault scenarios via Makefile target
+- FR39: Demo operator can set up port-forwards for all demo services via Makefile target
 
-### Demo Application (Cross-cutting)
+### Navigation & Layout
 
-- FR54: System can deploy a purpose-built chaotic microservices application in K8s alongside Beeper
-- FR55: Admins can trigger configurable fault injections (memory leak, bad deploy, cascading failure, scale-dependent issues)
-- FR56: System can demonstrate the full lifecycle: healthy → fault → detect → investigate → fix → prove → recover
-- FR57: System can run scripted, repeatable demo scenarios for investor presentations
-
-### Platform & Security (Foundation)
-
-- FR58: System can enforce 2-tier permissions (admin/user) across all APIs and UI routes
-- FR59: System can store integration credentials as K8s Secrets with encryption at rest
-- FR60: System can scrub sensitive information (PII, credentials) from data before sending to LLM providers
-- FR61: System can gracefully degrade if LLM provider is unavailable (queue investigations, escalate to humans)
-- FR62: System can rollback any autonomous action if post-action metrics show degradation
-- FR63: System can operate without becoming a single point of failure — existing alerting continues if Beeper is down
+- FR40: Users can navigate via a left sidebar organized into Observe, Learn, and Manage groups
+- FR41: Users can collapse/expand the sidebar via a hamburger icon
+- FR42: Sidebar defaults to expanded on screens 1200px wide or wider
+- FR43: UI layout is responsive between 768px and 1920px+ without horizontal scrolling
+- FR44: Investigation detail view maximizes screen real estate by auto-collapsing sidebar during active view
 
 ## Non-Functional Requirements
 
 ### Performance
 
-| Requirement | Target | Rationale |
-|---|---|---|
-| NFR1: Anomaly-to-investigation latency | < 30 seconds from detection to investigation start | Sam needs Beeper already working when he opens the laptop |
-| NFR2: UI response time | < 2 seconds for all user interactions | Incident response demands fast navigation |
-| NFR3: LLM screening round-trip | < 10 seconds | Tiered model strategy — screening must be fast to triage volume |
-| NFR4: LLM deep investigation round-trip | < 30 seconds per reasoning step | Acceptable for thorough root cause analysis |
-| NFR5: Real-time collaboration updates | < 500ms delivery (WebSocket) | Live investigation interaction requires near-instant feedback |
-| NFR6: SLO burn rate calculation | < 5 second refresh cycle | Dashboard must reflect current state during active incidents |
-| NFR7: Demo full lifecycle | < 5 minutes fault-to-resolution | Investor demo must be tight and compelling |
-
-### Security
-
-| Requirement | Target | Rationale |
-|---|---|---|
-| NFR8: Cluster RBAC | Least-privilege per operation — no cluster-admin | Minimize blast radius of compromised Beeper instance |
-| NFR9: Repository credentials | Scoped per-repo tokens, never org-wide | Auto-PR access limited to registered repositories only |
-| NFR10: Secret storage | K8s Secrets with encryption at rest | No credential storage in Beeper's own database |
-| NFR11: PII/credential scrubbing | Zero sensitive data sent to LLM providers | Logs and error messages scrubbed before LLM context assembly |
-| NFR12: Trust level access control | Admin-only for trust level and confidence gate configuration | Prevents unauthorized escalation of Beeper's autonomy |
-| NFR13: Sandbox isolation | Network-isolated namespace, provably no production data leakage | Sandbox tests must never affect production state |
+- **NFR1 — Detection latency:** Investigation CRD created within 5 minutes of fault injection (prerequisite: EWMA warmup complete, at least 10 samples collected)
+- **NFR2 — Pipeline completion (excluding LLM):** Investigation pipeline steps excluding LLM calls complete within 2 minutes of CRD creation
+- **NFR3 — Full investigation completion:** Full investigation including LLM steps completes within 10 minutes at p95 under normal API response times
+- **NFR4 — UI responsiveness:** Beeper UI page loads within 3 seconds; investigation list updates within 2 seconds of SSE event received
+- **NFR5 — Ingestion throughput:** Ingestion endpoint handles ≥100 metric series/minute (16 OTEL demo microservices × standard scrape intervals) without dropping samples
+- **NFR6 — EWMA warmup:** Detection engine reaches operational warmup (10 samples per metric stream) within 2–3 minutes of OTEL demo deploy
+- **NFR7 — Investigation detail progressive rendering:** Investigation detail page renders known steps immediately and updates incrementally as steps complete — no blank page while investigation is Running
 
 ### Reliability
 
-| Requirement | Target | Rationale |
-|---|---|---|
-| NFR14: Non-SPOF operation | Existing alerting/monitoring fully functional if Beeper is down | Beeper enhances — never replaces — existing incident response |
-| NFR15: LLM provider degradation | Queue investigations + escalate to humans within 60 seconds of provider failure | Investigation stall cannot become silent failure |
-| NFR16: Autonomous action rollback | Any auto-applied fix reversible within 60 seconds | False positive auto-fix is treated as critical bug |
-| NFR17: Data integrity | Zero investigation data loss during component restart or upgrade | Investigation continuity through operator lifecycle events |
-| NFR18: Demo reliability | 10 consecutive end-to-end demo runs without failure | Diana cannot demo a flaky system to investors |
+- **NFR8 — Demo repeatability:** See Success Criteria — payment-failure fault scenario completes end-to-end 3/3 consecutive runs without cluster restart
+- **NFR9 — SSE stability:** SSE connection maintains for duration of a typical investigation (10 min); auto-reconnects within 5 seconds of network interruption (verified by integration test simulating disconnect)
+- **NFR10 — Investigator Job resilience:** Job failures surface in investigation status within 30 seconds; failed investigations do not leave orphaned Jobs running
+- **NFR11 — Ingestion continuity:** Operator continues accepting telemetry during investigation processing — ingestion and detection are not blocked by active investigator Jobs
+- **NFR12 — Operator restart recovery:** Operator resumes processing existing Investigation CRDs after pod restart without re-triggering duplicate investigations or spawning duplicate Jobs
 
-### Scalability
+### Integration
 
-| Requirement | Target | Rationale |
-|---|---|---|
-| NFR19: Concurrent investigations | 50+ active investigations without performance degradation | Cluster-wide incident scenarios trigger many simultaneous investigations |
-| NFR20: KB capacity | 10,000+ entries with < 2 second semantic search | Compounding flywheel requires KB that grows without slowing down |
-| NFR21: ServiceLevel CRDs | 100+ active CRDs per cluster | Enterprise clusters have many services |
-| NFR22: Notification throughput | 1,000+ events/hour processed without drops | Cascading incidents generate notification storms |
+- **NFR13 — OTEL Collector compatibility:** Beeper ingestion endpoint accepts the exact output format produced by the OTEL Collector `prometheusremotewrite` exporter (snappy+protobuf) and Loki `loki` exporter (JSON push) without transformation at the Collector side
+- **NFR14 — Cluster DNS constraint:** Investigator Jobs must resolve cluster-internal endpoints (Prometheus, Loki) using standard kind cluster DNS defaults without additional cluster admin configuration
+- **NFR15 — LiteLLM provider compatibility:** Investigator works with at least one configured LLM provider (Anthropic Claude) without requiring provider-specific code changes
+- **NFR16 — Kubernetes API compatibility:** Operator runs against kind cluster Kubernetes version (verify against kube-rs client library version)
+
+### UI Quality
+
+- **NFR17 — Sidebar transition smoothness:** Sidebar collapse/expand CSS transitions render without layout reflow or jank at 60fps; no disruption to user's reading context in the main content area

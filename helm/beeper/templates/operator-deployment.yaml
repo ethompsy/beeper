@@ -69,6 +69,14 @@ spec:
               value: "{{ include "beeper.fullname" . }}-qdrant"
             - name: BEEPER_INVESTIGATOR_SERVICE_ACCOUNT
               value: {{ include "beeper.investigatorServiceAccountName" . }}
+            - name: BEEPER_INVESTIGATOR_CPU_LIMIT
+              value: {{ .Values.investigator.resources.limits.cpu | quote }}
+            - name: BEEPER_INVESTIGATOR_MEMORY_LIMIT
+              value: {{ .Values.investigator.resources.limits.memory | quote }}
+            - name: BEEPER_INVESTIGATOR_CPU_REQUEST
+              value: {{ .Values.investigator.resources.requests.cpu | quote }}
+            - name: BEEPER_INVESTIGATOR_MEMORY_REQUEST
+              value: {{ .Values.investigator.resources.requests.memory | quote }}
           livenessProbe:
             httpGet:
               path: /healthz

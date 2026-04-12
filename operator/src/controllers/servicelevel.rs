@@ -64,11 +64,10 @@ async fn reconcile(
         "Reconciling ServiceLevel"
     );
 
-    let now = Utc::now().to_rfc3339();
     let spec = &servicelevel.spec;
 
-    // Validate the spec
-    let status = match validate_spec(spec) {
+    // Validate the spec and compute desired condition + alerts count
+    let (new_condition, new_alerts, new_error) = match validate_spec(spec) {
         Ok(()) => {
             let alerts_count = spec
                 .burn_rate_alerts
@@ -85,12 +84,7 @@ async fn reconcile(
                 "ServiceLevel validated successfully"
             );
 
-            ServiceLevelStatus {
-                condition: Some(ServiceLevelCondition::Healthy),
-                last_evaluated: Some(now),
-                alerts_registered: Some(alerts_count),
-                error: None,
-            }
+            (Some(ServiceLevelCondition::Healthy), Some(alerts_count), None)
         }
         Err(validation_error) => {
             warn!(
@@ -99,16 +93,28 @@ async fn reconcile(
                 "ServiceLevel validation failed"
             );
 
-            ServiceLevelStatus {
-                condition: Some(ServiceLevelCondition::Critical),
-                last_evaluated: Some(now),
-                alerts_registered: None,
-                error: Some(validation_error),
-            }
+            (Some(ServiceLevelCondition::Critical), None, Some(validation_error))
         }
     };
 
-    // Patch the status subresource
+    // Read existing status to avoid unnecessary patches (prevents reconciliation storm)
+    let current_condition = servicelevel.status.as_ref().and_then(|s| s.condition.clone());
+    let current_alerts = servicelevel.status.as_ref().and_then(|s| s.alerts_registered);
+
+    if current_condition == new_condition && current_alerts == new_alerts {
+        debug!(name = %name, "ServiceLevel status unchanged, skipping patch");
+        return Ok(Action::requeue(Duration::from_secs(300)));
+    }
+
+    // Something changed — patch status with fresh timestamp
+    let now = Utc::now().to_rfc3339();
+    let status = ServiceLevelStatus {
+        condition: new_condition,
+        last_evaluated: Some(now),
+        alerts_registered: new_alerts,
+        error: new_error,
+    };
+
     let servicelevels: Api<ServiceLevel> = Api::namespaced(ctx.client.clone(), namespace);
     let status_patch = json!({
         "status": status

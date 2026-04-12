@@ -307,7 +307,7 @@ pub async fn run_slo_engine(
                         .await
                     {
                         Ok(result) => {
-                            debug!(
+                            info!(
                                 service = %result.service,
                                 compliance = result.compliance,
                                 burn_rate = result.burn_rate,
@@ -359,7 +359,7 @@ pub async fn run_slo_engine(
                             cache_updates.insert(name, result);
                         }
                         Err(e) => {
-                            debug!(
+                            warn!(
                                 error = %e,
                                 service = %spec.service,
                                 servicelevel = %name,

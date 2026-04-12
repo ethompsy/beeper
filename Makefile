@@ -47,6 +47,17 @@ demo-down:
 
 ## Create a kind cluster for the demo (installs kind if missing)
 demo-cluster:
+	@DOCKER_MEM=$$(docker info --format '{{.MemTotal}}' 2>/dev/null); \
+	if [ -n "$$DOCKER_MEM" ]; then \
+		DOCKER_MEM_GB=$$(echo "$$DOCKER_MEM" | awk '{printf "%.1f", $$1/1073741824}'); \
+		DOCKER_MEM_INT=$$(echo "$$DOCKER_MEM" | awk '{printf "%d", $$1/1073741824}'); \
+		if [ "$$DOCKER_MEM_INT" -lt 12 ]; then \
+			echo ""; \
+			echo "WARNING: Docker has $${DOCKER_MEM_GB}GB memory, but the demo needs ~12GB."; \
+			echo "  Increase via: Docker Desktop → Settings → Resources → Memory → 12GB+"; \
+			echo ""; \
+		fi; \
+	fi
 	@if ! command -v kind &>/dev/null; then \
 		echo "==> kind not found. Installing via Homebrew..."; \
 		brew install kind; \
@@ -190,11 +201,11 @@ demo-fault:
 	@test -n "$(FAULT)" || (echo "Error: FAULT is required. Run 'make demo-fault-list' for options." && exit 1)
 	@echo "==> Enabling fault '$(FAULT)'..."
 	@case "$(FAULT)" in \
-		payment-failure) FLAG_KEY=paymentFailure ;; \
-		cart-failure)    FLAG_KEY=cartFailure ;; \
-		kafka-problems)  FLAG_KEY=kafkaQueueProblems ;; \
-		slow-images)     FLAG_KEY=imageSlowLoad ;; \
-		high-cpu)        FLAG_KEY=adHighCpu ;; \
+		payment-failure) FLAG_KEY=paymentFailure; ON_VARIANT='100%%' ;; \
+		cart-failure)    FLAG_KEY=cartFailure;    ON_VARIANT=on ;; \
+		kafka-problems)  FLAG_KEY=kafkaQueueProblems; ON_VARIANT=on ;; \
+		slow-images)     FLAG_KEY=imageSlowLoad;  ON_VARIANT=on ;; \
+		high-cpu)        FLAG_KEY=adHighCpu;      ON_VARIANT=on ;; \
 		*) echo "Error: Unknown fault '$(FAULT)'. Run 'make demo-fault-list' for options." && exit 1 ;; \
 	esac && \
 	kubectl -n $(DEMO_NAMESPACE) get configmap flagd-config -o json | \
@@ -202,7 +213,7 @@ demo-fault:
 cm=json.load(sys.stdin); \
 flags=json.loads(cm['data']['demo.flagd.json']); \
 flags['flags']['$$FLAG_KEY']['state']='ENABLED'; \
-flags['flags']['$$FLAG_KEY']['defaultVariant']='on'; \
+flags['flags']['$$FLAG_KEY']['defaultVariant']='$$ON_VARIANT'; \
 cm['data']['demo.flagd.json']=json.dumps(flags); \
 json.dump(cm,sys.stdout)" | \
 		kubectl apply -f - && \
@@ -225,7 +236,7 @@ demo-recover:
 demo-fault-status:
 	@echo "==> Feature Flag Status:"
 	@kubectl -n $(DEMO_NAMESPACE) get configmap flagd-config -o json 2>/dev/null | \
-		python3 -c "exec(\"import sys,json\ncm=json.load(sys.stdin)\nflags=json.loads(cm['data']['demo.flagd.json'])\nprint()\nfor name,cfg in sorted(flags.get('flags',{}).items()):\n    state=cfg.get('state','DISABLED')\n    default=cfg.get('defaultVariant','off')\n    marker='ON' if state=='ENABLED' and default=='on' else 'off'\n    print(f'  {name:30s} [{marker}]')\")" \
+		python3 -c "exec(\"import sys,json\ncm=json.load(sys.stdin)\nflags=json.loads(cm['data']['demo.flagd.json'])\nprint()\nfor name,cfg in sorted(flags.get('flags',{}).items()):\n    state=cfg.get('state','DISABLED')\n    default=cfg.get('defaultVariant','off')\n    marker='ON' if state=='ENABLED' and default!='off' else 'off'\n    print(f'  {name:30s} [{marker}]')\")" \
 		|| echo "  Could not read flagd config. Is the demo deployed?"
 
 ## List available faults

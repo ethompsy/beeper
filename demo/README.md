@@ -20,7 +20,7 @@ OTel Astronomy Shop → OTel Collector → Beeper Operator (:9090 ingestion)
 - Docker (for building images)
 - `helm` 3.x
 - `kind` (installed automatically by `make demo-cluster`)
-- ~4GB RAM available for the demo pods
+- ~12GB RAM allocated to Docker Desktop (Settings → Resources → Memory)
 - `ANTHROPIC_API_KEY` env var — required for investigations to complete (without it, SLO monitoring and fault injection still work, but investigator jobs will fail)
 
 ## Quick Start

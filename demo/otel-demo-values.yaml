@@ -13,6 +13,10 @@ components:
   # Feature flags (flagd) — allows fault injection via UI or API
   flagd:
     enabled: true
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
 
   # Load generator — Locust-based, generates realistic user traffic
   load-generator:

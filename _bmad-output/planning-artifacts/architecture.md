@@ -1,31 +1,29 @@
 ---
-stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
+stepsCompleted:
+  - step-01-init
+  - step-02-context
+  - step-03-starter
+  - step-04-decisions
+  - step-05-patterns
+  - step-06-structure
+  - step-07-validation
+  - step-08-complete
 inputDocuments:
   - prd.md
-  - product-brief-beeper-2026-03-09.md
-  - product-brief-beeper-2026-01-27.md
   - ux-design-specification.md
   - project-overview.md
   - integration-architecture.md
   - source-tree-analysis.md
+  - api-contracts.md
   - development-guide.md
   - deployment-guide.md
-  - api-contracts.md
 workflowType: 'architecture'
-lastStep: 1
-status: 'complete'
-completedAt: '2026-03-13'
-previousVersion:
-  completedAt: '2026-02-03'
-  context: 'v0.1.0'
 project_name: 'beeper'
 user_name: 'eric'
-date: '2026-03-13'
-classification:
-  projectType: Agentic Platform
-  domain: DevOps/SRE
-  complexity: high
-  projectContext: brownfield
+date: '2026-04-09'
+lastStep: 8
+status: 'complete'
+completedAt: '2026-04-09'
 ---
 
 # Architecture Decision Document
@@ -36,1767 +34,1346 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 ### Requirements Overview
 
-**Functional Requirements:**
-- 63 FRs across 11 capability areas, up from 47 in v0.1.0
-- v0.1.0's 47 FRs are fully implemented and tested (1,032 tests). v0.2.0 adds 16 net-new FRs and restructures the existing FRs into the wave delivery model
-- Core loop extended: Detect → Investigate → Correlate → **Score by SLO impact** → **Propose fix with evidence** → **Test in sandbox** → **Apply with trust gating** → Document to KB → **Notify with justification**
-- New capability areas: SLO Platform (FR1-7), Notification Engine (FR8-15), Trust System (FR16-22), Auto-Remediation (FR23-31), Collaboration (FR32-37), Demo Application (FR54-57), Platform Security (FR58-63)
-- Multi-actor system expanded: Beeper agent, Investigator (spawned), SRE (user), SRE Lead (admin), Developer (auto-PR consumer), VP Eng (demo viewer)
+**Functional Requirements (44 FRs across 9 categories):**
 
-**Non-Functional Requirements:**
-- 22 NFRs across Performance (7), Security (6), Reliability (5), Scalability (4)
-- **Performance:** < 30s anomaly-to-investigation, < 500ms WebSocket delivery, < 5 min demo lifecycle
-- **Security:** Least-privilege RBAC, PII scrubbing before LLM, scoped repo tokens, sandbox network isolation
-- **Reliability:** Non-SPOF, autonomous action rollback within 60s, 10 consecutive reliable demo runs
-- **Scalability:** 50+ concurrent investigations, 10K+ KB entries, 100+ ServiceLevel CRDs, 1000+ notifications/hour
+| Category | FRs | Architectural Domain | Key Architectural Implication |
+|---|---|---|---|
+| Telemetry Ingestion | FR1-4 | Operator (Rust, Axum :9090) | OTEL Collector compatibility — two distinct concerns: **format compatibility** (snappy compression on/off) and **schema compatibility** (protobuf message definitions must match between OTEL Collector's `prometheusremotewrite` exporter and operator's prost 0.13 decoder). |
+| Anomaly Detection | FR5-9 | Operator (Rust, in-memory) | EWMA detector must expose warmup and detection stats via the existing :8080 management API endpoint (FR9). New fields flow from EWMA module → stats struct → :8080 Axum handler. **Cross-workstream dependency:** Rust API change must land before UI diagnostic dashboard can render these fields. |
+| Investigation Lifecycle | FR10-13 | Operator ↔ K8s API | Existing CRD state machine (Pending → Running → Completed/Failed). Verify Job creation, failure tracking, and cleanup work correctly. |
+| Investigation Execution | FR14-19 | Investigator (Python, K8s Job) | Cross-namespace DNS resolution for Prometheus/Loki queries. LLM prompt must pass real signal data. Fix-in-place, not redesign. |
+| SLO Integration | FR20-21 | Operator (Rust, ServiceLevel CRD) | ServiceLevel CRDs already exist in demo config. Verify operator's SLO controller reads them; fix wiring if broken. |
+| Investigation Display | FR22-27 | UI (Flask/HTMX/SSE) | SSE streaming, progressive rendering, inline evidence, Related KB panel (new). SSE lifecycle implies operator must support **idempotent re-fetch** of investigation steps for reconnection backfill. |
+| Knowledge Base | FR28-31 | UI ↔ Qdrant | Existing CRUD against `knowledge` collection. Related KB panel (FR26) consumes KBQueryStep data already in `investigations` collection — may require new query patterns (see Query Contract Stability below). |
+| System Health | FR32-35 | Operator API → UI | Detection stats extension (FR33) is the only new API contract. All other stats already exist. |
+| Demo Environment | FR36-39 | Makefile + Helm + OTEL | Infrastructure automation. No application code — Makefile targets, Helm values, OTEL Collector config. |
+| Navigation & Layout | FR40-44 | UI (Tailwind + Jinja2) | Atomic layout shell migration — all routes adopt sidebar simultaneously. Route-driven sidebar collapse (FR44) is **server-rendered state** via Jinja2 blocks (`{% block sidebar_state %}collapsed{% endblock %}`), not client-side — distinct from SPA sidebar patterns. |
 
-**UX Architectural Implications (from UX Design Specification):**
-- **WebSocket required:** Real-time bidirectional investigation collaboration (SSE insufficient for annotations/redirections)
-- **Tailwind CSS migration:** Incremental adoption over ~3,900 lines existing custom CSS
-- **Command palette (Cmd+K):** Client-side instant results + async Qdrant semantic search (300ms debounce)
-- **Streaming narrative UX:** Investigation reasoning displayed in real-time — core signature pattern
-- **18+ routes (up from 6):** SLO dashboard, trust config, notification config, topology, analytics, demo controls, shift handoffs, auto-PR views, service health feeds
-- **WCAG 2.1 AA compliance:** axe-core CI gate, keyboard-first navigation
-- **Desktop-only:** No responsive mobile design needed (md:1024, lg:1280, xl:1440 breakpoints)
-- **Dark-first:** Non-negotiable for 3am incident response
+**Non-Functional Requirements (17 NFRs across 4 categories):**
 
-**Scale & Complexity:**
+| NFR | Architectural Decision Driver |
+|---|---|
+| NFR1 (Detection ≤5min) | EWMA warmup timing, buffer flush intervals, threshold sensitivity |
+| NFR5 (≥100 series/min) | Ingestion buffer sizing, backpressure responses already implemented |
+| NFR7 (Progressive rendering) | Server-sent events architecture, Jinja2 partial templates per step |
+| NFR9 (SSE auto-reconnect ≤5s) | Client-side EventSource lifecycle (4 states: Connected/Disconnected/Reconnected/Failed), REST fallback via `GET /api/v1/investigations/{id}` for missed steps — operator must return steps in order for idempotent re-fetch |
+| NFR13 (OTEL format compat) | Ingestion handler must accept OTEL Collector's exact output — both snappy compression format AND protobuf schema version must match |
+| NFR17 (60fps sidebar transition) | CSS-only transition (`transition: width 200ms ease-in-out`), no JS layout recalculation |
 
-| Dimension | v0.1.0 | v0.2.0 |
-|-----------|--------|--------|
-| Primary domain | Backend/Platform | Backend/Platform + Real-time Collaboration + External Integrations |
-| Complexity level | High | High (increased by trust system, auto-remediation, external integrations) |
-| Deployment model | K8s operator spawning investigator pods | Same + demo app pods + sandbox namespaces |
-| CRDs | 2 (Source, Investigation) | 5 (+ ServiceLevel, NotificationChannel, Repository) |
-| Qdrant collections | 6 | 8+ (+ slo_data, notification_history) |
-| UI routes | 6 | 18+ |
-| External integrations | 3 (Prometheus, Loki, LLM) | 8+ (+ Slack, PagerDuty, email, webhooks, Git providers) |
-| FRs | 47 | 63 |
-| NFRs | 16 | 22 |
+### Scale & Complexity
+
+- **Primary domain:** Full-stack distributed system (Rust + Python + Flask/HTMX + K8s)
+- **Complexity level:** Medium-high
+  - Brownfield: 1,032 existing tests, 4 sub-projects, ~3,900 lines existing CSS
+  - Real-time: SSE streaming with reconnection and REST fallback
+  - Distributed: Operator → K8s Job → Qdrant → UI data flow
+  - Format compatibility: OTEL Collector → snappy+protobuf → Rust decoder chain
+- **Estimated architectural components:** 6 (Operator, Investigator, UI, Qdrant, OTEL Demo, Helm/Infra)
+- **New components:** 0 — all changes are fixes or extensions to existing components
+- **Solo developer:** Architecture must prioritize simplicity and sequential buildability
+
+### Architectural Risk Hotspots
+
+The three highest-risk integration points where the pipeline is most likely to break:
+
+| # | Risk Hotspot | Components | Why It's Dangerous |
+|---|---|---|---|
+| 1 | **Protobuf schema compatibility** | OTEL Collector `prometheusremotewrite` exporter → Operator prost 0.13 decoder | The OTEL Collector may emit a protobuf schema version that doesn't match what the operator compiled against. This is not a format issue (snappy on/off) — it's a **schema version issue** (protobuf message definitions). If the Collector emits fields the operator doesn't know about, prost silently ignores them. If the operator expects fields the Collector doesn't send, deserialization may silently produce zero values. Diagnosis: compare the `.proto` definitions compiled into each side. |
+| 2 | **Cross-namespace DNS resolution** | Investigator Job (beeper namespace) → Prometheus/Loki (otel-demo namespace) | Investigator Jobs must resolve `prometheus.otel-demo.svc.cluster.local` and `loki.otel-demo.svc.cluster.local` using standard kind cluster DNS. If Source CRDs contain short names (`prometheus:9090` instead of FQDNs), resolution fails silently — the investigator gets connection timeouts, not DNS errors. Diagnosis: check Source CRD endpoint values against actual service FQDNs. |
+| 3 | **Atomic template migration** | UI (all Jinja2 templates) | Every template must inherit from the new layout shell base template in a single PR. Any template that misses the migration renders without navigation — the user sees content floating in a void. This is the highest-risk UI change because it touches every route simultaneously with no incremental path. Diagnosis: `grep -r "extends" templates/` to verify all templates inherit from the new base. |
 
 ### Technical Constraints & Dependencies
 
-**Hard Constraints (carried from v0.1.0):**
-- K8s-only deployment
-- Prometheus/Loki as primary data sources
-- LLM API access required (Claude default, configurable via LiteLLM)
-- Vector-only KB via Qdrant
-- Monorepo structure with Rust operator + Python investigator + Flask UI
+**Hard constraints (non-negotiable):**
 
-**New v0.2.0 Constraints:**
-- v0.1.0 codebase is the foundation — extend, don't replace (1,032 tests must continue passing)
-- 3 architecture spikes required before specific features: pluggable vector backend, WebSocket infrastructure, agent framework evolution
-- Solo developer (eric) + AI-assisted development — wave sequence provides natural cut points
-- Demo application must be fully isolated from real infrastructure
-- Sandbox environment must be provably network-isolated from production
-- 2-tier permission model (admin/user) must be enforced from Wave 1
+| Constraint | Source | Impact |
+|---|---|---|
+| Rust operator (kube-rs 0.95, Axum 0.7) | Existing codebase | No language or framework changes. Extend existing handlers. |
+| **Dual HTTP server architecture** | Existing operator | :8080 (Axum management API) and :9090 (ingestion server) are separate servers in the same process. Detection stats (FR9) flow from EWMA module through :8080 management API, NOT through :9090 ingestion API. |
+| Python investigator (Poetry, LiteLLM) | Existing codebase | No new dependencies unless strictly required for fix. |
+| Flask/Jinja2/HTMX UI | Existing codebase + PRD | No frontend framework (React, Vue). HTMX for interactivity. |
+| Tailwind CSS (standalone binary) | UX spec Phase 0 | No Node.js dependency. Tailwind CLI generates CSS. |
+| SSE only (no WebSocket) | PRD + UX spec | EventSource API. Server-sent events from operator/UI. |
+| No authentication | PRD scope | Simplifies every endpoint. Network-level access control only. |
+| OTEL Astronomy Shop demo | PRD FR36-39 | Demo workload is the OTel demo, not custom app. |
+| kind cluster | PRD deployment model | Local K8s for development and demo. |
+| Single-tenant, single-replica | PRD scope | No multi-tenancy, no HA, no horizontal scaling. |
 
-**Dependencies:**
-- Customer's existing K8s cluster (unchanged)
-- Customer's Prometheus/Loki stack (unchanged)
-- LLM API access via LiteLLM (unchanged)
-- Qdrant for KB and vector search (unchanged)
-- **New:** Git provider API access (GitHub/GitLab) for auto-PRs
-- **New:** Slack Bot Token for rich notifications
-- **New:** PagerDuty Events API v2 for bidirectional incident management
-- **New:** SMTP for email notifications
-- **New:** Sandbox K8s namespace with network isolation for test execution
+**Soft constraints (existing patterns to preserve):**
 
-### Cross-Cutting Concerns Identified
+| Pattern | Source | Preserve Because |
+|---|---|---|
+| snake_case JSON everywhere | API contracts, development guide | Serde `rename_all`, Pydantic native. Changing breaks all consumers. |
+| RFC 7807 error format | API contracts | Established contract between UI and operator. |
+| ISO 8601 UTC timestamps | Development guide | All components expect this format. |
+| Structured JSON logging | Development guide | Operator and investigator both emit structured logs. |
+| K8s Job-based investigation | Integration architecture | Decouples operator from investigator. No direct HTTP between them. |
+| 6 Qdrant collections | Project overview | Schema exists, data exists. No collection changes in scope. |
+| OpenAPI 3.1 spec | API contracts | Source of truth for UI ↔ operator contract. |
 
-| Concern | Impact | v0.1.0 Status |
-|---------|--------|---------------|
-| **WebSocket Infrastructure** | Collaboration, streaming narrative, real-time updates | New — SSE exists but insufficient for bidirectional |
-| **Permission Model** | All APIs, all UI routes, CRD management, trust level config | New — v0.1.0 had no auth |
-| **Trust System** | Investigation decisions, auto-remediation gating, notification urgency | New — foundational to v0.2.0 thesis |
-| **Notification Routing** | Multi-channel delivery, customer impact correlation, quiet hours | New |
-| **SLO Engine** | Burn rate calculation, investigation prioritization, dashboard | New |
-| **PII Scrubbing** | LLM context assembly, investigation logs, KB entries | New — NFR11 |
-| **Sandbox Isolation** | Auto-remediation testing, network policies, data separation | New — NFR13 |
-| **Streaming Architecture** | Three patterns: ingestion (existing), WebSocket (new), SSE (existing) | Extended |
-| **LLM Abstraction** | Provider flexibility, tiered model selection, cost tracking | Existing — unchanged |
-| **Error Handling** | KB unavailability buffering, LLM failure fallbacks, notification retry | Extended with new failure modes |
-| **Observability** | Beeper's own health, investigation metrics, cost reporting, SLO metrics | Extended |
-| **Configuration** | CRDs (5 types now), K8s-native config, credentials management | Extended with 3 new CRDs |
+**Dependencies between workstreams:**
 
-### Critical Path Analysis
+```
+Pipeline Fix (sequential):
+  Checkpoint 1: OTEL → Ingestion → data flows ──────────┐
+  Checkpoint 2: Detection → EWMA fires                  │
+  Checkpoint 3: Investigator → real signals              │
+  Checkpoint 4: LLM → specific root cause                │
+  Checkpoint 5: ServiceLevel CRD wiring                  │
+                                                         │
+  ┌─ Cross-workstream dependency ────────────────────┐   │
+  │ FR9: Detection stats API extension (Rust :8080)  │   │
+  │ Must land BEFORE UI diagnostic dashboard renders │   │
+  └──────────────────────────────────────────────────┘   │
+                                                         │
+UI Overhaul (parallel after checkpoint 1):               │
+  Phase 0: Tailwind installation ◄───────────────────────┘
+  Phase 1: Layout shell (atomic — all routes, highest-risk UI change)
+  Phase 2: New components (KB panel, diagnostic tiles ← depends on FR9)
+  Phase 3: Incremental migration (as-touched)
+```
 
-**Knowledge Base remains highest risk** — now serving even more access patterns:
-1. Write destination (investigations documenting findings) — existing
-2. Read source (investigators querying for prior art) — existing
-3. Human interface (wiki for SREs) — existing
-4. Learning substrate (corrections feeding back) — existing
-5. **Auto-PR evidence source** — new: evidence trails pulled into PR descriptions
-6. **Notification context source** — new: KB entries referenced in notification justifications
-7. **Handoff summary source** — new: active investigation context for shift transitions
+### Cross-Cutting Concerns
 
-**Architecture Spikes are on critical path:**
-
-| Spike | Blocks | Risk if Delayed |
-|-------|--------|-----------------|
-| WebSocket infrastructure | Wave 3 collaboration features | Must design before Wave 2 completes |
-| Agent framework evolution | Wave 2 auto-remediation | Multi-step tool-use beyond current 6-step pipeline |
-| Pluggable vector backend | Future scalability | Low immediate risk — can proceed with Qdrant |
-
-**Key Architecture Decisions Needed (v0.2.0 additions):**
-
-| Decision | Options | Assessment |
-|----------|---------|------------|
-| WebSocket implementation | Native WebSocket / Socket.IO / HTMX ws extension | Must support Flask, HTMX stack |
-| Trust system storage | Qdrant collection / CRD status / hybrid | Per-service config + historical data |
-| Notification queue | In-process async / Redis / K8s Job | Reliability vs. complexity trade-off |
-| Sandbox orchestration | Namespace isolation / separate cluster / virtual cluster | Network isolation provability |
-| Auto-PR generation | Direct Git API / CI trigger / K8s Job | Credential scoping, audit trail |
-| Permission enforcement | Middleware / decorator / CRD-level RBAC | Consistent across Rust + Python |
-
-**Acceptable MVP Trade-offs (v0.2.0):**
-
-| Trade-off | Rationale |
-|-----------|-----------|
-| Single-cluster only | Multi-cluster deferred to v0.3.0 |
-| Basic RBAC (admin/user) | Fine-grained roles deferred |
-| Pluggable vector spike but ship with Qdrant | Abstract interface, one implementation |
-| Demo app is simple (3-4 microservices) | Proves thesis without maintenance burden |
-| No mobile | Desktop-only per UX spec |
-
-### Component Risk Assessment
-
-| Component | Risk | Change from v0.1.0 |
-|-----------|------|---------------------|
-| K8s Operator | Medium | Extended with 3 new CRDs, SLO engine, notification engine |
-| LLM Integration | Medium | Extended with remediation-tier reasoning |
-| **Knowledge Base** | **High** | More access patterns, auto-PR evidence, handoff context |
-| Prometheus/Loki Adapters | Low | Unchanged |
-| **WebSocket Layer** | **High** | Entirely new — bidirectional collaboration, no prior art in codebase |
-| **Trust System** | **High** | Novel concept, gating auto-remediation, per-service state |
-| **Auto-Remediation** | **High** | Git integration, sandbox execution, multi-step agent workflow |
-| **Notification Engine** | **Medium** | Standard integration patterns, but multi-channel reliability matters |
-| **SLO Engine** | **Medium** | Burn rate math is straightforward, but real-time dashboard adds complexity |
-| UI (Flask/HTMX) | **High** | Route count triples, Tailwind migration, WebSocket integration, command palette |
-| **Demo Application** | **Medium** | Self-contained but must be reliable (NFR18: 10 consecutive runs) |
+| Concern | Components Affected | Architectural Mechanism |
+|---|---|---|
+| **Investigation state machine** | Operator, K8s API, Investigator, Qdrant, UI | CRD status field is source of truth. Operator manages transitions. UI reads via API + SSE. |
+| **SSE lifecycle** | Operator (emitter), UI (consumer) | Two SSE endpoints: investigation list updates, investigation detail streaming. Client-side `EventSource` with 4-state lifecycle (Connected/Disconnected/Reconnected/Failed). Reconnect requires **idempotent step re-fetch** — operator must support `GET /api/v1/investigations/{id}` returning ordered steps for backfill. |
+| **OTEL ingestion compatibility** | OTEL Collector, Operator ingestion (:9090) | Two distinct concerns: (1) **Format compatibility** — snappy compression toggle, content-type headers. (2) **Schema compatibility** — protobuf message definitions between OTEL Collector's exporter and operator's prost 0.13 compiled schemas. Schema mismatch is silent — fields are ignored or zero-valued. |
+| **Qdrant stability** | Investigator (writer), UI (reader) | **Schema stability:** 6 collections with established schemas, no schema changes in scope. **Query contract stability:** Related KB panel (FR26) may require new Qdrant query patterns against existing `investigations` collection to extract KBQueryStep results — not a schema change, but a query contract change. Both Python components use same Qdrant client patterns. |
+| **Tailwind/CSS coexistence** | UI (all templates) | New Tailwind CSS coexists with ~3,900 lines existing custom CSS. Coexistence rule: never mix Tailwind + custom CSS on same element. |
+| **Atomic layout shell migration** | UI (all routes) | **Highest-risk UI change.** All routes must adopt sidebar layout in one PR. Any template that fails to inherit from the new base renders without navigation. Anti-pattern: two navigation systems coexisting. Verification: `grep -r "extends" templates/` confirms all templates use new base. |
+| **Detection stats data flow** | Operator (EWMA module → stats struct → :8080 API), UI (:8080 API → diagnostic dashboard) | New fields added to existing `/api/v1/ingestion/stats` response on :8080 management API. Data originates in EWMA detector, crosses internal module boundary to stats struct, serialized via Axum handler. **Cross-workstream dependency** — Rust API change must ship before UI can render diagnostic tiles. |
+| **Server-rendered sidebar state** | UI (Jinja2 templates) | Sidebar state (auto/collapsed/expanded) is **server-determined per route** via Jinja2 block inheritance (`{% block sidebar_state %}`), not client-side JavaScript. Investigation detail template sets `collapsed`; all other templates default to `auto` (viewport-responsive). This is a server-rendered state decision, architecturally different from SPA sidebar patterns. |
+| **Demo infrastructure** | Makefile, Helm values, OTEL Collector config, kind cluster | End-to-end demo reliability is a cross-cutting quality attribute. Every component must work together for the 3/3 repeatability target. |
 
 ## Starter Template Evaluation
 
 ### Primary Technology Domain
 
-Backend/Platform with K8s Operator + Agentic Services + Web UI — **brownfield** (v0.1.0 fully implemented)
+**Full-stack distributed system** — brownfield, established codebase. No starter template selection needed.
 
-### Technology Stack — Validated & Extended
+### Brownfield Status: Existing Technical Foundation
 
-The v0.1.0 stack is proven with 1,032 passing tests. v0.2.0 extends, not replaces.
+This project has a complete, functioning codebase with 4 sub-projects, 1,032 tests, and an established deployment pipeline. All technology selections were made during v0.1.0 and are locked for this PRD scope. This section documents the existing foundation as the architectural baseline.
 
-**Core Stack (unchanged, validated in v0.1.0):**
+### Existing Foundation (Replaces Starter Selection)
 
-| Component | Technology | Version | Status |
-|-----------|------------|---------|--------|
-| K8s Controller | Rust + kube-rs | 0.95 | Proven |
-| Investigator Agents | Python 3.11+ | ^3.11 | Proven |
-| Vector Database | Qdrant | v1.15.0 | Proven |
-| Web UI | Flask + HTMX + SSE | Flask ^3.0 | Proven — staying on Flask (see decision below) |
-| LLM Client | LiteLLM | ^1.30 | Proven |
-| Infrastructure | Helm 3 + GitHub Actions | - | Proven |
-| API Specification | OpenAPI 3.1 | - | Proven |
+**No initialization command** — the project exists. `git clone` + dependency install is the "starter."
 
-**v0.2.0 Additions:**
+### Architectural Decisions Already Made by Existing Codebase
 
-| Addition | Technology | Rationale |
-|----------|------------|-----------|
-| CSS Framework | **Tailwind CSS (standalone CLI)** | UX spec decision — utility-first, dark-first. Standalone CLI binary avoids Node.js dependency in Python build chain. JIT mode configured to scan Jinja2 templates. |
-| WebSocket | **Flask-SocketIO (async mode)** | Real-time bidirectional collaboration; rooms per investigation, broadcasting, reconnect handling, pytest-compatible test client |
-| Slack Integration | slack-sdk (Python) | Rich messages, threads, @mentions, action buttons (FR10) |
-| PagerDuty Integration | pdpyras or Events API v2 direct | Bidirectional incident management (FR11) |
-| Git Provider Integration | PyGithub / python-gitlab | Auto-PR generation with evidence trails (FR25) |
-| Email | smtplib (stdlib) | Alert digests, investigation summaries (FR12) |
-| SLO Calculation | Custom (in Rust operator) | Burn rate, customer impact scoring — no external dependency |
-| Demo Application | Python + Flask (lightweight) | Purpose-built chaotic microservices, fault injection. Own `demo/` monorepo directory with Dockerfile + pytest harness. |
-| Command Palette | **Vanilla JS (~200 lines)** | Dual-mode: instant client-side navigation + async Qdrant semantic search (300ms debounce). No JS framework — compatible with HTMX architecture. |
+**Language & Runtime:**
 
-### Flask vs. Django Decision
+| Component | Language | Runtime | Package Manager |
+|---|---|---|---|
+| Operator | Rust (stable, edition 2021) | tokio 1.x (full features) | Cargo |
+| Investigator | Python ^3.11 | CPython | Poetry 1.7+ |
+| UI | Python ^3.11 | CPython (Flask dev server / Gunicorn prod) | Poetry 1.7+ |
+| Helm | YAML | Helm 3.x CLI | N/A |
 
-**Decision: Stay on Flask.** Evaluated Django migration for v0.2.0 and rejected unanimously.
+**HTTP & API Framework:**
 
-| Factor | Flask (stay) | Django (migrate) |
-|--------|-------------|-----------------|
-| Existing tests | 495 passing | All need rewriting |
-| ORM benefit | N/A (Qdrant, no SQL DB) | Wasted — no relational database |
-| Admin panel | Build what we need | Can't use — data lives in Qdrant |
-| Auth/permissions | `require_role()` decorator (~200 lines) | Built-in (strongest argument, but overkill for 2-tier) |
-| WebSocket | Flask-SocketIO (proven, pytest test client) | Django Channels (ASGI layer, new complexity) |
-| Templates | Jinja2 (UX spec designed for it) | Django templates (syntax migration for every partial) |
-| Migration cost | Zero | Full UI rewrite blocking all waves |
+| Component | Framework | Ports | Protocols |
+|---|---|---|---|
+| Operator management | Axum 0.7 | :8080 | REST (JSON), SSE |
+| Operator ingestion | Custom Axum server | :9090 | Prometheus remote write (snappy+protobuf), Loki push (JSON) |
+| UI | Flask ^3.0 | :5000 | HTML (Jinja2), SSE, REST proxy to operator |
+| Investigator | httpx ^0.27 (client only) | None (ephemeral Job) | Outbound HTTP to Prometheus, Loki, Qdrant, LLM |
 
-**Revisit trigger:** If Flask hits structural limits in v0.3.0+ (e.g., need for relational DB, fine-grained RBAC, multi-tenant isolation), Django migration becomes viable. For v0.2.0 with Qdrant-only data and 2-tier permissions, Flask is the right choice.
+**Styling Solution:**
 
-### Vector Database Decision (Reaffirmed)
+| Current | Migration Target | Strategy |
+|---|---|---|
+| ~3,900 lines custom CSS | Tailwind CSS (standalone binary, no Node.js) | Coexistence: new components in Tailwind, existing CSS untouched until template is individually migrated. Never mix on same element. |
 
-Qdrant remains the correct choice. v0.1.0 validated across 6 collections with 1,032 tests. v0.2.0 extends to 8+ collections.
+**Frontend Interactivity:**
 
-**Pluggable vector backend spike** (required before Wave 3): Introduce an abstraction layer over Qdrant to enable future backend swaps. Ship v0.2.0 with Qdrant as the sole implementation.
+| Technology | Role | What It Replaces |
+|---|---|---|
+| HTMX | Server-driven partial page updates | No SPA framework (no React/Vue/Angular) |
+| SSE (EventSource) | Real-time streaming | No WebSocket |
+| Vanilla JavaScript | SSE lifecycle management, sidebar toggle, clipboard | No JS framework |
+| Jinja2 macros | Reusable components | No component library |
 
-### Frontend Approach (Updated)
+**Build Tooling:**
 
-**v0.1.0:** Flask + HTMX + SSE with custom CSS (~3,900 lines)
-**v0.2.0:** Flask + HTMX + SSE + **Flask-SocketIO** + **Tailwind CSS**
+| Tool | Component | Purpose |
+|---|---|---|
+| `cargo build/test/fmt/clippy` | Operator | Compile, test, lint |
+| `poetry install/run` | Investigator, UI | Dependency management, execution |
+| `ruff` | Investigator, UI | Python linting |
+| `mypy` (strict) | Investigator, UI | Type checking |
+| `docker build` | All | Container images |
+| `helm lint/install` | Deployment | K8s chart validation and deployment |
+| `tailwindcss --watch/--minify` | UI (**new**) | CSS generation from Tailwind utilities. **Build pipeline addition:** Tailwind CLI must integrate with existing Makefile (new targets: `tailwind-watch`, `tailwind-build`) and UI Dockerfile (production minification as build stage). This is a build architecture change, not just a CSS addition. |
+| `make` | All | Orchestration (build, deploy, demo, fault, recover) |
 
-**Tailwind CSS Integration:**
-- **Standalone CLI binary** — no Node.js in the build chain. Downloaded as part of Docker multi-stage build.
-- **JIT mode** — `content` config includes `beeper_ui/templates/**/*.html` so Tailwind tree-shakes unused classes from Jinja2 templates.
-- **`@apply` escape hatch** — existing BEM classes can be incrementally migrated by mapping to Tailwind utilities. New components use Tailwind directly.
-- **Dark-first configuration** — custom design tokens from UX spec (indigo primary #6366f1, 5-level surface hierarchy).
+**Testing Framework:**
 
-**WebSocket Architecture (two-channel pattern):**
-- **Flask-SocketIO** owns the bidirectional channel: investigation collaboration (annotations, redirections, approvals), real-time evidence streaming. Uses SocketIO JavaScript client on the frontend. Room-per-investigation for broadcasting.
-- **HTMX + SSE** owns the request-response channel: investigation list updates, progress streaming, standard partial swaps, form submissions.
-- Two patterns, cleanly separated by concern. SocketIO client for collaboration, HTMX for everything else. No attempt to merge them.
+| Component | Framework | Count | Mocking |
+|---|---|---|---|
+| Operator | `cargo test` | 162 | wiremock 0.5 |
+| Investigator | `pytest` ^8.0 | 375 | Standard mocking |
+| UI | `pytest` ^8.0 | 495 | respx ^0.21 |
 
-**Notification Delivery (durable outbox pattern):**
-- Notifications to external systems (Slack, PagerDuty, email, webhooks) are **externally visible actions** — cannot be lost on process crash.
-- **Qdrant payload collection** (`notification_outbox`) as durable outbox. Notifications written to outbox, background worker processes and marks delivered.
-- No Redis dependency. Leverages existing Qdrant infrastructure.
+**Test suite health caveat:** The 1,032 tests are documented from v0.1.0, but their current pass/fail status against the broken pipeline state is **unknown**. Failing tests are diagnostic information — they indicate which components are broken and how. **Recommendation:** Run the full test suite across all 3 components as a pre-implementation baseline before beginning pipeline fixes. Test failures may reveal root causes faster than manual debugging.
 
-**Demo Application:**
-- Own `demo/` directory in monorepo with own Dockerfile.
-- Fault injection driven by **pytest + httpx harness** — scriptable, deterministic, repeatable (NFR18: 10 consecutive runs).
-- Demo app is both a product feature AND a test fixture.
+**Integration test gap:** All 1,032 tests are **unit-level**. The pipeline breakage is an integration problem at component boundaries:
+- OTEL Collector → Operator ingestion (protobuf schema compatibility)
+- Operator detection → Investigation CRD creation (EWMA threshold calibration)
+- Investigator → Prometheus/Loki (cross-namespace DNS resolution)
+- Investigator → Qdrant (investigation result persistence)
 
-### Architectural Decisions Established by Stack
+No existing tests cover these boundaries. Architecture should account for this gap when defining the testing strategy for pipeline fixes — manual verification via `curl`, `kubectl logs`, and Makefile targets will be the primary integration testing mechanism for this PRD scope.
 
-**Language & Runtime (unchanged):**
-- Rust (stable) for K8s operator — memory safety for long-running controller
-- Python 3.11+ for investigators, UI, and demo app — rapid iteration, LLM ecosystem
+**Code Organization (existing structure):**
 
-**Vector Storage (unchanged):**
-- Qdrant for semantic search and KB storage
-- Metadata filtering for structured queries
-- 1536-dimensional embeddings (OpenAI-compatible)
+```
+beeper/
+├── operator/src/          # Rust: controllers/, ingestion/, slo/, detection/
+├── investigator/src/      # Python: steps/, llm/, signals/, kb/
+├── ui/                    # Python: templates/, static/, routes/
+├── helm/beeper/           # Helm chart: templates/, values.yaml, CRDs
+├── demo/                  # OTEL demo config, ServiceLevel CRDs
+├── scripts/               # Setup, seeding, testing utilities
+├── docs/                  # Architecture, API contracts, guides
+└── Makefile               # Orchestration entry point
+```
 
-**Real-Time Updates (extended):**
-- Server-Sent Events (SSE) for unidirectional streaming (investigation progress, list updates) — existing
-- **Flask-SocketIO** for bidirectional collaboration (annotations, redirections, live interaction) — new
-- HTMX for dynamic UI partial swaps — existing
-- Optimistic UI scoped to approve action only; all other HTMX interactions are pessimistic (server round-trip) — per UX spec
+**Data Layer:**
 
-**Build & Deployment (extended):**
-- Cargo for Rust, Poetry for Python
-- Docker multi-stage builds (now including Tailwind CLI standalone binary step)
-- Helm charts for K8s deployment
-- GitHub Actions for CI/CD
-- ghcr.io for container registry
+| Storage | Technology | Schema | Collections/Tables |
+|---|---|---|---|
+| Vector DB | Qdrant v1.15.0 (local) / v1.12.0 (Helm) | 1536d vectors (OpenAI-compatible) | 6 collections (investigations, knowledge, knowledge_versions, corrections, learning_patterns, service_trust_levels) |
+| K8s CRDs | beeper.dev/v1 | YAML manifests | Source, Investigation, ServiceLevel |
+| Secrets | K8s Secrets | Key-value | LLM credentials, source credentials |
+
+**Qdrant version discrepancy risk:** Local development uses Qdrant **v1.15.0** (via docker-compose) while the Helm chart deploys **v1.12.0**. If investigator or UI code uses Qdrant client features or API behaviors introduced between v1.12.0 and v1.15.0, those calls will work locally but fail in the Helm deployment. **Recommendation:** Either pin both to the same version (prefer upgrading Helm to v1.15.0) or verify that all Qdrant operations use only v1.12.0-compatible APIs.
+
+**Development Experience:**
+
+| Feature | Implementation |
+|---|---|
+| Hot reload (Rust) | `cargo watch` (optional, local only) |
+| Hot reload (Python) | Flask debug mode (`FLASK_ENV=development`) |
+| Local infra | `docker-compose up -d` (Qdrant only) |
+| K8s local | kind cluster |
+| CI/CD | GitHub Actions (lint + test + build per component, Helm lint) |
+| Container registry | ghcr.io |
+| API spec | OpenAPI 3.1 |
+
+**Development inner loop asymmetry:** The operator and Python components have fundamentally different iteration speeds:
+
+| Component | Change → Test Cycle | Mechanism |
+|---|---|---|
+| **Operator (Rust)** | **Slow** — Docker rebuild + `kind load docker-image` + pod restart | Compiled binary must be containerized and loaded into kind. Each iteration: `docker build` (~1-3 min) + `kind load` (~30s) + pod restart. No live reload in cluster. |
+| **Investigator (Python)** | **Medium** — Docker rebuild + `kind load` for Job template changes; `poetry run` for logic-only changes testable outside cluster | Jobs are ephemeral, so each investigation spawns a fresh pod from the image. |
+| **UI (Python)** | **Fast** — `poetry run flask run` with debug mode for local dev; Docker rebuild only for cluster testing | Flask dev server hot-reloads on file changes. Most UI work can be tested locally against the operator API via port-forward. |
+
+This asymmetry affects pipeline fix iteration speed: operator ingestion/detection fixes (Workstream 1, Checkpoints 1-2) will have the slowest feedback loop. Plan accordingly — get unit tests passing first, then validate in-cluster.
+
+### What This Foundation Means for Architecture Decisions
+
+The existing codebase has already resolved these categories of architectural decisions:
+
+| Category | Status | Architecture Implication |
+|---|---|---|
+| **Language selection** | Locked | No migration. Rust for performance-critical operator, Python for LLM/AI flexibility. |
+| **Framework selection** | Locked | Axum, Flask, HTMX. No framework changes. |
+| **Database selection** | Locked | Qdrant. No additional databases. |
+| **API design** | Locked | REST + SSE + OpenAPI. snake_case + RFC 7807. |
+| **Testing strategy** | Locked (unit) | cargo test + pytest. Existing 1,032 tests as regression safety net. **Gap:** no integration tests at component boundaries. |
+| **Deployment model** | Locked | Helm chart on K8s. Single-tenant, single-replica. |
+| **CSS framework** | **New addition** | Tailwind CSS standalone binary — new technology + new build pipeline step. |
+
+**Note:** Because this is brownfield, the first implementation task is NOT project initialization — it's running the existing test suite to establish a baseline, then pipeline diagnostic verification (Workstream 1, Checkpoint 1).
 
 ## Core Architectural Decisions
 
 ### Decision Priority Analysis
 
-**Already Decided (v0.1.0, validated):**
-- Rust + kube-rs operator, Python investigator, Flask + HTMX UI, Qdrant, LiteLLM
-- Monorepo, Helm deployment, OpenAPI 3.1, RFC 7807 errors, snake_case everywhere
-- K8s Job-based investigation spawning
+**Critical Decisions (Block Implementation):**
 
-**Critical Decisions (v0.2.0 — block implementation):**
-- Permission model enforcement across Rust + Python
-- Trust system storage and gating logic
-- WebSocket architecture (Flask-SocketIO + SocketIO client)
-- Notification delivery with durable outbox
-- Auto-remediation pipeline (agent framework evolution)
-- New CRD schemas (ServiceLevel, NotificationChannel, Repository)
+| # | Decision | Category | Blocks |
+|---|---|---|---|
+| AD-1 | OTEL protobuf schema alignment approach | Data / Ingestion | Pipeline Checkpoint 1 |
+| AD-2 | Detection stats API extension design | API | Pipeline Checkpoint 2 + UI diagnostic dashboard |
+| AD-3 | Layout shell template inheritance strategy | Frontend | All UI overhaul work |
+| AD-4 | SSE reconnection and REST backfill contract | API / Frontend | Investigation detail reliability (NFR9) |
 
-**Important Decisions (shape architecture):**
-- SLO engine placement (operator — decided)
-- Sandbox namespace orchestration
-- Demo application architecture
-- Command palette search architecture
+**Important Decisions (Shape Architecture):**
 
-**Deferred Decisions (post v0.2.0):**
-- Multi-cluster support
-- Fine-grained RBAC (beyond admin/user)
-- SaaS multi-tenancy
-- Mobile application
-- Graph DB for KB (evaluate in v0.3.0)
+| # | Decision | Category | Affects |
+|---|---|---|---|
+| AD-5 | Related KB panel Qdrant query pattern | Data | Investigation detail view (FR26) |
+| AD-6 | Sidebar state management approach | Frontend | Navigation behavior (FR40-44) |
+| AD-7 | Tailwind build pipeline integration | Infrastructure | UI development workflow |
+| AD-8 | Integration testing strategy for pipeline fixes | Testing | All pipeline checkpoints |
+
+**Deferred Decisions (Post-MVP):**
+
+| Decision | Rationale for Deferral |
+|---|---|
+| Authentication & authorization | Explicitly out of scope per PRD |
+| Horizontal scaling / HA | Single-tenant, single-replica per PRD |
+| WebSocket / real-time collaboration | SSE only per PRD + UX spec |
+| Mobile responsive (<768px) | Deferred per PRD |
+| Qdrant collection schema changes | No schema changes in scope |
+| CI/CD pipeline changes | Existing GitHub Actions sufficient |
+
+**Do Not Decide (Tempting but Out of Scope):**
+
+These decisions may seem natural to make during implementation but are explicitly deferred. Dev agents must NOT introduce these:
+
+| Tempting Decision | Why Not Now |
+|---|---|
+| Qdrant query optimization (indexes, caching) | Current query patterns are sufficient for single-tenant demo scale. Optimize only if latency measured as a problem. |
+| Log aggregation / structured log pipeline | Existing `kubectl logs` + structured JSON logging is sufficient for debugging. No centralized log aggregation in scope. |
+| Operator metrics/tracing export (Prometheus self-metrics) | Beeper monitors other services — monitoring Beeper itself is a meta-concern for post-MVP. |
+| Custom demo application (replace OTEL Astronomy Shop) | PRD explicitly uses OTEL Astronomy Shop. No custom demo workload. |
+| Notification integration (Slack, PagerDuty) | PRD defers to post-MVP Phase 2. |
+| WebSocket upgrade for SSE endpoints | SSE is sufficient for unidirectional server→client streaming. No bidirectional need in current scope. |
+| Tailwind component library / design system package | Jinja2 macros are the component system. No separate package. |
+| Investigation workflow actions (approve, reject, remediate) | Beeper is read-only for this PRD. No user actions on investigations. |
 
 ### Data Architecture
 
-| Decision | Choice | Version/Details |
-|----------|--------|-----------------|
-| Vector Database | Qdrant (unchanged) | v1.15.0 |
-| Investigation State | Qdrant `investigations` collection | Existing — extended with trust/SLO fields |
-| KB Documents | Qdrant `knowledge` collection | Existing — extended with bi-directional links |
-| SLO Data | Qdrant `slo_snapshots` collection (payload-only) | New — burn rate snapshots for dashboard |
-| Notification Outbox | Qdrant `notification_outbox` collection (payload-only) | New — durable delivery queue |
-| Trust Configuration | Qdrant `service_trust_levels` collection | Existing — extended with confidence gates + accuracy history |
-| CRD State | K8s etcd (via CRD status) | Existing + 3 new CRDs |
+**AD-1: OTEL Protobuf Schema Alignment**
 
-**New CRD Schemas:**
+- **Decision:** Verify-first, adapt-if-needed approach
+- **Rationale:** The operator compiles Prometheus remote write protobuf definitions via prost 0.13. The OTEL Collector's `prometheusremotewrite` exporter may use a different proto version. Rather than preemptively changing the operator's proto definitions, the approach is:
+  1. Deploy OTEL demo and capture raw bytes from Collector output
+  2. Attempt deserialization with current operator proto definitions
+  3. If deserialization fails or produces zero values → update operator's `.proto` files to match Collector's version
+  4. If deserialization succeeds → no change needed
+- **Affects:** Operator ingestion module (`operator/src/ingestion/`)
+- **Constraint:** The OTEL Collector configuration must NOT be modified to accommodate Beeper. Beeper adapts to the Collector's output format (NFR13).
 
-```yaml
-# ServiceLevel CRD (Wave 1)
-apiVersion: beeper.dev/v1
-kind: ServiceLevel
-metadata:
-  name: payments-slo
-spec:
-  service: payment-service
-  sli:
-    type: availability  # availability | latency | error_rate
-    metric: http_requests_total
-    good_selector: '{status=~"2.."}'
-    total_selector: '{}'
-  objective:
-    target: 0.999        # 99.9%
-    window: 30d
-  burn_rate_alerts:
-    - severity: warning
-      short_window: 5m
-      long_window: 1h
-      factor: 14.4
-    - severity: critical
-      short_window: 5m
-      long_window: 6h
-      factor: 6
-```
+**AD-5: Related KB Panel Qdrant Query Pattern**
 
-```yaml
-# NotificationChannel CRD (Wave 1)
-apiVersion: beeper.dev/v1
-kind: NotificationChannel
-metadata:
-  name: sre-slack
-spec:
-  type: slack            # slack | pagerduty | email | webhook
-  config:
-    channel: "#sre-alerts"
-    mention_users: true
-  credentials_secret: slack-bot-token
-  routing:
-    min_severity: high   # only high/critical
-    services: ["*"]      # all services, or specific list
-    quiet_hours:
-      enabled: true
-      start: "22:00"
-      end: "08:00"
-      timezone: "America/New_York"
-      escalation_override: true  # critical bypasses quiet hours
-```
-
-```yaml
-# Repository CRD (Wave 2)
-apiVersion: beeper.dev/v1
-kind: Repository
-metadata:
-  name: payments-repo
-spec:
-  url: "https://github.com/org/payment-service"
-  provider: github       # github | gitlab
-  credentials_secret: github-token-payments
-  branch_policy:
-    base_branch: main
-    pr_branch_prefix: "beeper/"
-  coding_standards:
-    language: python
-    linter: ruff
-    test_command: "pytest"
-```
-
-**Qdrant Collections (v0.2.0 complete):**
-
-| Collection | Type | Contents | New/Existing |
-|------------|------|----------|-------------|
-| `investigations` | Vector (1536d) | Investigation state, findings, root cause, SLO impact, trust level context | Extended |
-| `knowledge` | Vector (1536d) | KB entries with bi-directional investigation links | Extended |
-| `knowledge_versions` | Payload-only | Version snapshots | Existing |
-| `corrections` | Payload-only | Correction conversations | Existing |
-| `learning_patterns` | Payload-only | Diff analysis patterns | Existing |
-| `service_trust_levels` | Payload-only | Trust config + confidence gates + accuracy history | Extended |
-| `slo_snapshots` | Payload-only | Burn rate snapshots, error budget data | **New** |
-| `notification_outbox` | Payload-only | Durable notification delivery queue | **New** |
+- **Decision:** Query `investigations` collection for KBQueryStep results by investigation ID, not a separate KB search
+- **Rationale:** The investigator's KBQueryStep stores its results (matched KB entry IDs and relevance scores) in the investigation record in Qdrant's `investigations` collection. The Related KB panel reads this existing data — it does NOT perform a new semantic search against the `knowledge` collection. This is a read of existing data, not a new query pattern.
+- **Status:** **Assumption — not yet verified.** Must be verified during investigation execution fix (Pipeline Checkpoint 3) by inspecting an actual investigation record in Qdrant to confirm KBQueryStep results contain individual KB entry IDs. If they contain only a text summary without entry references, a separate Qdrant query against the `knowledge` collection by service name will be needed as fallback.
+- **Query contract:** `GET investigation by ID → extract steps where step_type == "KBQueryStep" → render matched KB entries`
+- **Affects:** UI investigation detail template, Qdrant read path
 
 ### Authentication & Security
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Permission Model | 2-tier admin/user via `require_role()` decorator | Simple, sufficient for v0.2.0. Flask middleware sets user context from K8s ServiceAccount or header. |
-| Trust Level Access | Admin-only for trust config, confidence gates | NFR12 — prevents unauthorized autonomy escalation |
-| API Security | Network policies + role enforcement | Operator API restricted to UI pod; external access via UI only |
-| Secrets Storage | K8s Secrets (unchanged) | All integration credentials (Slack, PagerDuty, Git tokens, LLM keys) |
-| Repo Credentials | Scoped per-repo tokens via Repository CRD | NFR9 — never org-wide tokens |
-| PII Scrubbing | Pre-LLM context filter in investigator | NFR11 — regex + pattern-based scrub before any LLM call |
-| Sandbox Isolation | K8s NetworkPolicy-isolated namespace | NFR13 — provably no production data leakage |
-
-**Permission Enforcement Pattern:**
-
-```python
-# Flask decorator — applied to every route
-@require_role("admin")  # or "user" (default)
-def configure_trust_level(service_name):
-    ...
-
-# Middleware sets g.user_role from:
-# 1. K8s ServiceAccount token (production)
-# 2. X-Beeper-Role header (development)
-# 3. Default "user" if no auth configured
-```
-
-**Admin-only operations:**
-- Trust level configuration (FR16, FR22)
-- ServiceLevel CRD management (FR1, FR5)
-- Repository CRD management (FR23)
-- Error budget policies (FR5)
-- Noise report access (FR20)
-
-**User operations:**
-- View/interact with investigations (FR32-35)
-- Configure notification channels (FR8-9)
-- KB read/write/correct (FR38-42)
-- Approve/reject fixes within trust level (FR35)
-- View dashboards (FR6, FR50, FR52)
+**No decisions required.** PRD explicitly scopes out authentication and authorization. All endpoints are unauthenticated. Access control is at the network/infrastructure level (port-forwarding for demo, cluster-internal for production). Security considerations are limited to:
+- K8s Secrets for credentials (existing pattern, no changes)
+- Pod security context (`runAsNonRoot: true`, `runAsUser: 1000`) — already configured
+- No PII in investigation data (observability signals only)
 
 ### API & Communication Patterns
 
-| Decision | MVP | Scale Target |
-|----------|-----|--------------|
-| Inter-service | REST/HTTP + K8s Jobs (unchanged) | NATS JetStream |
-| API Specification | OpenAPI 3.1 (unchanged) | Generated clients for Rust + Python |
-| Error Format | RFC 7807 Problem Details (unchanged) | Standard `type`, `title`, `status`, `detail` |
-| UI Real-time (unidirectional) | SSE (unchanged) | SSE or NATS subscription |
-| UI Real-time (bidirectional) | **Flask-SocketIO** | WebSocket native or NATS |
-| Notification Delivery | **Durable outbox + async worker** | Dedicated notification service |
+**AD-2: Detection Stats API Extension**
 
-**New Operator API Endpoints (v0.2.0):**
+- **Decision:** Extend existing `/api/v1/ingestion/stats` response with new fields (additive only)
+- **Backward compatibility constraint:** Existing fields (`metrics_received`, `logs_received`, `buffer_utilization`) must NOT change name, type, or structure. New fields are strictly additive. Dev agents must NOT refactor the existing response shape for consistency or aesthetics — the existing UI consumes these fields as-is.
+- **New fields added to response:**
 
-```
-# SLO (Wave 1)
-GET  /api/v1/slo/services                    # List services with SLO status
-GET  /api/v1/slo/services/{name}             # Service SLO detail + burn rate
-GET  /api/v1/slo/services/{name}/budget      # Error budget status
-
-# Trust (Wave 2)
-GET  /api/v1/trust/services                  # List trust levels per service
-GET  /api/v1/trust/services/{name}           # Trust config + accuracy history
-PUT  /api/v1/trust/services/{name}           # Update trust level (admin)
-GET  /api/v1/trust/services/{name}/accuracy  # Accuracy metrics
-
-# Notifications (Wave 1)
-GET  /api/v1/notifications/channels          # List configured channels
-POST /api/v1/notifications/test              # Send test notification
-GET  /api/v1/notifications/audit             # Notification history + false page tracking
-
-# Investigations (extended)
-POST /api/v1/investigations/{id}/approve     # Approve proposed fix
-POST /api/v1/investigations/{id}/reject      # Reject with reason
-POST /api/v1/investigations/{id}/annotate    # Add human annotation
-GET  /api/v1/investigations/{id}/evidence    # Evidence trail with references
-GET  /api/v1/investigations/{id}/handoff     # Shift handoff summary
-
-# Remediation (Wave 2)
-GET  /api/v1/remediation/{id}                # Remediation status
-GET  /api/v1/remediation/{id}/pr             # Auto-PR details + evidence
-GET  /api/v1/remediation/{id}/sandbox        # Sandbox test results
-
-# Search (for command palette)
-GET  /api/v1/search?q={query}                # Semantic search across investigations + KB
+```json
+{
+  "metrics_received": 12847,
+  "logs_received": 3201,
+  "buffer_utilization": 0.34,
+  "anomalies_detected": 2,
+  "anomalies_suppressed": 0,
+  "active_metric_detectors": 23,
+  "ewma_warmup_samples": 10,
+  "ewma_warmup_minimum": 10
+}
 ```
 
-**WebSocket Events (Flask-SocketIO):**
+- **Rationale:** Extending the existing endpoint (not creating a new one) keeps the API surface minimal. The 4 new fields (`anomalies_detected`, `anomalies_suppressed`, `active_metric_detectors`, `ewma_warmup_samples`) plus `ewma_warmup_minimum` (detector's configured minimum) are sufficient for the UI diagnostic dashboard to compute warmup percentage: `ewma_warmup_samples / ewma_warmup_minimum * 100`.
+- **Implementation:** Rust stats struct extension in operator. EWMA detector module exposes counters; stats aggregation collects them on the :8080 management API handler.
+- **Affects:** Operator stats module, UI Ingestion Stats template
+- **Cross-workstream dependency:** This API change must ship before the UI diagnostic dashboard can render EWMA warmup and detection stats.
 
-```
-# Client → Server
-join_investigation(investigation_id)      # Join investigation room
-leave_investigation(investigation_id)     # Leave room
-annotate(investigation_id, text)          # Human annotation
-redirect(investigation_id, instruction)   # Redirect investigation
-approve_fix(investigation_id)             # Approve proposed fix
-reject_fix(investigation_id, reason)      # Reject with reason
+**AD-4: SSE Reconnection and REST Backfill Contract**
 
-# Server → Client (broadcast to room)
-evidence_update(step, finding, reference) # New evidence found
-confidence_update(score, breakdown)       # Confidence score change
-fix_proposed(fix_details, confidence)     # Fix ready for review
-fix_applied(result, metrics)              # Fix execution result
-investigation_complete(summary)           # Investigation concluded
-```
+- **Decision:** Client-side EventSource reconnection with REST backfill via existing investigation detail API. Explicitly **no `Last-Event-ID` support** on the server.
+- **`Last-Event-ID` decision:** The SSE spec natively supports `Last-Event-ID` — the client sends it on reconnect, and the server resumes from that point. We are choosing **not** to implement this. Rationale:
+  - REST backfill is simpler — no server-side state tracking of event sequences
+  - Investigation payloads are small (<50 steps per investigation) — fetching the full state is negligible overhead
+  - Solo developer — simpler server wins over marginal efficiency
+  - If `Last-Event-ID` support is ever needed, it can be added later without breaking existing clients
+- **Contract:**
+  1. Client opens `EventSource` to SSE endpoint for investigation detail streaming
+  2. On disconnect (`onerror`): browser auto-retries with exponential backoff (native EventSource behavior)
+  3. On reconnect (`onopen` after disconnect): client fetches `GET /api/v1/investigations/{id}` to get full current state
+  4. Client diffs received steps against already-rendered steps, inserts missed steps at correct positions based on step `order` field
+  5. After 5 consecutive retry failures: show static "Live updates unavailable — refresh to sync" message
+- **Ordering guarantee:** Investigation steps have an `order` field (integer sequence number). REST response returns steps ordered by this field. Client inserts backfilled steps at the correct DOM position, maintaining narrative coherence.
+- **Affects:** Client-side `static/js/sse.js` module, investigation detail template
 
-### LLM Integration (Extended)
+### Frontend Architecture
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| LLM Client | LiteLLM (unchanged) | Provider flexibility, streaming |
-| Default Provider | Anthropic Claude (unchanged) | Per PRD specification |
-| Tiered Models | Haiku → Sonnet → Opus (unchanged) | Cost optimization |
-| **New tier** | `remediation` | Fix generation, PR writing, test plan design — uses deep_rca model |
+**AD-3: Layout Shell Template Inheritance Strategy**
 
-**Model Routing (v0.2.0):**
-- `screening`: claude-3-haiku (fast triage, notification justification)
-- `investigation`: claude-sonnet-4 (balanced RCA, signal correlation)
-- `deep_rca`: claude-opus-4 (complex multi-layer correlation)
-- `remediation`: claude-opus-4 (fix generation, test plan design, PR writing)
+- **Decision:** Modify existing `base.html` to include sidebar + top bar layout shell. All 29 page templates that extend `base.html` inherit the new layout automatically.
+- **Template inventory (verified):**
+  - **102 total HTML templates** in `ui/beeper_ui/templates/`
+  - **1 base template:** `base.html` — the single file to rewrite with layout shell
+  - **29 page templates** that `{% extends "base.html" %}` — inherit layout automatically
+  - **72 partial templates** (prefixed with `_`) — included by page templates, no `extends`, no changes needed for layout
+- **Migration scope:**
+  - **1 file rewrite:** `base.html` → add sidebar component, top bar with breadcrumb slot, content area wrapper
+  - **1-2 template updates:** `investigations/detail.html` adds `{% block sidebar_state %}collapsed{% endblock %}`; other pages default to `auto`
+  - **29 incremental updates:** Add `{% block breadcrumb %}Section Name{% endblock %}` to each page template (can be done incrementally, not atomically)
+- **Coexistence:** The layout shell is built in Tailwind. Page content inside `{% block content %}` continues to use existing custom CSS until individually migrated.
+- **Verification:** `grep -r "extends" ui/beeper_ui/templates/ --include="*.html"` — every result must reference `base.html` (or a future base that itself extends `base.html`).
+- **Affects:** `ui/beeper_ui/templates/base.html` (primary), all page templates (incremental)
 
-**PII Scrubbing (new — NFR11):**
-Applied before every LLM call in the investigator:
-1. Regex patterns for common PII (emails, IPs, tokens, passwords in env vars)
-2. Configurable per-service scrub rules via investigation context
-3. Replacement with tagged placeholders (`[SCRUBBED:email]`) to preserve context
-4. Audit log of scrubbed content (stored locally, never sent to LLM)
+**AD-6: Sidebar State Management Approach**
 
-### Trust System Architecture (New)
+- **Decision:** Hybrid — server-rendered default + client-side override
+- **How it works:**
+  1. **Server-rendered default:** Each template sets its sidebar state via Jinja2 block (`auto` or `collapsed`). This determines what HTML/CSS classes are in the initial response.
+  2. **Viewport-responsive (CSS):** `auto` state uses Tailwind responsive classes (`w-16 lg:w-64`) — sidebar collapses/expands based on viewport width via CSS media queries alone, no JavaScript.
+  3. **Client-side override:** `[` key toggle and hamburger click set a JavaScript override stored in `sessionStorage`. Override resets on route navigation (next full page load clears it).
+  4. **Group expand/collapse:** Sidebar group state (Observe/Learn/Manage open or closed) stored in `sessionStorage` by group label. Defaults: all expanded.
+- **Rationale:** Server-rendered state means no JavaScript is needed for the correct initial layout. CSS handles responsive behavior. JavaScript only needed for user-initiated overrides (hamburger, `[` key). This is the simplest approach that satisfies all UX spec requirements (FR40-44).
+- **Affects:** Layout shell template, sidebar component macro, minimal JavaScript
 
-**Trust Levels:**
+**AD-7: Tailwind Build Pipeline Integration**
 
-| Level | Name | Beeper Behavior | Approval Required |
-|-------|------|-----------------|-------------------|
-| TL1 | Advisory | Investigate + document + recommend | All actions need human |
-| TL2 | Notify + Recommend | All of TL1 + proactive notification with evidence | All actions need human |
-| TL3 | Auto-fix + Review | All of TL2 + auto-apply fixes above confidence gate | Post-action review |
-| TL4 | Autonomous + Audit | All of TL3 + expanded fix scope | Audit trail only |
-| TL5 | Fully Autonomous | Full autonomy within configured scope | None (logged) |
+- **Decision:** Tailwind CLI standalone binary integrated into Makefile + UI Dockerfile
+- **Development workflow:**
+  - New Makefile target: `make tailwind-watch` — runs `tailwindcss --watch -i ui/beeper_ui/static/css/input.css -o ui/beeper_ui/static/css/tailwind.css`
+  - Developer runs `make tailwind-watch` in a separate terminal alongside `poetry run flask run`
+- **Production build:**
+  - New Makefile target: `make tailwind-build` — runs `tailwindcss --minify -i ui/beeper_ui/static/css/input.css -o ui/beeper_ui/static/css/tailwind.css`
+  - UI Dockerfile adds a build stage: download Tailwind CLI binary, run minification, copy output CSS to final image
+  - `make tailwind-build` also called as prerequisite in existing `docker build` flow
+- **Tailwind config:** `tailwind.config.js` at `ui/` root with `content: ['./beeper_ui/templates/**/*.html', './beeper_ui/static/js/**/*.js']` for tree-shaking
+- **Affects:** Makefile, UI Dockerfile, new `ui/tailwind.config.js`, new `ui/beeper_ui/static/css/input.css`
 
-**Confidence Gating:**
-- Each trust level has a configurable minimum confidence threshold (default: TL3=90%, TL4=85%, TL5=80%)
-- Actions below threshold fall back to the next lower trust level's behavior
-- Confidence score is composite: LLM confidence + KB match quality + signal correlation strength
+### Infrastructure & Deployment
 
-**Storage:** `service_trust_levels` Qdrant collection stores per-service config + accuracy history. Trust level changes are versioned (who changed, when, from/to).
+**Qdrant version alignment:** Upgrade Helm chart Qdrant to v1.15.0 to match local development. This is a values.yaml change, not an architectural decision, but noted here to prevent the version discrepancy from causing integration issues.
 
-### SLO Engine Architecture (New)
+**Demo environment:** OTEL Collector configuration is managed via `demo/otel-demo-values.yaml` Helm values overlay. No custom Collector image — configuration only. The Collector's `prometheusremotewrite` exporter targets `beeper-operator.default.svc.cluster.local:9090/api/v1/write` and the `loki` exporter targets `beeper-operator.default.svc.cluster.local:9090/loki/api/v1/push`.
 
-**Placement:** Rust operator — SLO burn rate calculation runs alongside anomaly detection in the operator process. No separate service.
+### Testing Strategy
 
-**Data Flow:**
-```
-Prometheus metrics → Operator ingestion → SLO calculator → slo_snapshots (Qdrant)
-                                                         → Investigation priority scoring
-                                                         → Notification urgency weighting
-```
+**AD-8: Integration Testing Strategy for Pipeline Fixes**
 
-**Customer Impact Scoring:** Anomalies correlated with SLO breach severity. An anomaly affecting a 99.9% SLO with 50% budget remaining scores higher than one affecting a 99% SLO with 90% budget remaining.
+- **Decision:** Manual verification via Makefile targets + `kubectl` + `curl`, documented as runbook steps
+- **Rationale:** The pipeline breakage is at integration boundaries that unit tests don't cover. Writing automated integration tests for K8s Job → Prometheus cross-namespace queries would require a running cluster, which is the demo environment itself. The manual verification steps ARE the integration tests — they just run through the Makefile.
+- **Verification protocol per checkpoint:**
 
-### Notification Engine Architecture (New)
+| Checkpoint | Verification Command | Expected Result |
+|---|---|---|
+| 1: Ingestion | `curl localhost:8080/api/v1/ingestion/stats` | `metrics_received > 0`, `logs_received > 0` |
+| 2: Detection | `kubectl get investigations.beeper.dev` | Investigation CRD created after fault injection |
+| 3: Signals | `kubectl logs -l app=investigator` | Prometheus/Loki queries return non-empty results |
+| 4: LLM output | `curl localhost:8080/api/v1/investigations/{id}` | Findings reference specific service names + metric values |
+| 5: SLO | `kubectl get servicelevel.beeper.dev` | ServiceLevel CRDs exist and operator logs show SLO processing |
 
-**Durable Outbox Pattern:**
-```
-Event (investigation started/completed/fix proposed)
-    → Notification rules engine (severity, service, time of day, quiet hours)
-    → Write to notification_outbox collection (Qdrant)
-    → Background worker reads outbox, delivers to channel, marks delivered
-    → Failed deliveries retry with exponential backoff
-    → False pages tracked in notification audit (FR15)
-```
-
-**Channel Implementations:**
-- **Slack:** Rich blocks with investigation summary, evidence links, action buttons (approve/view)
-- **PagerDuty:** Create incident on critical; acknowledge on investigation start; resolve on fix verified
-- **Email:** SMTP digests — daily summary or immediate for critical
-- **Webhook:** POST with investigation payload for CI/CD triggers, Jira, status pages
-
-### Auto-Remediation Architecture (New)
-
-**Agent Framework Evolution:**
-The v0.1.0 investigator uses a fixed 6-step pipeline. v0.2.0 extends this with a **tool-use pattern** for remediation:
-
-```
-Existing pipeline: Impact → KB Query → Signal Correlation → RCA → Recommendations → Documentation
-
-New remediation extension (after RCA, when trust level allows):
-  → Fix Generation (LLM designs fix based on RCA)
-  → Test Plan Design (LLM designs verification test)
-  → Sandbox Execution (if sandbox available: deploy fix + run test)
-  → Fix Verification (monitor post-fix metrics)
-  → PR Generation (if Repository CRD configured)
-  → KB Update (document proven fix)
-```
-
-The remediation steps are **conditional** — they only execute when trust level and confidence gate allow. The existing 6-step pipeline remains the core; remediation is an extension, not a replacement.
-
-**Auto-PR Flow:**
-```
-Investigator (Python)
-    → Clone repo (from Repository CRD config)
-    → Create branch (beeper/{investigation_id})
-    → Generate fix (LLM + coding standards from CRD)
-    → Commit with evidence metadata
-    → Push + create PR via Git provider API
-    → PR body includes: evidence trail, KB references, sandbox test results
-```
-
-### Infrastructure & Deployment (Extended)
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Repository | Monorepo (unchanged) | Single repo, solo developer |
-| Packaging | Helm chart (unchanged) | Single install, all components |
-| CI/CD | GitHub Actions (unchanged) | Open source friendly |
-| Registry | ghcr.io (unchanged) | Public for open source |
-| **Demo App** | `demo/` monorepo directory | Own Dockerfile, pytest harness, fault injection |
-| **Sandbox** | NetworkPolicy-isolated K8s namespace | Provable isolation for test execution |
-| **Tailwind Build** | Standalone CLI in Docker multi-stage | No Node.js dependency |
-
-**K8s Resources (v0.2.0):**
-- `Deployment: beeper-operator` — Rust controller (1 replica, unchanged)
-- `Deployment: beeper-ui` — Flask UI (1+ replicas, unchanged)
-- `Job: beeper-investigator-{id}` — Spawned per investigation (extended with remediation steps)
-- `StatefulSet: qdrant` — Vector database (unchanged)
-- **New:** `Deployment: beeper-demo-*` — Demo app microservices (3-4 pods)
-- **New:** `Namespace: beeper-sandbox` — NetworkPolicy-isolated sandbox
-- **New:** CRDs: `ServiceLevel`, `NotificationChannel`, `Repository`
+- **Pre-implementation baseline:** Run `cargo test`, `poetry run pytest` (investigator), `poetry run pytest` (UI) to establish which tests are currently passing/failing. Document results as diagnostic input.
+- **Affects:** Makefile targets (may need new `make test-pipeline` convenience target), developer workflow
 
 ### Decision Impact Analysis
 
 **Implementation Sequence:**
-1. Permission model (decorator + middleware) — foundation for everything
-2. New CRD schemas (ServiceLevel, NotificationChannel, Repository)
-3. SLO engine in operator + slo_snapshots collection
-4. Notification outbox + channel implementations
-5. Trust system storage + confidence gating
-6. WebSocket (Flask-SocketIO) infrastructure
-7. Agent framework extension for remediation
-8. Auto-PR pipeline
-9. Demo application
-10. Tailwind CSS migration (incremental, parallel with above)
+
+```
+1. AD-8  Test baseline (run existing tests, document results)
+2. AD-1  OTEL protobuf verification (Checkpoint 1 — data must flow first)
+3. AD-2  Detection stats API extension (unblocks UI diagnostic dashboard)
+4. AD-7  Tailwind build pipeline (unblocks all UI overhaul work)
+5. AD-3  Layout shell template migration (atomic — unblocks all UI components)
+6. AD-6  Sidebar state management (depends on layout shell)
+7. AD-4  SSE reconnection contract (investigation detail reliability)
+8. AD-5  Related KB panel query (investigation detail feature)
+```
 
 **Cross-Component Dependencies:**
-- Permission model must exist before any new API endpoints
-- SLO engine feeds into notification urgency AND investigation priority
-- Trust system gates auto-remediation AND notification behavior
-- WebSocket infrastructure needed before collaboration features
-- Repository CRD must exist before auto-PR generation
-- Sandbox namespace must exist before fix verification
+
+| Decision | Depends On | Blocks |
+|---|---|---|
+| AD-1 (Protobuf) | AD-8 (test baseline informs what's broken) | AD-2 (data must flow before detection stats make sense) |
+| AD-2 (Stats API) | AD-1 (data flowing) | UI diagnostic dashboard (Phase 2) |
+| AD-3 (Layout shell) | AD-7 (Tailwind pipeline) | AD-6 (sidebar), all UI components |
+| AD-4 (SSE reconnect) | AD-3 (layout shell) | Investigation detail reliability |
+| AD-5 (KB panel) | AD-3 (layout shell) | Investigation detail feature completeness |
+| AD-6 (Sidebar) | AD-3 (layout shell) | Navigation behavior |
+| AD-7 (Tailwind) | AD-8 (test baseline informs what's broken) | AD-3 (layout shell needs Tailwind) |
+| AD-8 (Test baseline) | Nothing | Informs AD-1, AD-7, and all subsequent work |
 
 ## Implementation Patterns & Consistency Rules
 
 ### Pattern Categories Defined
 
-**Critical Conflict Points Identified:** 6 areas where AI agents could make different choices across Rust/Python polyglot codebase.
+**Critical Conflict Points Identified:** 8 areas where AI agents could make different choices that would break consistency or cause integration failures.
+
+These patterns are primarily extracted from the existing codebase (v0.1.0). New patterns are introduced only for the Tailwind migration and sidebar layout — areas where no precedent exists.
 
 ### Naming Patterns
 
-**JSON Field Naming:**
-- **Convention:** `snake_case` everywhere
-- **Rust:** Use `#[serde(rename_all = "snake_case")]` on all structs
-- **Python:** Native (Pydantic models use snake_case by default)
+**Rust Naming (Operator):**
 
-```rust
-// Rust
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-struct Investigation {
-    investigation_id: String,
-    started_at: DateTime<Utc>,
-    root_cause_hypothesis: Option<String>,
-}
-```
+| Element | Convention | Example | Enforced By |
+|---|---|---|---|
+| Modules | snake_case | `ingestion`, `detection`, `slo` | `cargo fmt` |
+| Structs | PascalCase | `IngestionStats`, `InvestigationStatus` | `cargo fmt` |
+| Functions | snake_case | `get_ingestion_stats`, `create_investigation` | `cargo fmt` |
+| Constants | SCREAMING_SNAKE_CASE | `DEFAULT_EWMA_SPAN`, `INGESTION_PORT` | `cargo clippy` |
+| Serde fields | `#[serde(rename_all = "snake_case")]` | `metrics_received`, `buffer_utilization` | Serde derives |
+| HTTP routes | `/api/v1/{resource}` | `/api/v1/ingestion/stats`, `/api/v1/investigations` | Convention |
 
-```python
-# Python
-class Investigation(BaseModel):
-    investigation_id: str
-    started_at: datetime
-    root_cause_hypothesis: str | None
-```
+**Python Naming (Investigator + UI):**
 
-**API Endpoint Naming:**
-- **Base path:** `/api/v1/`
-- **Resources:** Plural nouns (`/investigations`, `/sources`)
-- **Actions:** Verb suffixes where needed (`/investigations/{id}/resolve`)
-- **Query params:** `snake_case` (`?service_name=payments`)
+| Element | Convention | Example | Enforced By |
+|---|---|---|---|
+| Modules/files | snake_case | `investigation_steps.py`, `kb_query.py` | `ruff` |
+| Classes | PascalCase | `InvestigationStep`, `KBQueryResult` | `ruff` |
+| Functions/methods | snake_case | `run_investigation`, `query_prometheus` | `ruff` |
+| Constants | SCREAMING_SNAKE_CASE | `DEFAULT_LLM_MODEL`, `QDRANT_COLLECTION` | Convention |
+| Pydantic fields | snake_case | `service_name`, `root_cause` | Pydantic default |
+| Flask routes | `/route-name` (kebab-case) | `/investigations`, `/knowledge/entry/<id>` | Convention |
+| Jinja2 template variables | snake_case | `{{ inv.service_name }}`, `{{ stats.metrics_received }}` | Convention |
 
-| Resource | Endpoints |
-|----------|-----------|
-| Investigations | `GET /api/v1/investigations`, `GET /api/v1/investigations/{id}` |
-| Knowledge | `GET /api/v1/knowledge`, `POST /api/v1/knowledge`, `PATCH /api/v1/knowledge/{id}` |
-| Sources | `GET /api/v1/sources`, `POST /api/v1/sources`, `DELETE /api/v1/sources/{id}` |
+**HTML/CSS Naming:**
 
-**Qdrant Naming:**
-- **Collections:** `snake_case` (`investigations`, `knowledge`)
-- **Fields:** `snake_case` (`investigation_id`, `created_at`, `confidence_level`)
-- **Payload fields:** Match JSON field naming exactly
-
-**Code Naming by Language:**
-
-| Language | Functions/Methods | Variables | Files | Classes/Structs |
-|----------|-------------------|-----------|-------|-----------------|
-| Rust | `snake_case` | `snake_case` | `snake_case.rs` | `PascalCase` |
-| Python | `snake_case` | `snake_case` | `snake_case.py` | `PascalCase` |
+| Element | Convention | Example |
+|---|---|---|
+| HTML IDs | kebab-case | `#investigation-list`, `#sidebar-nav`, `#sse-reconnecting` |
+| Tailwind custom classes | Tailwind semantic tokens only — no arbitrary values | `bg-surface-base text-primary`, NEVER `bg-[#0f0f1a]` |
+| Existing CSS classes | Preserve existing names, do not rename | Whatever exists in current stylesheets |
+| Jinja2 block names | snake_case | `{% block sidebar_state %}`, `{% block breadcrumb %}`, `{% block content %}` |
+| Jinja2 macro names | snake_case | `{% macro investigation_card(inv) %}`, `{% macro status_badge(status) %}` |
+| JavaScript functions | camelCase | `initSSE()`, `toggleSidebar()`, `copyToClipboard()` |
+| sessionStorage keys | kebab-case | `sidebar-group-observe`, `sidebar-manual-override` |
 
 ### Structure Patterns
 
-**Monorepo Organization:**
+**Project Organization (existing, do not change):**
+
 ```
-beeper/
-├── operator/                 # Rust K8s operator
-│   ├── src/
-│   │   ├── main.rs
-│   │   ├── controller.rs
-│   │   └── crd.rs
-│   ├── tests/               # Rust tests (separate directory)
-│   └── Cargo.toml
-├── investigator/            # Python investigator agent
-│   ├── beeper_investigator/
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── llm.py
-│   │   └── kb.py
-│   ├── tests/               # Python tests (separate directory)
-│   └── pyproject.toml
-├── ui/                      # Flask web UI
-│   ├── beeper_ui/
-│   │   ├── __init__.py
-│   │   ├── app.py
-│   │   ├── routes/
-│   │   └── templates/
-│   ├── tests/
-│   └── pyproject.toml
-├── openapi/                 # Shared API specifications
-│   └── beeper-api.yaml
-├── helm/                    # Helm chart
-│   └── beeper/
-└── .github/workflows/       # CI/CD
+operator/
+├── src/
+│   ├── main.rs                  # Entry point, Axum routers
+│   ├── controllers/             # K8s reconciliation loops
+│   │   ├── investigation.rs
+│   │   ├── source.rs
+│   │   └── servicelevel.rs
+│   ├── ingestion/               # :9090 ingestion handlers
+│   ├── detection/               # EWMA anomaly detection
+│   ├── slo/                     # ServiceLevel CRD processing
+│   └── api/                     # :8080 REST handlers
+├── tests/                       # Unit tests (wiremock)
+└── Cargo.toml
+
+investigator/
+├── src/
+│   ├── main.py                  # Entry point
+│   ├── steps/                   # InvestigationStep implementations
+│   ├── llm/                     # LiteLLM integration
+│   ├── signals/                 # Prometheus/Loki query clients
+│   └── kb/                      # Qdrant KB operations
+├── tests/                       # Unit tests (pytest)
+└── pyproject.toml
+
+ui/
+├── beeper_ui/
+│   ├── app.py                   # Flask app factory
+│   ├── routes/                  # Flask route blueprints
+│   ├── templates/               # Jinja2 templates (102 files)
+│   │   ├── base.html            # Base template (layout shell lives here)
+│   │   ├── components/          # NEW — shared Jinja2 macro components
+│   │   ├── investigations/      # Investigation list + detail
+│   │   ├── knowledge/           # KB pages
+│   │   ├── sources/             # Source list
+│   │   └── ...                  # Other route templates
+│   └── static/
+│       ├── css/
+│       │   ├── input.css        # Tailwind input (NEW)
+│       │   └── tailwind.css     # Tailwind output (NEW, gitignored)
+│       └── js/
+│           └── sse.js           # SSE lifecycle manager (NEW)
+├── tests/                       # Unit tests (pytest + respx)
+└── pyproject.toml
 ```
 
-**Test Organization:**
-- Tests in separate `tests/` directory per component
-- Test files mirror source structure
-- Integration tests in `tests/integration/`
+**Canonical Component Macro Files (from UX Specification):**
+
+The `ui/beeper_ui/templates/components/` directory is **NEW** — it does not exist in the current codebase and must be created as part of the layout shell migration (AD-3). Flat structure, 8 files, 12 macros:
+
+| File | Macros Defined | UX Spec Reference |
+|---|---|---|
+| `components/layout.html` | Layout shell (sidebar + top bar + content area) | Component #1 |
+| `components/sidebar.html` | `sidebar_group(label, icon, items, expanded, active_item)` | Component #2 |
+| `components/cards.html` | `investigation_card(inv)` | Component #3 |
+| `components/investigation.html` | `summary_header(inv)`, `investigation_step(step, is_first_evidence, order)`, `conclusion_block(inv)` | Components #4, #5, #6 |
+| `components/status.html` | `status_badge(status)` | Component #7 |
+| `components/diagnostic.html` | `metric_tile(label, value, status, trend)`, `ewma_progress(percentage, status)` | Components #8, #9 |
+| `components/kb.html` | `kb_panel(entries, expanded)` | Component #10 |
+| `components/empty.html` | `empty_state(title, description, icon)` | Component #11 |
+
+Dev agents must use these exact filenames and macro signatures. The layout shell in `components/layout.html` is imported by `base.html`, not extended — `base.html` remains the single inheritance root.
+
+**Where new files go:**
+
+| New File Type | Location | Rationale |
+|---|---|---|
+| New Rust module | `operator/src/{domain}/` | Follow existing domain grouping |
+| New Python step | `investigator/src/steps/` | Follow InvestigationStep protocol |
+| New Flask route | `ui/beeper_ui/routes/` | One blueprint per route group |
+| New Jinja2 page template | `ui/beeper_ui/templates/{route-group}/` | Group by route |
+| New Jinja2 partial | `ui/beeper_ui/templates/{route-group}/_name.html` | Underscore prefix = partial |
+| New Jinja2 component macro | `ui/beeper_ui/templates/components/{name}.html` | Shared components (NEW directory) |
+| New JavaScript module | `ui/beeper_ui/static/js/` | Flat structure, one file per concern |
+| New test (Rust) | `operator/tests/` | Or `#[cfg(test)] mod tests` in source |
+| New test (Python) | `{component}/tests/` | Mirror source structure |
 
 ### Format Patterns
 
-**API Response Format:**
+**API Response Formats:**
 
-Success responses return data directly:
-```json
-{
-  "investigation_id": "inv-abc123",
-  "status": "investigating",
-  "started_at": "2026-01-28T14:30:00Z"
-}
+All API responses from the operator (:8080) follow these rules:
+
+| Pattern | Rule | Example |
+|---|---|---|
+| **Success (single)** | Direct JSON object, no wrapper | `{"id": "inv-001", "service_name": "payment"}` |
+| **Success (list)** | Direct JSON array, no wrapper | `[{"id": "inv-001"}, {"id": "inv-002"}]` |
+| **Error** | RFC 7807 Problem Details | `{"type": "about:blank", "title": "Not Found", "status": 404, "detail": "Investigation inv-999 not found"}` |
+| **Field names** | snake_case always | `service_name`, NOT `serviceName` |
+| **Timestamps** | ISO 8601 UTC with Z suffix | `"2026-04-09T14:30:00Z"` |
+| **IDs** | String, prefixed by resource type | `"inv-001"`, `"src-prometheus"` |
+| **Booleans** | `true`/`false` | Never `1`/`0`, never `"true"` |
+| **Nulls** | Omit field if null, or explicit `null` | Never empty string as null substitute |
+| **HTTP status codes** | 200 (ok), 201 (created), 404 (not found), 500 (internal) | No 204 for successful responses — always return a body |
+
+**SSE Event Format:**
+
+SSE events from operator to UI follow this pattern:
+
+```
+event: investigation_step
+data: {"investigation_id": "inv-001", "step": {...}, "order": 5}
+
+event: investigation_status
+data: {"investigation_id": "inv-001", "status": "Completed"}
 ```
 
-List responses include metadata:
-```json
-{
-  "items": [...],
-  "total": 42,
-  "page": 1,
-  "page_size": 20
-}
-```
+| Field | Rule |
+|---|---|
+| Event names | snake_case, resource-scoped: `investigation_step`, `investigation_status`, `investigation_created` |
+| Data payload | JSON object, same field naming as REST API |
+| Step ordering | Integer `order` field, monotonically increasing per investigation |
 
-**Error Response Format (RFC 7807):**
-```json
-{
-  "type": "https://beeper.dev/errors/investigation-not-found",
-  "title": "Investigation Not Found",
-  "status": 404,
-  "detail": "Investigation inv-abc123 does not exist",
-  "instance": "/api/v1/investigations/inv-abc123"
-}
-```
-
-**Date/Time Format:**
-- **Always:** ISO 8601 with UTC timezone
-- **Format:** `YYYY-MM-DDTHH:MM:SSZ`
-- **Example:** `2026-01-28T14:30:00Z`
-- **Rust:** `chrono::DateTime<Utc>`
-- **Python:** `datetime.datetime` with `timezone.utc`
+**SSE is NOT HTMX:** SSE connections use the native browser `EventSource` API from JavaScript (`static/js/sse.js`). They are completely separate from the HTMX request/response cycle. Dev agents must NEVER use `hx-get`, `hx-trigger`, or any HTMX attribute to initiate or manage SSE connections. HTMX handles HTML fragment swaps; `EventSource` handles real-time event streaming. These are two independent systems that coexist on the same page.
 
 ### Communication Patterns
 
-**Event Naming (for NATS at scale):**
-- **Pattern:** `beeper.{component}.{action}`
-- **Examples:**
-  - `beeper.investigation.started`
-  - `beeper.investigation.progress`
-  - `beeper.investigation.completed`
-  - `beeper.kb.entry_created`
+**Operator ↔ UI Communication:**
 
-**Event Payload Structure:**
-```json
-{
-  "event_id": "evt-xyz789",
-  "event_type": "beeper.investigation.progress",
-  "timestamp": "2026-01-28T14:30:00Z",
-  "data": {
-    "investigation_id": "inv-abc123",
-    "step": "correlating_signals",
-    "progress_pct": 45
-  }
-}
-```
+| Channel | Pattern | When to Use |
+|---|---|---|
+| REST (GET) | Request/response, JSON | Page loads, data fetching, REST backfill after SSE reconnect |
+| SSE | Server-push, event stream | Real-time investigation step streaming, list update notifications |
+| HTMX | HTML fragment responses | Partial page updates triggered by user interaction |
 
-**Investigation State Machine:**
-```
-pending → started → investigating → [correlating|querying_kb|reasoning] → completed
-                                                                      ↘ failed
-```
+**HTMX Response Rules:**
+
+| Trigger | Response Type | Content-Type |
+|---|---|---|
+| `hx-get` / `hx-post` | HTML fragment (not full page) | `text/html` |
+| Regular Flask route | Full page (extends `base.html`) | `text/html` |
+| API endpoint (`/api/v1/...`) | JSON | `application/json` |
+| SSE endpoint | `text/event-stream` | Managed by `EventSource`, not HTMX |
+
+Dev agents must NEVER return JSON from an `hx-get` target, HTML from an `/api/v1/` endpoint, or use HTMX attributes on SSE connections.
+
+**Logging Patterns:**
+
+| Component | Library | Format | Level Rule |
+|---|---|---|---|
+| Operator | `tracing` | Structured JSON (`tracing-subscriber`) | `info` for lifecycle events, `debug` for data flow, `warn` for recoverable errors, `error` for unrecoverable |
+| Investigator | Python `logging` | Structured JSON | Same level semantics |
+| UI | Python `logging` | Structured JSON | Same level semantics |
+
+Log messages must include: `component`, `action`, and relevant IDs (`investigation_id`, `source_name`).
 
 ### Process Patterns
 
-**Logging Format (Structured JSON):**
-```json
-{
-  "timestamp": "2026-01-28T14:30:00Z",
-  "level": "INFO",
-  "component": "investigator",
-  "investigation_id": "inv-abc123",
-  "message": "Starting signal correlation",
-  "context": {
-    "service": "payments",
-    "signal_count": 47
-  }
+**Error Handling:**
+
+| Component | Pattern | Example |
+|---|---|---|
+| **Operator (Rust)** | `thiserror` for typed errors, `anyhow` for context chaining | `#[error("Failed to decode protobuf: {0}")] DecodeError(#[from] prost::DecodeError)` |
+| **Investigator (Python)** | Typed exceptions, caught at step boundary | `class SignalQueryError(InvestigationError)` |
+| **UI (Flask)** | Flask error handlers return RFC 7807 for API, error template for HTML | `@app.errorhandler(404)` returns different content based on `Accept` header |
+| **UI (HTMX)** | Errors swap into target element, never full-page error | `hx-swap="innerHTML"` with error HTML fragment |
+
+**Loading & Empty State Rules:**
+
+| Context | Pattern | Dev Agent Rule |
+|---|---|---|
+| Page load | Skeleton screens (gray pulsing blocks matching layout shape) | Never use a spinner. Always match the layout shape. |
+| HTMX partial update | No loading indicator — swap is instant | Never add a spinner to an HTMX swap target |
+| SSE streaming | Steps append progressively, no loading for individual steps | Never show "Loading step..." — steps appear when they arrive |
+| Empty list | Explanatory text, not just blank space | Always include a message explaining why and what will happen |
+| KB panel loading | "Checking knowledge base..." with pulse | Distinct from "0 entries" result — different emotional message |
+
+**Tailwind / CSS Coexistence Rules:**
+
+| Rule | Rationale |
+|---|---|
+| **Never mix Tailwind + custom CSS on the same HTML element** | Specificity conflicts are impossible to debug. One or the other. |
+| **New components: Tailwind only** | Layout shell, sidebar, new macros — all Tailwind. |
+| **Existing templates: custom CSS until migrated** | Content inside `{% block content %}` keeps existing CSS. |
+| **Migration is per-template, not per-class** | When a template is migrated, ALL its styling converts to Tailwind. No half-Tailwind templates. |
+| **`tailwind.css` is generated, never hand-edited** | It's a build output. Edit `input.css` for `@apply` directives or custom Tailwind config. |
+| **Always use semantic design tokens, never arbitrary values** | Write `bg-surface-base`, NEVER `bg-[#0f0f1a]`. Token names carry semantic meaning. Arbitrary values bypass the design system. |
+
+**Tailwind Design Tokens (must be configured in `tailwind.config.js`):**
+
+These tokens are defined in the UX Specification and must be registered as Tailwind theme extensions. Dev agents must use these token names in all Tailwind classes — never raw hex values.
+
+```javascript
+// ui/tailwind.config.js — theme.extend.colors
+colors: {
+  'surface-base': '#0f0f1a',
+  'surface-raised': '#1a1a2e',
+  'surface-overlay': '#252540',
+  'primary': '#6366f1',
+  'primary-hover': '#818cf8',
+  'status-healthy': '#22c55e',
+  'status-warning': '#f59e0b',
+  'status-critical': '#ef4444',
+  'status-muted': '#6b7280',
+  'text-primary': '#f8fafc',
+  'text-secondary': '#94a3b8',
+  'text-muted': '#64748b',
 }
 ```
 
-**Required Log Fields:**
-- `timestamp` (ISO 8601 UTC)
-- `level` (DEBUG, INFO, WARN, ERROR)
-- `component` (operator, investigator, ui)
-- `message` (human-readable)
+**Usage examples:**
+- `bg-surface-base` (page background) — NOT `bg-[#0f0f1a]`
+- `text-primary` (headings) — NOT `text-[#f8fafc]`
+- `border-status-healthy` (active investigation) — NOT `border-[#22c55e]`
+- `ring-primary` (focus ring) — NOT `ring-[#6366f1]`
 
-**Optional Context Fields:**
-- `investigation_id` (when applicable)
-- `service` (target service being investigated)
-- `error` (error details when level=ERROR)
+**Breakpoint tokens (also in `tailwind.config.js`):**
 
-**Error Handling:**
-- Use RFC 7807 for all API errors
-- Log errors with full context before returning
-- Never expose internal details in user-facing errors
-- Include `request_id` for correlation
+```javascript
+screens: {
+  'sm': '768px',
+  'lg': '1200px',
+  'xl': '1920px',
+}
+```
 
-**HTTP Status Code Usage:**
+### Testing Patterns
 
-| Code | Usage |
-|------|-------|
-| 200 | Successful GET, PATCH |
-| 201 | Successful POST (created) |
-| 204 | Successful DELETE |
-| 400 | Invalid request (validation failed) |
-| 404 | Resource not found |
-| 409 | Conflict (duplicate, invalid state) |
-| 500 | Internal server error |
+**Unit tests vs. Integration tests — critical distinction:**
+
+| Test Type | Mandatory? | Enforced By | What It Covers |
+|---|---|---|---|
+| **Unit tests** | **YES — mandatory for all new code** | CI (GitHub Actions) | Individual functions, struct serialization, route handlers, template rendering |
+| **Integration tests** | Manual, per AD-8 protocol | Developer runs `curl`/`kubectl` | End-to-end pipeline: OTEL → operator → investigator → UI |
+
+Dev agents must NEVER skip unit tests because "AD-8 says manual verification." AD-8 covers pipeline integration verification. Unit tests cover individual code changes. These are different things.
+
+**Minimum test expectations per component type:**
+
+| Component | New Code | Minimum Test |
+|---|---|---|
+| **Operator (Rust)** | New struct fields | Test serialization: `serde_json::to_value(&stats)` → verify field names and types |
+| **Operator (Rust)** | New/modified API handler | Test response: `wiremock` mock → handler → assert status code + response shape |
+| **Operator (Rust)** | New detection logic | Test behavior: input metric → expected detection output |
+| **Investigator (Python)** | New/modified step | Test step execution: mock external calls → assert step result structure |
+| **Investigator (Python)** | New query logic | Test query construction: assert PromQL/LogQL string is correct |
+| **UI (Python)** | New Flask route | Test response: `test_client.get()` → assert status 200 + correct content type |
+| **UI (Python)** | New Jinja2 macro | Test rendering: `render_template_string("{% from 'components/x.html' import macro %}{{ macro(data) }}")` with sample data → assert no error + expected HTML structure |
+| **UI (Python)** | Modified template | Test rendering: existing test still passes + new elements present |
+
+**Anti-pattern:** Writing `assert True` or trivial tests that don't verify actual behavior. Every test must assert something meaningful about the code it covers.
 
 ### Enforcement Guidelines
 
 **All AI Agents MUST:**
-1. Use `snake_case` for all JSON fields, API params, and Qdrant fields
-2. Include required log fields in all log statements
-3. Return RFC 7807 error responses for all error cases
-4. Use ISO 8601 UTC for all timestamps
-5. Follow the file/directory structure defined above
 
-**Pattern Verification:**
-- OpenAPI spec validates API patterns
-- Pydantic/serde enforce JSON field naming
-- CI linting enforces code naming conventions
-- Log aggregation validates log format
+1. Run `cargo fmt` and `cargo clippy` before considering any Rust change complete
+2. Run `ruff check` and `mypy` before considering any Python change complete
+3. Follow the existing test co-location pattern — tests in `tests/` directory, not co-located
+4. Use snake_case for ALL JSON fields, API responses, and database payloads — no exceptions
+5. Return RFC 7807 errors from all `/api/v1/` endpoints — no custom error shapes
+6. Use Jinja2 block inheritance — never duplicate layout HTML across templates
+7. Prefix partial templates with `_` — full pages never start with underscore
+8. Keep SSE event names in snake_case, resource-scoped format
+9. Never introduce new dependencies without explicit justification in the story
+10. Never modify the "Do Not Decide" items from the architectural decisions
+11. Use Tailwind semantic tokens (`bg-surface-base`) — never arbitrary values (`bg-[#hex]`)
+12. Use canonical component filenames from the UX spec — never invent new macro filenames
+13. Write meaningful unit tests for all new code paths — `assert True` is not a test
+14. Never use HTMX attributes for SSE connections — `EventSource` is JavaScript, not HTMX
 
-### Anti-Patterns to Avoid
+**Pattern Verification Checklist (for code review):**
 
-| Anti-Pattern | Correct Pattern |
-|--------------|-----------------|
-| `camelCase` JSON fields | `snake_case` |
-| `/api/investigation` (singular) | `/api/v1/investigations` (plural) |
-| Plain text logs | Structured JSON logs |
-| Local timestamps | UTC timestamps |
-| Custom error format | RFC 7807 |
-| `userId` in Python | `user_id` |
+- [ ] All new Rust structs have `#[serde(rename_all = "snake_case")]`
+- [ ] All new API endpoints return RFC 7807 on error
+- [ ] All new templates extend `base.html`
+- [ ] All new partials are prefixed with `_`
+- [ ] All new component macros use canonical filenames from UX spec
+- [ ] All new Tailwind usage uses semantic tokens, no arbitrary values
+- [ ] All new Tailwind components — no mixing with custom CSS on same element
+- [ ] All new JavaScript uses camelCase function names
+- [ ] All sessionStorage keys use kebab-case
+- [ ] SSE managed by `EventSource` in `sse.js`, not by HTMX attributes
+- [ ] No new dependencies added without story justification
+- [ ] Unit tests exist for all new code paths with meaningful assertions
+- [ ] Tests follow minimum expectations per component type
 
 ## Project Structure & Boundaries
 
 ### Complete Project Directory Structure
 
+Existing files are unmarked. **NEW** = created by this PRD. **(MODIFY — FR#/AD#)** = changed by this PRD with the driving requirement noted. Dev agents must not create files outside this structure without explicit story justification.
+
 ```
 beeper/
-├── README.md
-├── LICENSE                              # Apache 2.0
-├── CONTRIBUTING.md
-├── VISION.md
-├── .gitignore
-├── docker-compose.yaml                  # Local dev: Qdrant + demo app services
-├── tailwind.config.js                   # Tailwind standalone CLI config (scans Jinja2 templates)
-│
 ├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml                       # Matrix: Rust (fmt+clippy+test), Python investigator
-│   │   │                                # (ruff+pytest), Python UI (ruff+pytest), Helm lint,
-│   │   │                                # Tailwind build, demo app build
-│   │   ├── release.yml                  # Build + push containers to ghcr.io on tag
-│   │   └── helm-lint.yml                # Validate Helm chart
-│   └── CODEOWNERS
-│
-├── openapi/                             # Shared API specifications
-│   ├── beeper-api.yaml                  # OpenAPI 3.1 spec (extended with SLO, trust,
-│   │                                    # notification, remediation, search endpoints)
-│   └── schemas/
-│       ├── investigation.yaml           # Extended with trust/SLO fields
-│       ├── knowledge.yaml
-│       ├── source.yaml
-│       ├── service-level.yaml           # New: SLO schema definitions
-│       ├── notification.yaml            # New: Notification channel + outbox schemas
-│       ├── trust.yaml                   # New: Trust level + confidence gate schemas
-│       └── remediation.yaml             # New: Remediation + PR schemas
-│
-├── operator/                            # Rust K8s operator
+│   └── workflows/               # CI/CD — existing, no changes
+│       ├── operator.yml
+│       ├── investigator.yml
+│       ├── ui.yml
+│       └── helm.yml
+├── operator/
 │   ├── Cargo.toml
-│   ├── Cargo.lock
-│   ├── Dockerfile
+│   ├── build.rs                 # Protobuf compilation (prost-build)
+│   ├── proto/
+│   │   └── prometheus.proto     # (MODIFY — AD-1, FR1: may need schema update)
 │   ├── src/
-│   │   ├── main.rs                      # Entry point: wires all subsystems, spawns tokio tasks
-│   │   ├── lib.rs                       # Library exports
-│   │   ├── api.rs                       # axum REST API (extended: SLO, trust, notification,
-│   │   │                                # remediation, search endpoints)
-│   │   ├── health.rs                    # GET /healthz, GET /readyz
-│   │   ├── investigator_job.rs          # Job spawning (extended with remediation env vars)
-│   │   ├── llm.rs                       # LLM provider config from K8s Secrets
+│   │   ├── main.rs              # Entry point: :8080 + :9090 servers (MODIFY — FR9: register stats fields)
+│   │   ├── api.rs               # :8080 REST handlers — monolithic (MODIFY — FR9, AD-2: detection stats fields)
+│   │   ├── health.rs            # Health/readiness probes
+│   │   ├── investigator_job.rs  # K8s Job spawning for investigations
+│   │   ├── lib.rs               # Library exports
+│   │   ├── llm.rs               # LLM health check client
 │   │   ├── controllers/
 │   │   │   ├── mod.rs
-│   │   │   ├── investigation.rs         # Investigation CRD controller (existing)
-│   │   │   ├── source.rs                # Source CRD controller (existing)
-│   │   │   ├── service_level.rs         # New: ServiceLevel CRD controller — reconciles
-│   │   │   │                            # SLO targets, wires burn rate alerts
-│   │   │   ├── notification_channel.rs  # New: NotificationChannel CRD controller —
-│   │   │   │                            # validates credentials, registers channel
-│   │   │   └── repository.rs            # New: Repository CRD controller — validates
-│   │   │                                # connectivity, caches branch policies
+│   │   │   ├── investigation.rs # Investigation CRD reconciler (MODIFY — FR10-13: verify lifecycle)
+│   │   │   ├── source.rs        # Source CRD reconciler
+│   │   │   ├── servicelevel.rs  # ServiceLevel CRD reconciler (MODIFY — FR20-21: verify wiring)
+│   │   │   ├── notification_channel.rs  # Out of scope — do not modify
+│   │   │   └── repository.rs    # Out of scope — do not modify
 │   │   ├── crds/
 │   │   │   ├── mod.rs
-│   │   │   ├── investigation.rs         # Investigation struct (extended status fields)
-│   │   │   ├── source.rs                # Source struct (existing)
-│   │   │   ├── service_level.rs         # New: ServiceLevel CRD definition
-│   │   │   ├── notification_channel.rs  # New: NotificationChannel CRD definition
-│   │   │   └── repository.rs            # New: Repository CRD definition
-│   │   ├── detection/
-│   │   │   ├── mod.rs                   # DetectionConfig, DetectionStats
-│   │   │   ├── consumer.rs              # DetectionConsumer (extended with SLO scoring)
-│   │   │   ├── ewma.rs                  # EwmaDetector (existing)
-│   │   │   ├── logs.rs                  # LogDetector (existing)
-│   │   │   ├── metrics.rs               # MetricDetector (existing)
-│   │   │   └── types.rs                 # AnomalySignal (extended with slo_impact field)
+│   │   │   ├── investigation.rs # Investigation CRD type definition
+│   │   │   ├── source.rs        # Source CRD type definition
+│   │   │   ├── servicelevel.rs  # ServiceLevel CRD type definition
+│   │   │   ├── notification_channel.rs  # Out of scope
+│   │   │   └── repository.rs    # Out of scope
 │   │   ├── ingestion/
+│   │   │   ├── mod.rs           # :9090 server setup (MODIFY — FR1: verify protobuf decoding)
+│   │   │   ├── prometheus.rs    # Prometheus remote write handler (MODIFY — FR1: snappy+protobuf fix)
+│   │   │   ├── loki.rs          # Loki push handler (MODIFY — FR2: verify JSON acceptance)
+│   │   │   ├── otlp.rs          # OTLP handler (MODIFY — FR1: verify encoding)
+│   │   │   └── buffer.rs        # Ingestion buffer (MODIFY — FR3: verify stats exposure)
+│   │   ├── detection/
+│   │   │   ├── mod.rs           # Detection engine orchestration
+│   │   │   ├── ewma.rs          # EWMA anomaly detector (MODIFY — FR5, FR9: expose warmup stats)
+│   │   │   ├── metrics.rs       # Metric detection pipeline (MODIFY — FR7: verify threshold)
+│   │   │   ├── logs.rs          # Log pattern detector (MODIFY — FR6: verify pattern matching)
+│   │   │   ├── consumer.rs      # Buffer consumer
+│   │   │   └── types.rs         # Detection types
+│   │   ├── slo/
+│   │   │   ├── mod.rs           # SLO processing (MODIFY — FR20-21: verify CRD reads)
+│   │   │   ├── budget.rs        # Error budget calculation
+│   │   │   ├── burn_rate.rs     # Burn rate calculation
+│   │   │   ├── calculator.rs    # SLO calculation
+│   │   │   └── impact.rs        # Impact assessment
+│   │   ├── sources/
 │   │   │   ├── mod.rs
-│   │   │   ├── buffer.rs                # IngestionBuffer with backpressure (existing)
-│   │   │   ├── loki.rs                  # POST /loki/api/v1/push (existing)
-│   │   │   └── prometheus.rs            # POST /api/v1/write (existing)
-│   │   ├── slo/                         # New: SLO engine (runs in operator process)
-│   │   │   ├── mod.rs
-│   │   │   ├── calculator.rs            # SLO compliance + burn rate computation
-│   │   │   ├── burn_rate.rs             # Multi-window burn rate alerting
-│   │   │   ├── budget.rs                # Error budget tracking + policy enforcement
-│   │   │   └── impact.rs                # Customer impact scoring for anomaly prioritization
-│   │   ├── notifications/               # New: Notification routing (operator-side)
-│   │   │   ├── mod.rs
-│   │   │   ├── router.rs               # Rule engine: severity, service, time, quiet hours
-│   │   │   └── audit.rs                # False page tracking (FR15)
-│   │   └── sources/
+│   │   │   ├── prometheus.rs    # Prometheus health check (FR4: per-source health)
+│   │   │   └── loki.rs          # Loki health check (FR4: per-source health)
+│   │   └── notifications/       # Out of scope — do not modify
 │   │       ├── mod.rs
-│   │       ├── loki.rs                  # LokiClient (existing)
-│   │       └── prometheus.rs            # PrometheusClient (existing)
-│   └── tests/
-│       ├── controller_test.rs
-│       ├── slo_test.rs                  # New: SLO calculator + burn rate tests
-│       ├── notification_test.rs         # New: Routing rules + audit tests
-│       └── integration/
-│           ├── crd_test.rs
-│           └── slo_integration_test.rs  # New: End-to-end SLO → priority scoring
-│
-├── investigator/                        # Python investigator agent
+│   │       ├── outbox.rs
+│   │       └── router.rs
+│   └── tests/                   # (MODIFY — FR9, AD-2: add stats serialization tests)
+├── investigator/
 │   ├── pyproject.toml
-│   ├── poetry.lock
-│   ├── Dockerfile
-│   ├── beeper_investigator/
-│   │   ├── __init__.py
-│   │   ├── main.py                      # Entry point (K8s Job)
-│   │   ├── agent.py                     # InvestigatorAgent (extended: remediation steps)
-│   │   ├── context.py                   # InvestigationContext (extended: trust, SLO fields)
+│   ├── beeper_investigator/     # Python package
+│   │   ├── main.py              # Entry point (MODIFY — FR14-19: verify signal passing)
+│   │   ├── agent.py             # Investigation agent orchestrator
+│   │   ├── steps/
+│   │   │   ├── metric_query.py  # Prometheus PromQL (MODIFY — FR14: verify query execution)
+│   │   │   ├── signal_correlation.py  # Signal correlation (MODIFY — FR16: verify correlation)
+│   │   │   ├── kb_query.py      # Qdrant KB search (FR17: verify KB results stored)
+│   │   │   ├── rca_hypothesis.py # Root cause hypothesis (MODIFY — FR18: verify LLM receives signals)
+│   │   │   ├── resolution_recommendations.py # (MODIFY — FR19: verify specific recommendations)
+│   │   │   ├── impact_assessment.py
+│   │   │   ├── investigation_documentation.py
+│   │   │   ├── deploy_correlation.py
+│   │   │   ├── service_topology.py
+│   │   │   └── change_event_correlation.py
+│   │   ├── llm/
+│   │   │   ├── client.py        # LiteLLM wrapper
+│   │   │   └── prompts.py       # Prompt templates (MODIFY — FR18-19: specific output)
+│   │   ├── sources/
+│   │   │   ├── prometheus.py    # PromQL query client (MODIFY — FR14: verify FQDN resolution)
+│   │   │   └── loki.py          # LogQL query client (MODIFY — FR15: verify FQDN resolution)
+│   │   ├── kb/
+│   │   │   ├── client.py        # Qdrant operations (FR17, FR30)
+│   │   │   └── schemas.py       # KB data schemas
 │   │   ├── k8s/
 │   │   │   ├── __init__.py
-│   │   │   └── status.py               # InvestigationStatusUpdater (existing)
-│   │   ├── kb/
-│   │   │   ├── __init__.py
-│   │   │   ├── client.py               # KBClient (extended: new collections)
-│   │   │   └── schemas.py              # Pydantic models (extended: bi-directional links)
-│   │   ├── llm/
-│   │   │   ├── __init__.py
-│   │   │   ├── cache.py                # LRU response cache (existing)
-│   │   │   ├── client.py              # LlmClient (extended: remediation tier)
-│   │   │   ├── cost.py                # CostTracker (existing)
-│   │   │   ├── spending_cap.py        # SpendingCapEnforcer (existing)
-│   │   │   ├── prompts.py             # Investigation prompts (existing)
-│   │   │   └── scrubber.py            # New: PII scrubbing — regex patterns, tagged
-│   │   │                              # placeholders, audit log (NFR11)
-│   │   ├── sources/
-│   │   │   ├── __init__.py
-│   │   │   ├── loki.py                # LokiClient (existing)
-│   │   │   └── prometheus.py          # PrometheusClient (existing)
-│   │   ├── correlation/
-│   │   │   ├── __init__.py
-│   │   │   └── signals.py             # Signal correlation (existing)
-│   │   ├── models/
-│   │   │   ├── __init__.py
-│   │   │   ├── investigation.py       # Investigation model (extended: trust_level, slo_impact)
-│   │   │   └── finding.py             # Finding/hypothesis models (existing)
-│   │   ├── steps/
-│   │   │   ├── __init__.py            # InvestigationStep protocol + StepResult
-│   │   │   ├── impact_assessment.py   # Step 1: CustomerImpactStep (extended: SLO scoring)
-│   │   │   ├── kb_query.py            # Step 2: KBQueryStep (existing)
-│   │   │   ├── signal_correlation.py  # Step 3: SignalCorrelationStep (existing)
-│   │   │   ├── rca_hypothesis.py      # Step 4: RCAHypothesisStep (existing)
-│   │   │   ├── resolution_recommendations.py  # Step 5: ResolutionRecommendationStep (existing)
-│   │   │   └── investigation_documentation.py # Step 6: InvestigationDocumentationStep (existing)
-│   │   └── remediation/               # New: Auto-remediation steps (conditional, trust-gated)
-│   │       ├── __init__.py
-│   │       ├── fix_generator.py       # LLM-driven fix generation from RCA
-│   │       ├── test_planner.py        # LLM-designed verification test plans
-│   │       ├── sandbox_executor.py    # Deploy fix to sandbox, run tests
-│   │       ├── verifier.py            # Post-fix metric monitoring
-│   │       └── pr_generator.py        # Clone repo, create branch, commit, push, open PR
+│   │   │   ├── status.py        # InvestigationStatusUpdater — patches CRD directly
+│   │   │   └── repository.py    # K8s API client helpers
+│   │   └── remediation/         # Out of scope — do not modify
 │   └── tests/
-│       ├── __init__.py
-│       ├── test_agent.py
-│       ├── test_context.py
-│       ├── test_impact_assessment.py
-│       ├── test_investigation_documentation.py
-│       ├── test_k8s_status.py
-│       ├── test_kb_client.py
-│       ├── test_kb_query.py
-│       ├── test_llm_cache.py
-│       ├── test_llm_client.py
-│       ├── test_llm_embedding.py
-│       ├── test_llm_screening.py
 │       ├── test_main.py
-│       ├── test_rca_hypothesis.py
-│       ├── test_resolution_recommendations.py
-│       ├── test_signal_correlation.py
-│       ├── test_sources.py
-│       ├── test_spending_caps.py
-│       ├── test_step_pipeline.py
-│       ├── test_scrubber.py           # New: PII scrubbing tests
-│       ├── test_remediation.py        # New: Remediation pipeline tests
-│       └── integration/
-│           ├── test_investigation_flow.py
-│           └── test_remediation_flow.py  # New: End-to-end remediation integration
-│
-├── ui/                                  # Flask web UI
-│   ├── pyproject.toml                   # Extended: flask-socketio, slack-sdk, pagerduty deps
-│   ├── poetry.lock
-│   ├── Dockerfile                       # Extended: Tailwind CLI build stage
+│       ├── test_agent.py
+│       ├── test_sources.py      # (MODIFY — FR14-15: verify query tests)
+│       └── ...
+├── ui/
+│   ├── pyproject.toml
+│   ├── tailwind.config.js       # **NEW** (AD-7: Tailwind theme + content paths)
 │   ├── beeper_ui/
-│   │   ├── __init__.py
-│   │   ├── app.py                       # Flask app factory (extended: SocketIO init,
-│   │   │                                # permission middleware registration)
-│   │   ├── config.py                    # Config classes (extended: SocketIO, notification settings)
-│   │   ├── auth/                        # New: Permission enforcement
-│   │   │   ├── __init__.py
-│   │   │   ├── decorators.py            # @require_role("admin"|"user") decorator
-│   │   │   └── middleware.py            # User context from K8s SA / X-Beeper-Role header
+│   │   ├── app.py               # Flask app factory
 │   │   ├── routes/
-│   │   │   ├── __init__.py              # register_blueprints() — extended
-│   │   │   ├── health.py               # GET /health (existing)
-│   │   │   ├── investigations.py       # /investigations (extended: approve/reject, annotate,
-│   │   │   │                           # evidence trail, handoff summary)
-│   │   │   ├── knowledge.py            # /knowledge (extended: bi-directional links, service views)
-│   │   │   ├── metrics.py              # /metrics: MTTR trends (existing)
-│   │   │   ├── sources.py              # /sources (existing)
-│   │   │   ├── spending.py             # /spending (existing)
-│   │   │   ├── slo.py                  # New: /slo — SLO dashboard, burn rates, error budgets
-│   │   │   ├── trust.py               # New: /trust — trust level config, accuracy history,
-│   │   │   │                          # noise reports (admin)
-│   │   │   ├── notifications.py       # New: /notifications — channel config, routing rules,
-│   │   │   │                          # test send, audit trail
-│   │   │   ├── remediation.py         # New: /remediation — status, PRs, sandbox results
-│   │   │   ├── analytics.py           # New: /analytics — reliability scores, trends, investor
-│   │   │   │                          # reports
-│   │   │   ├── handoff.py             # New: /handoff — shift handoff summaries
-│   │   │   ├── demo.py               # New: /demo — demo control panel, scenario execution
-│   │   │   └── search.py             # New: /search — command palette backend (Qdrant search)
-│   │   ├── websocket/                 # New: Flask-SocketIO event handlers
-│   │   │   ├── __init__.py            # SocketIO initialization + namespace registration
-│   │   │   └── investigation.py       # join/leave room, annotate, redirect, approve/reject,
-│   │   │                              # server-side evidence/confidence/fix broadcasts
-│   │   ├── notifications/             # New: Notification channel implementations
-│   │   │   ├── __init__.py
-│   │   │   ├── outbox.py             # Durable outbox: write to Qdrant, background worker,
-│   │   │   │                         # retry with exponential backoff
-│   │   │   ├── slack.py              # Rich blocks, threads, @mentions, action buttons
-│   │   │   ├── pagerduty.py          # Create/acknowledge/resolve incidents
-│   │   │   ├── email.py              # SMTP digests + immediate critical alerts
-│   │   │   └── webhook.py            # POST payloads to external systems
-│   │   ├── services/
-│   │   │   ├── __init__.py
-│   │   │   ├── investigation_service.py  # Extended: approve/reject, annotate, evidence
-│   │   │   ├── kb_service.py             # Extended: bi-directional links, service views
-│   │   │   ├── correction_service.py     # Existing
-│   │   │   ├── embedding_service.py      # Existing
-│   │   │   ├── health_service.py         # Existing
-│   │   │   ├── import_service.py         # Existing
-│   │   │   ├── learning_service.py       # Existing
-│   │   │   ├── metrics_service.py        # Existing
-│   │   │   ├── source_service.py         # Existing
-│   │   │   ├── spending_service.py       # Existing
-│   │   │   ├── slo_service.py            # New: SLO data from operator API
-│   │   │   ├── trust_service.py          # New: Trust level CRUD via operator API
-│   │   │   └── search_service.py         # New: Qdrant semantic search for command palette
+│   │   │   ├── investigations.py # (MODIFY — FR22-27: SSE proxy, KB panel data)
+│   │   │   ├── knowledge.py     # (MODIFY — FR28-31: verify CRUD)
+│   │   │   ├── sources.py
+│   │   │   ├── metrics.py
+│   │   │   ├── spending.py
+│   │   │   └── health.py        # (MODIFY — FR32-35: diagnostic dashboard data)
 │   │   ├── templates/
-│   │   │   ├── base.html                # Extended: Tailwind classes, SocketIO script,
-│   │   │   │                            # command palette markup
-│   │   │   ├── components/              # New: Shared Jinja2 partials (HTMX fragments)
-│   │   │   │   ├── command-palette.html # Cmd+K overlay
-│   │   │   │   ├── notification-toast.html
-│   │   │   │   └── trust-badge.html
+│   │   │   ├── base.html        # (MODIFY — AD-3: rewrite with layout shell)
+│   │   │   ├── components/      # **NEW** directory (AD-3)
+│   │   │   │   ├── layout.html  # **NEW** (AD-3: layout shell macro)
+│   │   │   │   ├── sidebar.html # **NEW** (AD-3, FR40-43: sidebar group macro)
+│   │   │   │   ├── cards.html   # **NEW** (FR22: investigation card macro)
+│   │   │   │   ├── investigation.html # **NEW** (FR23-25: summary, step, conclusion macros)
+│   │   │   │   ├── status.html  # **NEW** (FR22: status badge macro)
+│   │   │   │   ├── diagnostic.html # **NEW** (FR33: metric tile, EWMA progress macros)
+│   │   │   │   ├── kb.html      # **NEW** (FR26: related KB panel macro)
+│   │   │   │   └── empty.html   # **NEW** (FR22: empty state macro)
 │   │   │   ├── investigations/
-│   │   │   │   ├── list.html            # Extended: SLO impact column, trust badge
-│   │   │   │   ├── detail.html          # Extended: evidence trail, SocketIO collaboration,
-│   │   │   │   │                        # approve/reject buttons, annotation input
-│   │   │   │   ├── evidence.html        # New: Evidence trail panel
-│   │   │   │   └── handoff.html         # New: Shift handoff summary
-│   │   │   ├── knowledge/
-│   │   │   │   ├── index.html           # Existing
-│   │   │   │   ├── entry.html           # Extended: bi-directional links, validation status
-│   │   │   │   ├── edit.html            # Existing
-│   │   │   │   └── diff.html            # Existing
-│   │   │   ├── sources/
-│   │   │   │   └── status.html          # Existing
-│   │   │   ├── slo/                     # New: SLO views
-│   │   │   │   ├── dashboard.html       # Compliance, burn rates, error budgets
-│   │   │   │   └── service.html         # Per-service SLO detail
-│   │   │   ├── trust/                   # New: Trust management views
-│   │   │   │   ├── overview.html        # Per-service trust levels, accuracy
-│   │   │   │   └── configure.html       # Admin: trust level + confidence gate config
-│   │   │   ├── notifications/           # New: Notification views
-│   │   │   │   ├── channels.html        # Channel config list
-│   │   │   │   └── audit.html           # Notification history, false page tracking
-│   │   │   ├── remediation/             # New: Remediation views
-│   │   │   │   ├── status.html          # Fix progress: generation → test → sandbox → PR
-│   │   │   │   └── pr.html              # Auto-PR detail with evidence
-│   │   │   ├── analytics/               # New: Analytics views
-│   │   │   │   ├── dashboard.html       # Reliability scores, MTTR trends, trust progression
-│   │   │   │   └── investor.html        # Diana-facing investor report
-│   │   │   └── demo/                    # New: Demo control panel
-│   │   │       └── control.html         # Scenario selection, fault injection, lifecycle view
-│   │   ├── static/
-│   │   │   ├── css/
-│   │   │   │   ├── main.css             # Existing custom CSS (~3,900 lines)
-│   │   │   │   └── tailwind.css         # New: Tailwind output (built by CLI)
-│   │   │   └── js/
-│   │   │       ├── htmx.min.js          # Existing
-│   │   │       ├── socketio.min.js      # New: Socket.IO client
-│   │   │       └── command-palette.js   # New: Vanilla JS command palette (~200 lines)
-│   │   └── utils/
-│   │       ├── __init__.py
-│   │       └── markdown_utils.py        # Existing: Markdown rendering + XSS sanitization
+│   │   │   │   ├── list.html    # (MODIFY — FR22: use investigation_card macro)
+│   │   │   │   ├── detail.html  # (MODIFY — FR23-27, AD-6: sidebar_state, KB panel, SSE)
+│   │   │   │   └── _*.html      # Partials (existing, may need MODIFY for HTMX targets)
+│   │   │   ├── knowledge/       # (MODIFY — FR28-31: verify CRUD templates)
+│   │   │   ├── health/
+│   │   │   │   ├── status.html  # (MODIFY — FR32-35: add diagnostic tiles)
+│   │   │   │   └── _status_content.html # (MODIFY — FR33: detection stats display)
+│   │   │   ├── sources/         # (MODIFY — FR4: per-source health display)
+│   │   │   ├── slo/             # (MODIFY — FR21: SLO dashboard)
+│   │   │   └── ...              # Other existing route templates
+│   │   └── static/
+│   │       ├── css/
+│   │       │   ├── style.css    # Existing custom CSS (~3,900 lines) — do not modify
+│   │       │   ├── input.css    # **NEW** (AD-7: Tailwind input directives)
+│   │       │   └── tailwind.css # **NEW** (AD-7: generated output, gitignored)
+│   │       └── js/
+│   │           └── sse.js       # **NEW** (AD-4, FR23: SSE lifecycle manager)
 │   └── tests/
-│       ├── __init__.py
-│       ├── conftest.py
-│       ├── test_app.py
-│       ├── test_corrections.py
-│       ├── test_cost_insights.py
-│       ├── test_embedding_service.py
-│       ├── test_import_service.py
-│       ├── test_investigation_routes.py
-│       ├── test_investigation_service.py
-│       ├── test_kb_routes.py
-│       ├── test_kb_service.py
-│       ├── test_learning.py
-│       ├── test_markdown.py
-│       ├── test_metrics.py
-│       ├── test_routes.py
-│       ├── test_services.py
-│       ├── test_spending.py
-│       ├── test_trust.py
-│       ├── test_auth.py               # New: Permission decorator + middleware tests
-│       ├── test_websocket.py          # New: SocketIO event handler tests
-│       ├── test_notifications.py      # New: Outbox + channel delivery tests
-│       ├── test_slo_routes.py         # New: SLO dashboard route tests
-│       ├── test_search.py             # New: Command palette search tests
-│       └── integration/
-│           └── test_notification_delivery.py  # New: End-to-end notification flow
-│
-├── demo/                               # New: Purpose-built chaotic demo application
-│   ├── Dockerfile                       # Multi-service demo app container
-│   ├── README.md                        # Demo architecture + scenario descriptions
-│   ├── pyproject.toml                   # Demo app dependencies
-│   ├── demo_app/
-│   │   ├── __init__.py
-│   │   ├── services/                    # Chaotic microservices (3-4 services)
-│   │   │   ├── gateway.py              # API gateway with cascading failure paths
-│   │   │   ├── processor.py            # Data processor with memory leak injection
-│   │   │   └── storage.py              # Storage service with latency injection
-│   │   └── faults/
-│   │       ├── __init__.py
-│   │       ├── memory_leak.py          # Configurable memory leak fault
-│   │       ├── bad_deploy.py           # Bad deployment simulation
-│   │       ├── cascade.py              # Cascading failure across services
-│   │       └── scale_dependent.py      # Issues that only appear at scale
-│   ├── scenarios/                       # Scripted demo scenarios (YAML)
-│   │   ├── investor_demo.yaml          # Full lifecycle: fault → detect → fix → prove
-│   │   ├── trust_progression.yaml      # TL1 → TL3 trust escalation demo
-│   │   └── cascade_failure.yaml        # Multi-service cascading incident
-│   ├── k8s/                            # Demo-specific K8s manifests
-│   │   ├── deployment.yaml
-│   │   ├── service-levels.yaml         # ServiceLevel CRDs for demo services
-│   │   └── notification-channels.yaml  # Demo notification channels
-│   └── tests/
-│       ├── test_scenarios.py           # Pytest harness for scripted demo runs
-│       └── test_reliability.py         # NFR18: 10 consecutive runs without failure
-│
-├── helm/                               # Helm chart for deployment
+│       ├── routes/
+│       ├── templates/           # (MODIFY: add component macro rendering tests)
+│       └── conftest.py
+├── helm/
 │   └── beeper/
-│       ├── Chart.yaml                   # version: 0.2.0, appVersion: 0.2.0
-│       ├── values.yaml                  # Extended: SocketIO, notification, demo settings
-│       ├── values-dev.yaml              # Development overrides
+│       ├── Chart.yaml
+│       ├── values.yaml          # (MODIFY — Qdrant version bump to v1.15.0)
 │       ├── templates/
-│       │   ├── _helpers.tpl
-│       │   ├── operator-deployment.yaml
-│       │   ├── operator-rbac.yaml       # Extended: new CRD permissions
-│       │   ├── operator-serviceaccount.yaml
-│       │   ├── operator-role.yaml
-│       │   ├── operator-rolebinding.yaml
-│       │   ├── ui-deployment.yaml       # Extended: SocketIO port, Tailwind env
-│       │   ├── ui-service.yaml
+│       │   ├── operator-deployment.yaml # (MODIFY — FR36: verify image + env)
+│       │   ├── investigator-job-template.yaml
+│       │   ├── ui-deployment.yaml
 │       │   ├── qdrant-statefulset.yaml
-│       │   ├── qdrant-service.yaml
-│       │   ├── configmap.yaml
-│       │   ├── secrets.yaml
-│       │   ├── investigator-rbac.yaml
-│       │   ├── sandbox-namespace.yaml   # New: NetworkPolicy-isolated sandbox
-│       │   ├── sandbox-networkpolicy.yaml # New: Deny all except Qdrant + K8s API
-│       │   ├── demo-deployment.yaml     # New: Demo app services (conditional)
-│       │   └── crds/
-│       │       ├── investigation-crd.yaml
-│       │       ├── source-crd.yaml
-│       │       ├── service-level-crd.yaml       # New
-│       │       ├── notification-channel-crd.yaml # New
-│       │       └── repository-crd.yaml           # New
-│       └── README.md
-│
-├── scripts/                            # Development scripts
-│   ├── setup-dev.sh                    # Local dev environment setup (extended)
-│   ├── generate-clients.sh             # Generate clients from OpenAPI
-│   ├── seed-kb.sh                      # Seed KB with sample data
-│   ├── init-collections.py             # Create Qdrant collections (extended: new collections)
-│   ├── seed_kb.py                      # Insert sample KB entries
-│   ├── demo.sh                         # End-to-end demo orchestration
-│   ├── local-testing.sh                # Full local test suite
-│   └── build-tailwind.sh               # New: Tailwind CLI build + watch script
-│
-└── docs/                               # Documentation
-    ├── index.md                         # Documentation suite index
-    ├── project-overview.md              # Architecture overview
-    ├── development-guide.md             # Local dev guide
-    ├── deployment-guide.md              # Production deployment guide
-    ├── api-contracts.md                 # API documentation
-    ├── source-tree-analysis.md          # Annotated source tree
-    └── integration-architecture.md      # Component communication patterns
+│       │   └── ...
+│       └── crds/
+├── demo/
+│   ├── README.md                # (MODIFY — FR36: updated demo instructions)
+│   ├── otel-demo-values.yaml    # (MODIFY — FR37: OTEL Collector → operator routing)
+│   └── servicelevel-crds/       # ServiceLevel CRD manifests (MODIFY — FR20: verify)
+├── scripts/                     # Setup and utility scripts
+├── docs/                        # Project documentation (reference only — do not modify)
+├── Makefile                     # (MODIFY — AD-7: tailwind targets, AD-8: test-pipeline target, FR36-39: demo targets)
+├── kind-config.yaml             # (MODIFY — FR36: verify port mappings)
+├── docker-compose.yml           # Local Qdrant
+└── .gitignore                   # (MODIFY — add tailwind.css output)
 ```
+
+### New File Creation Mapping
+
+Every new file is assigned to the AD/FR that creates it. Story-planning agents use this to know which story owns file creation.
+
+| New File | Created By | Story Scope |
+|---|---|---|
+| `ui/tailwind.config.js` | AD-7 | Tailwind build pipeline setup |
+| `ui/beeper_ui/static/css/input.css` | AD-7 | Tailwind build pipeline setup |
+| `ui/beeper_ui/static/css/tailwind.css` | AD-7 | Generated output (gitignored) |
+| `ui/beeper_ui/templates/components/` (directory) | AD-3 | Layout shell migration |
+| `ui/beeper_ui/templates/components/layout.html` | AD-3 | Layout shell migration |
+| `ui/beeper_ui/templates/components/sidebar.html` | AD-3, FR40-43 | Layout shell migration |
+| `ui/beeper_ui/templates/components/cards.html` | FR22 | Investigation list redesign |
+| `ui/beeper_ui/templates/components/investigation.html` | FR23-25 | Investigation detail redesign |
+| `ui/beeper_ui/templates/components/status.html` | FR22 | Investigation list redesign |
+| `ui/beeper_ui/templates/components/diagnostic.html` | FR33 | Diagnostic dashboard |
+| `ui/beeper_ui/templates/components/kb.html` | FR26 | Related KB panel |
+| `ui/beeper_ui/templates/components/empty.html` | FR22 | Investigation list redesign |
+| `ui/beeper_ui/static/js/sse.js` | AD-4, FR23 | SSE lifecycle manager |
 
 ### Architectural Boundaries
 
-**API Boundaries:**
-
-| Boundary | Protocol | Location | New/Existing |
-|----------|----------|----------|-------------|
-| External → UI | HTTP/HTTPS | `ui/routes/*` | Existing (expanded) |
-| External → UI (bidirectional) | WebSocket (SocketIO) | `ui/websocket/*` | **New** |
-| UI → Qdrant | HTTP (Qdrant API) | `ui/services/*_service.py` | Existing (expanded) |
-| UI → Operator API | HTTP | `ui/services/investigation_service.py` etc. | Existing (expanded) |
-| Operator → K8s API | K8s client | `operator/src/controllers/*` | Existing (expanded) |
-| Investigator → Qdrant | HTTP | `investigator/kb/client.py` | Existing |
-| Investigator → LLM | HTTP (LiteLLM) | `investigator/llm/client.py` | Existing |
-| Investigator → Git Provider | HTTPS (GitHub/GitLab API) | `investigator/remediation/pr_generator.py` | **New** |
-| Operator → Prometheus | HTTP (PromQL) | `operator/src/sources/prometheus.rs` | Existing |
-| Operator → Loki | HTTP (LogQL) | `operator/src/sources/loki.rs` | Existing |
-| UI → Slack | HTTPS (Slack API) | `ui/notifications/slack.py` | **New** |
-| UI → PagerDuty | HTTPS (PD API) | `ui/notifications/pagerduty.py` | **New** |
-| UI → Email | SMTP | `ui/notifications/email.py` | **New** |
-| UI → Webhooks | HTTPS (outbound) | `ui/notifications/webhook.py` | **New** |
-
-**Component Boundaries:**
-
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                             K8s Cluster                                  │
-│                                                                          │
-│  ┌──────────────────────┐                                                │
-│  │  beeper-operator     │──────────┐                                     │
-│  │     (Rust)           │          │ spawns Job                           │
-│  │ • CRD Controllers    │          ▼                                     │
-│  │ • SLO Engine         │    ┌──────────────────┐                        │
-│  │ • Detection          │    │  investigator     │                        │
-│  │ • Notification Rules │    │   Job (Python)    │                        │
-│  └─────────┬────────────┘    │ • 6-step pipeline │                        │
-│            │                 │ • Remediation ext  │──── Git Provider API   │
-│    watches │                 │ • PII scrubber     │     (auto-PRs)         │
-│    5 CRDs  │                 └────────┬───────────┘                        │
-│            │                          │ writes findings                   │
-│            ▼                          ▼                                   │
-│  ┌──────────────────┐   ┌──────────────────────────┐                     │
-│  │ CRDs (etcd)      │   │        Qdrant             │                     │
-│  │ • Investigation   │   │ • investigations          │                     │
-│  │ • Source          │   │ • knowledge (+versions)   │                     │
-│  │ • ServiceLevel    │   │ • corrections             │                     │
-│  │ • NotifChannel    │   │ • learning_patterns       │                     │
-│  │ • Repository      │   │ • service_trust_levels    │                     │
-│  └──────────────────┘   │ • slo_snapshots           │                     │
-│                          │ • notification_outbox     │                     │
-│                          └────────────┬─────────────┘                     │
-│                                       │ queries                          │
-│                                       ▼                                  │
-│                          ┌──────────────────────────┐                     │
-│                          │      beeper-ui            │                     │
-│                          │       (Flask)             │──── Slack API       │
-│                          │ • SSE (unidirectional)    │──── PagerDuty API   │
-│                          │ • SocketIO (bidirectional)│──── Email (SMTP)    │
-│                          │ • Notification outbox     │──── Webhooks        │
-│                          │ • Permission middleware   │                     │
-│                          └──────────────────────────┘                     │
-│                                                                          │
-│  ┌──────────────────┐   ┌──────────────────────────┐                     │
-│  │ beeper-sandbox   │   │   beeper-demo-*           │                     │
-│  │ (isolated NS)    │   │   (demo app pods)         │                     │
-│  │ • NetworkPolicy  │   │ • gateway, processor,     │                     │
-│  │ • Fix testing    │   │   storage services        │                     │
-│  │ • No prod access │   │ • Fault injection         │                     │
-│  └──────────────────┘   └──────────────────────────┘                     │
-└──────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                        K8s Cluster                            │
+│                                                               │
+│  OTEL Collector ─── :9090 ──→ ┌──────────────────────┐       │
+│  (prometheusremotewrite,       │  beeper-operator     │       │
+│   loki push)                   │                      │       │
+│                                │  :9090 Ingestion API │       │
+│                                │  (protobuf, JSON)    │       │
+│                                │                      │       │
+│                                │  :8080 Management API│       │
+│                                │  (REST JSON, SSE)    │       │
+│                                └──────┬───────────────┘       │
+│                                       │                       │
+│                                       │ spawns K8s Job        │
+│                                       ▼                       │
+│                                ┌──────────────────────┐       │
+│  Prometheus ◄──── PromQL ──── │  investigator Job    │       │
+│  Loki ◄────────── LogQL ──── │  (Python, ephemeral) │       │
+│  Qdrant ◄──────── HTTP ───── │                      │       │
+│  LLM API ◄─────── LiteLLM ── │                      │       │
+│  K8s API ◄──── PATCH CRD ─── │  (status updater)    │       │
+│                                └──────────────────────┘       │
+│                                                               │
+│  ┌──────────────────────┐                                     │
+│  │  beeper-ui            │                                     │
+│  │  :5000 Flask          │──── REST ──→ operator :8080        │
+│  │  (HTML, SSE proxy)    │──── SSE ──→ operator :8080        │
+│  │                        │──── HTTP ──→ Qdrant (KB direct)   │
+│  └──────────────────────┘                                     │
+│                                                               │
+│  User Browser ◄──── :5000 (port-forward) ──── beeper-ui      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Data Boundaries:**
+**Investigator → CRD Write Mechanism (clarified):**
 
-| Data Type | Storage | Access Pattern | New/Existing |
-|-----------|---------|----------------|-------------|
-| Investigation state | Qdrant `investigations` | Read-your-writes | Extended |
-| KB entries + versions | Qdrant `knowledge`, `knowledge_versions` | Eventually consistent | Extended |
-| Corrections + learning | Qdrant `corrections`, `learning_patterns` | Eventually consistent | Existing |
-| Trust configuration | Qdrant `service_trust_levels` | Read-your-writes | Extended |
-| SLO snapshots | Qdrant `slo_snapshots` | Write-heavy, time-series queries | **New** |
-| Notification outbox | Qdrant `notification_outbox` | Outbox pattern (write → process → mark) | **New** |
-| CRD state (5 CRDs) | K8s etcd | Operator reconciliation | Extended |
-| Secrets (integrations) | K8s Secrets | Mounted to pods / read by operator | Existing |
-| Config | ConfigMap + env vars | Injected at deploy | Existing |
-| Sandbox state | Isolated K8s namespace | Ephemeral per test execution | **New** |
+The investigator has **direct K8s API access** via `InvestigationStatusUpdater` (`beeper_investigator/k8s/status.py`). It PATCHes the Investigation CRD's status subresource directly — it does NOT write status to Qdrant for the operator to read. The write paths are:
 
-### FR to Structure Mapping
+| Write Target | Mechanism | What's Written |
+|---|---|---|
+| Investigation CRD status | K8s API PATCH (via `kubernetes` Python client) | Progress messages, final status (Completed/Failed) |
+| Qdrant `investigations` collection | HTTP POST (via Qdrant client) | Investigation results, step data, findings, KB matches |
 
-**SLO & Customer Impact — Wave 1 (FR1-7):**
-- FR1 (define SLIs/SLOs): `operator/src/crds/service_level.rs`, `helm/templates/crds/service-level-crd.yaml`
-- FR2 (burn rates): `operator/src/slo/calculator.rs`, `operator/src/slo/burn_rate.rs`
-- FR3 (SLO-triggered investigations): `operator/src/slo/burn_rate.rs` → `operator/src/controllers/investigation.rs`
-- FR4 (SLO-based scoring): `operator/src/slo/impact.rs`, `operator/src/detection/consumer.rs`
-- FR5 (error budget policies): `operator/src/slo/budget.rs`
-- FR6 (SLO dashboard): `ui/routes/slo.py`, `ui/services/slo_service.py`, `ui/templates/slo/`
-- FR7 (investigation priority): `operator/src/slo/impact.rs` → `operator/src/detection/consumer.rs`
+The operator watches the CRD status field changes and emits SSE events to the UI. The UI reads detailed step data from the operator API, which proxies to Qdrant.
 
-**Notification & Integration — Wave 1 (FR8-15):**
-- FR8 (notification channels): `operator/src/crds/notification_channel.rs`, `helm/templates/crds/notification-channel-crd.yaml`
-- FR9 (routing rules): `operator/src/notifications/router.rs`, `ui/routes/notifications.py`
-- FR10 (Slack): `ui/notifications/slack.py`
-- FR11 (PagerDuty): `ui/notifications/pagerduty.py`
-- FR12 (email): `ui/notifications/email.py`
-- FR13 (webhooks): `ui/notifications/webhook.py`
-- FR14 (quiet hours + escalation): `operator/src/notifications/router.rs`
-- FR15 (false page tracking): `operator/src/notifications/audit.rs`, `ui/templates/notifications/audit.html`
+**Boundary Rules:**
 
-**Trust & Autonomy — Wave 2 (FR16-22):**
-- FR16 (trust levels per service): `ui/routes/trust.py`, `ui/services/trust_service.py`, `ui/templates/trust/configure.html`
-- FR17 (confidence gating): `investigator/steps/__init__.py` (gate check), `investigator/remediation/__init__.py`
-- FR18 (adaptive thresholds): `operator/src/detection/ewma.rs` (feedback integration)
-- FR19 (one-click feedback): `ui/routes/investigations.py`, `ui/templates/investigations/detail.html`
-- FR20 (noise report): `ui/routes/trust.py`, `ui/templates/trust/overview.html`
-- FR21 (impact-weighted urgency): `operator/src/slo/impact.rs` → `operator/src/notifications/router.rs`
-- FR22 (confidence gate config): `ui/routes/trust.py` (admin), `ui/templates/trust/configure.html`
+| Boundary | Rule | Violation Example |
+|---|---|---|
+| Operator → Investigator | **No direct communication.** Operator spawns Job, watches CRD status. | Operator calling investigator HTTP endpoint |
+| Investigator → Operator | **No direct communication.** Investigator patches CRD status + writes to Qdrant. | Investigator calling operator :8080 API |
+| UI → Operator | **REST + SSE only via :8080.** No direct Rust function calls. | UI importing operator Rust code |
+| UI → Qdrant | **Direct HTTP for KB reads only.** Investigation data comes from operator API. | UI writing to Qdrant |
+| Browser → UI | **HTTP + SSE via :5000 only.** All operator data proxied through Flask. | Browser JavaScript calling operator :8080 directly |
+| Browser → Operator | **Not allowed in application code.** Port-forward to :8080 is for demo `curl` debugging only — UI code must never reference :8080. | `fetch('http://localhost:8080/api/v1/...')` in JavaScript |
 
-**Auto-Remediation — Wave 2 (FR23-31):**
-- FR23 (register repos): `operator/src/crds/repository.rs`, `helm/templates/crds/repository-crd.yaml`
-- FR24 (runbook execution): `investigator/remediation/fix_generator.py`
-- FR25 (auto-PRs): `investigator/remediation/pr_generator.py`
-- FR26 (advisory test plan): `investigator/remediation/test_planner.py`
-- FR27 (sandbox testing): `investigator/remediation/sandbox_executor.py`
-- FR28 (post-fix verification): `investigator/remediation/verifier.py`
-- FR29 (trust-gated remediation): `investigator/remediation/__init__.py` (gate check before steps)
-- FR30 (PR ↔ investigation link): `investigator/remediation/pr_generator.py` (evidence metadata in PR body)
-- FR31 (KB proven fixes): `investigator/steps/investigation_documentation.py` (extended)
+### Requirements to Structure Mapping (Exhaustive FR → File)
 
-**Collaborative Investigation — Wave 3 (FR32-37):**
-- FR32 (real-time interaction): `ui/websocket/investigation.py`, `ui/static/js/socketio.min.js`
-- FR33 (evidence with references): `ui/routes/investigations.py`, `ui/templates/investigations/evidence.html`
-- FR34 (annotate/redirect): `ui/websocket/investigation.py` (`annotate`, `redirect` events)
-- FR35 (approve/reject fixes): `ui/websocket/investigation.py` (`approve_fix`, `reject_fix`)
-- FR36 (shift handoff): `ui/routes/handoff.py`, `ui/templates/investigations/handoff.html`
-- FR37 (surface past KB): `investigator/steps/kb_query.py` (extended: real-time KB push via SocketIO)
+**Every FR mapped to its primary implementation file:**
 
-**Knowledge Base Enhancement — Wave 3 (FR38-42):**
-- FR38 (auto KB entries): `investigator/steps/investigation_documentation.py`
-- FR39 (bi-directional links): `investigator/kb/schemas.py`, `investigator/kb/client.py`
-- FR40 (per-service KB views): `ui/routes/knowledge.py` (service filter), `ui/services/kb_service.py`
-- FR41 (validation weighting): `investigator/kb/schemas.py` (validation_status field)
-- FR42 (KB edit/correct): `ui/routes/knowledge.py`, `ui/services/correction_service.py` (existing)
-
-**Signal & Observability — Wave 3 (FR43-46):**
-- FR43 (unified timeline): `ui/routes/investigations.py` (timeline view), `ui/templates/investigations/detail.html`
-- FR44 (deploy correlation): `investigator/correlation/signals.py` (extended)
-- FR45 (service topology): `ui/routes/analytics.py`, `operator/src/api.rs` (topology endpoint)
-- FR46 (change event ingestion): `operator/src/ingestion/` (extended for change events)
-
-**Developer Experience — Wave 4 (FR47-50):**
-- FR47 (command palette): `ui/static/js/command-palette.js`, `ui/templates/components/command-palette.html`, `ui/routes/search.py`
-- FR48 (workflow states): `ui/routes/investigations.py` (state machine visualization)
-- FR49 (remediation progress): `ui/routes/remediation.py`, `ui/templates/remediation/status.html`
-- FR50 (service health feeds): `ui/routes/analytics.py`, `ui/templates/analytics/dashboard.html`
-
-**Analytics & Reporting — Wave 4 (FR51-53):**
-- FR51 (reliability score): `ui/services/metrics_service.py` (extended), `ui/routes/analytics.py`
-- FR52 (trend dashboards): `ui/routes/analytics.py`, `ui/templates/analytics/dashboard.html`
-- FR53 (investor reports): `ui/routes/analytics.py`, `ui/templates/analytics/investor.html`
-
-**Demo Application — Cross-cutting (FR54-57):**
-- FR54 (deploy demo app): `demo/`, `helm/templates/demo-deployment.yaml`
-- FR55 (fault injection): `demo/demo_app/faults/`
-- FR56 (full lifecycle demo): `demo/scenarios/investor_demo.yaml`
-- FR57 (scripted scenarios): `demo/scenarios/`, `demo/tests/test_scenarios.py`
-
-**Platform & Security — Foundation (FR58-63):**
-- FR58 (2-tier permissions): `ui/auth/decorators.py`, `ui/auth/middleware.py`
-- FR59 (K8s Secrets): `helm/templates/secrets.yaml`, `operator/src/llm.rs`
-- FR60 (PII scrubbing): `investigator/llm/scrubber.py`
-- FR61 (LLM degradation): `investigator/llm/client.py` (circuit breaker), `ui/notifications/outbox.py`
-- FR62 (action rollback): `investigator/remediation/verifier.py`, `operator/src/controllers/investigation.rs`
-- FR63 (non-SPOF): Helm deployment design — no dependency on Beeper for existing alerting
+| FR | Description | Primary File(s) | Test File(s) |
+|---|---|---|---|
+| FR1 | Accept Prometheus remote write | `operator/src/ingestion/prometheus.rs`, `otlp.rs` | `operator/tests/` |
+| FR2 | Accept Loki log push | `operator/src/ingestion/loki.rs` | `operator/tests/` |
+| FR3 | Buffer telemetry + expose ingestion stats | `operator/src/ingestion/buffer.rs`, `operator/src/api.rs` | `operator/tests/` |
+| FR4 | Per-source ingestion health | `operator/src/api.rs` (`/api/v1/health/components`), `operator/src/sources/prometheus.rs`, `sources/loki.rs` | `operator/tests/` |
+| FR5 | EWMA anomaly detection on metrics | `operator/src/detection/ewma.rs` | `operator/tests/` |
+| FR6 | Log pattern anomaly detection | `operator/src/detection/logs.rs` | `operator/tests/` |
+| FR7 | Configurable detection thresholds | `operator/src/detection/metrics.rs`, `types.rs` | `operator/tests/` |
+| FR8 | Auto-create Investigation CRD | `operator/src/controllers/investigation.rs` | `operator/tests/` |
+| FR9 | Expose detection stats via API | `operator/src/detection/ewma.rs` → `operator/src/api.rs` | `operator/tests/` |
+| FR10 | Investigation lifecycle (Pending→Running→…) | `operator/src/controllers/investigation.rs`, `crds/investigation.rs` | `operator/tests/` |
+| FR11 | Spawn investigator K8s Job | `operator/src/investigator_job.rs` | `operator/tests/` |
+| FR12 | Track investigation failure count | `operator/src/controllers/investigation.rs` | `operator/tests/` |
+| FR13 | Clean up completed Jobs | `operator/src/controllers/investigation.rs` | `operator/tests/` |
+| FR14 | Query Prometheus for metrics | `investigator/beeper_investigator/sources/prometheus.py`, `steps/metric_query.py` | `investigator/tests/test_sources.py` |
+| FR15 | Query Loki for logs | `investigator/beeper_investigator/sources/loki.py` | `investigator/tests/test_sources.py` |
+| FR16 | Correlate signals | `investigator/beeper_investigator/steps/signal_correlation.py` | `investigator/tests/test_signal_correlation.py` |
+| FR17 | Query KB for related knowledge | `investigator/beeper_investigator/steps/kb_query.py` | `investigator/tests/test_kb_query.py` |
+| FR18 | Generate root cause hypothesis via LLM | `investigator/beeper_investigator/steps/rca_hypothesis.py`, `llm/prompts.py` | `investigator/tests/test_rca_hypothesis.py` |
+| FR19 | Generate resolution recommendations | `investigator/beeper_investigator/steps/resolution_recommendations.py` | `investigator/tests/test_resolution_recommendations.py` |
+| FR20 | Read ServiceLevel CRDs | `operator/src/controllers/servicelevel.rs`, `crds/servicelevel.rs` | `operator/tests/` |
+| FR21 | Display SLO dashboard | `ui/beeper_ui/routes/` (slo), `templates/slo/` | `ui/tests/` |
+| FR22 | Investigation list with cards | `ui/beeper_ui/routes/investigations.py`, `templates/investigations/list.html`, `templates/components/cards.html` | `ui/tests/` |
+| FR23 | Progressive SSE rendering | `ui/beeper_ui/routes/investigations.py`, `templates/investigations/detail.html`, `static/js/sse.js` | `ui/tests/` |
+| FR24 | Inline evidence display | `templates/components/investigation.html` (`investigation_step` macro) | `ui/tests/templates/` |
+| FR25 | Investigation conclusion block | `templates/components/investigation.html` (`conclusion_block` macro) | `ui/tests/templates/` |
+| FR26 | Related KB panel | `templates/components/kb.html`, `ui/beeper_ui/routes/investigations.py` | `ui/tests/` |
+| FR27 | Investigation summary header | `templates/components/investigation.html` (`summary_header` macro) | `ui/tests/templates/` |
+| FR28 | KB entry list with search | `ui/beeper_ui/routes/knowledge.py`, `templates/knowledge/index.html` | `ui/tests/` |
+| FR29 | KB entry detail + history | `templates/knowledge/entry.html`, `history.html` | `ui/tests/` |
+| FR30 | KB entry edit | `templates/knowledge/edit.html` | `ui/tests/` |
+| FR31 | KB entry import | `templates/knowledge/import.html` | `ui/tests/` |
+| FR32 | System health overview | `ui/beeper_ui/routes/health.py`, `templates/health/status.html` | `ui/tests/` |
+| FR33 | Detection stats diagnostic dashboard | `templates/health/_status_content.html`, `templates/components/diagnostic.html` | `ui/tests/` |
+| FR34 | Source connectivity status | `templates/sources/list.html` | `ui/tests/` |
+| FR35 | LLM spending display | `templates/spending/spending.html` | `ui/tests/` |
+| FR36 | Demo deploy via Makefile | `Makefile`, `demo/otel-demo-values.yaml` | Manual (AD-8) |
+| FR37 | Demo fault injection | `Makefile` (`demo-fault` target) | Manual (AD-8) |
+| FR38 | Demo recovery | `Makefile` (`demo-recover` target) | Manual (AD-8) |
+| FR39 | Demo 3/3 repeatability | `Makefile`, `demo/README.md` | Manual (AD-8) |
+| FR40 | Sidebar navigation | `templates/base.html`, `templates/components/sidebar.html` | `ui/tests/templates/` |
+| FR41 | Sidebar groups (Observe/Learn/Manage) | `templates/components/sidebar.html` | `ui/tests/templates/` |
+| FR42 | Sidebar collapse/expand | `templates/components/sidebar.html`, `static/js/sse.js` (sidebar toggle) | `ui/tests/` |
+| FR43 | Sidebar active state | `templates/components/sidebar.html` | `ui/tests/templates/` |
+| FR44 | Route-driven sidebar collapse | `templates/investigations/detail.html` (`{% block sidebar_state %}`) | `ui/tests/templates/` |
 
 ### Integration Points
 
 **Internal Communication:**
 
-| From | To | Mechanism | Data |
-|------|----|-----------|------|
-| Operator | Investigator | K8s Job creation (env vars) | Investigation context, trust level, SLO data |
-| Investigator | Qdrant | HTTP (qdrant-client) | Findings, KB entries, notification outbox |
-| Investigator | Git Provider | HTTPS (API) | Auto-PRs with evidence |
-| Investigator | Sandbox | K8s API (deploy + monitor) | Fix deployment, test execution |
-| UI | Qdrant | HTTP (qdrant-client) | Queries, notification outbox writes |
-| UI | Operator API | HTTP | SLO data, trust config, investigation control |
-| UI | Client (browser) | SSE | Live investigation updates (unidirectional) |
-| UI | Client (browser) | SocketIO | Collaboration events (bidirectional) |
-| Operator | Qdrant | HTTP (qdrant-client) | SLO snapshots (from Rust via reqwest) |
+| From | To | Protocol | Data Format | Direction |
+|---|---|---|---|---|
+| OTEL Collector | Operator :9090 | HTTP POST | Snappy+protobuf (metrics), JSON (logs) | Inbound |
+| Operator | K8s API | kube-rs client | CRD YAML | Bidirectional |
+| Operator | Investigator | K8s Job spawn | Job manifest YAML | Outbound (fire-and-forget) |
+| Investigator | K8s API | kubernetes Python client | PATCH CRD status subresource | Outbound |
+| Investigator | Prometheus | HTTP GET | PromQL → JSON response | Outbound |
+| Investigator | Loki | HTTP GET | LogQL → JSON response | Outbound |
+| Investigator | Qdrant | HTTP POST/GET | JSON | Bidirectional |
+| Investigator | LLM | HTTP POST (LiteLLM) | JSON (prompt → completion) | Outbound |
+| UI | Operator :8080 | HTTP GET + SSE | JSON (REST), text/event-stream (SSE) | Outbound |
+| UI | Qdrant | HTTP GET | JSON (KB reads) | Outbound |
+| Browser | UI :5000 | HTTP + SSE | HTML (pages), HTML fragments (HTMX), text/event-stream (SSE) | Bidirectional |
 
 **External Integrations:**
 
-| Integration | Component | Protocol | Purpose |
-|-------------|-----------|----------|---------|
-| Prometheus | Operator (ingestion + query) | HTTP (remote write + PromQL) | Metric ingestion + SLO calculation |
-| Loki | Operator (ingestion + query) | HTTP (push + LogQL) | Log ingestion + anomaly detection |
-| Claude / LLM | Investigator (via LiteLLM) | HTTP | Investigation reasoning, fix generation |
-| Slack | UI (notifications) | HTTPS (Slack API) | Rich investigation notifications |
-| PagerDuty | UI (notifications) | HTTPS (PD API) | Incident lifecycle management |
-| GitHub/GitLab | Investigator (remediation) | HTTPS (Git API) | Auto-PR creation |
-| SMTP | UI (notifications) | SMTP | Email digests + alerts |
+| Service | Component | Protocol | Configuration |
+|---|---|---|---|
+| LLM Provider (Anthropic) | Investigator | HTTPS via LiteLLM | K8s Secret → env var `ANTHROPIC_API_KEY` |
+| OTEL Astronomy Shop | Demo workload | N/A (just runs) | `demo/otel-demo-values.yaml` |
+| Container Registry (ghcr.io) | CI/CD | Docker push | GitHub Actions secrets |
 
-**Data Flow (v0.2.0 Extended):**
+**Data Flow (end-to-end investigation):**
+
 ```
-Prometheus/Loki → Operator (detect + SLO score) → K8s Job (investigate + remediate)
-                         ↓                                    ↓
-                   SLO snapshots                        Claude API (reason + fix)
-                   (Qdrant)                                   ↓
-                                                        Qdrant (store findings)
-                                                              ↓
-                                        ┌─────────────────────┼──────────────────┐
-                                        ↓                     ↓                  ↓
-                                 Notification Outbox    UI (display)       Git Provider
-                                 (Qdrant)                    ↓             (auto-PR)
-                                        ↓              SocketIO + SSE
-                                 Slack / PD / Email    (live collaboration)
+OTEL Collector
+  │ POST /api/v1/write (protobuf)
+  │ POST /loki/api/v1/push (JSON)
+  ▼
+Operator Ingestion (:9090)
+  │ buffers → detection engine
+  ▼
+EWMA Detector
+  │ threshold crossed → create Investigation CRD
+  ▼
+K8s API (CRD created)
+  │ operator watches → spawns Job
+  ▼
+Investigator Job
+  │ queries Prometheus, Loki, Qdrant KB
+  │ sends signals to LLM
+  │ PATCHes Investigation CRD status (via K8s API)
+  │ writes results to Qdrant investigations collection
+  ▼
+Operator (watches CRD status change)
+  │ emits SSE event to connected UI clients
+  ▼
+UI (receives SSE)
+  │ fetches investigation detail from operator API
+  │ operator API reads from Qdrant + CRD
+  │ renders investigation steps progressively
+  ▼
+Browser (user sees investigation)
 ```
 
-### Development Workflow
+### Development Workflow Integration
 
-**Local Development:**
-```bash
-# Start local stack
-docker-compose up -d  # Qdrant + demo app services
+**Development Commands (Makefile):**
 
-# Operator (Rust)
-cd operator && cargo run
-
-# Investigator (Python) - run manually for testing
-cd investigator && poetry run python -m beeper_investigator.main
-
-# UI (Flask) with SocketIO support
-cd ui && poetry run flask run --reload
-
-# Tailwind CSS (watch mode)
-./scripts/build-tailwind.sh --watch
-
-# Demo app (optional — for full lifecycle testing)
-cd demo && poetry run python -m demo_app
-```
+| Target | Purpose | Changed? |
+|---|---|---|
+| `make build` | Build all Docker images | Existing |
+| `make test` | Run all unit tests (cargo + pytest) | Existing |
+| `make deploy` | Deploy to kind cluster | Existing |
+| `make demo-deploy` | Deploy OTEL demo | Existing (MODIFY config) |
+| `make demo-fault FAULT=X` | Inject named fault | Existing |
+| `make demo-recover` | Recover from fault | Existing |
+| `make demo-ui` | Port-forward UI + operator + demo | Existing |
+| `make tailwind-watch` | **NEW** (AD-7) — Tailwind CLI watch mode for development |
+| `make tailwind-build` | **NEW** (AD-7) — Tailwind CSS production minified build |
+| `make test-pipeline` | **NEW** (AD-8) — Run all 5 checkpoint verifications sequentially. Requires running kind cluster with OTEL demo deployed. Outputs pass/fail per checkpoint: (1) ingestion stats > 0, (2) investigation CRD exists, (3) investigator logs show query results, (4) investigation findings reference specific services, (5) ServiceLevel CRDs processed. Fails on first checkpoint failure with diagnostic output. |
 
 **Build Process:**
-```bash
-# All containers (includes Tailwind build in UI Dockerfile)
-docker build -t beeper-operator:dev ./operator
-docker build -t beeper-investigator:dev ./investigator
-docker build -t beeper-ui:dev ./ui           # Tailwind CLI runs in build stage
-docker build -t beeper-demo:dev ./demo
 
-# Helm install (local K8s)
-helm install beeper ./helm/beeper -f helm/beeper/values-dev.yaml
+| Component | Build Command | Output |
+|---|---|---|
+| Operator | `docker build -f operator/Dockerfile .` | `ghcr.io/ethompsy/beeper-operator:latest` |
+| Investigator | `docker build -f investigator/Dockerfile .` | `ghcr.io/ethompsy/beeper-investigator:latest` |
+| UI | `docker build -f ui/Dockerfile .` (includes Tailwind build stage) | `ghcr.io/ethompsy/beeper-ui:latest` |
+| Helm | `helm package helm/beeper` | `beeper-0.1.0.tgz` |
 
-# Run demo scenario
-cd demo && poetry run pytest tests/test_scenarios.py -k investor_demo
-```
+---
 
-**Test Execution:**
-```bash
-# Full suite (1,032 existing + new tests)
-./scripts/local-testing.sh
-
-# By component
-cd operator && cargo test                    # Rust tests (162 existing + new SLO/notification)
-cd investigator && poetry run pytest         # Python tests (375 existing + remediation/scrubber)
-cd ui && poetry run pytest                   # Python tests (495 existing + auth/ws/notif/slo)
-cd demo && poetry run pytest                 # Demo scenario tests
-```
-
-## Architecture Validation
+## Architecture Validation Results
 
 ### Coherence Validation
 
-**Decision Compatibility:**
+**Decision Compatibility — PASS (7 checks):**
 
 | Decision Pair | Compatibility | Notes |
-|---------------|---------------|-------|
-| Rust Operator + Python Investigator | ✅ | K8s Job isolation, no tight coupling (unchanged) |
-| Qdrant (all 8 collections) + no SQL DB | ✅ | Payload-only collections cover SLO/notification/trust without adding a new datastore |
-| Flask-SocketIO + HTMX/SSE | ✅ | Two-channel architecture: SocketIO for bidirectional collaboration, SSE for unidirectional updates. No conflict — cleanly separated by concern |
-| Flask + @require_role decorator | ✅ | ~200 line permission model, no framework change needed |
-| Tailwind CLI + existing CSS | ✅ | Standalone binary, no Node.js. `@apply` escape hatch for incremental migration |
-| SLO engine in operator + Qdrant snapshots | ✅ | Rust operator already has Prometheus metric access; snapshots are payload-only Qdrant writes |
-| Durable notification outbox (Qdrant) + channel implementations (UI) | ✅ | Outbox uses existing Qdrant infrastructure; background worker runs in Flask process |
-| Auto-remediation (investigator) + Repository CRD (operator) | ✅ | CRD provides config; investigator reads via K8s API (existing pattern from Investigation CRD) |
-| Trust gating (investigator) + trust config (Qdrant) | ✅ | Investigator already reads Qdrant; trust config is a simple payload lookup |
-| Demo app (demo/) + Helm deployment | ✅ | Conditional Helm template; demo has own Dockerfile in monorepo pattern |
-| Sandbox namespace + NetworkPolicy | ✅ | Standard K8s isolation pattern; no custom networking required |
+|---|---|---|
+| AD-1 (OTEL protobuf) ↔ AD-8 (integration test) | Compatible | Integration test checkpoint 1 validates ingestion that AD-1 fixes |
+| AD-2 (detection stats) ↔ AD-4 (SSE reconnection) | Compatible | Stats API is REST-only, SSE carries investigation events — no overlap |
+| AD-3 (layout shell) ↔ AD-7 (Tailwind) | Compatible | Layout shell uses Jinja2 blocks; Tailwind provides utility classes. AD-7 build must complete before AD-3 templates reference Tailwind classes |
+| AD-4 (SSE reconnection) ↔ AD-5 (KB panel query) | Compatible | SSE carries investigation events; KB panel uses REST query. Independent data paths |
+| AD-5 (KB panel query) ↔ AD-6 (sidebar state) | Compatible | KB panel is page content; sidebar is navigation. No interaction |
+| AD-6 (sidebar state) ↔ AD-3 (layout shell) | Compatible | Sidebar state is a Jinja2 block within the layout shell. AD-3 enables AD-6 |
+| AD-7 (Tailwind) ↔ AD-1 (OTEL protobuf) | Independent | Different components (UI vs Operator), zero coupling |
 
-**No Incompatibilities Found.** All v0.2.0 additions follow existing architectural patterns (CRD-based config, Qdrant storage, Python service layer, Helm deployment).
+**Merge Conflict Hotspot — FLAGGED:**
 
-**Pattern Consistency:**
+`operator/src/api.rs` is a monolithic file touched by 5+ FRs (FR2, FR4, FR9, FR33, FR34). Stories modifying this file must be sequenced within a single epic or explicitly coordinated to avoid merge conflicts. The sprint plan must not parallelize stories that both modify `api.rs`.
 
-| Pattern Area | Consistent? | Verification |
-|-------------|------------|-------------|
-| Naming conventions (snake_case everywhere) | ✅ | All new endpoints, Qdrant fields, CRD fields follow established convention |
-| API patterns (REST + versioned endpoints) | ✅ | All new endpoints under `/api/v1/` with RFC 7807 errors |
-| CRD patterns (CustomResource derive in Rust) | ✅ | 3 new CRDs follow Investigation/Source pattern exactly |
-| Test organization (tests/ directory per component) | ✅ | New test files mirror source structure |
-| Service layer pattern (services/ in UI) | ✅ | New slo_service, trust_service, search_service follow existing pattern |
-| Blueprint pattern (routes/ in UI) | ✅ | 8 new route files follow existing Blueprint registration pattern |
+**Pattern Consistency — PASS:**
 
-**Structure Alignment:**
+All 14 enforcement rules are internally consistent. No rule contradicts another. Rule 14 (never use HTMX for SSE) reinforces Rule 8 (SSE event naming) — both address the same subsystem with complementary constraints.
 
-| Check | Status |
-|-------|--------|
-| Project structure supports all decisions | ✅ Every decision maps to specific files/directories |
-| Component boundaries clear | ✅ Operator (Rust), Investigator (Python), UI (Flask), Demo (Python) — each independently buildable |
-| Integration points structured | ✅ All boundary crossings documented in API/Data Boundaries tables |
-| New subsystems fit existing monorepo pattern | ✅ `slo/`, `notifications/`, `remediation/` follow existing `detection/`, `ingestion/`, `steps/` patterns |
+**Structure Alignment — PASS:**
+
+Every NEW file in the project structure maps to at least one FR and one AD. Every MODIFY annotation references specific FRs driving the change. No orphan files.
+
+### NFR Constraint Additions
+
+Two new measurable constraints identified during validation and added to the architecture:
+
+| NFR | Constraint | Source |
+|---|---|---|
+| NFR-P2 (UI responsiveness) | SSE `retry` field must be set to ≤ 3000ms in operator's SSE endpoint response headers | AD-4 SSE reconnection contract |
+| NFR-P3 (UI transitions) | Sidebar collapse/expand transition must use exactly `width 200ms ease-in-out` | AD-6 + UX spec Section 7.3 |
 
 ### Requirements Coverage
 
-**Functional Requirements: 63/63 covered**
+**Functional Requirements: 44/44 (100%)**
 
-| FR Group | Count | Coverage | Primary Location |
-|----------|-------|----------|-----------------|
-| SLO & Customer Impact (FR1-7) | 7 | ✅ 100% | `operator/src/slo/`, `ui/routes/slo.py` |
-| Notification & Integration (FR8-15) | 8 | ✅ 100% | `operator/src/notifications/`, `ui/notifications/` |
-| Trust & Autonomy (FR16-22) | 7 | ✅ 100% | `ui/routes/trust.py`, `investigator/steps/` |
-| Auto-Remediation (FR23-31) | 9 | ✅ 100% | `investigator/remediation/`, `operator/src/crds/repository.rs` |
-| Collaborative Investigation (FR32-37) | 6 | ✅ 100% | `ui/websocket/`, `ui/routes/handoff.py` |
-| Knowledge Base Enhancement (FR38-42) | 5 | ✅ 100% | `investigator/kb/`, `ui/routes/knowledge.py` |
-| Signal & Observability (FR43-46) | 4 | ✅ 100% | `investigator/correlation/`, `operator/src/ingestion/` |
-| Developer Experience (FR47-50) | 4 | ✅ 100% | `ui/static/js/command-palette.js`, `ui/routes/remediation.py` |
-| Analytics & Reporting (FR51-53) | 3 | ✅ 100% | `ui/routes/analytics.py` |
-| Demo Application (FR54-57) | 4 | ✅ 100% | `demo/` |
-| Platform & Security (FR58-63) | 6 | ✅ 100% | `ui/auth/`, `investigator/llm/scrubber.py`, `helm/` |
+| FR Range | Category | Coverage | Key Architectural Mapping |
+|---|---|---|---|
+| FR1-4 | Telemetry Ingestion | 4/4 | AD-1 → `operator/src/ingestion/` |
+| FR5-9 | Anomaly Detection | 5/5 | AD-2 → `operator/src/detection/`, `operator/src/api.rs` |
+| FR10-13 | Investigation Lifecycle | 4/4 | Existing CRD machinery, verify-only |
+| FR14-19 | Investigation Execution | 6/6 | `investigator/beeper_investigator/` fix-in-place |
+| FR20-21 | SLO Integration | 2/2 | `operator/src/slo/`, `operator/src/controllers/servicelevel.rs` |
+| FR22-27 | Investigation Display | 6/6 | AD-4, AD-5 → `ui/beeper_ui/templates/investigations/` |
+| FR28-31 | Knowledge Base | 4/4 | Existing KB CRUD, Related KB panel (AD-5) |
+| FR32-35 | System Health | 4/4 | AD-2 → `operator/src/api.rs`, `ui/beeper_ui/templates/diagnostics/` |
+| FR36-39 | Demo Environment | 4/4 | AD-8 → `Makefile`, `demo/`, `helm/` |
+| FR40-44 | Navigation & Layout | 5/5 | AD-3, AD-6, AD-7 → `ui/beeper_ui/templates/components/`, `base.html` |
 
-**Non-Functional Requirements: 22/22 covered**
+**Non-Functional Requirements: 17/17 (100%) + 2 new constraints**
 
-| NFR | Target | Architectural Support |
-|-----|--------|----------------------|
-| NFR1: Anomaly-to-investigation < 30s | ✅ | Async Rust operator + tokio; SLO scoring adds < 1ms overhead |
-| NFR2: UI response < 2s | ✅ | Flask + HTMX partials; Qdrant sub-second queries |
-| NFR3: LLM screening < 10s | ✅ | Haiku tier for fast triage (existing, unchanged) |
-| NFR4: LLM deep RCA < 30s/step | ✅ | Opus tier for deep reasoning (existing, unchanged) |
-| NFR5: WebSocket delivery < 500ms | ✅ | Flask-SocketIO rooms with in-process event loop |
-| NFR6: SLO burn rate < 5s refresh | ✅ | Rust operator calculates inline with metric ingestion |
-| NFR7: Demo lifecycle < 5 min | ✅ | Scripted scenarios with pytest harness; fault → fix pipeline |
-| NFR8: Least-privilege RBAC | ✅ | K8s roles per component; 2-tier admin/user in UI |
-| NFR9: Scoped repo tokens | ✅ | Repository CRD stores per-repo credentials_secret |
-| NFR10: K8s Secrets encryption | ✅ | All credentials in K8s Secrets (existing pattern) |
-| NFR11: PII scrubbing | ✅ | `scrubber.py` pre-LLM filter with regex + tagged placeholders |
-| NFR12: Admin-only trust config | ✅ | `@require_role("admin")` on all trust/confidence endpoints |
-| NFR13: Sandbox isolation | ✅ | NetworkPolicy-isolated namespace; deny-all except Qdrant + K8s API |
-| NFR14: Non-SPOF | ✅ | Helm design — Beeper failure doesn't affect existing alerting |
-| NFR15: LLM degradation handling | ✅ | Queue + escalate within 60s; notification outbox ensures human awareness |
-| NFR16: Action rollback < 60s | ✅ | `verifier.py` monitors post-fix metrics; operator can revert investigation state |
-| NFR17: Zero data loss on restart | ✅ | Qdrant persistent volumes; durable outbox pattern |
-| NFR18: 10 consecutive demo runs | ✅ | `demo/tests/test_reliability.py` — pytest harness with scripted scenarios |
-| NFR19: 50+ concurrent investigations | ✅ | Async Rust operator + K8s Job isolation (existing, validated at scale) |
-| NFR20: 10K+ KB entries < 2s search | ✅ | Qdrant HNSW index (existing, validated) |
-| NFR21: 100+ ServiceLevel CRDs | ✅ | Operator controller pattern handles CRD volume natively |
-| NFR22: 1000+ notifications/hour | ✅ | Durable outbox with background worker; Qdrant handles write volume |
+All 17 NFRs from PRD mapped to architectural decisions or existing infrastructure. Two additional measurable constraints added during validation (see NFR Constraint Additions above).
+
+### User Journey Validation
+
+**5/5 User Journeys — PASS**
+
+**UJ1: First-Time Exploration**
+1. User opens Beeper UI → FR40 (responsive layout), AD-3 (layout shell), AD-7 (Tailwind)
+2. Sidebar shows navigation → FR41-43 (sidebar sections), AD-6 (sidebar state)
+3. Clicks "Diagnostics" → FR32-34 (system health), AD-2 (detection stats)
+4. Sees detection stats with EWMA warmup → FR9 (warmup stats), AD-2 (stats API)
+5. Returns to dashboard → FR40 (layout shell), existing dashboard route
+
+**UJ2: Live Investigation Monitoring**
+1. Anomaly triggers investigation → FR5-8 (detection), FR10-11 (lifecycle)
+2. SSE notification arrives → FR22 (SSE streaming), AD-4 (reconnection contract)
+3. User clicks investigation → FR23-25 (progressive rendering, inline evidence)
+4. Steps render progressively → FR23 (step rendering), AD-4 (REST backfill on reconnect)
+5. Related KB entries shown → FR26 (KB panel), AD-5 (query pattern)
+
+**UJ3: Knowledge Base Research**
+1. User navigates to KB → FR41 (sidebar), AD-6 (sidebar state)
+2. Views KB entries → FR28-29 (KB listing, detail)
+3. Edits an entry → FR30 (KB editing), existing Qdrant CRUD
+4. Views entry versions → FR31 (KB versioning), `knowledge_versions` collection
+
+**UJ4: Demo Deployment & Fault Injection**
+1. Runs `make deploy` → FR36 (one-command deploy)
+2. Runs `make demo-deploy` → FR37 (OTEL demo), AD-1 (OTEL compatibility)
+3. Runs `make demo-fault FAULT=high-cpu` → FR38 (fault injection)
+4. Watches investigation trigger → UJ2 flow above
+5. Runs `make demo-recover` → FR39 (recovery)
+
+**UJ5: Pipeline Verification**
+1. Runs `make test-pipeline` → FR36-39 (demo), AD-8 (integration test)
+2. Checkpoint 1: ingestion stats > 0 → FR1-2 (telemetry), AD-1
+3. Checkpoint 2: Investigation CRD exists → FR10-11 (lifecycle)
+4. Checkpoint 3: Investigator logs show queries → FR14-16 (execution)
+5. Checkpoint 4: Findings reference services → FR17-19 (RCA)
+6. Checkpoint 5: ServiceLevel CRDs processed → FR20-21 (SLO)
 
 ### Implementation Readiness
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Technology stack fully specified | ✅ | All libraries, versions, and tools documented |
-| All CRD schemas defined | ✅ | ServiceLevel, NotificationChannel, Repository — full YAML examples |
-| API endpoints documented | ✅ | All new endpoints with methods, paths, and semantics |
-| WebSocket events specified | ✅ | Client→Server and Server→Client events with payloads |
-| Qdrant collections defined | ✅ | 8 collections with type (vector/payload-only) and purpose |
-| Project structure complete | ✅ | Full annotated directory tree with FR mapping |
-| Permission model defined | ✅ | Decorator + middleware pattern with admin/user operations listed |
-| Integration boundaries mapped | ✅ | All API, component, and data boundaries in tables |
-| Pattern examples provided | ✅ | Permission check, notification delivery, trust gate, state machines |
-| Build/deploy process outlined | ✅ | Docker, Helm, Tailwind, local dev, test execution |
+**Decisions — PASS:**
+All 8 architectural decisions (AD-1 through AD-8) have: rationale, alternatives considered, implementation guidance, and dependency mapping. No decision references undefined concepts.
+
+**Structure — PASS:**
+Complete file tree with NEW/MODIFY annotations. Every new file maps to a driving FR and AD. Directory creation paths verified against actual codebase structure.
+
+**Patterns — PASS:**
+14 enforcement rules cover naming, structure, format, communication, and process. Canonical component macro list verified (8 files, 12 macros). Test expectations defined per component type.
 
 ### Gap Analysis
 
 **Critical Gaps: 0**
 
-**Moderate Gaps: 0**
+**Important Gaps (acknowledged, not blocking): 2**
 
-**Informational Notes (resolve during epic breakdown, not architecture blockers):**
+1. **Qdrant version discrepancy**: Local dev uses v1.15.0 (Docker Compose), Helm deploys v1.12.0. Unlikely to cause issues for the collections we use, but should be aligned when convenient.
+2. **`api.rs` monolithic structure**: Not blocking, but the merge conflict risk means sprint planning must sequence stories touching this file carefully.
 
-1. **Qdrant index configuration for new collections** — `slo_snapshots` and `notification_outbox` are payload-only (no vector index needed), but exact field indexes for time-range queries will be defined during implementation
-2. **Sandbox namespace lifecycle** — Creation/cleanup of sandbox namespace and deployed test fixtures will be detailed in auto-remediation epic stories
-3. **Demo app service mesh** — Exact microservice count (3-4) and inter-service communication patterns will be refined during demo epic design
-4. **Tailwind migration scope per wave** — Which templates get Tailwind classes in each wave will be decided by UX implementation stories
-5. **Notification worker concurrency** — Single-threaded background worker in Flask process is sufficient for v0.2.0 targets (1,000/hour = ~17/min); scaling strategy deferred to post-MVP
+**Nice-to-Have (deferred): 3**
 
-### Architecture Completeness Checklist
+1. Integration test for SSE reconnection (would require browser automation — out of scope for AD-8's checkpoint approach)
+2. Tailwind dark mode variant tokens (current palette is dark-only; if light mode ever needed, tokens would need HSL variants)
+3. Load testing for SSE connection limits (NFR-P1 says "support 10 concurrent users" — current SSE implementation likely handles this, but no load test exists)
 
-**Requirements Analysis**
-- [x] Project context thoroughly analyzed (63 FRs, 22 NFRs, 6 user journeys)
-- [x] Scale and complexity assessed (brownfield, v0.1.0 with 1,032 tests)
-- [x] Technical constraints identified (no SQL DB, no Node.js, K8s-only deployment)
-- [x] Cross-cutting concerns mapped (permissions, PII scrubbing, trust gating)
+### Completeness Checklist
 
-**Architectural Decisions**
-- [x] Critical decisions documented with versions and rationale
-- [x] Technology stack fully specified (Rust + Python + Flask + Qdrant + 3 new CRDs)
-- [x] Integration patterns defined (REST, SSE, SocketIO, K8s Jobs, durable outbox)
-- [x] Performance considerations addressed (all 7 performance NFRs)
-- [x] Security considerations addressed (all 6 security NFRs)
+- [x] All FRs mapped to files and architectural decisions
+- [x] All NFRs mapped to decisions or existing infrastructure
+- [x] All user journeys validated against FR/AD mapping
+- [x] All architectural decisions have rationale and alternatives
+- [x] Implementation patterns cover naming, structure, format, communication, process
+- [x] Enforcement rules are internally consistent
+- [x] Project structure has NEW/MODIFY annotations with driving FRs
+- [x] Dependency graph between decisions is documented
+- [x] Merge conflict hotspots identified
+- [x] "Do Not Decide" list established (technology changes, new CRDs, auth, multi-tenancy, horizontal scaling)
+- [x] Deferred decisions documented with trigger conditions
 
-**Implementation Patterns**
-- [x] Naming conventions established (snake_case everywhere, per-language rules)
-- [x] Structure patterns defined (monorepo, component directories, test organization)
-- [x] Communication patterns specified (SSE, SocketIO, REST, K8s events)
-- [x] Process patterns documented (logging, error handling, state machines)
-- [x] Enforcement guidelines with anti-patterns documented
+### Readiness Assessment
 
-**Project Structure**
-- [x] Complete directory structure defined with file-level detail
-- [x] Component boundaries established (5 independently buildable sub-projects)
-- [x] Integration points mapped (14 API boundaries, 9 internal communication paths)
-- [x] All 63 FRs mapped to specific files/directories
+**Verdict: READY FOR IMPLEMENTATION**
 
-### Architecture Readiness Assessment
+**Confidence: High for static architecture; two runtime verification points remain:**
+1. OTEL protobuf schema compatibility (AD-1) — can only be fully verified when operator receives real OTEL Collector traffic
+2. SSE reconnection with `Last-Event-ID` backfill (AD-4) — browser behavior with `retry` field must be verified in running system
 
-**Overall Status:** READY FOR IMPLEMENTATION
+These are implementation verification items, not architectural gaps. The architecture provides clear guidance for both; runtime testing will confirm the specific behavior.
 
-**Confidence Level: High** — Brownfield project with validated v0.1.0 foundation. All v0.2.0 additions follow established patterns. No new datastores, no framework migrations, no breaking changes.
+### Implementation Handoff
 
-**Key Strengths:**
-- Every v0.2.0 feature builds on validated v0.1.0 patterns — no architectural rewrites
-- Party Mode validated Flask-SocketIO, Tailwind CLI, durable outbox, and Django rejection with multi-perspective analysis
-- All 63 FRs mapped to specific files with explicit directory locations
-- Permission model, trust gating, and notification delivery patterns have code-level examples
-- 4-wave delivery structure aligns with architectural dependency chain
+**Recommended Implementation Sequence:**
 
-**Areas for Future Enhancement (post v0.2.0):**
-- Multi-cluster support (requires NATS or similar message bus)
-- Fine-grained RBAC beyond admin/user (evaluate if community needs it)
-- Graph DB for KB relationships (evaluate Qdrant payload links vs. dedicated graph)
-- SaaS multi-tenancy architecture
-- Dedicated notification microservice (if outbox throughput exceeds single-process capacity)
+| Phase | Architectural Decisions | Rationale |
+|---|---|---|
+| **Phase 0 (can start immediately)** | AD-7 (Tailwind build pipeline) | Zero dependencies on other ADs. Sets up CSS tooling needed by all UI work. |
+| **Phase 1** | AD-1 (OTEL protobuf), AD-8 (integration testing) | Fix ingestion pipeline first — everything downstream depends on data flowing in. AD-8 validates AD-1. |
+| **Phase 2** | AD-2 (detection stats), AD-4 (SSE reconnection) | Extend operator APIs. AD-2 provides stats for diagnostic UI. AD-4 provides reconnection contract for investigation UI. |
+| **Phase 3** | AD-3 (layout shell), AD-6 (sidebar state) | UI structure. Layout shell migration enables all new UI pages. Sidebar state depends on layout shell. |
+| **Phase 4** | AD-5 (KB panel query) | Last UI feature, depends on investigation display (AD-4) and layout (AD-3) being in place. |
 
-## Implementation Handoff
-
-### Wave-Based Delivery Structure
-
-v0.2.0 uses a 4-wave delivery model aligned with architectural dependencies. Each wave builds on the previous.
-
-**Wave 1: SLO + Notifications (Foundation for everything)**
-- Permission model (`ui/auth/`) — foundation for all new endpoints
-- 3 new CRD schemas (ServiceLevel, NotificationChannel, Repository)
-- SLO engine in operator (`operator/src/slo/`)
-- 2 new Qdrant collections (`slo_snapshots`, `notification_outbox`)
-- Notification outbox + channel implementations (`ui/notifications/`)
-- SLO dashboard (`ui/routes/slo.py`)
-- Notification config + audit views (`ui/routes/notifications.py`)
-- **Covers:** FR1-15, FR58-60, NFR1, NFR5-6, NFR8-12, NFR22
-
-**Wave 2: Trust + Auto-Remediation (Intelligence layer)**
-- Trust system storage + confidence gating
-- Trust management UI (`ui/routes/trust.py`)
-- Remediation pipeline (`investigator/remediation/`)
-- Repository CRD controller
-- Sandbox namespace + NetworkPolicy
-- PII scrubber (`investigator/llm/scrubber.py`)
-- **Covers:** FR16-31, NFR9, NFR11, NFR13, NFR16
-
-**Wave 3: Collaboration + KB Enhancement (User-facing evolution)**
-- Flask-SocketIO integration (`ui/websocket/`)
-- Real-time investigation interaction
-- Shift handoff summaries
-- KB bi-directional links + service views
-- Signal correlation extensions (deploy correlation, change events)
-- **Covers:** FR32-46, NFR5
-
-**Wave 4: DX + Analytics + Demo (Polish + proof)**
-- Command palette (`ui/static/js/command-palette.js`)
-- Analytics + investor reports (`ui/routes/analytics.py`)
-- Demo application (`demo/`)
-- Tailwind CSS migration (incremental, parallel)
-- **Covers:** FR47-57, NFR7, NFR18
-
-### Critical Path
-
-```
-Permission model → New CRDs → SLO engine → Notification outbox
-                                    ↓                ↓
-                              Trust system → Auto-remediation → Sandbox
-                                    ↓
-                              WebSocket → Collaboration features
-                                                     ↓
-                              Command palette → Analytics → Demo app
-```
-
-**Dependency chain highlights:**
-- Permission model must exist before ANY new API endpoint
-- SLO engine feeds notification urgency AND investigation priority
-- Trust system gates auto-remediation behavior
-- WebSocket infrastructure needed before collaboration features
-- Repository CRD must exist before auto-PR generation
-- Demo app is last — it validates the entire stack
-
-### Architecture Spikes (resolve early in each wave)
-
-| Spike | Wave | Risk | Resolution Approach |
-|-------|------|------|-------------------|
-| Flask-SocketIO + gunicorn compatibility | 3 | Medium | Spike before WebSocket stories — test with eventlet worker |
-| Qdrant payload-only collection performance at scale | 1 | Low | Benchmark `notification_outbox` write throughput early |
-| Tailwind CLI + Jinja2 template scanning | 4 | Low | Configure JIT mode, verify class detection in `.html` files |
-| Git provider API auth (GitHub/GitLab) | 2 | Medium | Spike with test repo before auto-PR stories |
-| Sandbox NetworkPolicy + investigator K8s API access | 2 | Medium | Validate investigator can deploy to sandbox namespace |
-
-### Architecture as Single Source of Truth
-
-This document serves as the definitive reference for:
-- Technology choices (no re-debates — Flask stays, no Django)
-- Naming conventions (enforced via linting — snake_case everywhere)
-- API patterns (validated via OpenAPI — all endpoints under `/api/v1/`)
-- Project structure (followed by all agents — FR-to-file mapping is authoritative)
-- CRD schemas (3 new CRDs with full YAML examples)
-- Communication patterns (SSE for unidirectional, SocketIO for bidirectional)
-- Permission boundaries (admin vs. user operations explicitly listed)
-
-Any deviation should be documented as an ADR (Architecture Decision Record) with explicit rationale.
-
+**Parallelization Note:** AD-7 (Tailwind) can start immediately in parallel with Phase 1. Workstream 1 (Rust/operator: AD-1, AD-2, AD-8) and Workstream 2 (UI: AD-3, AD-6, AD-7) can proceed in parallel once AD-7 is complete, with AD-4 as the cross-workstream bridge point.

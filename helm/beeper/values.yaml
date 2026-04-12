@@ -128,7 +128,7 @@ llm:
   # endpoint: ""
   # Cost management (future implementation in Story 3.9)
   maxTokensPerInvestigation: 100000
-  maxConcurrentInvestigations: 5
+  maxConcurrentInvestigations: 2
 
 # Observability sources
 sources:

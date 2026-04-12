@@ -12,8 +12,7 @@ use axum::Router;
 use kube::Client;
 use tokio::signal;
 use tokio::sync::watch;
-use tracing::{error, info, warn, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{error, info, warn};
 
 /// Grace period for in-flight operations to complete during shutdown
 const GRACEFUL_SHUTDOWN_TIMEOUT_SECS: u64 = 10;
@@ -62,10 +61,13 @@ fn get_config() -> (u16, u16, usize) {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing with structured JSON logging
-    FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
+    // Initialize tracing with structured JSON logging (respects RUST_LOG env var)
+    tracing_subscriber::fmt()
         .json()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .init();
 
     info!("Beeper operator starting up...");
