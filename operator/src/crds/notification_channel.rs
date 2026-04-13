@@ -123,11 +123,14 @@ pub fn validate_spec(spec: &NotificationChannelSpec) -> Result<(), String> {
     match spec.channel_type {
         ChannelType::Slack => {
             if !spec.config.contains_key("channel") {
-                return Err(
-                    "spec.config.channel is required for slack channel type".to_string(),
-                );
+                return Err("spec.config.channel is required for slack channel type".to_string());
             }
-            if spec.config.get("channel").map(|v| v.is_empty()).unwrap_or(true) {
+            if spec
+                .config
+                .get("channel")
+                .map(|v| v.is_empty())
+                .unwrap_or(true)
+            {
                 return Err(
                     "spec.config.channel must not be empty for slack channel type".to_string(),
                 );
@@ -153,9 +156,7 @@ pub fn validate_spec(spec: &NotificationChannelSpec) -> Result<(), String> {
         }
         ChannelType::Email => {
             if !spec.config.contains_key("smtp_host") {
-                return Err(
-                    "spec.config.smtp_host is required for email channel type".to_string(),
-                );
+                return Err("spec.config.smtp_host is required for email channel type".to_string());
             }
             if spec
                 .config
@@ -168,9 +169,7 @@ pub fn validate_spec(spec: &NotificationChannelSpec) -> Result<(), String> {
                 );
             }
             if !spec.config.contains_key("recipients") {
-                return Err(
-                    "spec.config.recipients is required for email channel type".to_string(),
-                );
+                return Err("spec.config.recipients is required for email channel type".to_string());
             }
             if spec
                 .config
@@ -185,13 +184,11 @@ pub fn validate_spec(spec: &NotificationChannelSpec) -> Result<(), String> {
         }
         ChannelType::Webhook => {
             if !spec.config.contains_key("url") {
-                return Err(
-                    "spec.config.url is required for webhook channel type".to_string(),
-                );
+                return Err("spec.config.url is required for webhook channel type".to_string());
             }
             if spec.config.get("url").map(|v| v.is_empty()).unwrap_or(true) {
                 return Err(
-                    "spec.config.url must not be empty for webhook channel type".to_string(),
+                    "spec.config.url must not be empty for webhook channel type".to_string()
                 );
             }
         }
@@ -269,7 +266,10 @@ mod tests {
 
     fn sample_webhook_spec() -> NotificationChannelSpec {
         let mut config = HashMap::new();
-        config.insert("url".to_string(), "https://hooks.example.com/notify".to_string());
+        config.insert(
+            "url".to_string(),
+            "https://hooks.example.com/notify".to_string(),
+        );
 
         NotificationChannelSpec {
             channel_type: ChannelType::Webhook,
@@ -493,7 +493,9 @@ mod tests {
         spec.credentials_secret = "".to_string();
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("credentials_secret must not be empty"));
+        assert!(result
+            .unwrap_err()
+            .contains("credentials_secret must not be empty"));
     }
 
     #[test]
@@ -526,10 +528,13 @@ mod tests {
     #[test]
     fn test_validate_pagerduty_empty_routing_key() {
         let mut spec = sample_pagerduty_spec();
-        spec.config.insert("routing_key".to_string(), "".to_string());
+        spec.config
+            .insert("routing_key".to_string(), "".to_string());
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("routing_key must not be empty"));
+        assert!(result
+            .unwrap_err()
+            .contains("routing_key must not be empty"));
     }
 
     #[test]
@@ -589,7 +594,13 @@ mod tests {
     #[test]
     fn test_validate_quiet_hours_empty_start() {
         let mut spec = sample_slack_spec();
-        spec.routing.as_mut().unwrap().quiet_hours.as_mut().unwrap().start = "".to_string();
+        spec.routing
+            .as_mut()
+            .unwrap()
+            .quiet_hours
+            .as_mut()
+            .unwrap()
+            .start = "".to_string();
         let result = validate_spec(&spec);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("start must not be empty"));
@@ -598,7 +609,13 @@ mod tests {
     #[test]
     fn test_validate_quiet_hours_empty_end() {
         let mut spec = sample_slack_spec();
-        spec.routing.as_mut().unwrap().quiet_hours.as_mut().unwrap().end = "".to_string();
+        spec.routing
+            .as_mut()
+            .unwrap()
+            .quiet_hours
+            .as_mut()
+            .unwrap()
+            .end = "".to_string();
         let result = validate_spec(&spec);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("end must not be empty"));
@@ -607,7 +624,13 @@ mod tests {
     #[test]
     fn test_validate_quiet_hours_empty_timezone() {
         let mut spec = sample_slack_spec();
-        spec.routing.as_mut().unwrap().quiet_hours.as_mut().unwrap().timezone = "".to_string();
+        spec.routing
+            .as_mut()
+            .unwrap()
+            .quiet_hours
+            .as_mut()
+            .unwrap()
+            .timezone = "".to_string();
         let result = validate_spec(&spec);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("timezone must not be empty"));

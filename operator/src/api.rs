@@ -44,7 +44,6 @@ pub fn api_router(client: Arc<Client>, buffer: Arc<IngestionBuffer>) -> Router {
     api_router_with_detection(client, buffer, None, None)
 }
 
-
 /// Create the API router with optional LLM manager
 pub fn api_router_with_llm(
     client: Arc<Client>,
@@ -61,7 +60,15 @@ pub fn api_router_with_detection(
     llm_manager: Option<Arc<LlmManager>>,
     detection_stats: Option<Arc<DetectionStats>>,
 ) -> Router {
-    api_router_full(client, buffer, llm_manager, detection_stats, None, None, None)
+    api_router_full(
+        client,
+        buffer,
+        llm_manager,
+        detection_stats,
+        None,
+        None,
+        None,
+    )
 }
 
 /// Create the API router with all optional components including SLO cache
@@ -367,8 +374,10 @@ async fn list_investigations(
                 }
                 // Within same status, sort by impact_score descending (highest first, None last)
                 let impact_cmp = match (a.impact_score, b.impact_score) {
-                    (Some(a_score), Some(b_score)) => b_score.partial_cmp(&a_score).unwrap_or(std::cmp::Ordering::Equal),
-                    (Some(_), None) => std::cmp::Ordering::Less,    // a (Some) before b (None)
+                    (Some(a_score), Some(b_score)) => b_score
+                        .partial_cmp(&a_score)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                    (Some(_), None) => std::cmp::Ordering::Less, // a (Some) before b (None)
                     (None, Some(_)) => std::cmp::Ordering::Greater, // a (None) after b (Some)
                     (None, None) => std::cmp::Ordering::Equal,
                 };
@@ -515,10 +524,7 @@ async fn confirm_investigation(
                 .await
             {
                 Ok(_) => {
-                    let comment_msg = body
-                        .comment
-                        .as_deref()
-                        .unwrap_or("No comment provided");
+                    let comment_msg = body.comment.as_deref().unwrap_or("No comment provided");
                     debug!(
                         investigation_id = %id,
                         comment = %comment_msg,
@@ -687,7 +693,10 @@ async fn resolve_investigation(
             // Build patch based on outcome
             let message = match body.outcome.as_str() {
                 "resolved" => {
-                    let notes = body.resolution_notes.as_deref().unwrap_or("No details provided");
+                    let notes = body
+                        .resolution_notes
+                        .as_deref()
+                        .unwrap_or("No details provided");
                     format!("Investigation resolved: {}", notes)
                 }
                 "not_an_issue" => {
@@ -798,17 +807,12 @@ async fn verify_investigation(
 
     match investigations_api.get(&id).await {
         Ok(inv) => {
-            let current_workflow_state = inv
-                .status
-                .as_ref()
-                .and_then(|s| s.workflow_state.clone());
+            let current_workflow_state = inv.status.as_ref().and_then(|s| s.workflow_state.clone());
 
             // Validate transition: only Resolved → Verified is allowed
             match current_workflow_state {
                 Some(WorkflowState::Resolved) => {
-                    let now = chrono::Utc::now()
-                        .format("%Y-%m-%dT%H:%M:%SZ")
-                        .to_string();
+                    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
                     let patch = serde_json::json!({
                         "status": {
                             "workflow_state": "verified",
@@ -844,8 +848,9 @@ async fn verify_investigation(
                             (
                                 StatusCode::INTERNAL_SERVER_ERROR,
                                 Json(ProblemDetails {
-                                    error_type: "https://beeper.io/errors/investigation-verify-failed"
-                                        .to_string(),
+                                    error_type:
+                                        "https://beeper.io/errors/investigation-verify-failed"
+                                            .to_string(),
                                     title: "Failed to verify investigation".to_string(),
                                     status: 500,
                                     detail: format!("Could not update investigation status: {}", e),
@@ -1023,6 +1028,24 @@ async fn health_components(State(state): State<ApiState>) -> impl IntoResponse {
 
 // ----- Ingestion Stats API -----
 
+/// Per-source health response (FR4)
+#[derive(Debug, Serialize)]
+pub struct SourceHealthResponse {
+    pub bytes_received: u64,
+    pub parse_errors: u64,
+    pub last_received_ns: i64,
+}
+
+impl From<crate::ingestion::SourceHealthSnapshot> for SourceHealthResponse {
+    fn from(s: crate::ingestion::SourceHealthSnapshot) -> Self {
+        Self {
+            bytes_received: s.bytes_received,
+            parse_errors: s.parse_errors,
+            last_received_ns: s.last_received_ns,
+        }
+    }
+}
+
 /// Response for ingestion statistics
 #[derive(Debug, Serialize)]
 pub struct IngestionStatsResponse {
@@ -1030,21 +1053,43 @@ pub struct IngestionStatsResponse {
     pub buffered_count: u64,
     pub dropped_count: u64,
     pub is_full: bool,
+    pub metrics_received: u64,
+    pub logs_received: u64,
+    pub sources: std::collections::HashMap<String, SourceHealthResponse>,
 }
 
 /// Get ingestion buffer statistics
 async fn ingestion_stats(State(state): State<ApiState>) -> impl IntoResponse {
+    let mut sources = std::collections::HashMap::new();
+    sources.insert(
+        "prometheus".to_string(),
+        SourceHealthResponse::from(state.buffer.prometheus_health().snapshot()),
+    );
+    sources.insert(
+        "loki".to_string(),
+        SourceHealthResponse::from(state.buffer.loki_health().snapshot()),
+    );
+    sources.insert(
+        "otlp".to_string(),
+        SourceHealthResponse::from(state.buffer.otlp_health().snapshot()),
+    );
+
     let stats = IngestionStatsResponse {
         buffer_size: state.buffer.capacity(),
         buffered_count: state.buffer.buffered_count(),
         dropped_count: state.buffer.dropped_count(),
         is_full: state.buffer.is_full(),
+        metrics_received: state.buffer.metrics_received(),
+        logs_received: state.buffer.logs_received(),
+        sources,
     };
 
     debug!(
         buffer_size = stats.buffer_size,
         buffered = stats.buffered_count,
         dropped = stats.dropped_count,
+        metrics = stats.metrics_received,
+        logs = stats.logs_received,
         "Ingestion stats requested"
     );
 
@@ -1434,17 +1479,16 @@ async fn get_servicelevel_budget(
             let spec = sl.spec;
 
             // Get live SLO data
-            let (burn_rate, error_budget_remaining) =
-                if let Some(ref cache) = state.slo_cache {
-                    let guard = cache.read().await;
-                    if let Some(calc) = guard.get(&sl_name) {
-                        (calc.burn_rate, calc.error_budget_remaining)
-                    } else {
-                        (0.0, 1.0) // Defaults when no data
-                    }
+            let (burn_rate, error_budget_remaining) = if let Some(ref cache) = state.slo_cache {
+                let guard = cache.read().await;
+                if let Some(calc) = guard.get(&sl_name) {
+                    (calc.burn_rate, calc.error_budget_remaining)
                 } else {
-                    (0.0, 1.0)
-                };
+                    (0.0, 1.0) // Defaults when no data
+                }
+            } else {
+                (0.0, 1.0)
+            };
 
             let error_budget_total = 1.0 - spec.objective.target;
             let error_budget_consumed = 1.0 - error_budget_remaining;
@@ -1457,27 +1501,26 @@ async fn get_servicelevel_budget(
             );
 
             // Get budget policy state
-            let (is_frozen, triggered_policies) =
-                if let Some(ref bps) = state.budget_policy_state {
-                    let guard = bps.read().await;
-                    if let Some(status) = guard.get(&sl_name) {
-                        let events: Vec<BudgetPolicyEventResponse> = status
-                            .triggered_events
-                            .iter()
-                            .map(|e| BudgetPolicyEventResponse {
-                                threshold: e.threshold,
-                                action: e.action.clone(),
-                                triggered_at: e.triggered_at.clone(),
-                                consumption_at_trigger: e.current_consumption,
-                            })
-                            .collect();
-                        (status.is_frozen, events)
-                    } else {
-                        (false, vec![])
-                    }
+            let (is_frozen, triggered_policies) = if let Some(ref bps) = state.budget_policy_state {
+                let guard = bps.read().await;
+                if let Some(status) = guard.get(&sl_name) {
+                    let events: Vec<BudgetPolicyEventResponse> = status
+                        .triggered_events
+                        .iter()
+                        .map(|e| BudgetPolicyEventResponse {
+                            threshold: e.threshold,
+                            action: e.action.clone(),
+                            triggered_at: e.triggered_at.clone(),
+                            consumption_at_trigger: e.current_consumption,
+                        })
+                        .collect();
+                    (status.is_frozen, events)
                 } else {
                     (false, vec![])
-                };
+                }
+            } else {
+                (false, vec![])
+            };
 
             let response = ErrorBudgetResponse {
                 name: sl_name.clone(),
@@ -1554,13 +1597,10 @@ async fn list_notification_channels(
     State(state): State<ApiState>,
 ) -> Result<Json<Vec<NotificationChannelResponse>>, StatusCode> {
     let channels: Api<NotificationChannel> = Api::all((*state.client).clone());
-    let channel_list = channels
-        .list(&ListParams::default())
-        .await
-        .map_err(|e| {
-            warn!(error = %e, "Failed to list NotificationChannels");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let channel_list = channels.list(&ListParams::default()).await.map_err(|e| {
+        warn!(error = %e, "Failed to list NotificationChannels");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let responses: Vec<NotificationChannelResponse> = channel_list
         .items
@@ -1581,10 +1621,7 @@ async fn list_notification_channels(
                     NotificationChannelCondition::Error => "error".to_string(),
                 })
                 .unwrap_or_else(|| "unknown".to_string());
-            let last_validated = ch
-                .status
-                .as_ref()
-                .and_then(|s| s.last_validated.clone());
+            let last_validated = ch.status.as_ref().and_then(|s| s.last_validated.clone());
             let error = ch.status.as_ref().and_then(|s| s.error.clone());
 
             NotificationChannelResponse {
@@ -1721,11 +1758,17 @@ mod tests {
             buffered_count: 150,
             dropped_count: 0,
             is_full: false,
+            metrics_received: 100,
+            logs_received: 50,
+            sources: std::collections::HashMap::new(),
         };
 
         let json = serde_json::to_string(&stats).unwrap();
         assert!(json.contains("\"buffer_size\":10000"));
         assert!(json.contains("\"is_full\":false"));
+        assert!(json.contains("\"metrics_received\":100"));
+        assert!(json.contains("\"logs_received\":50"));
+        assert!(json.contains("\"sources\""));
     }
 
     #[test]
@@ -2118,7 +2161,9 @@ mod tests {
                 return order_cmp;
             }
             let impact_cmp = match (a.impact_score, b.impact_score) {
-                (Some(a_s), Some(b_s)) => b_s.partial_cmp(&a_s).unwrap_or(std::cmp::Ordering::Equal),
+                (Some(a_s), Some(b_s)) => {
+                    b_s.partial_cmp(&a_s).unwrap_or(std::cmp::Ordering::Equal)
+                }
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
                 (None, None) => std::cmp::Ordering::Equal,
@@ -2126,12 +2171,15 @@ mod tests {
             if impact_cmp != std::cmp::Ordering::Equal {
                 return impact_cmp;
             }
-            b.started_at.as_deref().unwrap_or("").cmp(a.started_at.as_deref().unwrap_or(""))
+            b.started_at
+                .as_deref()
+                .unwrap_or("")
+                .cmp(a.started_at.as_deref().unwrap_or(""))
         });
 
-        assert_eq!(investigations[0].id, "inv-high");  // Highest impact first
-        assert_eq!(investigations[1].id, "inv-low");    // Lower impact second
-        assert_eq!(investigations[2].id, "inv-none");   // No impact last
+        assert_eq!(investigations[0].id, "inv-high"); // Highest impact first
+        assert_eq!(investigations[1].id, "inv-low"); // Lower impact second
+        assert_eq!(investigations[2].id, "inv-none"); // No impact last
     }
 
     #[test]
@@ -2148,10 +2196,7 @@ mod tests {
             phase_to_status(&Some(InvestigationPhase::Completed)),
             "completed"
         );
-        assert_eq!(
-            phase_to_status(&Some(InvestigationPhase::Failed)),
-            "failed"
-        );
+        assert_eq!(phase_to_status(&Some(InvestigationPhase::Failed)), "failed");
         assert_eq!(phase_to_status(&None), "investigating");
     }
 
@@ -2353,7 +2398,9 @@ mod tests {
                 return order_cmp;
             }
             let impact_cmp = match (a.impact_score, b.impact_score) {
-                (Some(a_s), Some(b_s)) => b_s.partial_cmp(&a_s).unwrap_or(std::cmp::Ordering::Equal),
+                (Some(a_s), Some(b_s)) => {
+                    b_s.partial_cmp(&a_s).unwrap_or(std::cmp::Ordering::Equal)
+                }
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
                 (None, None) => std::cmp::Ordering::Equal,
@@ -2361,7 +2408,10 @@ mod tests {
             if impact_cmp != std::cmp::Ordering::Equal {
                 return impact_cmp;
             }
-            b.started_at.as_deref().unwrap_or("").cmp(a.started_at.as_deref().unwrap_or(""))
+            b.started_at
+                .as_deref()
+                .unwrap_or("")
+                .cmp(a.started_at.as_deref().unwrap_or(""))
         });
 
         // Later started_at should come first (descending)
@@ -2796,11 +2846,24 @@ mod integration_tests {
     async fn test_ingestion_stats_endpoint() {
         // Create a mock client - we can't easily create a real one in tests
         // So we test the response structure directly
+        let mut sources = std::collections::HashMap::new();
+        sources.insert(
+            "prometheus".to_string(),
+            SourceHealthResponse {
+                bytes_received: 1024,
+                parse_errors: 0,
+                last_received_ns: 1234567890,
+            },
+        );
+
         let stats = IngestionStatsResponse {
             buffer_size: 1000,
             buffered_count: 0,
             dropped_count: 0,
             is_full: false,
+            metrics_received: 42,
+            logs_received: 17,
+            sources,
         };
 
         let json = serde_json::to_string(&stats).unwrap();
@@ -2810,6 +2873,10 @@ mod integration_tests {
         assert_eq!(parsed["buffered_count"], 0);
         assert_eq!(parsed["dropped_count"], 0);
         assert_eq!(parsed["is_full"], false);
+        assert_eq!(parsed["metrics_received"], 42);
+        assert_eq!(parsed["logs_received"], 17);
+        assert_eq!(parsed["sources"]["prometheus"]["bytes_received"], 1024);
+        assert_eq!(parsed["sources"]["prometheus"]["parse_errors"], 0);
     }
 
     #[tokio::test]

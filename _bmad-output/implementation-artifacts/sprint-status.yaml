@@ -43,7 +43,7 @@ development_status:
   # Epic 1: Restore Data Pipeline — Telemetry Ingestion & Anomaly Detection
   epic-1: in-progress
   1-1-establish-test-baseline: done
-  1-2-fix-otel-collector-to-operator-ingestion: backlog
+  1-2-fix-otel-collector-to-operator-ingestion: done
   1-3-fix-anomaly-detection-investigation-triggering: backlog
   1-4-extend-ingestion-stats-api-with-detection-metrics: backlog
   epic-1-retrospective: optional

@@ -146,7 +146,12 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
-    fn make_result(service: &str, compliance: f64, burn_rate: f64, budget: f64) -> SloCalculationResult {
+    fn make_result(
+        service: &str,
+        compliance: f64,
+        burn_rate: f64,
+        budget: f64,
+    ) -> SloCalculationResult {
         SloCalculationResult {
             service: service.to_string(),
             sli_type: "availability".to_string(),
@@ -287,7 +292,12 @@ mod tests {
         };
         let score = compute_impact_score(&result);
         let expected = 0.3 * 0.99 + 0.4 * 0.5 + 0.3 * 0.5;
-        assert!((score - expected).abs() < 1e-10, "High impact: expected {:.4}, got {:.4}", expected, score);
+        assert!(
+            (score - expected).abs() < 1e-10,
+            "High impact: expected {:.4}, got {:.4}",
+            expected,
+            score
+        );
         assert!(score <= 1.0);
     }
 
@@ -308,7 +318,12 @@ mod tests {
         };
         let score = compute_impact_score(&result);
         let expected = 0.3 * 0.9 + 0.4 * 0.1 + 0.3 * 0.1;
-        assert!((score - expected).abs() < 1e-10, "Low impact: expected {:.4}, got {:.4}", expected, score);
+        assert!(
+            (score - expected).abs() < 1e-10,
+            "Low impact: expected {:.4}, got {:.4}",
+            expected,
+            score
+        );
         assert!(score > 0.0);
     }
 
@@ -333,7 +348,11 @@ mod tests {
     fn test_impact_score_clamped_to_0_1() {
         let result = make_result("test-svc", 0.0, 100.0, 0.0);
         let score = compute_impact_score(&result);
-        assert!(score >= 0.0 && score <= 1.0, "Score must be [0,1], got {}", score);
+        assert!(
+            score >= 0.0 && score <= 1.0,
+            "Score must be [0,1], got {}",
+            score
+        );
     }
 
     #[test]
@@ -342,7 +361,11 @@ mod tests {
         let score = compute_impact_score(&result);
         assert!(score >= 0.0 && score <= 1.0);
         // With zero burn rate and full budget, impact should be low
-        assert!(score < 0.5, "Healthy service should have low impact, got {}", score);
+        assert!(
+            score < 0.5,
+            "Healthy service should have low impact, got {}",
+            score
+        );
     }
 
     // ----- infer_target tests -----
@@ -353,7 +376,11 @@ mod tests {
         // error_rate = 0.001, target = 1.0 - 0.001/1.0 = 0.999
         let result = make_result("svc", 0.999, 1.0, 0.9);
         let target = infer_target(&result);
-        assert!((target - 0.999).abs() < 0.001, "Expected ~0.999, got {}", target);
+        assert!(
+            (target - 0.999).abs() < 0.001,
+            "Expected ~0.999, got {}",
+            target
+        );
     }
 
     #[test]
@@ -389,7 +416,10 @@ mod tests {
     #[tokio::test]
     async fn test_scorer_returns_score_for_matching_service() {
         let mut map = HashMap::new();
-        map.insert("payments-slo".to_string(), make_result("payment-service", 0.999, 5.0, 0.5));
+        map.insert(
+            "payments-slo".to_string(),
+            make_result("payment-service", 0.999, 5.0, 0.5),
+        );
 
         let cache = Arc::new(RwLock::new(map));
         let scorer = CustomerImpactScorer::new(cache);
@@ -429,7 +459,10 @@ mod tests {
     #[tokio::test]
     async fn test_scorer_does_not_match_different_service() {
         let mut map = HashMap::new();
-        map.insert("payments-slo".to_string(), make_result("payment-service", 0.999, 5.0, 0.5));
+        map.insert(
+            "payments-slo".to_string(),
+            make_result("payment-service", 0.999, 5.0, 0.5),
+        );
 
         let cache = Arc::new(RwLock::new(map));
         let scorer = CustomerImpactScorer::new(cache);

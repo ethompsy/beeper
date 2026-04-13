@@ -16,8 +16,8 @@ use kube::{
 use serde_json::json;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::crds::{ServiceLevel, ServiceLevelCondition, ServiceLevelStatus};
 use crate::crds::servicelevel::validate_spec;
+use crate::crds::{ServiceLevel, ServiceLevelCondition, ServiceLevelStatus};
 
 /// Error type for ServiceLevel controller operations
 #[derive(Debug, thiserror::Error)]
@@ -84,7 +84,11 @@ async fn reconcile(
                 "ServiceLevel validated successfully"
             );
 
-            (Some(ServiceLevelCondition::Healthy), Some(alerts_count), None)
+            (
+                Some(ServiceLevelCondition::Healthy),
+                Some(alerts_count),
+                None,
+            )
         }
         Err(validation_error) => {
             warn!(
@@ -93,13 +97,23 @@ async fn reconcile(
                 "ServiceLevel validation failed"
             );
 
-            (Some(ServiceLevelCondition::Critical), None, Some(validation_error))
+            (
+                Some(ServiceLevelCondition::Critical),
+                None,
+                Some(validation_error),
+            )
         }
     };
 
     // Read existing status to avoid unnecessary patches (prevents reconciliation storm)
-    let current_condition = servicelevel.status.as_ref().and_then(|s| s.condition.clone());
-    let current_alerts = servicelevel.status.as_ref().and_then(|s| s.alerts_registered);
+    let current_condition = servicelevel
+        .status
+        .as_ref()
+        .and_then(|s| s.condition.clone());
+    let current_alerts = servicelevel
+        .status
+        .as_ref()
+        .and_then(|s| s.alerts_registered);
 
     if current_condition == new_condition && current_alerts == new_alerts {
         debug!(name = %name, "ServiceLevel status unchanged, skipping patch");

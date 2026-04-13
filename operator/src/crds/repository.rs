@@ -137,12 +137,17 @@ pub fn validate_spec(spec: &RepositorySpec) -> Result<(), String> {
     if let Some(branch_policy) = &spec.branch_policy {
         if let Some(ref base_branch) = branch_policy.base_branch {
             if base_branch.is_empty() {
-                return Err("spec.branch_policy.base_branch must not be empty when specified".to_string());
+                return Err(
+                    "spec.branch_policy.base_branch must not be empty when specified".to_string(),
+                );
             }
         }
         if let Some(ref prefix) = branch_policy.pr_branch_prefix {
             if prefix.is_empty() {
-                return Err("spec.branch_policy.pr_branch_prefix must not be empty when specified".to_string());
+                return Err(
+                    "spec.branch_policy.pr_branch_prefix must not be empty when specified"
+                        .to_string(),
+                );
             }
         }
     }
@@ -151,17 +156,24 @@ pub fn validate_spec(spec: &RepositorySpec) -> Result<(), String> {
     if let Some(coding_standards) = &spec.coding_standards {
         if let Some(ref language) = coding_standards.language {
             if language.is_empty() {
-                return Err("spec.coding_standards.language must not be empty when specified".to_string());
+                return Err(
+                    "spec.coding_standards.language must not be empty when specified".to_string(),
+                );
             }
         }
         if let Some(ref linter) = coding_standards.linter {
             if linter.is_empty() {
-                return Err("spec.coding_standards.linter must not be empty when specified".to_string());
+                return Err(
+                    "spec.coding_standards.linter must not be empty when specified".to_string(),
+                );
             }
         }
         if let Some(ref test_command) = coding_standards.test_command {
             if test_command.is_empty() {
-                return Err("spec.coding_standards.test_command must not be empty when specified".to_string());
+                return Err(
+                    "spec.coding_standards.test_command must not be empty when specified"
+                        .to_string(),
+                );
             }
         }
     }
@@ -419,7 +431,9 @@ mod tests {
         spec.credentials_secret = "".to_string();
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("credentials_secret must not be empty"));
+        assert!(result
+            .unwrap_err()
+            .contains("credentials_secret must not be empty"));
     }
 
     #[test]
@@ -428,7 +442,9 @@ mod tests {
         spec.branch_policy.as_mut().unwrap().base_branch = Some("".to_string());
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("base_branch must not be empty"));
+        assert!(result
+            .unwrap_err()
+            .contains("base_branch must not be empty"));
     }
 
     #[test]
@@ -437,7 +453,9 @@ mod tests {
         spec.branch_policy.as_mut().unwrap().pr_branch_prefix = Some("".to_string());
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("pr_branch_prefix must not be empty"));
+        assert!(result
+            .unwrap_err()
+            .contains("pr_branch_prefix must not be empty"));
     }
 
     #[test]
@@ -464,7 +482,9 @@ mod tests {
         spec.coding_standards.as_mut().unwrap().test_command = Some("".to_string());
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("test_command must not be empty"));
+        assert!(result
+            .unwrap_err()
+            .contains("test_command must not be empty"));
     }
 
     #[test]
@@ -473,7 +493,9 @@ mod tests {
         spec.url = "not-a-url".to_string();
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("must start with https:// or http://"));
+        assert!(result
+            .unwrap_err()
+            .contains("must start with https:// or http://"));
     }
 
     #[test]

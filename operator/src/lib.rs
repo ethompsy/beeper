@@ -50,7 +50,7 @@ pub use crds::{
     RepositoryStatus, ServiceLevel, ServiceLevelSpec, ServiceLevelStatus, Source, SourceSpec,
     SourceStatus,
 };
-pub use notifications::{NotificationRouter, OutboxError, OutboxWorker, RouterError, RoutingDecision, Severity, SloContext};
+pub use detection::{DetectionConfig, DetectionConsumer, DetectionStats};
 pub use health::{health_router, start_health_server};
 pub use ingestion::{ingestion_router, IngestionBuffer, IngestionData};
 pub use investigator_job::{
@@ -58,6 +58,9 @@ pub use investigator_job::{
     set_phase_pending, set_phase_running, InvestigatorConfig, InvestigatorJobError,
 };
 pub use llm::{LlmConfig, LlmConfigError, LlmManager, LlmProvider};
-pub use sources::{LokiClient, LokiError, PrometheusClient, PrometheusError};
-pub use detection::{DetectionConfig, DetectionConsumer, DetectionStats};
+pub use notifications::{
+    NotificationRouter, OutboxError, OutboxWorker, RouterError, RoutingDecision, Severity,
+    SloContext,
+};
 pub use slo::{new_slo_cache, run_slo_engine, SloCache, SloCalculationResult};
+pub use sources::{LokiClient, LokiError, PrometheusClient, PrometheusError};

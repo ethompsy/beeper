@@ -4,7 +4,8 @@
 //! Implements backpressure handling when the buffer is full.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
@@ -44,6 +45,58 @@ pub struct LogEntry {
     pub timestamp_ns: i64,
 }
 
+/// Per-source health tracking (FR4)
+pub struct SourceHealth {
+    /// Total bytes received from this source
+    pub bytes_received: AtomicU64,
+    /// Count of parse errors from this source
+    pub parse_errors: AtomicU64,
+    /// Last received timestamp in nanoseconds since epoch
+    pub last_received_ns: AtomicI64,
+}
+
+impl SourceHealth {
+    fn new() -> Self {
+        Self {
+            bytes_received: AtomicU64::new(0),
+            parse_errors: AtomicU64::new(0),
+            last_received_ns: AtomicI64::new(0),
+        }
+    }
+
+    /// Record a successful request (bytes received + update timestamp)
+    pub fn record_request(&self, bytes: u64) {
+        self.bytes_received.fetch_add(bytes, Ordering::Relaxed);
+        let now_ns = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as i64;
+        self.last_received_ns.store(now_ns, Ordering::Relaxed);
+    }
+
+    /// Record a parse error
+    pub fn record_parse_error(&self) {
+        self.parse_errors.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Get snapshot of health stats
+    pub fn snapshot(&self) -> SourceHealthSnapshot {
+        SourceHealthSnapshot {
+            bytes_received: self.bytes_received.load(Ordering::Relaxed),
+            parse_errors: self.parse_errors.load(Ordering::Relaxed),
+            last_received_ns: self.last_received_ns.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// Immutable snapshot of source health for serialization
+#[derive(Debug, Clone)]
+pub struct SourceHealthSnapshot {
+    pub bytes_received: u64,
+    pub parse_errors: u64,
+    pub last_received_ns: i64,
+}
+
 /// Async buffer for ingestion data with backpressure support
 pub struct IngestionBuffer {
     sender: mpsc::Sender<IngestionData>,
@@ -53,6 +106,14 @@ pub struct IngestionBuffer {
     dropped_count: AtomicU64,
     /// Count of items successfully buffered
     buffered_count: AtomicU64,
+    /// Count of metric samples received (across all sources)
+    metrics_received: AtomicU64,
+    /// Count of log entries received (across all sources)
+    logs_received: AtomicU64,
+    /// Per-source health tracking
+    prometheus_health: SourceHealth,
+    loki_health: SourceHealth,
+    otlp_health: SourceHealth,
 }
 
 impl IngestionBuffer {
@@ -65,6 +126,11 @@ impl IngestionBuffer {
             capacity,
             dropped_count: AtomicU64::new(0),
             buffered_count: AtomicU64::new(0),
+            metrics_received: AtomicU64::new(0),
+            logs_received: AtomicU64::new(0),
+            prometheus_health: SourceHealth::new(),
+            loki_health: SourceHealth::new(),
+            otlp_health: SourceHealth::new(),
         }
     }
 
@@ -140,6 +206,41 @@ impl IngestionBuffer {
     /// Check if buffer is likely full (best-effort check)
     pub fn is_full(&self) -> bool {
         self.sender.capacity() == 0
+    }
+
+    /// Record metrics received (call from prometheus handler)
+    pub fn record_metrics(&self, count: u64) {
+        self.metrics_received.fetch_add(count, Ordering::Relaxed);
+    }
+
+    /// Record logs received (call from otlp/loki handlers)
+    pub fn record_logs(&self, count: u64) {
+        self.logs_received.fetch_add(count, Ordering::Relaxed);
+    }
+
+    /// Get total metrics received
+    pub fn metrics_received(&self) -> u64 {
+        self.metrics_received.load(Ordering::Relaxed)
+    }
+
+    /// Get total logs received
+    pub fn logs_received(&self) -> u64 {
+        self.logs_received.load(Ordering::Relaxed)
+    }
+
+    /// Access prometheus source health
+    pub fn prometheus_health(&self) -> &SourceHealth {
+        &self.prometheus_health
+    }
+
+    /// Access loki source health
+    pub fn loki_health(&self) -> &SourceHealth {
+        &self.loki_health
+    }
+
+    /// Access otlp source health
+    pub fn otlp_health(&self) -> &SourceHealth {
+        &self.otlp_health
     }
 }
 
@@ -227,5 +328,85 @@ mod tests {
 
         assert!(buffer.try_send(log).is_ok());
         assert_eq!(buffer.buffered_count(), 1);
+    }
+
+    #[test]
+    fn test_metrics_received_counter_increments() {
+        let buffer = IngestionBuffer::new(100);
+        assert_eq!(buffer.metrics_received(), 0);
+
+        buffer.record_metrics(3);
+        assert_eq!(buffer.metrics_received(), 3);
+
+        buffer.record_metrics(2);
+        assert_eq!(buffer.metrics_received(), 5);
+    }
+
+    #[test]
+    fn test_logs_received_counter_increments() {
+        let buffer = IngestionBuffer::new(100);
+        assert_eq!(buffer.logs_received(), 0);
+
+        buffer.record_logs(2);
+        assert_eq!(buffer.logs_received(), 2);
+
+        buffer.record_logs(4);
+        assert_eq!(buffer.logs_received(), 6);
+    }
+
+    #[test]
+    fn test_per_source_health_bytes_tracking() {
+        let buffer = IngestionBuffer::new(100);
+
+        buffer.prometheus_health().record_request(512);
+        buffer.prometheus_health().record_request(256);
+        buffer.otlp_health().record_request(1024);
+
+        let prom = buffer.prometheus_health().snapshot();
+        assert_eq!(prom.bytes_received, 768);
+        assert_eq!(prom.parse_errors, 0);
+        assert!(prom.last_received_ns > 0);
+
+        let otlp = buffer.otlp_health().snapshot();
+        assert_eq!(otlp.bytes_received, 1024);
+
+        // Loki untouched
+        let loki = buffer.loki_health().snapshot();
+        assert_eq!(loki.bytes_received, 0);
+        assert_eq!(loki.last_received_ns, 0);
+    }
+
+    #[test]
+    fn test_per_source_health_parse_errors() {
+        let buffer = IngestionBuffer::new(100);
+
+        buffer.loki_health().record_parse_error();
+        buffer.loki_health().record_parse_error();
+        buffer.prometheus_health().record_parse_error();
+
+        let loki = buffer.loki_health().snapshot();
+        assert_eq!(loki.parse_errors, 2);
+
+        let prom = buffer.prometheus_health().snapshot();
+        assert_eq!(prom.parse_errors, 1);
+
+        // OTLP untouched
+        let otlp = buffer.otlp_health().snapshot();
+        assert_eq!(otlp.parse_errors, 0);
+    }
+
+    #[test]
+    fn test_source_health_last_received_updates() {
+        let buffer = IngestionBuffer::new(100);
+
+        let before = buffer.prometheus_health().snapshot().last_received_ns;
+        assert_eq!(before, 0);
+
+        buffer.prometheus_health().record_request(100);
+        let after = buffer.prometheus_health().snapshot().last_received_ns;
+        assert!(
+            after > 0,
+            "last_received_ns should be set after record_request"
+        );
     }
 }

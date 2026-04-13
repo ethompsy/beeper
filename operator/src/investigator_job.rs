@@ -965,10 +965,7 @@ mod tests {
             .unwrap();
         assert_eq!(prom_url.value, Some("http://prometheus:9090".to_string()));
 
-        let loki_url = env_vars
-            .iter()
-            .find(|e| e.name == "LOKI_URL")
-            .unwrap();
+        let loki_url = env_vars.iter().find(|e| e.name == "LOKI_URL").unwrap();
         assert_eq!(loki_url.value, Some("http://loki:3100".to_string()));
     }
 
@@ -996,10 +993,7 @@ mod tests {
             .unwrap();
         assert_eq!(prom_url.value, Some(String::new()));
 
-        let loki_url = env_vars
-            .iter()
-            .find(|e| e.name == "LOKI_URL")
-            .unwrap();
+        let loki_url = env_vars.iter().find(|e| e.name == "LOKI_URL").unwrap();
         assert_eq!(loki_url.value, Some(String::new()));
     }
 

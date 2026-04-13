@@ -69,6 +69,9 @@ pub async fn prometheus_write_handler(
         "Received Prometheus remote_write request"
     );
 
+    // Record bytes received before any processing (consistent with loki/otlp handlers)
+    buffer.prometheus_health().record_request(body.len() as u64);
+
     // Validate content type
     let content_type = headers
         .get("content-type")
@@ -77,6 +80,7 @@ pub async fn prometheus_write_handler(
 
     if !content_type.contains("application/x-protobuf") {
         warn!(content_type = content_type, "Invalid content type");
+        buffer.prometheus_health().record_parse_error();
         return (
             StatusCode::BAD_REQUEST,
             "Content-Type must be application/x-protobuf",
@@ -94,6 +98,7 @@ pub async fn prometheus_write_handler(
             Ok(data) => data,
             Err(e) => {
                 warn!(error = %e, "Failed to decompress snappy data");
+                buffer.prometheus_health().record_parse_error();
                 return (StatusCode::BAD_REQUEST, "Failed to decompress snappy data");
             }
         }
@@ -106,6 +111,7 @@ pub async fn prometheus_write_handler(
         Ok(req) => req,
         Err(e) => {
             warn!(error = %e, "Failed to parse protobuf");
+            buffer.prometheus_health().record_parse_error();
             return (StatusCode::BAD_REQUEST, "Failed to parse protobuf");
         }
     };
@@ -140,6 +146,9 @@ pub async fn prometheus_write_handler(
             }
         }
     }
+
+    // Record metrics counter
+    buffer.record_metrics(buffered_count as u64);
 
     // Check if we're experiencing backpressure
     if buffered_count < samples_count {

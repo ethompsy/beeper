@@ -12,7 +12,7 @@ pub mod loki;
 pub mod otlp;
 pub mod prometheus;
 
-pub use buffer::{IngestionBuffer, IngestionData};
+pub use buffer::{IngestionBuffer, IngestionData, SourceHealthSnapshot};
 pub use loki::loki_push_handler;
 pub use otlp::otlp_logs_handler;
 pub use prometheus::prometheus_write_handler;
@@ -238,5 +238,57 @@ mod integration_tests {
 
         // Both should be buffered
         assert_eq!(buffer.buffered_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_otlp_endpoint_full_flow() {
+        let buffer = Arc::new(IngestionBuffer::new(100));
+        let app = ingestion_router(buffer.clone());
+
+        let json = r#"{
+            "resourceLogs": [
+                {
+                    "resource": {
+                        "attributes": [
+                            {
+                                "key": "service.name",
+                                "value": { "stringValue": "checkout" }
+                            }
+                        ]
+                    },
+                    "scopeLogs": [
+                        {
+                            "logRecords": [
+                                {
+                                    "timeUnixNano": "1234567890000000000",
+                                    "severityText": "ERROR",
+                                    "body": { "stringValue": "payment failed" },
+                                    "attributes": []
+                                },
+                                {
+                                    "timeUnixNano": "1234567891000000000",
+                                    "severityText": "INFO",
+                                    "body": { "stringValue": "retrying payment" },
+                                    "attributes": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }"#;
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/logs")
+            .header("content-type", "application/json")
+            .body(Body::from(json))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(buffer.buffered_count(), 2);
+        assert_eq!(buffer.logs_received(), 2);
     }
 }

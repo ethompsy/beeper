@@ -16,10 +16,8 @@ use kube::{
 use serde_json::json;
 use tracing::{debug, error, info, warn};
 
-use crate::crds::{
-    NotificationChannel, NotificationChannelCondition, NotificationChannelStatus,
-};
 use crate::crds::notification_channel::validate_spec;
+use crate::crds::{NotificationChannel, NotificationChannelCondition, NotificationChannelStatus};
 
 /// Error type for NotificationChannel controller operations
 #[derive(Debug, thiserror::Error)]
@@ -52,13 +50,14 @@ async fn reconcile(
         .name
         .as_deref()
         .ok_or(NotificationChannelError::MissingObjectKey("metadata.name"))?;
-    let namespace = channel
-        .metadata
-        .namespace
-        .as_deref()
-        .ok_or(NotificationChannelError::MissingObjectKey(
-            "metadata.namespace",
-        ))?;
+    let namespace =
+        channel
+            .metadata
+            .namespace
+            .as_deref()
+            .ok_or(NotificationChannelError::MissingObjectKey(
+                "metadata.namespace",
+            ))?;
 
     debug!(
         name = %name,
@@ -238,8 +237,7 @@ mod tests {
 
     #[test]
     fn test_notificationchannel_error_from_kube() {
-        let _: fn(kube::Error) -> NotificationChannelError =
-            NotificationChannelError::KubeError;
+        let _: fn(kube::Error) -> NotificationChannelError = NotificationChannelError::KubeError;
     }
 
     #[test]

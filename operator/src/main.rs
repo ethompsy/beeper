@@ -106,8 +106,8 @@ async fn main() -> anyhow::Result<()> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // Load Qdrant endpoint early (needed by API server and outbox worker)
-    let qdrant_endpoint = env::var("QDRANT_URL")
-        .unwrap_or_else(|_| "http://qdrant:6333".to_string());
+    let qdrant_endpoint =
+        env::var("QDRANT_URL").unwrap_or_else(|_| "http://qdrant:6333".to_string());
 
     // Create SLO cache (shared between SLO engine and API server)
     let slo_cache = new_slo_cache();
@@ -119,18 +119,16 @@ async fn main() -> anyhow::Result<()> {
     let llm_manager: Option<Arc<LlmManager>> = {
         let provider_str = env::var("LLM_PROVIDER").unwrap_or_default();
         let model = env::var("LLM_MODEL").unwrap_or_default();
-        let api_key_secret = env::var("LLM_API_KEY_SECRET")
-            .ok()
-            .or_else(|| {
-                // Fall back: if LLM_API_KEY env var is set directly, the secret
-                // was mounted via the Helm chart's secretKeyRef, so use the
-                // secret name from the chart values (default: llm-credentials).
-                if env::var("LLM_API_KEY").is_ok() {
-                    Some("llm-credentials".to_string())
-                } else {
-                    None
-                }
-            });
+        let api_key_secret = env::var("LLM_API_KEY_SECRET").ok().or_else(|| {
+            // Fall back: if LLM_API_KEY env var is set directly, the secret
+            // was mounted via the Helm chart's secretKeyRef, so use the
+            // secret name from the chart values (default: llm-credentials).
+            if env::var("LLM_API_KEY").is_ok() {
+                Some("llm-credentials".to_string())
+            } else {
+                None
+            }
+        });
 
         if provider_str.is_empty() {
             info!("LLM provider not configured (LLM_PROVIDER not set)");
@@ -142,14 +140,21 @@ async fn main() -> anyhow::Result<()> {
                 "azure" => Some(LlmProvider::Azure),
                 "ollama" => Some(LlmProvider::Ollama),
                 other => {
-                    warn!(provider = other, "Unknown LLM provider, LLM will be unconfigured");
+                    warn!(
+                        provider = other,
+                        "Unknown LLM provider, LLM will be unconfigured"
+                    );
                     None
                 }
             };
             provider.map(|p| {
                 let config = LlmConfig {
                     provider: p,
-                    model: if model.is_empty() { p.default_model().to_string() } else { model },
+                    model: if model.is_empty() {
+                        p.default_model().to_string()
+                    } else {
+                        model
+                    },
                     api_key_secret,
                     api_key_secret_key: "api-key".to_string(),
                     endpoint: env::var("LLM_ENDPOINT").ok(),
@@ -159,7 +164,11 @@ async fn main() -> anyhow::Result<()> {
                     model = %config.model,
                     "LLM manager initialized"
                 );
-                Arc::new(LlmManager::new(Arc::clone(&client), config, "beeper".to_string()))
+                Arc::new(LlmManager::new(
+                    Arc::clone(&client),
+                    config,
+                    "beeper".to_string(),
+                ))
             })
         }
     };
@@ -173,18 +182,17 @@ async fn main() -> anyhow::Result<()> {
     let api_qdrant_endpoint = qdrant_endpoint.clone();
     let api_llm_manager = llm_manager.clone();
     let health_handle = tokio::spawn(async move {
-        if let Err(e) =
-            start_health_api_server(
-                health_client,
-                api_buffer,
-                api_detection_stats,
-                api_slo_cache,
-                api_budget_policy_state,
-                api_qdrant_endpoint,
-                api_llm_manager,
-                health_port,
-            )
-                .await
+        if let Err(e) = start_health_api_server(
+            health_client,
+            api_buffer,
+            api_detection_stats,
+            api_slo_cache,
+            api_budget_policy_state,
+            api_qdrant_endpoint,
+            api_llm_manager,
+            health_port,
+        )
+        .await
         {
             error!(error = %e, "Health/API server failed");
         }
@@ -211,7 +219,8 @@ async fn main() -> anyhow::Result<()> {
     let investigation_client = (*client).clone();
     let investigation_handle = tokio::spawn(async move {
         if let Err(e) =
-            run_investigation_controller_with_config(investigation_client, investigator_config).await
+            run_investigation_controller_with_config(investigation_client, investigator_config)
+                .await
         {
             error!(error = %e, "Investigation controller failed");
         }
@@ -244,8 +253,8 @@ async fn main() -> anyhow::Result<()> {
     // Start SLO engine in background
     let slo_client = (*client).clone();
     let slo_namespace = detection_config.namespace.clone();
-    let prometheus_endpoint = env::var("PROMETHEUS_URL")
-        .unwrap_or_else(|_| "http://prometheus:9090".to_string());
+    let prometheus_endpoint =
+        env::var("PROMETHEUS_URL").unwrap_or_else(|_| "http://prometheus:9090".to_string());
     let detection_slo_cache = slo_cache.clone();
     let slo_budget_policy_state = budget_policy_state.clone();
     let outbox_qdrant_endpoint = qdrant_endpoint.clone();
@@ -300,7 +309,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Signal all cooperative tasks to stop
     let _ = shutdown_tx.send(true);
-    info!("Graceful shutdown: waiting for in-flight operations ({}s grace period)...", GRACEFUL_SHUTDOWN_TIMEOUT_SECS);
+    info!(
+        "Graceful shutdown: waiting for in-flight operations ({}s grace period)...",
+        GRACEFUL_SHUTDOWN_TIMEOUT_SECS
+    );
 
     // Give SLO engine and detection consumer time to finish current cycle
     let grace_deadline = tokio::time::sleep(Duration::from_secs(GRACEFUL_SHUTDOWN_TIMEOUT_SECS));
@@ -344,6 +356,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Start the combined health + API HTTP server
+#[allow(clippy::too_many_arguments)]
 async fn start_health_api_server(
     client: Arc<Client>,
     buffer: Arc<IngestionBuffer>,
@@ -357,7 +370,15 @@ async fn start_health_api_server(
     use beeper_operator::api::api_router_full;
     // Combine health and API routers
     let health = health_router(Arc::clone(&client));
-    let api = api_router_full(client, buffer, llm_manager, Some(detection_stats), Some(slo_cache), Some(budget_policy_state), Some(qdrant_endpoint));
+    let api = api_router_full(
+        client,
+        buffer,
+        llm_manager,
+        Some(detection_stats),
+        Some(slo_cache),
+        Some(budget_policy_state),
+        Some(qdrant_endpoint),
+    );
     let app: Router = health.merge(api);
 
     let addr = format!("0.0.0.0:{}", port);

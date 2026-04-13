@@ -199,10 +199,10 @@ pub fn backoff_duration(attempt: u32) -> Duration {
     // attempt count get the same delay — provides varied spacing per attempt,
     // not true anti-thundering-herd randomization (acceptable for single-operator).
     let jitter_factor = match attempt % 4 {
-        0 => 100u64,   // +0%
-        1 => 125u64,   // +25%
-        2 => 75u64,    // -25%
-        _ => 110u64,   // +10%
+        0 => 100u64, // +0%
+        1 => 125u64, // +25%
+        2 => 75u64,  // -25%
+        _ => 110u64, // +10%
     };
     let jittered = delay.saturating_mul(jitter_factor) / 100;
     Duration::from_secs(std::cmp::max(1, jittered))
@@ -343,7 +343,12 @@ mod tests {
     fn test_backoff_duration_never_zero() {
         for attempt in 0..20 {
             let d = backoff_duration(attempt);
-            assert!(d.as_secs() >= 1, "Duration must be at least 1 second, got {} for attempt {}", d.as_secs(), attempt);
+            assert!(
+                d.as_secs() >= 1,
+                "Duration must be at least 1 second, got {} for attempt {}",
+                d.as_secs(),
+                attempt
+            );
         }
     }
 }

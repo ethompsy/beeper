@@ -121,7 +121,10 @@ impl DetectionConsumer {
             let data = match buffer.recv().await {
                 Some(data) => data,
                 None => {
-                    warn!(component = "detection", "Buffer channel closed, stopping detection consumer");
+                    warn!(
+                        component = "detection",
+                        "Buffer channel closed, stopping detection consumer"
+                    );
                     break;
                 }
             };
@@ -336,9 +339,9 @@ mod tests {
 /// Integration tests: data through buffer → detector → anomaly event
 #[cfg(test)]
 mod integration_tests {
-    use crate::detection::metrics::MetricDetector;
     use crate::detection::logs::LogDetector;
-    use crate::ingestion::buffer::{IngestionBuffer, IngestionData, MetricSample, LogEntry};
+    use crate::detection::metrics::MetricDetector;
+    use crate::ingestion::buffer::{IngestionBuffer, IngestionData, LogEntry, MetricSample};
     use std::collections::HashMap;
 
     #[tokio::test]
@@ -368,13 +371,11 @@ mod integration_tests {
 
         // Consume all from buffer and feed to detector
         let mut anomaly_detected = false;
-        while let Some(data) = tokio::time::timeout(
-            std::time::Duration::from_millis(10),
-            buffer.recv(),
-        )
-        .await
-        .ok()
-        .flatten()
+        while let Some(data) =
+            tokio::time::timeout(std::time::Duration::from_millis(10), buffer.recv())
+                .await
+                .ok()
+                .flatten()
         {
             if let IngestionData::Metric(ref sample) = data {
                 if detector.process(sample).is_some() {
@@ -383,7 +384,10 @@ mod integration_tests {
             }
         }
 
-        assert!(anomaly_detected, "Metric anomaly should be detected through buffer");
+        assert!(
+            anomaly_detected,
+            "Metric anomaly should be detected through buffer"
+        );
     }
 
     #[tokio::test]
@@ -422,13 +426,11 @@ mod integration_tests {
 
         // Consume and detect
         let mut anomaly_detected = false;
-        while let Some(data) = tokio::time::timeout(
-            std::time::Duration::from_millis(10),
-            buffer.recv(),
-        )
-        .await
-        .ok()
-        .flatten()
+        while let Some(data) =
+            tokio::time::timeout(std::time::Duration::from_millis(10), buffer.recv())
+                .await
+                .ok()
+                .flatten()
         {
             if let IngestionData::Log(ref entry) = data {
                 if detector.process(entry).is_some() {
@@ -437,7 +439,10 @@ mod integration_tests {
             }
         }
 
-        assert!(anomaly_detected, "Log anomaly should be detected through buffer");
+        assert!(
+            anomaly_detected,
+            "Log anomaly should be detected through buffer"
+        );
     }
 
     #[tokio::test]
@@ -472,13 +477,11 @@ mod integration_tests {
 
         // Consume and verify no anomalies
         let mut anomaly_count = 0;
-        while let Some(data) = tokio::time::timeout(
-            std::time::Duration::from_millis(10),
-            buffer.recv(),
-        )
-        .await
-        .ok()
-        .flatten()
+        while let Some(data) =
+            tokio::time::timeout(std::time::Duration::from_millis(10), buffer.recv())
+                .await
+                .ok()
+                .flatten()
         {
             match data {
                 IngestionData::Metric(ref sample) => {
@@ -494,6 +497,9 @@ mod integration_tests {
             }
         }
 
-        assert_eq!(anomaly_count, 0, "Steady-state data should produce no anomalies");
+        assert_eq!(
+            anomaly_count, 0,
+            "Steady-state data should produce no anomalies"
+        );
     }
 }

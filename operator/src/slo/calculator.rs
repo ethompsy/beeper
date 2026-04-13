@@ -33,8 +33,12 @@ impl SloCalculator {
         spec: &ServiceLevelSpec,
         window: &str,
     ) -> Result<SloCalculationResult, SloError> {
-        let good_count = self.query_count(spec, &spec.sli.good_selector, window).await?;
-        let total_count = self.query_count(spec, &spec.sli.total_selector, window).await?;
+        let good_count = self
+            .query_count(spec, &spec.sli.good_selector, window)
+            .await?;
+        let total_count = self
+            .query_count(spec, &spec.sli.total_selector, window)
+            .await?;
 
         let (compliance, burn_rate, error_budget_remaining) =
             compute_burn_rate(good_count, total_count, spec.objective.target);
@@ -59,8 +63,12 @@ impl SloCalculator {
         spec: &ServiceLevelSpec,
         window: &str,
     ) -> Result<f64, SloError> {
-        let good_count = self.query_count(spec, &spec.sli.good_selector, window).await?;
-        let total_count = self.query_count(spec, &spec.sli.total_selector, window).await?;
+        let good_count = self
+            .query_count(spec, &spec.sli.good_selector, window)
+            .await?;
+        let total_count = self
+            .query_count(spec, &spec.sli.total_selector, window)
+            .await?;
 
         let (_, burn_rate, _) = compute_burn_rate(good_count, total_count, spec.objective.target);
         Ok(burn_rate)
@@ -171,9 +179,9 @@ pub fn parse_window_duration(window: &str) -> Result<u64, SloError> {
     }
 
     let (num_str, suffix) = window.split_at(window.len() - 1);
-    let num: u64 = num_str.parse().map_err(|_| {
-        SloError::WindowParseError(format!("invalid window format: {}", window))
-    })?;
+    let num: u64 = num_str
+        .parse()
+        .map_err(|_| SloError::WindowParseError(format!("invalid window format: {}", window)))?;
 
     match suffix {
         "s" => Ok(num),
@@ -347,5 +355,4 @@ mod tests {
     fn test_parse_whitespace() {
         assert_eq!(parse_window_duration(" 5m ").unwrap(), 300);
     }
-
 }

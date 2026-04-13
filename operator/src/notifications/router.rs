@@ -11,8 +11,8 @@ use chrono::{NaiveTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-use crate::crds::notification_channel::{ChannelType, NotificationChannelSpec, QuietHoursConfig};
 use super::outbox::OutboxEntry;
+use crate::crds::notification_channel::{ChannelType, NotificationChannelSpec, QuietHoursConfig};
 
 /// Error type for routing operations
 #[derive(Debug, thiserror::Error)]
@@ -161,10 +161,7 @@ impl NotificationRouter {
                 channel_name: channel_name.to_string(),
                 channel_type: spec.channel_type.clone(),
                 matched: false,
-                reason: format!(
-                    "Service '{}' not in channel's service list",
-                    entry.service
-                ),
+                reason: format!("Service '{}' not in channel's service list", entry.service),
                 effective_severity,
             };
         }
@@ -175,7 +172,9 @@ impl NotificationRouter {
                 match is_in_quiet_hours(quiet_hours) {
                     Ok(true) => {
                         // Check escalation override
-                        if quiet_hours.escalation_override && effective_severity == Severity::Critical {
+                        if quiet_hours.escalation_override
+                            && effective_severity == Severity::Critical
+                        {
                             debug!(
                                 channel = %channel_name,
                                 "Critical notification bypasses quiet hours via escalation_override"
@@ -245,11 +244,9 @@ impl NotificationRouter {
 /// Check if a service matches the channel's service filter
 fn matches_service(service: &str, services: &Option<Vec<String>>) -> bool {
     match services {
-        None => true, // No service filter → match all
+        None => true,                          // No service filter → match all
         Some(list) if list.is_empty() => true, // Empty list → match all
-        Some(list) => {
-            list.iter().any(|s| s == "*" || s == service)
-        }
+        Some(list) => list.iter().any(|s| s == "*" || s == service),
     }
 }
 
@@ -347,8 +344,7 @@ fn is_time_in_window(current: NaiveTime, start: NaiveTime, end: NaiveTime) -> bo
 
 /// Parse an "HH:MM" string into NaiveTime
 fn parse_hh_mm(s: &str) -> Result<NaiveTime, RouterError> {
-    NaiveTime::parse_from_str(s, "%H:%M")
-        .map_err(|_| RouterError::InvalidTimeFormat(s.to_string()))
+    NaiveTime::parse_from_str(s, "%H:%M").map_err(|_| RouterError::InvalidTimeFormat(s.to_string()))
 }
 
 #[cfg(test)]
@@ -442,13 +438,28 @@ mod tests {
 
     #[test]
     fn test_severity_ordering_all_pairwise() {
-        let levels = [Severity::Low, Severity::Medium, Severity::High, Severity::Critical];
+        let levels = [
+            Severity::Low,
+            Severity::Medium,
+            Severity::High,
+            Severity::Critical,
+        ];
         for i in 0..levels.len() {
             for j in 0..levels.len() {
                 if i < j {
-                    assert!(levels[i] < levels[j], "{:?} should be < {:?}", levels[i], levels[j]);
+                    assert!(
+                        levels[i] < levels[j],
+                        "{:?} should be < {:?}",
+                        levels[i],
+                        levels[j]
+                    );
                 } else if i > j {
-                    assert!(levels[i] > levels[j], "{:?} should be > {:?}", levels[i], levels[j]);
+                    assert!(
+                        levels[i] > levels[j],
+                        "{:?} should be > {:?}",
+                        levels[i],
+                        levels[j]
+                    );
                 } else {
                     assert_eq!(levels[i], levels[j]);
                 }
@@ -498,14 +509,20 @@ mod tests {
 
     #[test]
     fn test_matches_service_specific_match() {
-        let services = Some(vec!["payment-service".to_string(), "auth-service".to_string()]);
+        let services = Some(vec![
+            "payment-service".to_string(),
+            "auth-service".to_string(),
+        ]);
         assert!(matches_service("payment-service", &services));
         assert!(matches_service("auth-service", &services));
     }
 
     #[test]
     fn test_matches_service_specific_no_match() {
-        let services = Some(vec!["payment-service".to_string(), "auth-service".to_string()]);
+        let services = Some(vec![
+            "payment-service".to_string(),
+            "auth-service".to_string(),
+        ]);
         assert!(!matches_service("api-gateway", &services));
     }
 
@@ -625,9 +642,18 @@ mod tests {
 
     #[test]
     fn test_effective_severity_no_slo_context() {
-        assert_eq!(compute_effective_severity(Severity::Medium, None), Severity::Medium);
-        assert_eq!(compute_effective_severity(Severity::Low, None), Severity::Low);
-        assert_eq!(compute_effective_severity(Severity::Critical, None), Severity::Critical);
+        assert_eq!(
+            compute_effective_severity(Severity::Medium, None),
+            Severity::Medium
+        );
+        assert_eq!(
+            compute_effective_severity(Severity::Low, None),
+            Severity::Low
+        );
+        assert_eq!(
+            compute_effective_severity(Severity::Critical, None),
+            Severity::Critical
+        );
     }
 
     #[test]
@@ -637,8 +663,14 @@ mod tests {
             burn_rate: Some(1.0),
             error_budget_remaining: Some(0.9),
         };
-        assert_eq!(compute_effective_severity(Severity::Medium, Some(&ctx)), Severity::Medium);
-        assert_eq!(compute_effective_severity(Severity::High, Some(&ctx)), Severity::High);
+        assert_eq!(
+            compute_effective_severity(Severity::Medium, Some(&ctx)),
+            Severity::Medium
+        );
+        assert_eq!(
+            compute_effective_severity(Severity::High, Some(&ctx)),
+            Severity::High
+        );
     }
 
     #[test]
@@ -648,7 +680,10 @@ mod tests {
             burn_rate: Some(5.0),
             error_budget_remaining: Some(0.3),
         };
-        assert_eq!(compute_effective_severity(Severity::Medium, Some(&ctx)), Severity::High);
+        assert_eq!(
+            compute_effective_severity(Severity::Medium, Some(&ctx)),
+            Severity::High
+        );
     }
 
     #[test]
@@ -658,7 +693,10 @@ mod tests {
             burn_rate: Some(9.0),
             error_budget_remaining: Some(0.05),
         };
-        assert_eq!(compute_effective_severity(Severity::Medium, Some(&ctx)), Severity::Critical);
+        assert_eq!(
+            compute_effective_severity(Severity::Medium, Some(&ctx)),
+            Severity::Critical
+        );
     }
 
     #[test]
@@ -668,7 +706,10 @@ mod tests {
             burn_rate: Some(8.0),
             error_budget_remaining: Some(0.1),
         };
-        assert_eq!(compute_effective_severity(Severity::High, Some(&ctx)), Severity::Critical);
+        assert_eq!(
+            compute_effective_severity(Severity::High, Some(&ctx)),
+            Severity::Critical
+        );
     }
 
     #[test]
@@ -678,7 +719,10 @@ mod tests {
             burn_rate: Some(1.0),
             error_budget_remaining: Some(0.9),
         };
-        assert_eq!(compute_effective_severity(Severity::Critical, Some(&ctx)), Severity::Critical);
+        assert_eq!(
+            compute_effective_severity(Severity::Critical, Some(&ctx)),
+            Severity::Critical
+        );
     }
 
     #[test]
@@ -689,7 +733,10 @@ mod tests {
             error_budget_remaining: Some(0.05),
         };
         // Low gets elevated to Medium when impact > 0.9
-        assert_eq!(compute_effective_severity(Severity::Low, Some(&ctx)), Severity::Medium);
+        assert_eq!(
+            compute_effective_severity(Severity::Low, Some(&ctx)),
+            Severity::Medium
+        );
     }
 
     #[test]
@@ -699,7 +746,10 @@ mod tests {
             burn_rate: Some(5.0),
             error_budget_remaining: Some(0.3),
         };
-        assert_eq!(compute_effective_severity(Severity::Medium, Some(&ctx)), Severity::Medium);
+        assert_eq!(
+            compute_effective_severity(Severity::Medium, Some(&ctx)),
+            Severity::Medium
+        );
     }
 
     // ===== Channel evaluation tests =====
@@ -772,7 +822,10 @@ mod tests {
         let entry = make_entry("high", "payment-service");
         let routing = RoutingConfig {
             min_severity: None,
-            services: Some(vec!["payment-service".to_string(), "auth-service".to_string()]),
+            services: Some(vec![
+                "payment-service".to_string(),
+                "auth-service".to_string(),
+            ]),
             quiet_hours: None,
         };
         let spec = make_channel_spec(ChannelType::Slack, Some(routing));
@@ -881,19 +934,17 @@ mod tests {
     fn test_route_none_match() {
         let entry = make_entry("low", "unknown-service");
 
-        let channels = vec![
-            (
-                "pagerduty".to_string(),
-                make_channel_spec(
-                    ChannelType::Pagerduty,
-                    Some(RoutingConfig {
-                        min_severity: Some("critical".to_string()),
-                        services: Some(vec!["payment-service".to_string()]),
-                        quiet_hours: None,
-                    }),
-                ),
+        let channels = vec![(
+            "pagerduty".to_string(),
+            make_channel_spec(
+                ChannelType::Pagerduty,
+                Some(RoutingConfig {
+                    min_severity: Some("critical".to_string()),
+                    services: Some(vec!["payment-service".to_string()]),
+                    quiet_hours: None,
+                }),
             ),
-        ];
+        )];
 
         let decisions = NotificationRouter::route(&entry, &channels, None);
         assert!(decisions.iter().all(|d| !d.matched));
@@ -1097,7 +1148,8 @@ mod tests {
 
         // Same setup but wrong service → should be rejected by service filter
         let entry_wrong_svc = make_entry("high", "api-gateway");
-        let decision2 = NotificationRouter::evaluate_channel(&entry_wrong_svc, "sre-pd", &spec, None);
+        let decision2 =
+            NotificationRouter::evaluate_channel(&entry_wrong_svc, "sre-pd", &spec, None);
         assert!(!decision2.matched);
         assert!(decision2.reason.contains("not in channel's service list"));
 
@@ -1116,9 +1168,18 @@ mod tests {
             burn_rate: None,
             error_budget_remaining: None,
         };
-        assert_eq!(compute_effective_severity(Severity::Medium, Some(&ctx)), Severity::Critical);
-        assert_eq!(compute_effective_severity(Severity::High, Some(&ctx)), Severity::Critical);
-        assert_eq!(compute_effective_severity(Severity::Low, Some(&ctx)), Severity::Medium);
+        assert_eq!(
+            compute_effective_severity(Severity::Medium, Some(&ctx)),
+            Severity::Critical
+        );
+        assert_eq!(
+            compute_effective_severity(Severity::High, Some(&ctx)),
+            Severity::Critical
+        );
+        assert_eq!(
+            compute_effective_severity(Severity::Low, Some(&ctx)),
+            Severity::Medium
+        );
     }
 
     #[test]
@@ -1129,8 +1190,14 @@ mod tests {
             burn_rate: None,
             error_budget_remaining: None,
         };
-        assert_eq!(compute_effective_severity(Severity::Medium, Some(&ctx)), Severity::Medium);
-        assert_eq!(compute_effective_severity(Severity::High, Some(&ctx)), Severity::High);
+        assert_eq!(
+            compute_effective_severity(Severity::Medium, Some(&ctx)),
+            Severity::Medium
+        );
+        assert_eq!(
+            compute_effective_severity(Severity::High, Some(&ctx)),
+            Severity::High
+        );
     }
 
     // ===== Router error tests =====

@@ -83,13 +83,14 @@ impl LogDetector {
             self.evict_oldest_service();
         }
 
-        let state = self.states.entry(service.clone()).or_insert_with(|| {
-            ServiceState {
+        let state = self
+            .states
+            .entry(service.clone())
+            .or_insert_with(|| ServiceState {
                 window: VecDeque::new(),
                 detector: EwmaDetector::new(self.alpha, self.threshold, self.min_samples),
                 context_lines: VecDeque::new(),
-            }
-        });
+            });
 
         // Capture error log line as context
         state.context_lines.push_back(entry.line.clone());
@@ -112,11 +113,7 @@ impl LogDetector {
         // Remove expired buckets (cutoff based on latest bucket, not current entry)
         if let Some(&(latest_ts, _)) = state.window.back() {
             let cutoff = latest_ts - self.window_ms;
-            while state
-                .window
-                .front()
-                .is_some_and(|(ts, _)| *ts < cutoff)
-            {
+            while state.window.front().is_some_and(|(ts, _)| *ts < cutoff) {
                 state.window.pop_front();
             }
         }
@@ -177,9 +174,7 @@ impl LogDetector {
         if let Some(oldest_key) = self
             .states
             .iter()
-            .min_by_key(|(_, state)| {
-                state.window.back().map_or(i64::MIN, |(ts, _)| *ts)
-            })
+            .min_by_key(|(_, state)| state.window.back().map_or(i64::MIN, |(ts, _)| *ts))
             .map(|(key, _)| key.clone())
         {
             self.states.remove(&oldest_key);
@@ -192,7 +187,12 @@ mod tests {
     use super::*;
     use std::collections::HashMap as StdHashMap;
 
-    fn make_error_log(service_label: &str, service_value: &str, line: &str, ts_ns: i64) -> LogEntry {
+    fn make_error_log(
+        service_label: &str,
+        service_value: &str,
+        line: &str,
+        ts_ns: i64,
+    ) -> LogEntry {
         let mut labels = StdHashMap::new();
         labels.insert(service_label.to_string(), service_value.to_string());
         labels.insert("level".to_string(), "error".to_string());
@@ -352,15 +352,26 @@ mod tests {
         let result = detector.process(&make_log_with_level("warn", 1_000_000_000));
         assert!(result.is_none());
 
-        assert_eq!(detector.tracked_count(), 0, "No services should be tracked for non-error logs");
+        assert_eq!(
+            detector.tracked_count(),
+            0,
+            "No services should be tracked for non-error logs"
+        );
     }
 
     #[test]
     fn test_error_level_variants_detected() {
         // All error level variants should be recognized
-        for level in &["error", "Error", "ERROR", "err", "fatal", "FATAL", "critical", "CRITICAL", "panic", "PANIC"] {
+        for level in &[
+            "error", "Error", "ERROR", "err", "fatal", "FATAL", "critical", "CRITICAL", "panic",
+            "PANIC",
+        ] {
             let entry = make_log_with_level(level, 1_000_000_000);
-            assert!(LogDetector::is_error_log(&entry), "Level '{}' should be recognized as error", level);
+            assert!(
+                LogDetector::is_error_log(&entry),
+                "Level '{}' should be recognized as error",
+                level
+            );
         }
     }
 
@@ -370,9 +381,24 @@ mod tests {
         let base_ns: i64 = 1_000_000_000_000_000_000;
 
         // Send entries out of order: minute 3, minute 1, minute 2
-        detector.process(&make_error_log("service", "api", "error 3", base_ns + 3 * 60_000_000_000));
-        detector.process(&make_error_log("service", "api", "error 1", base_ns + 1 * 60_000_000_000));
-        detector.process(&make_error_log("service", "api", "error 2", base_ns + 2 * 60_000_000_000));
+        detector.process(&make_error_log(
+            "service",
+            "api",
+            "error 3",
+            base_ns + 3 * 60_000_000_000,
+        ));
+        detector.process(&make_error_log(
+            "service",
+            "api",
+            "error 1",
+            base_ns + 1 * 60_000_000_000,
+        ));
+        detector.process(&make_error_log(
+            "service",
+            "api",
+            "error 2",
+            base_ns + 2 * 60_000_000_000,
+        ));
 
         assert_eq!(detector.tracked_count(), 1);
 

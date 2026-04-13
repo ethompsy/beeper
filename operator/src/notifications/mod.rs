@@ -8,5 +8,5 @@
 pub mod outbox;
 pub mod router;
 
-pub use outbox::{OutboxWorker, OutboxError};
+pub use outbox::{OutboxError, OutboxWorker};
 pub use router::{NotificationRouter, RouterError, RoutingDecision, Severity, SloContext};

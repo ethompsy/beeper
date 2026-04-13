@@ -161,8 +161,10 @@ mod tests {
         let mut detector = EwmaDetector::new(0.2, 3.0, 10);
 
         // Feed steady state values with minor variance
-        let values = [50.0, 51.0, 49.0, 50.5, 49.5, 50.2, 49.8, 50.1, 49.9, 50.0,
-                      50.3, 49.7, 50.1, 49.9, 50.2, 49.8, 50.0, 50.1, 49.9, 50.0];
+        let values = [
+            50.0, 51.0, 49.0, 50.5, 49.5, 50.2, 49.8, 50.1, 49.9, 50.0, 50.3, 49.7, 50.1, 49.9,
+            50.2, 49.8, 50.0, 50.1, 49.9, 50.0,
+        ];
 
         for &v in &values {
             assert!(
@@ -208,9 +210,7 @@ mod tests {
 
         // After many samples at 100, it should have adapted
         // The last values should not fire
-        let late_fires: usize = (0..10)
-            .filter(|_| detector.update(100.0).is_some())
-            .count();
+        let late_fires: usize = (0..10).filter(|_| detector.update(100.0).is_some()).count();
         assert_eq!(
             late_fires, 0,
             "After sustained shift, baseline should have adapted (fired {} times during shift, {} late)",

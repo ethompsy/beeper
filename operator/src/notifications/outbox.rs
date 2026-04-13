@@ -152,10 +152,7 @@ impl OutboxWorker {
             Ok(())
         } else {
             let status = resp.status();
-            let text = resp
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown".to_string());
+            let text = resp.text().await.unwrap_or_else(|_| "unknown".to_string());
             Err(OutboxError::QdrantError(format!(
                 "Failed to create notification_outbox collection: {} - {}",
                 status, text
@@ -185,7 +182,9 @@ impl OutboxWorker {
             .json(&body)
             .send()
             .await
-            .map_err(|e| OutboxError::QdrantError(format!("Failed to write notification: {}", e)))?;
+            .map_err(|e| {
+                OutboxError::QdrantError(format!("Failed to write notification: {}", e))
+            })?;
 
         if resp.status().is_success() {
             debug!(
@@ -196,10 +195,7 @@ impl OutboxWorker {
             Ok(())
         } else {
             let status = resp.status();
-            let text = resp
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown".to_string());
+            let text = resp.text().await.unwrap_or_else(|_| "unknown".to_string());
             Err(OutboxError::QdrantError(format!(
                 "Failed to write notification: {} - {}",
                 status, text
@@ -248,20 +244,16 @@ impl OutboxWorker {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let text = resp
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown".to_string());
+            let text = resp.text().await.unwrap_or_else(|_| "unknown".to_string());
             return Err(OutboxError::QdrantError(format!(
                 "Failed to scroll outbox: {} - {}",
                 status, text
             )));
         }
 
-        let scroll_result: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| OutboxError::QdrantError(format!("Failed to parse scroll result: {}", e)))?;
+        let scroll_result: serde_json::Value = resp.json().await.map_err(|e| {
+            OutboxError::QdrantError(format!("Failed to parse scroll result: {}", e))
+        })?;
 
         let points = scroll_result["result"]["points"]
             .as_array()
@@ -316,7 +308,8 @@ impl OutboxWorker {
                     }
                     Ok(resp) => {
                         // Failed delivery — check retryable and update accordingly
-                        let retry_count = payload.get("retry_count")
+                        let retry_count = payload
+                            .get("retry_count")
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0) as u32;
 
@@ -357,7 +350,8 @@ impl OutboxWorker {
                     }
                     Err(e) => {
                         // Network error reaching UI service — retryable
-                        let retry_count = payload.get("retry_count")
+                        let retry_count = payload
+                            .get("retry_count")
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0) as u32;
 
@@ -444,10 +438,7 @@ impl OutboxWorker {
         &self,
         payload: &serde_json::Value,
     ) -> Result<DeliveryResponse, OutboxError> {
-        let delivery_url = format!(
-            "{}/api/v1/notifications/deliver",
-            self.ui_endpoint
-        );
+        let delivery_url = format!("{}/api/v1/notifications/deliver", self.ui_endpoint);
 
         // Build the delivery request body
         let entry = serde_json::json!({
@@ -459,7 +450,8 @@ impl OutboxWorker {
         });
 
         // Determine channel type from the payload or use slack as default for now
-        let channel_type = payload.get("channel_type")
+        let channel_type = payload
+            .get("channel_type")
             .and_then(|v| v.as_str())
             .unwrap_or("slack");
 
@@ -484,12 +476,9 @@ impl OutboxWorker {
                 OutboxError::QdrantError(format!("Failed to reach UI delivery endpoint: {}", e))
             })?;
 
-        let delivery_resp: DeliveryResponse = resp
-            .json()
-            .await
-            .map_err(|e| {
-                OutboxError::QdrantError(format!("Failed to parse delivery response: {}", e))
-            })?;
+        let delivery_resp: DeliveryResponse = resp.json().await.map_err(|e| {
+            OutboxError::QdrantError(format!("Failed to parse delivery response: {}", e))
+        })?;
 
         Ok(delivery_resp)
     }
@@ -505,10 +494,7 @@ impl OutboxWorker {
         let interval_secs = get_outbox_interval_secs();
         let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
 
-        info!(
-            interval_secs = interval_secs,
-            "Outbox worker started"
-        );
+        info!(interval_secs = interval_secs, "Outbox worker started");
 
         loop {
             tokio::select! {
@@ -757,7 +743,10 @@ mod tests {
             ]
         });
         let point = &body["points"][0];
-        assert!(point.get("vector").is_some(), "upsert point must include 'vector' field");
+        assert!(
+            point.get("vector").is_some(),
+            "upsert point must include 'vector' field"
+        );
         assert_eq!(point["vector"], serde_json::json!({}));
     }
 

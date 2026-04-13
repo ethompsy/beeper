@@ -4,9 +4,8 @@
 # This configures the OTel demo to forward metrics and logs to Beeper's
 # operator ingestion endpoint, and keeps the deployment lean for demos.
 
-# --- OTel Collector: default pipeline (no remote write to Beeper) ---
-# The SLO engine queries Prometheus directly; no need for ingestion forwarding.
-# Re-enable prometheusremotewrite/beeper when the ingestion pipeline is optimized.
+# --- OTel Collector: Prometheus remote write to Beeper ---
+# Forwards metrics to Beeper ingestion for anomaly detection alongside Prometheus.
 
 # --- Components ---
 components:
@@ -76,8 +75,15 @@ opentelemetry-collector:
         compression: none
         tls:
           insecure: true
+      prometheusremotewrite/beeper:
+        endpoint: http://beeper-operator-ingestion.beeper.svc:9090/api/v1/write
+        tls:
+          insecure: true
     service:
       pipelines:
         logs:
           processors: [memory_limiter, resourcedetection, resource, batch]
           exporters: [otlphttp/beeper, debug]
+        metrics:
+          processors: [memory_limiter, resourcedetection, resource, batch]
+          exporters: [prometheusremotewrite/beeper]

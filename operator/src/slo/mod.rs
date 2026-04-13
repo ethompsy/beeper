@@ -160,10 +160,7 @@ impl QdrantWriter {
             Ok(())
         } else {
             let status = resp.status();
-            let text = resp
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown".to_string());
+            let text = resp.text().await.unwrap_or_else(|_| "unknown".to_string());
             Err(SloError::QdrantError(format!(
                 "Failed to create slo_snapshots collection: {} - {}",
                 status, text
@@ -205,10 +202,7 @@ impl QdrantWriter {
             Ok(())
         } else {
             let status = resp.status();
-            let text = resp
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown".to_string());
+            let text = resp.text().await.unwrap_or_else(|_| "unknown".to_string());
             Err(SloError::QdrantError(format!(
                 "Failed to write snapshot: {} - {}",
                 status, text
@@ -302,10 +296,7 @@ pub async fn run_slo_engine(
                     let spec = &sl.spec;
 
                     // Compute burn rate for this ServiceLevel
-                    match calculator
-                        .calculate(spec, &spec.objective.window)
-                        .await
-                    {
+                    match calculator.calculate(spec, &spec.objective.window).await {
                         Ok(result) => {
                             info!(
                                 service = %result.service,
@@ -335,9 +326,7 @@ pub async fn run_slo_engine(
 
                             // Evaluate burn rate alerts
                             if let Some(alerts) = &spec.burn_rate_alerts {
-                                alerter
-                                    .evaluate(&name, spec, alerts, &calculator)
-                                    .await;
+                                alerter.evaluate(&name, spec, alerts, &calculator).await;
                             }
 
                             // Evaluate error budget policies
@@ -509,7 +498,10 @@ mod tests {
             ]
         });
         let point = &body["points"][0];
-        assert!(point.get("vector").is_some(), "upsert point must include 'vector' field");
+        assert!(
+            point.get("vector").is_some(),
+            "upsert point must include 'vector' field"
+        );
         assert_eq!(point["vector"], serde_json::json!({}));
     }
 

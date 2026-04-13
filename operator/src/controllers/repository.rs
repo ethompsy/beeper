@@ -17,8 +17,8 @@ use kube::{
 use serde_json::json;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::crds::{Repository, RepositoryCondition, RepositoryStatus};
 use crate::crds::repository::validate_spec;
+use crate::crds::{Repository, RepositoryCondition, RepositoryStatus};
 
 /// Error type for Repository controller operations
 #[derive(Debug, thiserror::Error)]
@@ -247,10 +247,7 @@ mod tests {
     #[test]
     fn test_repository_error_display_missing_namespace() {
         let err = RepositoryError::MissingObjectKey("metadata.namespace");
-        assert_eq!(
-            format!("{}", err),
-            "Missing object key: metadata.namespace"
-        );
+        assert_eq!(format!("{}", err), "Missing object key: metadata.namespace");
     }
 
     #[test]

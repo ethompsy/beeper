@@ -123,9 +123,7 @@ impl ErrorBudgetEvaluator {
     ) {
         let consumption = 1.0 - result.error_budget_remaining;
         let mut state = self.state.write().await;
-        let status = state
-            .entry(servicelevel_name.to_string())
-            .or_default();
+        let status = state.entry(servicelevel_name.to_string()).or_default();
 
         // Track whether any freeze policy is currently active
         let mut any_freeze_active = false;
@@ -405,7 +403,13 @@ mod tests {
         // Trigger: 60% consumed
         let result_high = sample_result(0.4, 3.0);
         evaluator
-            .evaluate("payments-slo", "payment-service", &policies, &result_high, "30d")
+            .evaluate(
+                "payments-slo",
+                "payment-service",
+                &policies,
+                &result_high,
+                "30d",
+            )
             .await;
 
         {
@@ -416,7 +420,13 @@ mod tests {
         // Recover: 30% consumed — clears threshold
         let result_low = sample_result(0.7, 0.5);
         evaluator
-            .evaluate("payments-slo", "payment-service", &policies, &result_low, "30d")
+            .evaluate(
+                "payments-slo",
+                "payment-service",
+                &policies,
+                &result_low,
+                "30d",
+            )
             .await;
 
         {
@@ -428,7 +438,13 @@ mod tests {
 
         // Re-trigger: 60% consumed again — should fire new event
         evaluator
-            .evaluate("payments-slo", "payment-service", &policies, &result_high, "30d")
+            .evaluate(
+                "payments-slo",
+                "payment-service",
+                &policies,
+                &result_high,
+                "30d",
+            )
             .await;
 
         let guard = state.read().await;
@@ -472,7 +488,13 @@ mod tests {
         // Trigger freeze: 96% consumed
         let result_high = sample_result(0.04, 10.0);
         evaluator
-            .evaluate("payments-slo", "payment-service", &policies, &result_high, "30d")
+            .evaluate(
+                "payments-slo",
+                "payment-service",
+                &policies,
+                &result_high,
+                "30d",
+            )
             .await;
 
         {
@@ -483,7 +505,13 @@ mod tests {
         // Recover: 80% consumed — freeze should clear
         let result_low = sample_result(0.2, 2.0);
         evaluator
-            .evaluate("payments-slo", "payment-service", &policies, &result_low, "30d")
+            .evaluate(
+                "payments-slo",
+                "payment-service",
+                &policies,
+                &result_low,
+                "30d",
+            )
             .await;
 
         let guard = state.read().await;
@@ -543,7 +571,9 @@ mod tests {
         let guard = state.read().await;
         let status = guard.get("payments-slo").unwrap();
         assert_eq!(status.triggered_events.len(), 1);
-        let projected = status.triggered_events[0].projected_exhaustion_secs.unwrap();
+        let projected = status.triggered_events[0]
+            .projected_exhaustion_secs
+            .unwrap();
         assert!((projected - 207360.0).abs() < 1.0);
     }
 
@@ -577,7 +607,13 @@ mod tests {
         // 96% consumed — triggers all three
         let result_high = sample_result(0.04, 10.0);
         evaluator
-            .evaluate("payments-slo", "payment-service", &policies, &result_high, "30d")
+            .evaluate(
+                "payments-slo",
+                "payment-service",
+                &policies,
+                &result_high,
+                "30d",
+            )
             .await;
 
         {
@@ -590,7 +626,13 @@ mod tests {
         // 60% consumed — recovers below 0.75 and 0.95, still exceeds 0.50
         let result_mid = sample_result(0.4, 2.0);
         evaluator
-            .evaluate("payments-slo", "payment-service", &policies, &result_mid, "30d")
+            .evaluate(
+                "payments-slo",
+                "payment-service",
+                &policies,
+                &result_mid,
+                "30d",
+            )
             .await;
 
         let guard = state.read().await;
@@ -599,7 +641,9 @@ mod tests {
         assert_eq!(status.triggered_events[0].threshold, 0.5);
         assert!(!status.is_frozen); // Freeze threshold recovered
         assert_eq!(status.triggered_thresholds.len(), 1);
-        assert!(status.triggered_thresholds.contains(&threshold_fingerprint(0.5)));
+        assert!(status
+            .triggered_thresholds
+            .contains(&threshold_fingerprint(0.5)));
     }
 
     #[tokio::test]

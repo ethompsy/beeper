@@ -10,9 +10,7 @@ use kube::api::PostParams;
 use kube::{Api, Client};
 use tracing::{debug, error, info};
 
-use crate::crds::{
-    BurnRateAlert, Investigation, InvestigationSpec, ServiceLevelSpec, Severity,
-};
+use crate::crds::{BurnRateAlert, Investigation, InvestigationSpec, ServiceLevelSpec, Severity};
 
 use super::calculator::SloCalculator;
 use super::impact::CustomerImpactScorer;
@@ -153,13 +151,8 @@ impl BurnRateAlerter {
             self.record_cooldown(&fingerprint);
 
             // Create Investigation CRD
-            self.create_investigation(
-                spec,
-                alert,
-                short_burn_rate,
-                long_burn_rate,
-            )
-            .await;
+            self.create_investigation(spec, alert, short_burn_rate, long_burn_rate)
+                .await;
         }
     }
 

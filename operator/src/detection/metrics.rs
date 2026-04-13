@@ -178,8 +178,7 @@ mod tests {
         assert!(result.is_some(), "Spike on metric_a should be detected");
 
         // Normal value for metric_b — should not detect
-        let result =
-            detector.process(&make_sample("metric_b", 200.0, vec![("service", "svc-b")]));
+        let result = detector.process(&make_sample("metric_b", 200.0, vec![("service", "svc-b")]));
         assert!(result.is_none(), "Normal metric_b should not trigger");
     }
 

@@ -43,6 +43,9 @@ pub async fn loki_push_handler(
     // Log the incoming request
     debug!(content_length = body.len(), "Received Loki push request");
 
+    // Record bytes received for this source
+    buffer.loki_health().record_request(body.len() as u64);
+
     // Validate content type (must be JSON or protobuf)
     let content_type = headers
         .get("content-type")
@@ -59,6 +62,7 @@ pub async fn loki_push_handler(
             content_type = content_type,
             "Invalid content type for Loki push"
         );
+        buffer.loki_health().record_parse_error();
         return (
             StatusCode::BAD_REQUEST,
             "Content-Type must be application/json",
@@ -76,6 +80,7 @@ pub async fn loki_push_handler(
             Ok(data) => data,
             Err(e) => {
                 warn!(error = %e, "Failed to decompress snappy data");
+                buffer.loki_health().record_parse_error();
                 return (StatusCode::BAD_REQUEST, "Failed to decompress snappy data");
             }
         }
@@ -88,6 +93,7 @@ pub async fn loki_push_handler(
         Ok(req) => req,
         Err(e) => {
             warn!(error = %e, "Failed to parse JSON body");
+            buffer.loki_health().record_parse_error();
             return (StatusCode::BAD_REQUEST, "Invalid JSON format");
         }
     };
@@ -111,6 +117,7 @@ pub async fn loki_push_handler(
                         "Failed to parse timestamp, skipping entry"
                     );
                     parse_errors += 1;
+                    buffer.loki_health().record_parse_error();
                     continue;
                 }
             };
@@ -128,6 +135,9 @@ pub async fn loki_push_handler(
             }
         }
     }
+
+    // Record logs received counter
+    buffer.record_logs(buffered_count as u64);
 
     // Check if we're experiencing backpressure (only for valid entries)
     if buffered_count < valid_entries_count {

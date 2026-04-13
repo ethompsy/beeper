@@ -13,27 +13,23 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
-use serde::Deserialize;
+use axum::{extract::State, http::StatusCode, response::IntoResponse};
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 use super::buffer::{IngestionBuffer, IngestionData, LogEntry};
 
 // --- OTLP JSON structs ---
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportLogsServiceRequest {
     #[serde(default)]
     pub resource_logs: Vec<ResourceLogs>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceLogs {
     #[serde(default)]
@@ -42,20 +38,20 @@ pub struct ResourceLogs {
     pub scope_logs: Vec<ScopeLogs>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Resource {
     #[serde(default)]
     pub attributes: Vec<KeyValue>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScopeLogs {
     #[serde(default)]
     pub log_records: Vec<LogRecord>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogRecord {
     #[serde(default)]
@@ -72,7 +68,7 @@ pub struct LogRecord {
     pub attributes: Vec<KeyValue>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyValue {
     pub key: String,
@@ -80,7 +76,7 @@ pub struct KeyValue {
     pub value: Option<AnyValue>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnyValue {
     #[serde(default)]
@@ -93,15 +89,11 @@ pub struct AnyValue {
 
 impl AnyValue {
     fn as_string(&self) -> Option<String> {
-        if let Some(s) = &self.string_value {
-            Some(s.clone())
-        } else if let Some(i) = &self.int_value {
-            Some(i.clone())
-        } else if let Some(b) = &self.bool_value {
-            Some(b.to_string())
-        } else {
-            None
-        }
+        self.string_value
+            .as_ref()
+            .cloned()
+            .or_else(|| self.int_value.as_ref().cloned())
+            .or_else(|| self.bool_value.as_ref().map(|b| b.to_string()))
     }
 }
 
@@ -136,8 +128,20 @@ fn severity_text_from_number(num: u32) -> &'static str {
 /// Handle OTLP HTTP log export requests
 pub async fn otlp_logs_handler(
     State(buffer): State<Arc<IngestionBuffer>>,
-    Json(request): Json<ExportLogsServiceRequest>,
+    body: Bytes,
 ) -> impl IntoResponse {
+    // Record bytes received before any processing (consistent with prometheus/loki handlers)
+    buffer.otlp_health().record_request(body.len() as u64);
+
+    let request: ExportLogsServiceRequest = match serde_json::from_slice(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            warn!(error = %e, "Failed to parse OTLP JSON body");
+            buffer.otlp_health().record_parse_error();
+            return StatusCode::BAD_REQUEST;
+        }
+    };
+
     debug!(
         resource_logs_count = request.resource_logs.len(),
         "Received OTLP logs request"
@@ -161,16 +165,13 @@ pub async fn otlp_logs_handler(
                 }
 
                 // Severity
-                let level = record
-                    .severity_text
-                    .clone()
-                    .unwrap_or_else(|| {
-                        record
-                            .severity_number
-                            .map(severity_text_from_number)
-                            .unwrap_or("UNSPECIFIED")
-                            .to_string()
-                    });
+                let level = record.severity_text.clone().unwrap_or_else(|| {
+                    record
+                        .severity_number
+                        .map(severity_text_from_number)
+                        .unwrap_or("UNSPECIFIED")
+                        .to_string()
+                });
                 labels.insert("level".to_string(), level);
 
                 // Extra attributes from the log record
@@ -208,6 +209,9 @@ pub async fn otlp_logs_handler(
         }
     }
 
+    // Record logs received counter
+    buffer.record_logs(buffered_count);
+
     if buffered_count < total_records {
         let dropped = total_records - buffered_count;
         warn!(
@@ -219,7 +223,10 @@ pub async fn otlp_logs_handler(
         return StatusCode::TOO_MANY_REQUESTS;
     }
 
-    info!(entries = buffered_count, "Successfully buffered OTLP log entries");
+    info!(
+        entries = buffered_count,
+        "Successfully buffered OTLP log entries"
+    );
     StatusCode::OK
 }
 
@@ -258,11 +265,11 @@ mod tests {
         let req: ExportLogsServiceRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.resource_logs.len(), 1);
         let rl = &req.resource_logs[0];
+        assert_eq!(extract_service_name(&rl.resource), Some("cart".to_string()));
         assert_eq!(
-            extract_service_name(&rl.resource),
-            Some("cart".to_string())
+            rl.scope_logs[0].log_records[0].severity_text,
+            Some("ERROR".to_string())
         );
-        assert_eq!(rl.scope_logs[0].log_records[0].severity_text, Some("ERROR".to_string()));
     }
 
     #[test]
@@ -323,7 +330,8 @@ mod tests {
             }],
         };
 
-        let response = otlp_logs_handler(State(buffer.clone()), Json(request))
+        let body = Bytes::from(serde_json::to_vec(&request).unwrap());
+        let response = otlp_logs_handler(State(buffer.clone()), body)
             .await
             .into_response();
 
@@ -339,7 +347,8 @@ mod tests {
             resource_logs: vec![],
         };
 
-        let response = otlp_logs_handler(State(buffer.clone()), Json(request))
+        let body = Bytes::from(serde_json::to_vec(&request).unwrap());
+        let response = otlp_logs_handler(State(buffer.clone()), body)
             .await
             .into_response();
 
@@ -371,7 +380,8 @@ mod tests {
             }],
         };
 
-        let response = otlp_logs_handler(State(buffer.clone()), Json(request))
+        let body = Bytes::from(serde_json::to_vec(&request).unwrap());
+        let response = otlp_logs_handler(State(buffer.clone()), body)
             .await
             .into_response();
 
@@ -429,7 +439,8 @@ mod tests {
             }],
         };
 
-        let response = otlp_logs_handler(State(buffer.clone()), Json(request))
+        let body = Bytes::from(serde_json::to_vec(&request).unwrap());
+        let response = otlp_logs_handler(State(buffer.clone()), body)
             .await
             .into_response();
 
@@ -460,11 +471,27 @@ mod tests {
             }],
         };
 
-        let response = otlp_logs_handler(State(buffer.clone()), Json(request))
+        let body = Bytes::from(serde_json::to_vec(&request).unwrap());
+        let response = otlp_logs_handler(State(buffer.clone()), body)
             .await
             .into_response();
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(buffer.buffered_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_handler_malformed_json() {
+        let buffer = Arc::new(IngestionBuffer::new(100));
+
+        let body = Bytes::from(b"not valid json".to_vec());
+        let response = otlp_logs_handler(State(buffer.clone()), body)
+            .await
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(buffer.buffered_count(), 0);
+        assert_eq!(buffer.otlp_health().snapshot().parse_errors, 1);
+        assert!(buffer.otlp_health().snapshot().bytes_received > 0);
     }
 }

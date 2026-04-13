@@ -167,9 +167,7 @@ pub fn validate_spec(spec: &ServiceLevelSpec) -> Result<(), String> {
         return Err("spec.sli.total_selector must not be empty".to_string());
     }
 
-    if spec.objective.target.is_nan()
-        || spec.objective.target < 0.0
-        || spec.objective.target > 1.0
+    if spec.objective.target.is_nan() || spec.objective.target < 0.0 || spec.objective.target > 1.0
     {
         return Err(format!(
             "spec.objective.target must be between 0.0 and 1.0, got {}",
@@ -213,10 +211,7 @@ pub fn validate_spec(spec: &ServiceLevelSpec) -> Result<(), String> {
     if let Some(policies) = &spec.error_budget_policies {
         let mut seen_thresholds: Vec<u64> = Vec::new();
         for (i, policy) in policies.iter().enumerate() {
-            if policy.threshold.is_nan()
-                || policy.threshold <= 0.0
-                || policy.threshold > 1.0
-            {
+            if policy.threshold.is_nan() || policy.threshold <= 0.0 || policy.threshold > 1.0 {
                 return Err(format!(
                     "spec.error_budget_policies[{}].threshold must be between 0.0 (exclusive) and 1.0 (inclusive), got {}",
                     i, policy.threshold
@@ -651,7 +646,10 @@ mod tests {
 
         // Round-trip deserialization
         let deserialized: ServiceLevelSpec = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.error_budget_policies.as_ref().unwrap().len(), 3);
+        assert_eq!(
+            deserialized.error_budget_policies.as_ref().unwrap().len(),
+            3
+        );
         assert_eq!(
             deserialized.error_budget_policies.as_ref().unwrap()[2].action,
             BudgetPolicyAction::Freeze
@@ -697,9 +695,18 @@ mod tests {
     fn test_validate_spec_valid_error_budget_policies() {
         let mut spec = sample_spec();
         spec.error_budget_policies = Some(vec![
-            ErrorBudgetPolicy { threshold: 0.5, action: BudgetPolicyAction::Notify },
-            ErrorBudgetPolicy { threshold: 0.75, action: BudgetPolicyAction::Notify },
-            ErrorBudgetPolicy { threshold: 0.95, action: BudgetPolicyAction::Freeze },
+            ErrorBudgetPolicy {
+                threshold: 0.5,
+                action: BudgetPolicyAction::Notify,
+            },
+            ErrorBudgetPolicy {
+                threshold: 0.75,
+                action: BudgetPolicyAction::Notify,
+            },
+            ErrorBudgetPolicy {
+                threshold: 0.95,
+                action: BudgetPolicyAction::Freeze,
+            },
         ]);
         assert!(validate_spec(&spec).is_ok());
     }
@@ -707,53 +714,66 @@ mod tests {
     #[test]
     fn test_validate_spec_error_budget_threshold_zero() {
         let mut spec = sample_spec();
-        spec.error_budget_policies = Some(vec![
-            ErrorBudgetPolicy { threshold: 0.0, action: BudgetPolicyAction::Notify },
-        ]);
+        spec.error_budget_policies = Some(vec![ErrorBudgetPolicy {
+            threshold: 0.0,
+            action: BudgetPolicyAction::Notify,
+        }]);
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("between 0.0 (exclusive) and 1.0"));
+        assert!(result
+            .unwrap_err()
+            .contains("between 0.0 (exclusive) and 1.0"));
     }
 
     #[test]
     fn test_validate_spec_error_budget_threshold_negative() {
         let mut spec = sample_spec();
-        spec.error_budget_policies = Some(vec![
-            ErrorBudgetPolicy { threshold: -0.1, action: BudgetPolicyAction::Notify },
-        ]);
+        spec.error_budget_policies = Some(vec![ErrorBudgetPolicy {
+            threshold: -0.1,
+            action: BudgetPolicyAction::Notify,
+        }]);
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("between 0.0 (exclusive) and 1.0"));
+        assert!(result
+            .unwrap_err()
+            .contains("between 0.0 (exclusive) and 1.0"));
     }
 
     #[test]
     fn test_validate_spec_error_budget_threshold_over_one() {
         let mut spec = sample_spec();
-        spec.error_budget_policies = Some(vec![
-            ErrorBudgetPolicy { threshold: 1.5, action: BudgetPolicyAction::Freeze },
-        ]);
+        spec.error_budget_policies = Some(vec![ErrorBudgetPolicy {
+            threshold: 1.5,
+            action: BudgetPolicyAction::Freeze,
+        }]);
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("between 0.0 (exclusive) and 1.0"));
+        assert!(result
+            .unwrap_err()
+            .contains("between 0.0 (exclusive) and 1.0"));
     }
 
     #[test]
     fn test_validate_spec_error_budget_threshold_nan() {
         let mut spec = sample_spec();
-        spec.error_budget_policies = Some(vec![
-            ErrorBudgetPolicy { threshold: f64::NAN, action: BudgetPolicyAction::Notify },
-        ]);
+        spec.error_budget_policies = Some(vec![ErrorBudgetPolicy {
+            threshold: f64::NAN,
+            action: BudgetPolicyAction::Notify,
+        }]);
         let result = validate_spec(&spec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("between 0.0 (exclusive) and 1.0"));
+        assert!(result
+            .unwrap_err()
+            .contains("between 0.0 (exclusive) and 1.0"));
     }
 
     #[test]
     fn test_validate_spec_error_budget_threshold_one_is_valid() {
         let mut spec = sample_spec();
-        spec.error_budget_policies = Some(vec![
-            ErrorBudgetPolicy { threshold: 1.0, action: BudgetPolicyAction::Freeze },
-        ]);
+        spec.error_budget_policies = Some(vec![ErrorBudgetPolicy {
+            threshold: 1.0,
+            action: BudgetPolicyAction::Freeze,
+        }]);
         assert!(validate_spec(&spec).is_ok());
     }
 
@@ -761,8 +781,14 @@ mod tests {
     fn test_validate_spec_error_budget_duplicate_threshold() {
         let mut spec = sample_spec();
         spec.error_budget_policies = Some(vec![
-            ErrorBudgetPolicy { threshold: 0.5, action: BudgetPolicyAction::Notify },
-            ErrorBudgetPolicy { threshold: 0.5, action: BudgetPolicyAction::Freeze },
+            ErrorBudgetPolicy {
+                threshold: 0.5,
+                action: BudgetPolicyAction::Notify,
+            },
+            ErrorBudgetPolicy {
+                threshold: 0.5,
+                action: BudgetPolicyAction::Freeze,
+            },
         ]);
         let result = validate_spec(&spec);
         assert!(result.is_err());
