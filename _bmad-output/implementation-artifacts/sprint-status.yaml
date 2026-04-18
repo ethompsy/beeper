@@ -44,8 +44,8 @@ development_status:
   epic-1: in-progress
   1-1-establish-test-baseline: done
   1-2-fix-otel-collector-to-operator-ingestion: done
-  1-3-fix-anomaly-detection-investigation-triggering: backlog
-  1-4-extend-ingestion-stats-api-with-detection-metrics: backlog
+  1-3-fix-anomaly-detection-investigation-triggering: done
+  1-4-extend-ingestion-stats-api-with-detection-metrics: done
   epic-1-retrospective: optional
 
   # Epic 2: Investigation Execution — Signal Gathering & LLM Root Cause

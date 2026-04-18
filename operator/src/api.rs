@@ -1056,6 +1056,11 @@ pub struct IngestionStatsResponse {
     pub metrics_received: u64,
     pub logs_received: u64,
     pub sources: std::collections::HashMap<String, SourceHealthResponse>,
+    pub anomalies_detected: u64,
+    pub anomalies_suppressed: u64,
+    pub active_metric_detectors: u64,
+    pub ewma_warmup_samples: u64,
+    pub ewma_warmup_minimum: u64,
 }
 
 /// Get ingestion buffer statistics
@@ -1074,6 +1079,26 @@ async fn ingestion_stats(State(state): State<ApiState>) -> impl IntoResponse {
         SourceHealthResponse::from(state.buffer.otlp_health().snapshot()),
     );
 
+    let (
+        anomalies_detected,
+        anomalies_suppressed,
+        active_metric_detectors,
+        ewma_warmup_samples,
+        ewma_warmup_minimum,
+    ) = match &state.detection_stats {
+        Some(ds) => {
+            use std::sync::atomic::Ordering;
+            (
+                ds.anomalies_detected.load(Ordering::Relaxed),
+                ds.anomalies_suppressed.load(Ordering::Relaxed),
+                ds.metrics_tracked.load(Ordering::Relaxed),
+                ds.ewma_warmup_samples.load(Ordering::Relaxed),
+                ds.ewma_warmup_minimum.load(Ordering::Relaxed),
+            )
+        }
+        None => (0, 0, 0, 0, 0),
+    };
+
     let stats = IngestionStatsResponse {
         buffer_size: state.buffer.capacity(),
         buffered_count: state.buffer.buffered_count(),
@@ -1082,6 +1107,11 @@ async fn ingestion_stats(State(state): State<ApiState>) -> impl IntoResponse {
         metrics_received: state.buffer.metrics_received(),
         logs_received: state.buffer.logs_received(),
         sources,
+        anomalies_detected,
+        anomalies_suppressed,
+        active_metric_detectors,
+        ewma_warmup_samples,
+        ewma_warmup_minimum,
     };
 
     debug!(
@@ -1105,6 +1135,7 @@ pub struct DetectionStatsResponse {
     pub services_tracked: u64,
     pub anomalies_detected: u64,
     pub cooldown_entries: u64,
+    pub anomalies_suppressed: u64,
 }
 
 /// Get detection engine statistics
@@ -1117,6 +1148,7 @@ async fn detection_stats_handler(State(state): State<ApiState>) -> impl IntoResp
                 services_tracked: stats.services_tracked.load(Ordering::Relaxed),
                 anomalies_detected: stats.anomalies_detected.load(Ordering::Relaxed),
                 cooldown_entries: stats.cooldown_entries.load(Ordering::Relaxed),
+                anomalies_suppressed: stats.anomalies_suppressed.load(Ordering::Relaxed),
             };
 
             debug!(
@@ -1135,6 +1167,7 @@ async fn detection_stats_handler(State(state): State<ApiState>) -> impl IntoResp
                 services_tracked: 0,
                 anomalies_detected: 0,
                 cooldown_entries: 0,
+                anomalies_suppressed: 0,
             }),
         )
             .into_response(),
@@ -1761,6 +1794,11 @@ mod tests {
             metrics_received: 100,
             logs_received: 50,
             sources: std::collections::HashMap::new(),
+            anomalies_detected: 0,
+            anomalies_suppressed: 0,
+            active_metric_detectors: 0,
+            ewma_warmup_samples: 0,
+            ewma_warmup_minimum: 0,
         };
 
         let json = serde_json::to_string(&stats).unwrap();
@@ -1871,6 +1909,7 @@ mod tests {
             services_tracked: 50,
             anomalies_detected: 12,
             cooldown_entries: 3,
+            anomalies_suppressed: 7,
         };
 
         let json = serde_json::to_string(&stats).unwrap();
@@ -1878,6 +1917,57 @@ mod tests {
         assert!(json.contains("\"services_tracked\":50"));
         assert!(json.contains("\"anomalies_detected\":12"));
         assert!(json.contains("\"cooldown_entries\":3"));
+        assert!(json.contains("\"anomalies_suppressed\":7"));
+    }
+
+    #[test]
+    fn test_ingestion_stats_response_includes_detection_fields() {
+        let stats = IngestionStatsResponse {
+            buffer_size: 10000,
+            buffered_count: 510754,
+            dropped_count: 435289,
+            is_full: false,
+            metrics_received: 506635,
+            logs_received: 4119,
+            sources: std::collections::HashMap::new(),
+            anomalies_detected: 2,
+            anomalies_suppressed: 0,
+            active_metric_detectors: 23,
+            ewma_warmup_samples: 10,
+            ewma_warmup_minimum: 10,
+        };
+
+        let json = serde_json::to_value(&stats).unwrap();
+
+        // Verify all existing fields present
+        assert_eq!(json["buffer_size"], 10000);
+        assert_eq!(json["buffered_count"], 510754);
+        assert_eq!(json["dropped_count"], 435289);
+        assert_eq!(json["is_full"], false);
+        assert_eq!(json["metrics_received"], 506635);
+        assert_eq!(json["logs_received"], 4119);
+        assert!(json["sources"].is_object());
+
+        // Verify all 5 new detection fields present with correct names and types
+        assert_eq!(json["anomalies_detected"], 2);
+        assert_eq!(json["anomalies_suppressed"], 0);
+        assert_eq!(json["active_metric_detectors"], 23);
+        assert_eq!(json["ewma_warmup_samples"], 10);
+        assert_eq!(json["ewma_warmup_minimum"], 10);
+    }
+
+    #[test]
+    fn test_detection_stats_response_includes_suppressed() {
+        let stats = DetectionStatsResponse {
+            metrics_tracked: 100,
+            services_tracked: 10,
+            anomalies_detected: 5,
+            cooldown_entries: 2,
+            anomalies_suppressed: 3,
+        };
+
+        let json = serde_json::to_value(&stats).unwrap();
+        assert_eq!(json["anomalies_suppressed"], 3);
     }
 
     #[test]
@@ -2864,6 +2954,11 @@ mod integration_tests {
             metrics_received: 42,
             logs_received: 17,
             sources,
+            anomalies_detected: 5,
+            anomalies_suppressed: 1,
+            active_metric_detectors: 12,
+            ewma_warmup_samples: 8,
+            ewma_warmup_minimum: 10,
         };
 
         let json = serde_json::to_string(&stats).unwrap();
@@ -2877,6 +2972,11 @@ mod integration_tests {
         assert_eq!(parsed["logs_received"], 17);
         assert_eq!(parsed["sources"]["prometheus"]["bytes_received"], 1024);
         assert_eq!(parsed["sources"]["prometheus"]["parse_errors"], 0);
+        assert_eq!(parsed["anomalies_detected"], 5);
+        assert_eq!(parsed["anomalies_suppressed"], 1);
+        assert_eq!(parsed["active_metric_detectors"], 12);
+        assert_eq!(parsed["ewma_warmup_samples"], 8);
+        assert_eq!(parsed["ewma_warmup_minimum"], 10);
     }
 
     #[tokio::test]

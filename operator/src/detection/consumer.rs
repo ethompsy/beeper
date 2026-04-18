@@ -108,6 +108,11 @@ impl DetectionConsumer {
         let mut cooldown = CooldownTracker::new(self.config.cooldown_secs);
         let investigation_api: Api<Investigation> = Api::namespaced(client, &namespace);
 
+        // Store the configured warmup minimum (one-time)
+        self.stats
+            .ewma_warmup_minimum
+            .store(self.config.min_samples, Ordering::Relaxed);
+
         info!(
             component = "detection",
             namespace = %namespace,
@@ -147,11 +152,27 @@ impl DetectionConsumer {
                     .cooldown_entries
                     .store(cooldown.active_count() as u64, Ordering::Relaxed);
 
+                let min_warmup = match (
+                    metric_detector.tracked_count() > 0,
+                    log_detector.tracked_count() > 0,
+                ) {
+                    (true, true) => metric_detector
+                        .min_sample_count()
+                        .min(log_detector.min_sample_count()),
+                    (true, false) => metric_detector.min_sample_count(),
+                    (false, true) => log_detector.min_sample_count(),
+                    (false, false) => 0,
+                };
+                self.stats
+                    .ewma_warmup_samples
+                    .store(min_warmup, Ordering::Relaxed);
+
                 debug!(
                     component = "detection",
                     metrics_tracked = metric_detector.tracked_count(),
                     services_tracked = log_detector.tracked_count(),
                     anomalies_total = self.stats.anomalies_detected.load(Ordering::Relaxed),
+                    anomalies_suppressed = self.stats.anomalies_suppressed.load(Ordering::Relaxed),
                     "Detection stats"
                 );
             }
@@ -165,6 +186,9 @@ impl DetectionConsumer {
                         fingerprint = %fingerprint,
                         "Anomaly suppressed by cooldown"
                     );
+                    self.stats
+                        .anomalies_suppressed
+                        .fetch_add(1, Ordering::Relaxed);
                     continue;
                 }
 
@@ -446,6 +470,97 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    async fn test_anomalies_suppressed_increments_on_cooldown() {
+        use crate::detection::DetectionStats;
+        use std::sync::atomic::Ordering;
+
+        // Mirrors `test_log_entries_through_buffer_produce_anomaly`: log burst
+        // produces multiple anomaly events with IDENTICAL fingerprints
+        // (same service + anomaly_type + source). Only the first passes the
+        // cooldown check; all subsequent events must be counted as suppressed.
+        let buffer = IngestionBuffer::new(1000);
+        let mut log_detector = LogDetector::new(0.2, 3.0, 10, 1000, 300);
+        let stats = DetectionStats::new();
+        let mut cooldown = super::CooldownTracker::new(600);
+
+        let base_ns: i64 = 1_000_000_000_000_000_000;
+
+        // Baseline: 50 minutes of 1 error/min
+        for i in 0..50 {
+            buffer
+                .try_send(IngestionData::Log(LogEntry {
+                    labels: HashMap::from([
+                        ("service".to_string(), "api".to_string()),
+                        ("level".to_string(), "error".to_string()),
+                    ]),
+                    line: format!("steady {}", i),
+                    timestamp_ns: base_ns + (i as i64) * 60_000_000_000,
+                }))
+                .unwrap();
+        }
+        // Burst: 50 errors in one minute → many anomaly events w/ same fingerprint
+        let burst_ts = base_ns + 50 * 60_000_000_000;
+        for i in 0..50 {
+            buffer
+                .try_send(IngestionData::Log(LogEntry {
+                    labels: HashMap::from([
+                        ("service".to_string(), "api".to_string()),
+                        ("level".to_string(), "error".to_string()),
+                    ]),
+                    line: format!("burst {}", i),
+                    timestamp_ns: burst_ts,
+                }))
+                .unwrap();
+        }
+
+        let mut raw_anomaly_count = 0usize;
+        while let Some(data) =
+            tokio::time::timeout(std::time::Duration::from_millis(10), buffer.recv())
+                .await
+                .ok()
+                .flatten()
+        {
+            if let IngestionData::Log(ref entry) = data {
+                if let Some(event) = log_detector.process(entry) {
+                    raw_anomaly_count += 1;
+                    let fingerprint = super::anomaly_fingerprint(&event);
+                    // This block mirrors DetectionConsumer::run() exactly:
+                    if cooldown.is_cooling_down(&fingerprint) {
+                        stats.anomalies_suppressed.fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        stats.anomalies_detected.fetch_add(1, Ordering::Relaxed);
+                        cooldown.record(fingerprint);
+                        // CRITICAL: after the first (non-suppressed) anomaly, the
+                        // suppressed counter MUST still be 0. Catches off-by-one
+                        // if fetch_add is accidentally placed before the cooldown check.
+                        assert_eq!(
+                            stats.anomalies_suppressed.load(Ordering::Relaxed),
+                            0,
+                            "anomalies_suppressed must be 0 on the triggering event"
+                        );
+                    }
+                }
+            }
+        }
+
+        assert!(
+            raw_anomaly_count >= 2,
+            "Log burst should produce multiple raw anomalies; got {}",
+            raw_anomaly_count
+        );
+        assert_eq!(
+            stats.anomalies_detected.load(Ordering::Relaxed),
+            1,
+            "Exactly one anomaly should pass the cooldown check"
+        );
+        assert!(
+            stats.anomalies_suppressed.load(Ordering::Relaxed) >= 1,
+            "Subsequent anomalies (same fingerprint) must increment anomalies_suppressed; got {}",
+            stats.anomalies_suppressed.load(Ordering::Relaxed)
+        );
+    }
+
+    #[tokio::test]
     async fn test_steady_state_through_buffer_no_anomalies() {
         let buffer = IngestionBuffer::new(1000);
         let mut metric_detector = MetricDetector::new(0.2, 3.0, 10, 10000);
@@ -500,6 +615,66 @@ mod integration_tests {
         assert_eq!(
             anomaly_count, 0,
             "Steady-state data should produce no anomalies"
+        );
+    }
+
+    #[test]
+    fn test_warmup_samples_metric_only_workload() {
+        // When only metric detectors are active (no error logs), warmup_samples
+        // should reflect the metric detector's min, NOT be stuck at 0.
+        let mut metric_detector = MetricDetector::new(0.2, 3.0, 10, 10000);
+        let log_detector = LogDetector::new(0.2, 3.0, 10, 1000, 300);
+
+        // Feed 5 metric samples to one key
+        for i in 0..5 {
+            let sample = crate::ingestion::buffer::MetricSample {
+                name: "cpu_usage".to_string(),
+                labels: HashMap::from([("service".to_string(), "api".to_string())]),
+                value: 50.0 + i as f64,
+                timestamp_ms: 1234567890000 + i * 1000,
+            };
+            metric_detector.process(&sample);
+        }
+
+        assert!(metric_detector.tracked_count() > 0);
+        assert_eq!(log_detector.tracked_count(), 0);
+
+        // Reproduce the fixed warmup computation from consumer.rs
+        let min_warmup = match (
+            metric_detector.tracked_count() > 0,
+            log_detector.tracked_count() > 0,
+        ) {
+            (true, true) => metric_detector
+                .min_sample_count()
+                .min(log_detector.min_sample_count()),
+            (true, false) => metric_detector.min_sample_count(),
+            (false, true) => log_detector.min_sample_count(),
+            (false, false) => 0,
+        };
+
+        assert_eq!(
+            min_warmup, 5,
+            "Warmup should reflect metric detector samples, not be stuck at 0"
+        );
+    }
+
+    #[test]
+    fn test_warmup_minimum_stored_from_config() {
+        use crate::detection::DetectionStats;
+        use std::sync::atomic::Ordering;
+
+        let stats = std::sync::Arc::new(DetectionStats::new());
+        let min_samples: u64 = 42;
+
+        // Simulate what consumer.rs does at startup
+        stats
+            .ewma_warmup_minimum
+            .store(min_samples, Ordering::Relaxed);
+
+        assert_eq!(
+            stats.ewma_warmup_minimum.load(Ordering::Relaxed),
+            42,
+            "ewma_warmup_minimum should be stored from config min_samples"
         );
     }
 }

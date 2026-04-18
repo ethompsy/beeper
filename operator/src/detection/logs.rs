@@ -145,6 +145,17 @@ impl LogDetector {
         self.states.len()
     }
 
+    /// Get the minimum sample count across all tracked log detectors.
+    ///
+    /// Returns 0 if no services are being tracked.
+    pub fn min_sample_count(&self) -> u64 {
+        self.states
+            .values()
+            .map(|s| s.detector.sample_count())
+            .min()
+            .unwrap_or(0)
+    }
+
     /// Check if a log entry is error-level.
     fn is_error_log(entry: &LogEntry) -> bool {
         entry
@@ -427,6 +438,38 @@ mod tests {
             timestamp_ns: 1_000_000_000,
         };
         assert_eq!(LogDetector::extract_service(&entry), "cartservice");
+    }
+
+    #[test]
+    fn test_min_sample_count_returns_minimum() {
+        let mut detector = LogDetector::new(0.2, 3.0, 100, 1000, 300);
+
+        // Empty detector returns 0
+        assert_eq!(detector.min_sample_count(), 0);
+
+        let base_ns: i64 = 1_000_000_000_000_000_000;
+
+        // Feed 5 error logs to service A
+        for i in 0..5 {
+            detector.process(&make_error_log(
+                "service",
+                "svc-a",
+                "error",
+                base_ns + (i as i64) * 60_000_000_000,
+            ));
+        }
+        assert_eq!(detector.min_sample_count(), 5);
+
+        // Feed 15 error logs to service B — min should still be 5 (from svc-a)
+        for i in 0..15 {
+            detector.process(&make_error_log(
+                "service",
+                "svc-b",
+                "error",
+                base_ns + (i as i64) * 60_000_000_000,
+            ));
+        }
+        assert_eq!(detector.min_sample_count(), 5);
     }
 
     #[test]

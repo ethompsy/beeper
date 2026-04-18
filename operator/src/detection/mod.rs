@@ -87,6 +87,14 @@ pub struct DetectionStats {
     pub services_tracked: std::sync::atomic::AtomicU64,
     pub anomalies_detected: std::sync::atomic::AtomicU64,
     pub cooldown_entries: std::sync::atomic::AtomicU64,
+    /// Cumulative count of anomaly events suppressed by cooldown (never decreases).
+    /// Distinct from `cooldown_entries` which tracks the current SIZE of the cooldown map.
+    pub anomalies_suppressed: std::sync::atomic::AtomicU64,
+    /// Minimum sample_count() across all active EWMA detectors (metric + log).
+    /// Represents conservative warmup progress — 0 until all detectors have data.
+    pub ewma_warmup_samples: std::sync::atomic::AtomicU64,
+    /// Configured min_samples threshold that detectors must reach before firing.
+    pub ewma_warmup_minimum: std::sync::atomic::AtomicU64,
 }
 
 impl DetectionStats {
@@ -97,6 +105,9 @@ impl DetectionStats {
             services_tracked: AtomicU64::new(0),
             anomalies_detected: AtomicU64::new(0),
             cooldown_entries: AtomicU64::new(0),
+            anomalies_suppressed: AtomicU64::new(0),
+            ewma_warmup_samples: AtomicU64::new(0),
+            ewma_warmup_minimum: AtomicU64::new(0),
         }
     }
 }
