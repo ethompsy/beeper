@@ -41,14 +41,20 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Restore Data Pipeline — Telemetry Ingestion & Anomaly Detection
-  epic-1: in-progress
+  epic-1: done
   1-1-establish-test-baseline: done
   1-2-fix-otel-collector-to-operator-ingestion: done
   1-3-fix-anomaly-detection-investigation-triggering: done
   1-4-extend-ingestion-stats-api-with-detection-metrics: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   # Epic 2: Investigation Execution — Signal Gathering & LLM Root Cause
+  # Preparation tasks (from Epic 1 retrospective — must complete before Epic 2 stories)
+  2-0a-verify-cluster-stability: pending
+  2-0b-close-story-1-4-e2e-gap: pending
+  2-0c-investigator-test-baseline: pending
+  2-0d-verify-qdrant-health: pending
+  2-0e-verify-llm-config: pending
   epic-2: backlog
   2-1-verify-fix-investigation-lifecycle-job-management: backlog
   2-2-fix-investigator-signal-gathering: backlog
