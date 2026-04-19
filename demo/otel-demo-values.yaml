@@ -46,6 +46,12 @@ components:
         cpu: 200m
         memory: 128Mi
 
+  # Accounting — Kafka consumer, needs more memory than default 120Mi
+  accounting:
+    resources:
+      limits:
+        memory: 256Mi
+
   ad:
     resources:
       limits:
@@ -64,6 +70,10 @@ opensearch:
 
 prometheus:
   enabled: true
+  server:
+    resources:
+      limits:
+        memory: 768Mi
 
 # --- OTel Collector: log forwarding to Beeper via OTLP HTTP ---
 opentelemetry-collector:
