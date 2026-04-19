@@ -82,6 +82,19 @@ spec:
                 message:
                   type: string
                   description: Progress message from the investigator pod
+                workflow_state:
+                  type: string
+                  description: High-level investigation workflow state
+                  enum:
+                    - detected
+                    - investigating
+                    - resolved
+                    - verified
+                    - failed
+                workflow_state_changed_at:
+                  type: string
+                  format: date-time
+                  description: When the workflow state last changed (ISO 8601)
       subresources:
         status: {}
       additionalPrinterColumns:
