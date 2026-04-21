@@ -51,7 +51,7 @@ development_status:
   # Epic 2: Investigation Execution — Signal Gathering & LLM Root Cause
   # Preparation tasks (from Epic 1 retrospective — must complete before Epic 2 stories)
   2-0a-verify-cluster-stability: done
-  2-0b-close-story-1-4-e2e-gap: backlog
+  2-0b-close-story-1-4-e2e-gap: done
   2-0c-investigator-test-baseline: backlog
   2-0d-verify-qdrant-health: backlog
   2-0e-verify-llm-config: backlog
