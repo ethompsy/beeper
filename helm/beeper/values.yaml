@@ -15,10 +15,10 @@ operator:
   resources:
     limits:
       cpu: 500m
-      memory: 1Gi
+      memory: 2Gi
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 512Mi
   ingestion:
     port: 9090
     bufferSize: 10000

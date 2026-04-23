@@ -53,8 +53,8 @@ development_status:
   2-0a-verify-cluster-stability: done
   2-0b-close-story-1-4-e2e-gap: done
   2-0c-investigator-test-baseline: done
-  2-0d-verify-qdrant-health: backlog
-  2-0e-verify-llm-config: backlog
+  2-0d-verify-qdrant-health: done
+  2-0e-verify-llm-config: done
   epic-2: in-progress
   2-1-verify-fix-investigation-lifecycle-job-management: review
   2-2-fix-investigator-signal-gathering: backlog
