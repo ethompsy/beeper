@@ -56,7 +56,7 @@ development_status:
   2-0d-verify-qdrant-health: done
   2-0e-verify-llm-config: done
   epic-2: in-progress
-  2-1-verify-fix-investigation-lifecycle-job-management: review
+  2-1-verify-fix-investigation-lifecycle-job-management: done
   2-2-fix-investigator-signal-gathering: backlog
   2-3-fix-knowledge-base-integration-in-investigations: backlog
   2-4-fix-llm-root-cause-analysis-recommendations: backlog

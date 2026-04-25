@@ -1,6 +1,6 @@
 # Story 2.1: Verify/Fix Investigation Lifecycle & Job Management
 
-Status: review
+Status: done
 
 ## Story
 
@@ -313,7 +313,8 @@ Claude Opus 4.6
 
 ### Change Log
 - 2026-04-18: Story 2.1 implementation complete — all 6 tasks verified, 6 new lifecycle tests added, CRD YAML fixed for workflow_state fields, E2E verified on 32GB kind cluster
+- 2026-04-23: [Code Review] Fixed 3 issues: (1) Added serialization assertions to 3 lifecycle tests + clarified doc comments re: struct shape vs function tests, (2) Added workflow state transition validation warnings in set_phase_completed/failed, (3) Added missing-status warnings in set_phase_completed/failed. All 572 tests pass, clippy clean.
 
 ### File List
-- `operator/src/investigator_job.rs` — Added 6 lifecycle integration tests (test_lifecycle_pending_status_fields, test_lifecycle_running_status_fields, test_lifecycle_failed_status_preserves_context, test_lifecycle_completed_status_preserves_context, test_deterministic_job_name_prevents_duplicates, test_owner_reference_prevents_orphaned_jobs)
+- `operator/src/investigator_job.rs` — Added 6 lifecycle status shape tests, added `ResourceExt` import, added `warn!` import, added transition validation and missing-status warnings in set_phase_completed/failed
 - `helm/beeper/templates/crds/investigation-crd.yaml` — Added workflow_state (enum: detected/investigating/resolved/verified/failed) and workflow_state_changed_at (date-time) to CRD status schema

@@ -14,9 +14,9 @@ use k8s_openapi::api::core::v1::{
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::{Patch, PatchParams};
-use kube::{Api, Client, Resource};
+use kube::{Api, Client, Resource, ResourceExt};
 use serde_json::json;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::crds::{Investigation, InvestigationPhase, InvestigationStatus, WorkflowState};
 
@@ -424,7 +424,20 @@ pub async fn set_phase_completed(
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // Preserve started_at and job_name from current status
-    let current_status = investigation.status.as_ref().cloned().unwrap_or_default();
+    let current_status = match investigation.status.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            warn!(investigation = %investigation.name_any(), "set_phase_completed called with no existing status — started_at and job_name will be lost");
+            InvestigationStatus::default()
+        }
+    };
+
+    // Validate workflow state transition
+    if let Some(ref current_ws) = current_status.workflow_state {
+        if !current_ws.is_valid_transition(&WorkflowState::Resolved) {
+            warn!(investigation = %investigation.name_any(), from = ?current_ws, to = "Resolved", "invalid workflow state transition");
+        }
+    }
 
     let status = InvestigationStatus {
         phase: Some(InvestigationPhase::Completed),
@@ -449,7 +462,20 @@ pub async fn set_phase_failed(
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // Preserve started_at and job_name from current status
-    let current_status = investigation.status.as_ref().cloned().unwrap_or_default();
+    let current_status = match investigation.status.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            warn!(investigation = %investigation.name_any(), "set_phase_failed called with no existing status — started_at and job_name will be lost");
+            InvestigationStatus::default()
+        }
+    };
+
+    // Validate workflow state transition
+    if let Some(ref current_ws) = current_status.workflow_state {
+        if !current_ws.is_valid_transition(&WorkflowState::Failed) {
+            warn!(investigation = %investigation.name_any(), from = ?current_ws, to = "Failed", "invalid workflow state transition");
+        }
+    }
 
     let status = InvestigationStatus {
         phase: Some(InvestigationPhase::Failed),
@@ -1011,12 +1037,16 @@ mod tests {
         assert_eq!(pod_spec.service_account_name, Some("custom-sa".to_string()));
     }
 
-    // --- Lifecycle integration tests (Story 2.1) ---
+    // --- Lifecycle status shape tests (Story 2.1) ---
+    // These verify the expected data shape and serialization for each phase's
+    // InvestigationStatus. The actual set_phase_*() functions are async (require
+    // K8s client) so cannot be unit-tested directly; these ensure the status
+    // structs they build serialize correctly for the K8s API.
 
     #[test]
     fn test_lifecycle_pending_status_fields() {
-        // Verifies the status struct that set_phase_pending() constructs
-        // has correct fields: phase=Pending, workflow_state=Detected, no job/times/error
+        // Verifies the status shape that set_phase_pending() constructs:
+        // phase=Pending, workflow_state=Detected, no job/times/error
         let status = InvestigationStatus {
             phase: Some(InvestigationPhase::Pending),
             started_at: None,
@@ -1042,7 +1072,7 @@ mod tests {
 
     #[test]
     fn test_lifecycle_running_status_fields() {
-        // Verifies the status struct that set_phase_running() constructs
+        // Verifies the status shape that set_phase_running() constructs
         let status = InvestigationStatus {
             phase: Some(InvestigationPhase::Running),
             started_at: Some("2026-04-18T10:00:01Z".to_string()),
@@ -1060,14 +1090,20 @@ mod tests {
         assert_eq!(status.job_name, Some("inv-test-lifecycle".to_string()));
         assert!(status.error.is_none());
 
+        // Verify serialization produces correct JSON for K8s API
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(json["phase"], "running");
+        assert_eq!(json["workflow_state"], "investigating");
+        assert_eq!(json["job_name"], "inv-test-lifecycle");
+
         // Valid workflow transition: Detected → Investigating
         assert!(WorkflowState::Detected.is_valid_transition(&WorkflowState::Investigating));
     }
 
     #[test]
     fn test_lifecycle_failed_status_preserves_context() {
-        // Simulates set_phase_failed() which preserves started_at and job_name
-        // from the Running phase, adds error and completed_at
+        // Verifies the status shape that set_phase_failed() constructs:
+        // preserves started_at and job_name from Running phase, adds error and completed_at
         let running_status = InvestigationStatus {
             phase: Some(InvestigationPhase::Running),
             started_at: Some("2026-04-18T10:00:01Z".to_string()),
@@ -1105,13 +1141,20 @@ mod tests {
         assert_eq!(failed_status.job_name, Some("inv-test-failure".to_string()));
         assert!(failed_status.completed_at.is_some());
 
+        // Verify serialization produces correct JSON for K8s API
+        let json = serde_json::to_value(&failed_status).unwrap();
+        assert_eq!(json["phase"], "failed");
+        assert_eq!(json["workflow_state"], "failed");
+        assert_eq!(json["error"], "BackoffLimitExceeded");
+
         // Valid workflow transition: Investigating → Failed
         assert!(WorkflowState::Investigating.is_valid_transition(&WorkflowState::Failed));
     }
 
     #[test]
     fn test_lifecycle_completed_status_preserves_context() {
-        // Simulates set_phase_completed() which preserves started_at and job_name
+        // Verifies the status shape that set_phase_completed() constructs:
+        // preserves started_at and job_name from Running phase
         let running_status = InvestigationStatus {
             phase: Some(InvestigationPhase::Running),
             started_at: Some("2026-04-18T10:00:01Z".to_string()),
@@ -1151,6 +1194,11 @@ mod tests {
             Some("inv-test-complete".to_string())
         );
         assert!(completed_status.completed_at.is_some());
+
+        // Verify serialization produces correct JSON for K8s API
+        let json = serde_json::to_value(&completed_status).unwrap();
+        assert_eq!(json["phase"], "completed");
+        assert_eq!(json["workflow_state"], "resolved");
 
         // Valid workflow transition: Investigating → Resolved
         assert!(WorkflowState::Investigating.is_valid_transition(&WorkflowState::Resolved));
