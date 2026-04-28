@@ -48,7 +48,9 @@ spec:
             - name: QDRANT_URL
               value: "http://{{ include "beeper.fullname" . }}-qdrant:6333"
             - name: PROMETHEUS_URL
-              value: "http://prometheus.otel-demo.svc:9090"
+              value: {{ .Values.sources.prometheus.endpoint | quote }}
+            - name: LOKI_URL
+              value: {{ .Values.sources.loki.endpoint | quote }}
             - name: LLM_PROVIDER
               value: {{ .Values.llm.provider }}
             - name: LLM_MODEL
