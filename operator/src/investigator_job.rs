@@ -116,7 +116,9 @@ impl InvestigatorConfig {
             prometheus_url: std::env::var("BEEPER_PROMETHEUS_URL")
                 .or_else(|_| std::env::var("PROMETHEUS_URL"))
                 .unwrap_or_default(),
-            loki_url: std::env::var("BEEPER_LOKI_URL").unwrap_or_default(),
+            loki_url: std::env::var("BEEPER_LOKI_URL")
+                .or_else(|_| std::env::var("LOKI_URL"))
+                .unwrap_or_default(),
         }
     }
 }
@@ -819,6 +821,7 @@ mod tests {
         for var in [
             "BEEPER_PROMETHEUS_URL",
             "BEEPER_LOKI_URL",
+            "LOKI_URL",
             "PROMETHEUS_URL",
             "LLM_PROVIDER",
             "LLM_MODEL",
@@ -912,15 +915,18 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         clear_investigator_env_vars();
 
-        // Test that prometheus_url falls back to PROMETHEUS_URL
+        // Test that prometheus_url falls back to PROMETHEUS_URL,
+        // loki_url falls back to LOKI_URL,
         // and llm_provider/llm_model fall back to LLM_PROVIDER/LLM_MODEL
         std::env::set_var("PROMETHEUS_URL", "http://fallback-prom:9090");
+        std::env::set_var("LOKI_URL", "http://fallback-loki:3100");
         std::env::set_var("LLM_PROVIDER", "openai");
         std::env::set_var("LLM_MODEL", "gpt-4-turbo");
 
         let config = InvestigatorConfig::from_env();
 
         assert_eq!(config.prometheus_url, "http://fallback-prom:9090");
+        assert_eq!(config.loki_url, "http://fallback-loki:3100");
         assert_eq!(config.llm_provider, "openai");
         assert_eq!(config.llm_model, "gpt-4-turbo");
 
@@ -933,14 +939,18 @@ mod tests {
         clear_investigator_env_vars();
 
         // BEEPER_PROMETHEUS_URL should take priority over PROMETHEUS_URL
+        // BEEPER_LOKI_URL should take priority over LOKI_URL
         std::env::set_var("BEEPER_PROMETHEUS_URL", "http://prefixed:9090");
         std::env::set_var("PROMETHEUS_URL", "http://fallback:9090");
+        std::env::set_var("BEEPER_LOKI_URL", "http://prefixed-loki:3100");
+        std::env::set_var("LOKI_URL", "http://fallback-loki:3100");
         std::env::set_var("BEEPER_INVESTIGATOR_LLM_PROVIDER", "anthropic");
         std::env::set_var("LLM_PROVIDER", "openai");
 
         let config = InvestigatorConfig::from_env();
 
         assert_eq!(config.prometheus_url, "http://prefixed:9090");
+        assert_eq!(config.loki_url, "http://prefixed-loki:3100");
         assert_eq!(config.llm_provider, "anthropic");
 
         clear_investigator_env_vars();

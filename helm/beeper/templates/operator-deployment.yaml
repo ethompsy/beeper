@@ -47,10 +47,14 @@ spec:
               value: {{ .Values.operator.ingestion.bufferSize | default 10000 | quote }}
             - name: QDRANT_URL
               value: "http://{{ include "beeper.fullname" . }}-qdrant:6333"
+            {{- if .Values.sources.prometheus.enabled }}
             - name: PROMETHEUS_URL
               value: {{ .Values.sources.prometheus.endpoint | quote }}
+            {{- end }}
+            {{- if .Values.sources.loki.enabled }}
             - name: LOKI_URL
               value: {{ .Values.sources.loki.endpoint | quote }}
+            {{- end }}
             - name: LLM_PROVIDER
               value: {{ .Values.llm.provider }}
             - name: LLM_MODEL
