@@ -8,10 +8,12 @@ and downstream relationships and calculates blast radius (FR45).
 from __future__ import annotations
 
 import logging
+import os
 from collections import deque
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+import httpx
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
@@ -128,14 +130,42 @@ class ServiceTopologyStep:
             classification["blast_radius"],
         )
 
+        # Extract SLO data for the investigated service into pipeline_metadata
+        slo_data = self._extract_slo_for_service(health, self.context.service)
+
+        result_data: dict[str, Any] = {
+            "service_topology": topology,
+            "topology_discovery_attempted": True,
+        }
+        result_data.update(slo_data)
+
         return StepResult(
             success=True,
             summary=summary,
-            data={
-                "service_topology": topology,
-                "topology_discovery_attempted": True,
-            },
+            data=result_data,
         )
+
+    def _extract_slo_for_service(
+        self, health: dict[str, dict[str, Any]], service: str
+    ) -> dict[str, Any]:
+        """Extract SLO fields for the investigated service into flat keys.
+
+        These keys are merged into ``pipeline_metadata`` by the agent runner
+        so downstream steps (RCA, recommendations) can include SLO context
+        in their LLM prompts.
+        """
+        svc_health = health.get(service)
+        if not svc_health or svc_health.get("slo_target") is None:
+            return {}
+
+        return {
+            "slo_target": svc_health.get("slo_target"),
+            "slo_compliance": svc_health.get("slo_compliance"),
+            "slo_burn_rate": svc_health.get("burn_rate"),
+            "slo_error_budget_remaining": svc_health.get("slo_error_budget_remaining"),
+            "slo_sli_type": svc_health.get("slo_sli_type", ""),
+            "slo_condition": svc_health.get("slo_condition", ""),
+        }
 
     def _discover_services(self) -> list[dict[str, Any]]:
         """Discover all services in the investigation namespace.
@@ -278,14 +308,18 @@ class ServiceTopologyStep:
     def _get_service_health(self) -> dict[str, dict[str, Any]]:
         """Get health status for all services from ServiceLevel CRDs.
 
+        Reads CRD spec (target, SLI type) and status (condition), then
+        queries Qdrant ``slo_snapshots`` for live burn_rate and compliance.
+
         Returns:
             Dict mapping service name to health info with slo_status,
-            has_active_investigation, and burn_rate.
+            has_active_investigation, burn_rate, slo_target, slo_compliance,
+            slo_sli_type, slo_condition, and slo_error_budget_remaining.
         """
         assert self._custom_api is not None
         health: dict[str, dict[str, Any]] = {}
 
-        # Query ServiceLevel CRDs for SLO health
+        # Query ServiceLevel CRDs for SLO spec + status
         try:
             slo_list = self._custom_api.list_namespaced_custom_object(
                 group=_BEEPER_GROUP,
@@ -294,10 +328,38 @@ class ServiceTopologyStep:
                 plural=_SERVICELEVEL_PLURAL,
             )
             for item in slo_list.get("items", []):
-                service_name = item.get("spec", {}).get("service", "")
+                spec = item.get("spec", {})
+                service_name = spec.get("service", "")
+                if not service_name:
+                    continue
+                slo_target = spec.get("objective", {}).get("target")
+                slo_sli_type = spec.get("sli", {}).get("type", "")
                 status = item.get("status", {})
-                burn_rate = status.get("burnRate")
-                compliance = status.get("compliance", 1.0)
+                slo_condition = status.get("condition", "Unknown")
+
+                health[service_name] = {
+                    "slo_status": "healthy",
+                    "has_active_investigation": False,
+                    "burn_rate": None,
+                    "slo_target": slo_target,
+                    "slo_compliance": None,
+                    "slo_sli_type": slo_sli_type,
+                    "slo_condition": slo_condition,
+                    "slo_error_budget_remaining": None,
+                }
+        except ApiException as exc:
+            logger.warning("Failed to query ServiceLevel CRDs: %s", exc)
+
+        # Enrich with live SLO data from Qdrant slo_snapshots (single batch query)
+        if health:
+            snapshots = self._query_slo_snapshots(set(health.keys()))
+            for service_name, snapshot in snapshots.items():
+                burn_rate = snapshot.get("burn_rate")
+                compliance = snapshot.get("compliance")
+                error_budget = snapshot.get("error_budget_remaining")
+                health[service_name]["burn_rate"] = burn_rate
+                health[service_name]["slo_compliance"] = compliance
+                health[service_name]["slo_error_budget_remaining"] = error_budget
 
                 slo_status = "healthy"
                 if isinstance(burn_rate, (int, float)) and burn_rate > 10:
@@ -306,14 +368,7 @@ class ServiceTopologyStep:
                     slo_status = "warning"
                 elif isinstance(compliance, (int, float)) and compliance < 0.95:
                     slo_status = "warning"
-
-                health[service_name] = {
-                    "slo_status": slo_status,
-                    "has_active_investigation": False,
-                    "burn_rate": burn_rate,
-                }
-        except ApiException as exc:
-            logger.warning("Failed to query ServiceLevel CRDs: %s", exc)
+                health[service_name]["slo_status"] = slo_status
 
         # Query Investigation CRDs for active investigations
         try:
@@ -339,6 +394,62 @@ class ServiceTopologyStep:
             logger.warning("Failed to query Investigation CRDs: %s", exc)
 
         return health
+
+    def _query_slo_snapshots(
+        self, service_names: set[str]
+    ) -> dict[str, dict[str, Any]]:
+        """Query Qdrant slo_snapshots for the latest snapshot of each service.
+
+        Uses a single batch scroll request with ``order_by`` timestamp
+        descending so the first point per service is the most recent.
+
+        Returns:
+            Dict mapping service name to its latest snapshot payload.
+        """
+        qdrant_host = os.getenv("QDRANT_HOST", "localhost")
+        qdrant_port = int(os.getenv("QDRANT_PORT", "6333"))
+        url = f"http://{qdrant_host}:{qdrant_port}/collections/slo_snapshots/points/scroll"
+
+        body: dict[str, Any] = {
+            "filter": {
+                "must": [
+                    {
+                        "key": "service",
+                        "match": {"any": sorted(service_names)},
+                    }
+                ]
+            },
+            "limit": len(service_names) * 2,
+            "with_payload": True,
+            "with_vector": False,
+            "order_by": {"key": "timestamp", "direction": "desc"},
+        }
+
+        try:
+            resp = httpx.post(url, json=body, timeout=5.0)
+            if resp.status_code != 200:
+                logger.debug(
+                    "Qdrant slo_snapshots query returned %d",
+                    resp.status_code,
+                )
+                return {}
+            data = resp.json()
+            points = data.get("result", {}).get("points", [])
+        except (httpx.HTTPError, OSError) as exc:
+            logger.debug("Failed to query slo_snapshots: %s", exc)
+            return {}
+        except Exception as exc:
+            logger.warning("Unexpected error querying slo_snapshots: %s", exc)
+            return {}
+
+        # Keep only the first (latest) point per service
+        result: dict[str, dict[str, Any]] = {}
+        for point in points:
+            payload = point.get("payload", {})
+            svc = payload.get("service", "")
+            if svc and svc not in result:
+                result[svc] = payload
+        return result
 
     def _classify_topology(
         self,

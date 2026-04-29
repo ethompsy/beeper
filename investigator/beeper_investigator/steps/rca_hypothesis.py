@@ -44,7 +44,10 @@ Rules:
 - confidence_percentage must be an integer 0-100
 - Reference specific metric values and log excerpts from the raw signal data \
 in your hypothesis and supporting_evidence (e.g., "error rate spiked to 34%", \
-"latency p99 reached 2.3s", "log shows 'connection refused to db-primary'")"""
+"latency p99 reached 2.3s", "log shows 'connection refused to db-primary'")
+- If SLO breach data is provided, reference the specific target, current \
+compliance, and burn rate in your hypothesis (e.g., "availability SLO at \
+97.2% vs 99.9% target, burn rate 28x indicates severe customer impact")"""
 
 _RCA_USER_TEMPLATE = """\
 Investigation context:
@@ -67,7 +70,10 @@ Temporal sequence of events:
 {temporal_summary}
 
 Signal correlation hypotheses:
-{correlation_hypotheses}"""
+{correlation_hypotheses}
+
+SLO breach context:
+{slo_context}"""
 
 
 def _parse_response(raw: str) -> dict[str, Any]:
@@ -132,6 +138,7 @@ class RCAHypothesisStep:
         impact_data = self._extract_impact_data()
         kb_data = self._extract_kb_data()
         signal_data = self._extract_signal_data()
+        slo_data = self._extract_slo_data()
 
         # Check if we have any useful data at all
         has_impact = impact_data.get("customer_impacting") is not None
@@ -158,6 +165,7 @@ class RCAHypothesisStep:
         correlation_hypotheses = self._format_hypotheses(
             signal_data.get("hypotheses", [])
         )
+        slo_context = self._format_slo_context(slo_data)
 
         messages = [
             {"role": "system", "content": _RCA_SYSTEM_PROMPT},
@@ -173,6 +181,7 @@ class RCAHypothesisStep:
                     raw_signal_detail=raw_signal_detail,
                     temporal_summary=temporal_summary,
                     correlation_hypotheses=correlation_hypotheses,
+                    slo_context=slo_context,
                 ),
             },
         ]
@@ -233,6 +242,19 @@ class RCAHypothesisStep:
             "raw_signal_detail": self.pipeline_metadata.get("raw_signal_detail", ""),
         }
 
+    def _extract_slo_data(self) -> dict[str, Any]:
+        """Extract SLO breach data from pipeline metadata."""
+        return {
+            "slo_target": self.pipeline_metadata.get("slo_target"),
+            "slo_compliance": self.pipeline_metadata.get("slo_compliance"),
+            "slo_burn_rate": self.pipeline_metadata.get("slo_burn_rate"),
+            "slo_error_budget_remaining": self.pipeline_metadata.get(
+                "slo_error_budget_remaining"
+            ),
+            "slo_sli_type": self.pipeline_metadata.get("slo_sli_type", ""),
+            "slo_condition": self.pipeline_metadata.get("slo_condition", ""),
+        }
+
     # ── Prompt formatting ────────────────────────────────────
 
     def _format_impact(self, impact_data: dict[str, Any]) -> str:
@@ -259,6 +281,38 @@ class RCAHypothesisStep:
             )
         if kb_data.get("confidence_boost"):
             parts.append(f"KB confidence boost: {kb_data['confidence_boost']}")
+
+        return "\n".join(parts)
+
+    def _format_slo_context(self, slo_data: dict[str, Any]) -> str:
+        """Format SLO breach data for the LLM prompt.
+
+        Returns an empty string when no SLO data is available so the
+        prompt section is omitted cleanly.
+        """
+        target = slo_data.get("slo_target")
+        if target is None:
+            return ""
+
+        parts: list[str] = []
+        sli_type = slo_data.get("slo_sli_type", "unknown")
+        parts.append(f"SLI type: {sli_type}, target: {target}")
+
+        compliance = slo_data.get("slo_compliance")
+        if compliance is not None:
+            parts.append(f"Current compliance: {compliance}")
+
+        burn_rate = slo_data.get("slo_burn_rate")
+        if burn_rate is not None:
+            parts.append(f"Burn rate: {burn_rate}x")
+
+        budget = slo_data.get("slo_error_budget_remaining")
+        if budget is not None:
+            parts.append(f"Error budget remaining: {budget}")
+
+        condition = slo_data.get("slo_condition", "")
+        if condition:
+            parts.append(f"Condition: {condition}")
 
         return "\n".join(parts)
 

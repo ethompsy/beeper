@@ -1095,3 +1095,72 @@ class TestHelperFunctions:
         result = step._normalize_recommendations(raw_recs)
         assert len(result) == 1
         assert result[0]["action"] == "Valid action"
+
+
+# ── Story 2.5: SLO context in resolution prompt ─────────────
+
+
+class TestSLOContextInResolutionPrompt:
+    """Tests that SLO breach data flows into the recommendations prompt."""
+
+    def test_prompt_includes_slo_context_when_present(self) -> None:
+        """SLO data in pipeline_metadata appears in the user prompt."""
+        metadata = _full_pipeline_metadata()
+        metadata["slo_target"] = 0.999
+        metadata["slo_compliance"] = 0.972
+        metadata["slo_burn_rate"] = 28.0
+        metadata["slo_error_budget_remaining"] = -1.8
+        metadata["slo_sli_type"] = "availability"
+        metadata["slo_condition"] = "Critical"
+
+        step, mock_llm, _ = _make_step(pipeline_metadata=metadata)
+
+        step.execute()
+
+        call_args = mock_llm.complete_sync.call_args
+        user_msg = call_args[0][0][1]["content"]
+        assert "0.999" in user_msg
+        assert "0.972" in user_msg
+        assert "28.0" in user_msg
+        assert "availability" in user_msg
+
+    def test_prompt_omits_slo_section_when_absent(self) -> None:
+        """No SLO data → SLO section is empty (no noise)."""
+        metadata = _full_pipeline_metadata()
+
+        step, mock_llm, _ = _make_step(pipeline_metadata=metadata)
+
+        step.execute()
+
+        call_args = mock_llm.complete_sync.call_args
+        user_msg = call_args[0][0][1]["content"]
+        assert "SLI type:" not in user_msg
+        assert "Current compliance:" not in user_msg
+        assert "Burn rate:" not in user_msg
+
+    def test_system_prompt_mentions_slo(self) -> None:
+        """System prompt instructs LLM to reference SLO data."""
+        step, mock_llm, _ = _make_step()
+
+        step.execute()
+
+        call_args = mock_llm.complete_sync.call_args
+        system_msg = call_args[0][0][0]["content"]
+        assert "SLO" in system_msg
+
+    def test_prompt_partial_slo_target_only(self) -> None:
+        """SLO target present but compliance/burn_rate None (no Qdrant snapshot)."""
+        metadata = _full_pipeline_metadata()
+        metadata["slo_target"] = 0.999
+        metadata["slo_sli_type"] = "availability"
+
+        step, mock_llm, _ = _make_step(pipeline_metadata=metadata)
+
+        step.execute()
+
+        call_args = mock_llm.complete_sync.call_args
+        user_msg = call_args[0][0][1]["content"]
+        assert "0.999" in user_msg
+        assert "availability" in user_msg
+        assert "Current compliance:" not in user_msg
+        assert "Burn rate:" not in user_msg

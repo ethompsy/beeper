@@ -201,7 +201,7 @@ class TestServiceTopologyStep:
     @patch("beeper_investigator.steps.service_topology.config")
     @patch("beeper_investigator.steps.service_topology.client")
     def test_health_status_from_servicelevels(self, mock_client, mock_config):
-        """Health status extracted from ServiceLevel CRDs."""
+        """Health status extracted from ServiceLevel CRDs + Qdrant snapshot."""
         mock_config.load_incluster_config.return_value = None
 
         mock_core = MagicMock()
@@ -214,24 +214,37 @@ class TestServiceTopologyStep:
         mock_core.list_namespaced_endpoints.return_value = ep_list
         mock_client.CoreV1Api.return_value = mock_core
 
-        # ServiceLevel with high burn rate = critical
+        # ServiceLevel CRD with correct spec/status fields
         mock_custom = MagicMock()
         mock_custom.list_namespaced_custom_object.side_effect = [
             {"items": [{
-                "spec": {"service": "payments"},
-                "status": {"burnRate": 15.0, "compliance": 0.92},
+                "spec": {
+                    "service": "payments",
+                    "sli": {"type": "availability"},
+                    "objective": {"target": 0.999, "window": "30m"},
+                },
+                "status": {"condition": "Critical", "alerts_registered": 2},
             }]},
             {"items": []},  # No active investigations
         ]
         mock_client.CustomObjectsApi.return_value = mock_custom
 
         step = _make_step(service="payments")
-        result = step.execute()
+
+        # Mock Qdrant snapshots with high burn rate
+        snapshots = {"payments": {"compliance": 0.92, "burn_rate": 15.0, "error_budget_remaining": 0.0}}
+        with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
+            result = step.execute()
 
         assert result.success is True
         topo = result.data["service_topology"]
         assert topo["health"]["payments"]["slo_status"] == "critical"
         assert topo["health"]["payments"]["burn_rate"] == 15.0
+        assert topo["health"]["payments"]["slo_target"] == 0.999
+        assert topo["health"]["payments"]["slo_compliance"] == 0.92
+        # SLO data should also appear in result.data for pipeline propagation
+        assert result.data.get("slo_target") == 0.999
+        assert result.data.get("slo_burn_rate") == 15.0
 
     @patch("beeper_investigator.steps.service_topology.config")
     @patch("beeper_investigator.steps.service_topology.client")
@@ -416,3 +429,281 @@ class TestFormatTopologySummary:
         }
         result = step._format_topology_summary(topology)
         assert "Blast radius" not in result
+
+
+# ── SLO Data Integration Tests (Story 2.5) ──────────────────
+
+
+class TestSLOCRDFieldExtraction:
+    """Test that _get_service_health reads correct CRD fields (not old burnRate/compliance)."""
+
+    def test_reads_spec_target_and_sli_type(self):
+        """spec.objective.target and spec.sli.type are extracted."""
+        step = _make_step()
+        step._custom_api = MagicMock()
+        step._custom_api.list_namespaced_custom_object.side_effect = [
+            {"items": [{
+                "spec": {
+                    "service": "checkout",
+                    "sli": {"type": "availability"},
+                    "objective": {"target": 0.999},
+                },
+                "status": {"condition": "Healthy"},
+            }]},
+            {"items": []},
+        ]
+        with patch.object(step, "_query_slo_snapshots", return_value={}):
+            health = step._get_service_health()
+
+        assert health["checkout"]["slo_target"] == 0.999
+        assert health["checkout"]["slo_sli_type"] == "availability"
+        assert health["checkout"]["slo_condition"] == "Healthy"
+        assert health["checkout"]["burn_rate"] is None  # No snapshot
+
+    def test_skips_empty_service(self):
+        """CRD items with empty service name are skipped."""
+        step = _make_step()
+        step._custom_api = MagicMock()
+        step._custom_api.list_namespaced_custom_object.side_effect = [
+            {"items": [{
+                "spec": {"service": "", "sli": {"type": "availability"}, "objective": {"target": 0.99}},
+                "status": {},
+            }]},
+            {"items": []},
+        ]
+        with patch.object(step, "_query_slo_snapshots", return_value={}):
+            health = step._get_service_health()
+
+        assert len(health) == 0
+
+
+class TestQdrantSnapshotQuery:
+    """Test _query_slo_snapshots batch query and Qdrant enrichment."""
+
+    @patch("beeper_investigator.steps.service_topology.httpx.post")
+    def test_successful_query(self, mock_post):
+        """Successful Qdrant batch query returns dict keyed by service."""
+        step = _make_step()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "result": {
+                "points": [{
+                    "id": 1,
+                    "payload": {
+                        "service": "checkout",
+                        "compliance": 0.972,
+                        "burn_rate": 28.0,
+                        "error_budget_remaining": 0.0,
+                    },
+                }],
+            }
+        }
+        mock_post.return_value = mock_resp
+
+        result = step._query_slo_snapshots({"checkout"})
+        assert "checkout" in result
+        assert result["checkout"]["compliance"] == 0.972
+        assert result["checkout"]["burn_rate"] == 28.0
+
+    @patch("beeper_investigator.steps.service_topology.httpx.post")
+    def test_no_points_returns_empty(self, mock_post):
+        """Empty points list returns empty dict."""
+        step = _make_step()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"result": {"points": []}}
+        mock_post.return_value = mock_resp
+
+        assert step._query_slo_snapshots({"missing"}) == {}
+
+    @patch("beeper_investigator.steps.service_topology.httpx.post")
+    def test_connection_error_returns_empty(self, mock_post):
+        """Connection failure returns empty dict gracefully."""
+        step = _make_step()
+        mock_post.side_effect = OSError("Connection refused")
+        assert step._query_slo_snapshots({"checkout"}) == {}
+
+    @patch("beeper_investigator.steps.service_topology.httpx.post")
+    def test_non_200_returns_empty(self, mock_post):
+        """Non-200 HTTP status returns empty dict."""
+        step = _make_step()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_post.return_value = mock_resp
+        assert step._query_slo_snapshots({"checkout"}) == {}
+
+    @patch("beeper_investigator.steps.service_topology.httpx.post")
+    def test_keeps_latest_per_service(self, mock_post):
+        """When multiple points exist for a service, keeps only the first (latest)."""
+        step = _make_step()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "result": {
+                "points": [
+                    {"id": 2, "payload": {"service": "checkout", "burn_rate": 28.0, "compliance": 0.97}},
+                    {"id": 1, "payload": {"service": "checkout", "burn_rate": 5.0, "compliance": 0.99}},
+                ],
+            }
+        }
+        mock_post.return_value = mock_resp
+
+        result = step._query_slo_snapshots({"checkout"})
+        assert result["checkout"]["burn_rate"] == 28.0  # First point kept
+
+    def test_enriches_health_with_snapshot(self):
+        """Qdrant snapshot data flows into health dict."""
+        step = _make_step()
+        step._custom_api = MagicMock()
+        step._custom_api.list_namespaced_custom_object.side_effect = [
+            {"items": [{
+                "spec": {
+                    "service": "checkout",
+                    "sli": {"type": "availability"},
+                    "objective": {"target": 0.999},
+                },
+                "status": {"condition": "Critical"},
+            }]},
+            {"items": []},
+        ]
+
+        snapshots = {"checkout": {"compliance": 0.972, "burn_rate": 28.0, "error_budget_remaining": 0.0}}
+        with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
+            health = step._get_service_health()
+
+        assert health["checkout"]["burn_rate"] == 28.0
+        assert health["checkout"]["slo_compliance"] == 0.972
+        assert health["checkout"]["slo_error_budget_remaining"] == 0.0
+        assert health["checkout"]["slo_status"] == "critical"
+
+    def test_health_classification_warning(self):
+        """Burn rate 1-10 yields warning status."""
+        step = _make_step()
+        step._custom_api = MagicMock()
+        step._custom_api.list_namespaced_custom_object.side_effect = [
+            {"items": [{
+                "spec": {"service": "checkout", "sli": {"type": "availability"}, "objective": {"target": 0.999}},
+                "status": {"condition": "Healthy"},
+            }]},
+            {"items": []},
+        ]
+        snapshots = {"checkout": {"compliance": 0.998, "burn_rate": 3.5, "error_budget_remaining": 0.5}}
+        with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
+            health = step._get_service_health()
+
+        assert health["checkout"]["slo_status"] == "warning"
+
+    def test_health_classification_healthy(self):
+        """Burn rate < 1 yields healthy status."""
+        step = _make_step()
+        step._custom_api = MagicMock()
+        step._custom_api.list_namespaced_custom_object.side_effect = [
+            {"items": [{
+                "spec": {"service": "checkout", "sli": {"type": "availability"}, "objective": {"target": 0.999}},
+                "status": {"condition": "Healthy"},
+            }]},
+            {"items": []},
+        ]
+        snapshots = {"checkout": {"compliance": 0.9995, "burn_rate": 0.5, "error_budget_remaining": 0.8}}
+        with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
+            health = step._get_service_health()
+
+        assert health["checkout"]["slo_status"] == "healthy"
+
+
+class TestSLOPipelinePropagation:
+    """Test that SLO data reaches StepResult.data for pipeline_metadata."""
+
+    def test_slo_fields_in_result_data(self):
+        """SLO fields appear in StepResult.data when CRD + snapshot exist."""
+        step = _make_step(service="payments")
+        step._core_api = MagicMock()
+        step._custom_api = MagicMock()
+
+        svc = _make_k8s_service("payments")
+        step._core_api.list_namespaced_service.return_value = MagicMock(items=[svc])
+        step._core_api.list_namespaced_endpoints.return_value = MagicMock(items=[])
+
+        step._custom_api.list_namespaced_custom_object.side_effect = [
+            {"items": [{
+                "spec": {
+                    "service": "payments",
+                    "sli": {"type": "availability"},
+                    "objective": {"target": 0.999},
+                },
+                "status": {"condition": "Critical"},
+            }]},
+            {"items": []},
+        ]
+
+        snapshots = {"payments": {"compliance": 0.92, "burn_rate": 15.0, "error_budget_remaining": 0.0}}
+        with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
+            result = step.execute()
+
+        assert result.data["slo_target"] == 0.999
+        assert result.data["slo_compliance"] == 0.92
+        assert result.data["slo_burn_rate"] == 15.0
+        assert result.data["slo_error_budget_remaining"] == 0.0
+        assert result.data["slo_sli_type"] == "availability"
+        assert result.data["slo_condition"] == "Critical"
+
+    def test_no_slo_when_no_crd(self):
+        """SLO fields absent from result when no ServiceLevel CRD exists."""
+        step = _make_step(service="unknown")
+        step._core_api = MagicMock()
+        step._custom_api = MagicMock()
+
+        svc = _make_k8s_service("unknown")
+        step._core_api.list_namespaced_service.return_value = MagicMock(items=[svc])
+        step._core_api.list_namespaced_endpoints.return_value = MagicMock(items=[])
+
+        step._custom_api.list_namespaced_custom_object.side_effect = [
+            {"items": []},
+            {"items": []},
+        ]
+
+        result = step.execute()
+
+        assert result.success
+        assert "slo_target" not in result.data
+        assert "slo_burn_rate" not in result.data
+
+    def test_extract_slo_for_service_returns_empty_when_no_target(self):
+        """_extract_slo_for_service returns {} when slo_target is None."""
+        step = _make_step()
+        health = {"payments": {"slo_target": None, "burn_rate": None}}
+        assert step._extract_slo_for_service(health, "payments") == {}
+
+    def test_extract_slo_for_service_returns_empty_for_unknown(self):
+        """_extract_slo_for_service returns {} for unknown service."""
+        step = _make_step()
+        assert step._extract_slo_for_service({}, "unknown") == {}
+
+
+class TestGracefulAbsence:
+    """Test that missing SLO data is handled without errors (AC #3)."""
+
+    def test_servicelevel_api_exception_graceful(self):
+        """ApiException on ServiceLevel query produces empty health dict."""
+        step = _make_step()
+        step._custom_api = MagicMock()
+        step._custom_api.list_namespaced_custom_object.side_effect = ApiException(
+            status=403, reason="Forbidden"
+        )
+        health = step._get_service_health()
+        assert health == {}
+
+    @patch("beeper_investigator.steps.service_topology.config")
+    @patch("beeper_investigator.steps.service_topology.client")
+    def test_k8s_init_failure_no_slo_data(self, mock_client, mock_config):
+        """K8s init failure produces no SLO data in result."""
+        mock_config.load_incluster_config.side_effect = Exception("No cluster")
+        mock_config.load_kube_config.side_effect = Exception("No kubeconfig")
+
+        step = _make_step()
+        result = step.execute()
+
+        assert result.success
+        assert "slo_target" not in result.data
+        assert "slo_burn_rate" not in result.data

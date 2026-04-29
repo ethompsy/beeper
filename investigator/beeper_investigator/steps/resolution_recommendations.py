@@ -48,7 +48,10 @@ low = safe
 - Reference specific values from the raw signal data: include thresholds, \
 replica counts, error rates, or configuration values observed in signals \
 (e.g., "Scale replicas from 2 to 4", "Increase connection pool from 100 to 200")
-- based_on_prior_incident must reference actual incident ID or be null"""
+- based_on_prior_incident must reference actual incident ID or be null
+- If SLO breach data is provided, prioritize actions that restore SLO \
+compliance and reference the specific target, burn rate, and error budget \
+(e.g., "Restore availability from 97.2% to 99.9% target by scaling replicas")"""
 
 _RESOLUTION_USER_TEMPLATE = """\
 Investigation context:
@@ -71,7 +74,10 @@ Signal correlation:
 Raw signal data (metric values and log excerpts):
 {raw_signal_detail}
 
-Service dependency chain: {dependency_chain}"""
+Service dependency chain: {dependency_chain}
+
+SLO breach context:
+{slo_context}"""
 
 _VALID_LEVELS = ("high", "medium", "low")
 
@@ -147,6 +153,7 @@ class ResolutionRecommendationStep:
         kb_data = self._extract_kb_data()
         impact_data = self._extract_impact_data()
         signal_data = self._extract_signal_data()
+        slo_data = self._extract_slo_data()
 
         has_rca = bool(rca_data.get("root_cause_hypothesis"))
         has_kb = bool(
@@ -168,7 +175,7 @@ class ResolutionRecommendationStep:
 
         # Build LLM prompt
         messages = self._build_messages(
-            rca_data, kb_data, impact_data, signal_data
+            rca_data, kb_data, impact_data, signal_data, slo_data
         )
 
         model_name = self.llm_client.select_model("standard")
@@ -250,6 +257,47 @@ class ResolutionRecommendationStep:
             ),
         }
 
+    def _extract_slo_data(self) -> dict[str, Any]:
+        """Extract SLO breach data from pipeline metadata."""
+        return {
+            "slo_target": self.pipeline_metadata.get("slo_target"),
+            "slo_compliance": self.pipeline_metadata.get("slo_compliance"),
+            "slo_burn_rate": self.pipeline_metadata.get("slo_burn_rate"),
+            "slo_error_budget_remaining": self.pipeline_metadata.get(
+                "slo_error_budget_remaining"
+            ),
+            "slo_sli_type": self.pipeline_metadata.get("slo_sli_type", ""),
+            "slo_condition": self.pipeline_metadata.get("slo_condition", ""),
+        }
+
+    def _format_slo_context(self, slo_data: dict[str, Any]) -> str:
+        """Format SLO breach data for the LLM prompt."""
+        target = slo_data.get("slo_target")
+        if target is None:
+            return ""
+
+        parts: list[str] = []
+        sli_type = slo_data.get("slo_sli_type", "unknown")
+        parts.append(f"SLI type: {sli_type}, target: {target}")
+
+        compliance = slo_data.get("slo_compliance")
+        if compliance is not None:
+            parts.append(f"Current compliance: {compliance}")
+
+        burn_rate = slo_data.get("slo_burn_rate")
+        if burn_rate is not None:
+            parts.append(f"Burn rate: {burn_rate}x")
+
+        budget = slo_data.get("slo_error_budget_remaining")
+        if budget is not None:
+            parts.append(f"Error budget remaining: {budget}")
+
+        condition = slo_data.get("slo_condition", "")
+        if condition:
+            parts.append(f"Condition: {condition}")
+
+        return "\n".join(parts)
+
     # ── Prompt building ──────────────────────────────────────
 
     def _build_messages(
@@ -258,6 +306,7 @@ class ResolutionRecommendationStep:
         kb_data: dict[str, Any],
         impact_data: dict[str, Any],
         signal_data: dict[str, Any],
+        slo_data: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         impact_val = impact_data.get("customer_impacting")
         reasoning = impact_data.get("reasoning", "")
@@ -297,6 +346,8 @@ class ResolutionRecommendationStep:
             else "Not available"
         )
 
+        slo_context = self._format_slo_context(slo_data or {})
+
         user_content = _RESOLUTION_USER_TEMPLATE.format(
             condition=self.context.condition,
             service=self.context.service,
@@ -310,6 +361,7 @@ class ResolutionRecommendationStep:
             signal_summary=sig_summary,
             raw_signal_detail=raw_signal_detail,
             dependency_chain=dep_str,
+            slo_context=slo_context,
         )
 
         return [
