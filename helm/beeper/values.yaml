@@ -133,7 +133,7 @@ llm:
 # Observability sources
 sources:
   prometheus:
-    enabled: true
+    enabled: false
     endpoint: ""
   loki:
     enabled: false
