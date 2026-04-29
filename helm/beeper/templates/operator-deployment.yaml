@@ -73,6 +73,8 @@ spec:
               value: {{ .Values.investigator.image.pullPolicy }}
             - name: BEEPER_INVESTIGATOR_QDRANT_HOST
               value: "{{ include "beeper.fullname" . }}-qdrant"
+            - name: BEEPER_INVESTIGATOR_QDRANT_PORT
+              value: "6333"
             - name: BEEPER_INVESTIGATOR_SERVICE_ACCOUNT
               value: {{ include "beeper.investigatorServiceAccountName" . }}
             - name: BEEPER_INVESTIGATOR_CPU_LIMIT

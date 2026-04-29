@@ -45,6 +45,8 @@ COLLECTIONS = {
             ("entry_type", PayloadSchemaType.KEYWORD),
             ("service", PayloadSchemaType.KEYWORD),
             ("created_at", PayloadSchemaType.DATETIME),
+            ("source_investigation_id", PayloadSchemaType.KEYWORD),
+            ("contributing_investigations", PayloadSchemaType.KEYWORD),
         ],
     },
     "knowledge_versions": {

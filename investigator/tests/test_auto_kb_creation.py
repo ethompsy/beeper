@@ -451,6 +451,8 @@ class TestVersionSnapshot:
         version_point = version_calls[0][0][1][0]
         assert version_point.payload["entry_id"] == "test-entry"
         assert version_point.payload["version"] == 3
+        # Vector must be 1-dim to match knowledge_versions collection schema
+        assert version_point.vector == [0.0]
 
     def test_version_snapshot_failure_non_fatal(self) -> None:
         kb = _make_kb_client()

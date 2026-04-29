@@ -60,7 +60,7 @@ qdrant:
   enabled: true
   image:
     repository: qdrant/qdrant
-    tag: "v1.12.0"
+    tag: "v1.15.0"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP

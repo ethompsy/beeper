@@ -35,7 +35,7 @@ ui:
 # Smaller Qdrant for development
 qdrant:
   image:
-    tag: "v1.12.0"
+    tag: "v1.15.0"
     pullPolicy: IfNotPresent
   persistence:
     size: 1Gi

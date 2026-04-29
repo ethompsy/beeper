@@ -30,9 +30,8 @@ _MAX_RETRIES = 3
 _RETRY_DELAYS = [1.0, 2.0]
 _DEFAULT_VECTOR_DIM = 1536
 
-# Similarity thresholds for duplicate detection
-SIMILARITY_THRESHOLD = 0.85  # Above this = definite duplicate, enrich
-ENRICHMENT_THRESHOLD = 0.70  # Above this = likely related, enrich cautiously
+# Similarity threshold for duplicate detection / enrichment
+ENRICHMENT_THRESHOLD = 0.70  # Above this = similar enough to enrich instead of creating new
 
 
 class AutoKBCreationService:
@@ -386,7 +385,7 @@ class AutoKBCreationService:
             }
             point = PointStruct(
                 id=version_id,
-                vector=[0.0] * _DEFAULT_VECTOR_DIM,
+                vector=[0.0],  # knowledge_versions uses vector_dim=1 (no semantic search)
                 payload=version_payload,
             )
             self.kb_client.client.upsert(VERSIONS_COLLECTION, [point])
