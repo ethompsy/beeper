@@ -549,21 +549,25 @@ class TestCorrelationAnalysis:
 class TestSchemaConsistency:
     """Tests for consistent StepResult data schema."""
 
+    _EXPECTED_KEYS = (
+        "sources_available",
+        "layers_queried",
+        "signals_gathered",
+        "signal_summary",
+        "hypotheses",
+        "service_dependency_chain",
+        "temporal_summary",
+        "raw_signal_detail",
+        "correlation_attempted",
+    )
+
     def test_all_schema_keys_present_with_results(self) -> None:
         """Step data includes all expected keys with results."""
         step, *_ = _make_step()
 
         result = step.execute()
 
-        for key in (
-            "sources_available",
-            "layers_queried",
-            "signals_gathered",
-            "signal_summary",
-            "hypotheses",
-            "service_dependency_chain",
-            "correlation_attempted",
-        ):
+        for key in self._EXPECTED_KEYS:
             assert key in result.data, f"Missing key: {key}"
 
     def test_all_schema_keys_present_no_sources(self) -> None:
@@ -572,15 +576,7 @@ class TestSchemaConsistency:
 
         result = step.execute()
 
-        for key in (
-            "sources_available",
-            "layers_queried",
-            "signals_gathered",
-            "signal_summary",
-            "hypotheses",
-            "service_dependency_chain",
-            "correlation_attempted",
-        ):
+        for key in self._EXPECTED_KEYS:
             assert key in result.data, f"Missing key: {key}"
 
     def test_no_sources_default_values(self) -> None:
@@ -674,3 +670,87 @@ class TestPromptContent:
         user_msg = messages[1]["content"]
         assert "node_cpu" in user_msg
         assert "0.85" in user_msg or "0.92" in user_msg
+
+
+# ── Review Fix: raw_signal_detail and temporal_summary in StepResult ──
+
+
+class TestRawSignalDetailInResult:
+    """Tests verifying raw_signal_detail and temporal_summary flow to StepResult."""
+
+    def test_result_includes_raw_signal_detail(self) -> None:
+        """StepResult.data includes raw_signal_detail with metric values."""
+        step, *_ = _make_step(
+            prom_return={
+                "resultType": "matrix",
+                "result": [{
+                    "metric": {"__name__": "pg_stat_activity", "service": "payments"},
+                    "values": [[1706454600, "45"], [1706454660, "100"]],
+                }],
+            },
+        )
+
+        result = step.execute()
+
+        raw = result.data["raw_signal_detail"]
+        assert isinstance(raw, str)
+        assert len(raw) > 0
+        assert "pg_stat_activity" in raw
+        # :.2g formats 100 as 1e+02 and 45 as 45
+        assert "45" in raw
+
+    def test_result_includes_temporal_summary(self) -> None:
+        """StepResult.data includes temporal_summary from LLM analysis."""
+        analysis_resp = json.dumps({
+            "signal_summary": "DB connections spiking",
+            "hypotheses": [],
+            "service_dependency_chain": None,
+            "temporal_summary": "14:18 DB spike, 14:22 app errors",
+        })
+        step, *_ = _make_step(llm_analysis_response=analysis_resp)
+
+        result = step.execute()
+
+        assert result.data["temporal_summary"] == "14:18 DB spike, 14:22 app errors"
+
+    def test_no_sources_returns_empty_raw_signal_detail(self) -> None:
+        """No sources path returns empty raw_signal_detail and temporal_summary."""
+        step, *_ = _make_step(prometheus=False, loki=False)
+
+        result = step.execute()
+
+        assert result.data["raw_signal_detail"] == ""
+        assert result.data["temporal_summary"] == ""
+
+    def test_all_queries_error_returns_empty_raw_signal_detail(self) -> None:
+        """All queries returning errors → empty raw_signal_detail."""
+        step, *_ = _make_step(
+            prom_error=ConnectionError("unreachable"),
+            loki_error=ConnectionError("unreachable"),
+        )
+
+        result = step.execute()
+
+        assert result.data["raw_signal_detail"] == ""
+
+    def test_raw_signal_detail_includes_loki_excerpts(self) -> None:
+        """raw_signal_detail includes Loki log excerpts."""
+        step, *_ = _make_step(
+            prometheus=False,
+            loki_return={
+                "resultType": "streams",
+                "result": [{
+                    "stream": {"app": "payments"},
+                    "values": [
+                        ["1706454600000000000", "ERROR connection pool exhausted"],
+                        ["1706454601000000000", "ERROR request timeout"],
+                    ],
+                }],
+            },
+        )
+
+        result = step.execute()
+
+        raw = result.data["raw_signal_detail"]
+        assert "loki:" in raw
+        assert "connection pool exhausted" in raw

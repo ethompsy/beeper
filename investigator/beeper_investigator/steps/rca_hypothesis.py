@@ -41,7 +41,10 @@ Rules:
 - ALWAYS provide alternative_hypotheses when confidence < high
 - ALWAYS provide additional_data_needs when confidence is low
 - If a known KB match exists, cite it and boost confidence appropriately
-- confidence_percentage must be an integer 0-100"""
+- confidence_percentage must be an integer 0-100
+- Reference specific metric values and log excerpts from the raw signal data \
+in your hypothesis and supporting_evidence (e.g., "error rate spiked to 34%", \
+"latency p99 reached 2.3s", "log shows 'connection refused to db-primary'")"""
 
 _RCA_USER_TEMPLATE = """\
 Investigation context:
@@ -56,6 +59,12 @@ Prior KB research:
 
 Signal correlation findings:
 {signal_summary}
+
+Raw signal data (metric values and log excerpts):
+{raw_signal_detail}
+
+Temporal sequence of events:
+{temporal_summary}
 
 Signal correlation hypotheses:
 {correlation_hypotheses}"""
@@ -140,6 +149,12 @@ class RCAHypothesisStep:
         impact_summary = self._format_impact(impact_data)
         kb_summary = self._format_kb(kb_data)
         signal_summary = signal_data.get("signal_summary", "No signal data available")
+        raw_signal_detail = signal_data.get(
+            "raw_signal_detail", "No raw signal data available"
+        ) or "No raw signal data available"
+        temporal_summary = signal_data.get(
+            "temporal_summary", "No temporal data available"
+        ) or "No temporal data available"
         correlation_hypotheses = self._format_hypotheses(
             signal_data.get("hypotheses", [])
         )
@@ -155,6 +170,8 @@ class RCAHypothesisStep:
                     impact_summary=impact_summary,
                     kb_summary=kb_summary,
                     signal_summary=signal_summary,
+                    raw_signal_detail=raw_signal_detail,
+                    temporal_summary=temporal_summary,
                     correlation_hypotheses=correlation_hypotheses,
                 ),
             },
@@ -212,6 +229,8 @@ class RCAHypothesisStep:
             ),
             "layers_queried": self.pipeline_metadata.get("layers_queried", []),
             "signals_gathered": self.pipeline_metadata.get("signals_gathered", 0),
+            "temporal_summary": self.pipeline_metadata.get("temporal_summary", ""),
+            "raw_signal_detail": self.pipeline_metadata.get("raw_signal_detail", ""),
         }
 
     # ── Prompt formatting ────────────────────────────────────

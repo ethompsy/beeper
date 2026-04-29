@@ -193,6 +193,8 @@ class SignalCorrelationStep:
                     "signal_summary": "",
                     "hypotheses": [],
                     "service_dependency_chain": None,
+                    "temporal_summary": "",
+                    "raw_signal_detail": "",
                     "correlation_attempted": False,
                 },
             )
@@ -222,8 +224,12 @@ class SignalCorrelationStep:
 
         layers_queried = sorted({s["layer"] for s in signals})
 
+        # Format successful signals once (reused by analysis and downstream steps)
+        successful = [s for s in signals if s["data"] is not None]
+        raw_signal_detail = self._format_signals(successful) if successful else ""
+
         # Phase 3: Analyze signals with LLM
-        analysis = self._analyze_signals(signals)
+        analysis = self._analyze_signals(signals, formatted_text=raw_signal_detail)
 
         total = len(signals)
         summary_parts = [
@@ -245,6 +251,8 @@ class SignalCorrelationStep:
                 "signal_summary": analysis.get("signal_summary", ""),
                 "hypotheses": analysis.get("hypotheses", []),
                 "service_dependency_chain": analysis.get("service_dependency_chain"),
+                "temporal_summary": analysis.get("temporal_summary", ""),
+                "raw_signal_detail": raw_signal_detail,
                 "correlation_attempted": True,
             },
         )
@@ -451,6 +459,7 @@ class SignalCorrelationStep:
     def _analyze_signals(
         self,
         signals: list[dict[str, Any]],
+        formatted_text: str = "",
     ) -> dict[str, Any]:
         """Use LLM to correlate signals and generate hypotheses."""
         if not signals:
@@ -466,7 +475,7 @@ class SignalCorrelationStep:
                 "temporal_summary": "",
             }
 
-        formatted = self._format_signals(successful)
+        formatted = formatted_text or self._format_signals(successful)
 
         # Include prior research from pipeline metadata if available
         prior_research = ""

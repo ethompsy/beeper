@@ -84,6 +84,17 @@ def _full_pipeline_metadata() -> dict[str, Any]:
         "service_dependency_chain": [
             "payments-db", "payments", "api-gateway",
         ],
+        "temporal_summary": (
+            "15:03 DB connection count began climbing; "
+            "15:05 first 5xx errors on /checkout; "
+            "15:07 error rate peaked at 15%"
+        ),
+        "raw_signal_detail": (
+            "[data] prometheus: pg_stat_activity_count → 1 series"
+            " | pg_stat_activity_count{service=payments}: latest=100, min=45, max=100, points=30\n"
+            "[application] loki: {namespace=\"default\"} |= \"error\" → 2 streams"
+            " | 47 log entries, samples: ['connection pool exhausted: max connections reached']"
+        ),
         "correlation_attempted": True,
         # From RCAHypothesisStep
         "root_cause_hypothesis": (
@@ -631,6 +642,31 @@ class TestLLMFailureFallback:
         assert len(result.data["recommendations"]) >= 1
         assert len(result.data["diagnostic_actions"]) >= 1
 
+    def test_llm_failure_with_signals_uses_signal_detail(self) -> None:
+        """LLM fails, no KB, no RCA, but signals available → signal-specific fallback."""
+        metadata = {
+            "customer_impacting": True,
+            "reasoning": "Service is down",
+            "raw_signal_detail": (
+                "[data] prometheus: pg_connections → 1 series"
+                " | pg_connections: latest=100, max=100"
+            ),
+        }
+        step, *_ = _make_step(
+            pipeline_metadata=metadata,
+            llm_error=RuntimeError("LLM unreachable"),
+        )
+
+        result = step.execute()
+
+        assert result.success is True
+        assert result.data["synthesis_source"] == "fallback"
+        recs = result.data["recommendations"]
+        assert len(recs) >= 1
+        # Fallback should reference actual signal data, not generic "dashboards"
+        action = recs[0]["action"]
+        assert "pg_connections" in action or "latest=100" in action
+
 
 # ── 7.10: LLM malformed JSON → graceful fallback ──
 
@@ -974,6 +1010,21 @@ class TestPromptContent:
         messages = call_args[0][0]
         user_msg = messages[1]["content"]
         assert "payments-db" in user_msg or "api-gateway" in user_msg
+
+    def test_prompt_includes_raw_signal_detail(self) -> None:
+        """LLM prompt includes raw metric values and log excerpts (FR19)."""
+        step, mock_llm, _ = _make_step()
+
+        step.execute()
+
+        call_args = mock_llm.complete_sync.call_args
+        messages = call_args[0][0]
+        user_msg = messages[1]["content"]
+        # Raw Prometheus values should be present
+        assert "latest=100" in user_msg
+        assert "pg_stat_activity_count" in user_msg
+        # Raw Loki log excerpts should be present
+        assert "connection pool exhausted" in user_msg
 
     def test_uses_standard_model(self) -> None:
         """Step uses standard tier via select_model."""

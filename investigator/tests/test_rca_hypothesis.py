@@ -74,6 +74,19 @@ def _full_pipeline_metadata() -> dict[str, Any]:
             },
         ],
         "service_dependency_chain": ["payments-db", "payments", "api-gateway"],
+        "temporal_summary": (
+            "15:03 DB connection count began climbing; "
+            "15:05 first 5xx errors on /checkout; "
+            "15:07 error rate peaked at 15%"
+        ),
+        "raw_signal_detail": (
+            "[data] prometheus: pg_stat_activity_count → 1 series"
+            " | pg_stat_activity_count{service=payments}: latest=100, min=45, max=100, points=30\n"
+            "[application] loki: {namespace=\"default\"} |= \"error\" → 2 streams"
+            " | 47 log entries, samples: ['2026-04-10T15:05:12Z ERROR payments "
+            "connection pool exhausted: max connections reached', "
+            "'2026-04-10T15:05:13Z ERROR checkout request failed: upstream timeout']"
+        ),
         "correlation_attempted": True,
     }
 
@@ -777,6 +790,33 @@ class TestPromptContent:
         messages = call_args[0][0]
         user_msg = messages[1]["content"]
         assert "signal" in user_msg.lower() or "DB connection" in user_msg
+
+    def test_prompt_includes_raw_signal_detail(self) -> None:
+        """LLM prompt includes raw metric values and log excerpts (FR18)."""
+        step, mock_llm, _ = _make_step()
+
+        step.execute()
+
+        call_args = mock_llm.complete_sync.call_args
+        messages = call_args[0][0]
+        user_msg = messages[1]["content"]
+        # Raw Prometheus values should be present
+        assert "latest=100" in user_msg
+        assert "pg_stat_activity_count" in user_msg
+        # Raw Loki log excerpts should be present
+        assert "connection pool exhausted" in user_msg
+
+    def test_prompt_includes_temporal_summary(self) -> None:
+        """LLM prompt includes temporal sequence of events."""
+        step, mock_llm, _ = _make_step()
+
+        step.execute()
+
+        call_args = mock_llm.complete_sync.call_args
+        messages = call_args[0][0]
+        user_msg = messages[1]["content"]
+        assert "15:03" in user_msg
+        assert "error rate peaked" in user_msg
 
     def test_uses_deep_rca_model(self) -> None:
         """Step uses deep_rca tier via select_model."""

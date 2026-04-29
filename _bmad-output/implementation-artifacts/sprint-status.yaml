@@ -59,7 +59,7 @@ development_status:
   2-1-verify-fix-investigation-lifecycle-job-management: done
   2-2-fix-investigator-signal-gathering: done
   2-3-fix-knowledge-base-integration-in-investigations: done
-  2-4-fix-llm-root-cause-analysis-recommendations: backlog
+  2-4-fix-llm-root-cause-analysis-recommendations: done
   2-5-verify-fix-servicelevel-crd-integration: backlog
   epic-2-retrospective: optional
 

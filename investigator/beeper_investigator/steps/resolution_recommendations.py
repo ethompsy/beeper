@@ -45,6 +45,9 @@ low = safe
 - ALWAYS include diagnostic_actions when root cause confidence < high
 - If prior KB resolution exists, include it as the first recommendation
 - Each action must be specific and actionable, not generic advice
+- Reference specific values from the raw signal data: include thresholds, \
+replica counts, error rates, or configuration values observed in signals \
+(e.g., "Scale replicas from 2 to 4", "Increase connection pool from 100 to 200")
 - based_on_prior_incident must reference actual incident ID or be null"""
 
 _RESOLUTION_USER_TEMPLATE = """\
@@ -64,6 +67,9 @@ Prior KB research:
 
 Signal correlation:
 {signal_summary}
+
+Raw signal data (metric values and log excerpts):
+{raw_signal_detail}
 
 Service dependency chain: {dependency_chain}"""
 
@@ -239,6 +245,9 @@ class ResolutionRecommendationStep:
             "service_dependency_chain": self.pipeline_metadata.get(
                 "service_dependency_chain"
             ),
+            "raw_signal_detail": self.pipeline_metadata.get(
+                "raw_signal_detail", ""
+            ),
         }
 
     # ── Prompt building ──────────────────────────────────────
@@ -277,6 +286,10 @@ class ResolutionRecommendationStep:
             signal_data.get("signal_summary")
             or "No signal data available"
         )
+        raw_signal_detail = (
+            signal_data.get("raw_signal_detail")
+            or "No raw signal data available"
+        )
         dep_chain = signal_data.get("service_dependency_chain")
         dep_str = (
             " → ".join(dep_chain)
@@ -295,6 +308,7 @@ class ResolutionRecommendationStep:
             supporting_evidence=evidence_str,
             kb_summary=kb_summary,
             signal_summary=sig_summary,
+            raw_signal_detail=raw_signal_detail,
             dependency_chain=dep_str,
         )
 
@@ -557,21 +571,43 @@ class ResolutionRecommendationStep:
                 "based_on_prior_incident": None,
             })
 
-        # Always have at least one recommendation
+        # Build signal-specific fallback if available
+        signal_data = self._extract_signal_data()
+        raw_detail = signal_data.get("raw_signal_detail", "")
+        signal_summary = signal_data.get("signal_summary", "")
+
         if not recommendations:
-            recommendations.append({
-                "action": (
-                    "Review service health dashboards and"
-                    " recent deployment changes for the"
-                    f" affected service ({self.context.service})"
-                ),
-                "confidence": "low",
-                "expected_outcome": (
-                    "Identify potential contributing factors"
-                ),
-                "risk_assessment": "low",
-                "based_on_prior_incident": None,
-            })
+            if raw_detail or signal_summary:
+                detail_ref = raw_detail or signal_summary
+                # Truncate to keep recommendation actionable
+                if len(detail_ref) > 200:
+                    detail_ref = detail_ref[:200] + "..."
+                recommendations.append({
+                    "action": (
+                        f"Investigate the following signals for"
+                        f" {self.context.service}: {detail_ref}"
+                    ),
+                    "confidence": "low",
+                    "expected_outcome": (
+                        "Identify root cause from observed signal anomalies"
+                    ),
+                    "risk_assessment": "low",
+                    "based_on_prior_incident": None,
+                })
+            else:
+                recommendations.append({
+                    "action": (
+                        "Review service health dashboards and"
+                        " recent deployment changes for the"
+                        f" affected service ({self.context.service})"
+                    ),
+                    "confidence": "low",
+                    "expected_outcome": (
+                        "Identify potential contributing factors"
+                    ),
+                    "risk_assessment": "low",
+                    "based_on_prior_incident": None,
+                })
             diagnostic_actions = [
                 "Check service logs for error patterns",
                 "Verify recent deployments or config changes",
