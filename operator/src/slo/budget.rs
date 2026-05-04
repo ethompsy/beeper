@@ -48,13 +48,18 @@ pub struct BudgetPolicyEvent {
     pub triggered_at: String,
 }
 
+/// Maximum number of triggered events kept per ServiceLevel
+const MAX_TRIGGERED_EVENTS: usize = 100;
+
 /// Per-ServiceLevel budget status tracking
 #[derive(Debug, Clone, Default)]
 pub struct ServiceBudgetStatus {
     /// Whether a freeze policy is currently active
     pub is_frozen: bool,
 
-    /// List of triggered policy events (most recent first)
+    /// List of triggered policy events (most recent last).
+    /// NOTE: Capped at MAX_TRIGGERED_EVENTS in evaluate(). Do not push directly
+    /// without applying the same cap logic.
     pub triggered_events: Vec<BudgetPolicyEvent>,
 
     /// Set of triggered threshold fingerprints for edge-trigger detection
@@ -169,6 +174,12 @@ impl ErrorBudgetEvaluator {
 
                 status.triggered_thresholds.insert(fp);
                 status.triggered_events.push(event);
+
+                // Cap triggered_events to prevent unbounded growth
+                if status.triggered_events.len() > MAX_TRIGGERED_EVENTS {
+                    let excess = status.triggered_events.len() - MAX_TRIGGERED_EVENTS;
+                    status.triggered_events.drain(..excess);
+                }
             } else if !is_exceeded && was_triggered {
                 // Budget recovered below threshold — reset
                 debug!(
@@ -665,5 +676,73 @@ mod tests {
         let guard = state.read().await;
         let status = guard.get("payments-slo").unwrap();
         assert_eq!(status.triggered_events.len(), 1); // >= threshold triggers
+    }
+
+    // ----- Bounded triggered_events tests (Task 3.3, 3.4) -----
+
+    #[test]
+    fn test_triggered_events_bounded_at_max() {
+        let mut status = ServiceBudgetStatus::default();
+
+        // Push MAX_TRIGGERED_EVENTS + 50 events
+        for i in 0..(MAX_TRIGGERED_EVENTS + 50) {
+            status.triggered_events.push(BudgetPolicyEvent {
+                service: "test-service".to_string(),
+                servicelevel_name: "test-slo".to_string(),
+                threshold: 0.5,
+                current_consumption: 0.6,
+                action: "notify".to_string(),
+                burn_rate: 3.0,
+                projected_exhaustion_secs: None,
+                triggered_at: format!("2026-05-04T{:05}Z", i),
+            });
+
+            // Apply the same cap logic as evaluate()
+            if status.triggered_events.len() > MAX_TRIGGERED_EVENTS {
+                let excess = status.triggered_events.len() - MAX_TRIGGERED_EVENTS;
+                status.triggered_events.drain(..excess);
+            }
+        }
+
+        assert_eq!(
+            status.triggered_events.len(),
+            MAX_TRIGGERED_EVENTS,
+            "triggered_events must be capped at MAX_TRIGGERED_EVENTS"
+        );
+    }
+
+    #[test]
+    fn test_triggered_events_oldest_evicted_first() {
+        let mut status = ServiceBudgetStatus::default();
+
+        // Push MAX_TRIGGERED_EVENTS + 10 events with sequenced timestamps
+        for i in 0..(MAX_TRIGGERED_EVENTS + 10) {
+            status.triggered_events.push(BudgetPolicyEvent {
+                service: "test-service".to_string(),
+                servicelevel_name: "test-slo".to_string(),
+                threshold: 0.5,
+                current_consumption: 0.6,
+                action: "notify".to_string(),
+                burn_rate: 3.0,
+                projected_exhaustion_secs: None,
+                triggered_at: format!("event-{}", i),
+            });
+
+            if status.triggered_events.len() > MAX_TRIGGERED_EVENTS {
+                let excess = status.triggered_events.len() - MAX_TRIGGERED_EVENTS;
+                status.triggered_events.drain(..excess);
+            }
+        }
+
+        // Oldest 10 events (event-0 through event-9) should have been evicted
+        let first = &status.triggered_events[0];
+        assert_eq!(first.triggered_at, "event-10", "oldest events must be evicted first");
+
+        let last = &status.triggered_events[MAX_TRIGGERED_EVENTS - 1];
+        assert_eq!(
+            last.triggered_at,
+            format!("event-{}", MAX_TRIGGERED_EVENTS + 9),
+            "newest events must be preserved"
+        );
     }
 }

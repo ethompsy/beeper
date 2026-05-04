@@ -251,14 +251,11 @@ impl BurnRateAlerter {
 
     /// Record a cooldown for an alert fingerprint
     fn record_cooldown(&mut self, fingerprint: &str) {
-        // Prune stale cooldown entries at 1000 to prevent unbounded growth
-        if self.cooldown.len() >= 1000 {
-            let now = Utc::now().timestamp();
-            self.cooldown
-                .retain(|_, last_fired| now - *last_fired < self.cooldown_secs);
-        }
+        let now = Utc::now().timestamp();
+        // Prune stale cooldown entries on every insertion to prevent unbounded growth
         self.cooldown
-            .insert(fingerprint.to_string(), Utc::now().timestamp());
+            .retain(|_, last_fired| now - *last_fired < self.cooldown_secs);
+        self.cooldown.insert(fingerprint.to_string(), now);
     }
 }
 
@@ -373,11 +370,48 @@ mod tests {
         assert!(!should_fire_alert(7.0, 6.0, 6.0));
     }
 
+    // ----- Cooldown bounded-growth tests (Task 2.3, 2.4) -----
+
     #[test]
-    fn test_cooldown_cleanup_threshold() {
-        // Verify the cleanup threshold constant exists in record_cooldown
-        // When cooldown map reaches 1000 entries, stale ones are pruned
-        let fp = alert_fingerprint("cleanup-test", 999);
-        assert!(fp.starts_with("slo:"));
+    fn test_cooldown_map_bounded_after_many_insertions() {
+        // Simulate record_cooldown: prune stale entries on every insertion
+        let cooldown_secs: i64 = 600;
+        let mut cooldown: HashMap<String, i64> = HashMap::new();
+
+        let base_time: i64 = 1_000_000;
+        for i in 0..2000u64 {
+            let now = base_time + i as i64; // 1 second apart
+            cooldown.retain(|_, last_fired| now - *last_fired < cooldown_secs);
+            cooldown.insert(format!("slo:test:{}", i), now);
+        }
+
+        // After 2000 insertions 1s apart, only entries from the last 600s remain
+        assert_eq!(
+            cooldown.len(),
+            600,
+            "cooldown map must be bounded to ~cooldown_secs entries"
+        );
+    }
+
+    #[test]
+    fn test_cooldown_stale_entries_evicted() {
+        let cooldown_secs: i64 = 600;
+        let mut cooldown: HashMap<String, i64> = HashMap::new();
+
+        // Insert 10 entries at t=1000
+        let time_old: i64 = 1000;
+        for i in 0..10 {
+            cooldown.insert(format!("slo:old:{}", i), time_old);
+        }
+        assert_eq!(cooldown.len(), 10);
+
+        // New insertion at t=1601 (past cooldown window)
+        let time_new = time_old + cooldown_secs + 1;
+        cooldown.retain(|_, last_fired| time_new - *last_fired < cooldown_secs);
+        cooldown.insert("slo:new:0".to_string(), time_new);
+
+        // All old entries evicted, only new one remains
+        assert_eq!(cooldown.len(), 1, "stale entries must be evicted");
+        assert!(cooldown.contains_key("slo:new:0"));
     }
 }

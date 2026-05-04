@@ -55,15 +55,20 @@ development_status:
   2-0c-investigator-test-baseline: done
   2-0d-verify-qdrant-health: done
   2-0e-verify-llm-config: done
-  epic-2: in-progress
+  epic-2: done
   2-1-verify-fix-investigation-lifecycle-job-management: done
   2-2-fix-investigator-signal-gathering: done
   2-3-fix-knowledge-base-integration-in-investigations: done
   2-4-fix-llm-root-cause-analysis-recommendations: done
   2-5-verify-fix-servicelevel-crd-integration: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # Epic 3: UI Layout Shell & Sidebar Navigation
+  # Preparation tasks (from Epic 2 retrospective — must complete before Epic 3 stories)
+  3-0a-fix-slo-engine-memory-leak: done
+  3-0b-full-pipeline-e2e-verification: backlog
+  3-0c-full-demo-walkthrough: backlog
+  3-0d-ui-test-baseline: backlog
   epic-3: backlog
   3-1-install-tailwind-css-build-pipeline: backlog
   3-2-implement-layout-shell-base-template-migration: backlog

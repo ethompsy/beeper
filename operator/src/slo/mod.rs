@@ -9,7 +9,7 @@ pub mod burn_rate;
 pub mod calculator;
 pub mod impact;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use kube::{api::ListParams, Api, Client};
@@ -263,7 +263,7 @@ pub async fn run_slo_engine(
 
     let calculator = SloCalculator::new(prom_client);
     let mut alerter = BurnRateAlerter::with_slo_cache(client.clone(), namespace, slo_cache.clone());
-    let budget_evaluator = ErrorBudgetEvaluator::new(budget_policy_state);
+    let budget_evaluator = ErrorBudgetEvaluator::new(budget_policy_state.clone());
     let mut qdrant = QdrantWriter::new(qdrant_endpoint);
 
     // Ensure slo_snapshots collection exists on first iteration
@@ -286,6 +286,7 @@ pub async fn run_slo_engine(
         match sl_api.list(&ListParams::default()).await {
             Ok(sl_list) => {
                 let mut cache_updates: HashMap<String, SloCalculationResult> = HashMap::new();
+                let mut active_names: HashSet<String> = HashSet::new();
 
                 for sl in sl_list.items {
                     let name = sl
@@ -293,6 +294,7 @@ pub async fn run_slo_engine(
                         .name
                         .clone()
                         .unwrap_or_else(|| "unknown".to_string());
+                    active_names.insert(name.clone());
                     let spec = &sl.spec;
 
                     // Compute burn rate for this ServiceLevel
@@ -358,12 +360,21 @@ pub async fn run_slo_engine(
                     }
                 }
 
-                // Batch-update the shared cache
-                if !cache_updates.is_empty() {
+                // Batch-update the shared cache and remove orphaned entries
+                {
                     let mut cache = slo_cache.write().await;
+                    // Use active_names (not cache_updates) to avoid evicting entries
+                    // for CRDs that exist but had a transient calculation failure
+                    cache.retain(|key, _| active_names.contains(key));
                     for (key, value) in cache_updates {
                         cache.insert(key, value);
                     }
+                }
+
+                // Prune budget policy state for deleted ServiceLevel CRDs
+                {
+                    let mut budget_state = budget_policy_state.write().await;
+                    budget_state.retain(|key, _| active_names.contains(key));
                 }
             }
             Err(e) => {
@@ -515,5 +526,95 @@ mod tests {
 
         let err = SloError::QdrantError("connection refused".to_string());
         assert_eq!(err.to_string(), "Qdrant error: connection refused");
+    }
+
+    // ----- SloCache cleanup tests (Task 4.4, 4.5) -----
+
+    #[tokio::test]
+    async fn test_slo_cache_orphaned_entries_removed() {
+        let cache = new_slo_cache();
+
+        // Simulate: 3 CRDs exist and get cached
+        {
+            let mut c = cache.write().await;
+            for name in &["slo-a", "slo-b", "slo-c"] {
+                c.insert(
+                    name.to_string(),
+                    SloCalculationResult {
+                        service: name.to_string(),
+                        sli_type: "availability".to_string(),
+                        compliance: 0.999,
+                        burn_rate: 1.0,
+                        error_budget_remaining: 1.0,
+                        good_count: 999.0,
+                        total_count: 1000.0,
+                        timestamp: "2026-05-04T00:00:00Z".to_string(),
+                    },
+                );
+            }
+        }
+        assert_eq!(cache.read().await.len(), 3);
+
+        // Simulate: CRD "slo-b" is deleted — only slo-a, slo-c listed
+        // slo-c calculation fails (transient Prometheus error) — only slo-a in cache_updates
+        let active_names: HashSet<String> =
+            ["slo-a", "slo-c"].iter().map(|s| s.to_string()).collect();
+        let mut cache_updates: HashMap<String, SloCalculationResult> = HashMap::new();
+        cache_updates.insert(
+            "slo-a".to_string(),
+            SloCalculationResult {
+                service: "slo-a".to_string(),
+                sli_type: "availability".to_string(),
+                compliance: 0.998,
+                burn_rate: 1.2,
+                error_budget_remaining: 0.9,
+                good_count: 998.0,
+                total_count: 1000.0,
+                timestamp: "2026-05-04T00:05:00Z".to_string(),
+            },
+        );
+
+        // Apply same retain logic as run_slo_engine (uses active_names, not cache_updates)
+        {
+            let mut c = cache.write().await;
+            c.retain(|key, _| active_names.contains(key));
+            for (key, value) in cache_updates {
+                c.insert(key, value);
+            }
+        }
+
+        let c = cache.read().await;
+        // slo-b deleted → removed; slo-c failed calc but still listed → preserved
+        assert_eq!(c.len(), 2, "orphaned entry slo-b must be removed");
+        assert!(c.contains_key("slo-a"));
+        assert!(!c.contains_key("slo-b"), "deleted CRD must be evicted");
+        assert!(c.contains_key("slo-c"), "CRD with failed calc must be preserved");
+    }
+
+    #[tokio::test]
+    async fn test_budget_state_orphaned_entries_removed() {
+        use crate::slo::budget::*;
+
+        let state = new_budget_policy_state();
+
+        // Simulate: 2 services have budget state
+        {
+            let mut s = state.write().await;
+            s.insert("slo-x".to_string(), ServiceBudgetStatus::default());
+            s.insert("slo-y".to_string(), ServiceBudgetStatus::default());
+        }
+        assert_eq!(state.read().await.len(), 2);
+
+        // Simulate: slo-y deleted — only slo-x in active set
+        let active: HashSet<String> = ["slo-x".to_string()].into_iter().collect();
+        {
+            let mut s = state.write().await;
+            s.retain(|key, _| active.contains(key));
+        }
+
+        let s = state.read().await;
+        assert_eq!(s.len(), 1, "orphaned budget state must be removed");
+        assert!(s.contains_key("slo-x"));
+        assert!(!s.contains_key("slo-y"));
     }
 }
