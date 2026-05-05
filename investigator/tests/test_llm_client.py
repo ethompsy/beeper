@@ -129,9 +129,24 @@ class TestLlmConfig:
                 LlmConfig.from_env()
 
     def test_get_litellm_model_anthropic(self) -> None:
-        """Test LiteLLM model string for Anthropic."""
+        """Test LiteLLM model string for Anthropic (adds prefix)."""
         config = LlmConfig(provider="anthropic", model="claude-sonnet-4", api_key="key")
-        assert config.get_litellm_model() == "claude-sonnet-4"
+        assert config.get_litellm_model() == "anthropic/claude-sonnet-4"
+
+    def test_get_litellm_model_anthropic_already_prefixed(self) -> None:
+        """Test LiteLLM model string for Anthropic when already prefixed."""
+        config = LlmConfig(provider="anthropic", model="anthropic/claude-sonnet-4", api_key="key")
+        assert config.get_litellm_model() == "anthropic/claude-sonnet-4"
+
+    def test_get_litellm_model_openai(self) -> None:
+        """Test LiteLLM model string for OpenAI (adds prefix)."""
+        config = LlmConfig(provider="openai", model="gpt-4o", api_key="key")
+        assert config.get_litellm_model() == "openai/gpt-4o"
+
+    def test_get_litellm_model_openai_already_prefixed(self) -> None:
+        """Test LiteLLM model string for OpenAI when already prefixed."""
+        config = LlmConfig(provider="openai", model="openai/gpt-4o", api_key="key")
+        assert config.get_litellm_model() == "openai/gpt-4o"
 
     def test_get_litellm_model_azure(self) -> None:
         """Test LiteLLM model string for Azure (adds prefix)."""
@@ -156,6 +171,11 @@ class TestLlmConfig:
     def test_get_litellm_model_ollama(self) -> None:
         """Test LiteLLM model string for Ollama (adds prefix)."""
         config = LlmConfig(provider="ollama", model="llama3")
+        assert config.get_litellm_model() == "ollama/llama3"
+
+    def test_get_litellm_model_ollama_already_prefixed(self) -> None:
+        """Test LiteLLM model string for Ollama when already prefixed."""
+        config = LlmConfig(provider="ollama", model="ollama/llama3")
         assert config.get_litellm_model() == "ollama/llama3"
 
     def test_validate_model_anthropic_valid(self) -> None:

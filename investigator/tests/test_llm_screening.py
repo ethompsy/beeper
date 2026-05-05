@@ -51,7 +51,7 @@ class TestLlmClientScreeningModel:
             screening_model="claude-3-haiku-20240307",
         )
         client = LlmClient(config)
-        assert client.screening_model == "claude-3-haiku-20240307"
+        assert client.screening_model == "anthropic/claude-3-haiku-20240307"
 
     def test_screening_model_falls_back_to_default(self) -> None:
         """screening_model falls back to default model when not configured."""
@@ -61,7 +61,7 @@ class TestLlmClientScreeningModel:
             api_key="key",
         )
         client = LlmClient(config)
-        assert client.screening_model == "claude-sonnet-4"
+        assert client.screening_model == "anthropic/claude-sonnet-4"
 
     def test_screening_model_fallback_uses_litellm_format(self) -> None:
         """screening_model fallback applies provider prefix for Azure/Ollama."""
@@ -112,4 +112,4 @@ class TestCompleteSyncModelOverride:
             client.complete_sync(messages=[{"role": "user", "content": "test"}])
 
             call_kwargs = mock_completion.call_args
-            assert call_kwargs[1]["model"] == "claude-sonnet-4"
+            assert call_kwargs[1]["model"] == "anthropic/claude-sonnet-4"

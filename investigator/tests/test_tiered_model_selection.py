@@ -96,11 +96,11 @@ class TestLlmConfigDeepRcaModel:
 class TestLlmClientDeepRcaModel:
     def test_returns_configured_model(self) -> None:
         client = _make_client(deep_rca_model="claude-opus-4")
-        assert client.deep_rca_model == "claude-opus-4"
+        assert client.deep_rca_model == "anthropic/claude-opus-4"
 
     def test_falls_back_to_default(self) -> None:
         client = _make_client()
-        assert client.deep_rca_model == "claude-sonnet-4"
+        assert client.deep_rca_model == "anthropic/claude-sonnet-4"
 
     def test_fallback_uses_litellm_format(self) -> None:
         client = _make_client(
@@ -117,15 +117,15 @@ class TestLlmClientDeepRcaModel:
 class TestSelectModel:
     def test_screening_returns_screening_model(self) -> None:
         client = _make_client(screening_model="claude-3-haiku-20240307")
-        assert client.select_model("screening") == "claude-3-haiku-20240307"
+        assert client.select_model("screening") == "anthropic/claude-3-haiku-20240307"
 
     def test_standard_returns_default_model(self) -> None:
         client = _make_client()
-        assert client.select_model("standard") == "claude-sonnet-4"
+        assert client.select_model("standard") == "anthropic/claude-sonnet-4"
 
     def test_deep_rca_returns_deep_rca_model(self) -> None:
         client = _make_client(deep_rca_model="claude-opus-4")
-        assert client.select_model("deep_rca") == "claude-opus-4"
+        assert client.select_model("deep_rca") == "anthropic/claude-opus-4"
 
     # ── 9.8: select_model logs at INFO level ──
 
@@ -142,17 +142,17 @@ class TestSelectModel:
 
     def test_screening_fallback(self) -> None:
         client = _make_client()
-        assert client.select_model("screening") == "claude-sonnet-4"
+        assert client.select_model("screening") == "anthropic/claude-sonnet-4"
 
     def test_deep_rca_fallback(self) -> None:
         client = _make_client()
-        assert client.select_model("deep_rca") == "claude-sonnet-4"
+        assert client.select_model("deep_rca") == "anthropic/claude-sonnet-4"
 
     def test_standard_is_always_default(self) -> None:
         client = _make_client(
             screening_model="haiku", deep_rca_model="opus",
         )
-        assert client.select_model("standard") == "claude-sonnet-4"
+        assert client.select_model("standard") == "anthropic/claude-sonnet-4"
 
     def test_invalid_tier_raises(self) -> None:
         client = _make_client()

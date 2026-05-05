@@ -138,25 +138,31 @@ class LlmConfig:
         config.validate_model()
         return config
 
-    def get_litellm_model(self) -> str:
-        """Get the model string formatted for LiteLLM.
+    def _apply_provider_prefix(self, model_name: str) -> str:
+        """Apply provider prefix to a model name for LiteLLM routing.
 
-        LiteLLM expects provider-prefixed model names for some providers.
+        LiteLLM expects provider-prefixed model names for routing.
+        Always prefix with provider to avoid auto-detection failures
+        (e.g. litellm may not recognize newer model identifiers).
+
+        Args:
+            model_name: Raw model identifier.
 
         Returns:
-            Model string formatted for LiteLLM.
+            Model name with provider prefix for LiteLLM.
         """
-        # Azure and Ollama need provider prefix
-        if self.provider == "azure":
-            # Azure format: azure/<deployment-name>
-            if not self.model.startswith("azure/"):
-                return f"azure/{self.model}"
-        elif self.provider == "ollama":
-            # Ollama format: ollama/<model-name>
-            if not self.model.startswith("ollama/"):
-                return f"ollama/{self.model}"
-        # Anthropic and OpenAI work with raw model names
-        return self.model
+        prefix = f"{self.provider}/"
+        if model_name.startswith(prefix):
+            return model_name
+        return f"{prefix}{model_name}"
+
+    def get_litellm_model(self) -> str:
+        """Get the default model string formatted for LiteLLM.
+
+        Returns:
+            Model string with provider prefix for LiteLLM.
+        """
+        return self._apply_provider_prefix(self.model)
 
 
 class LlmClientError(Exception):
@@ -490,21 +496,17 @@ class LlmClient:
 
     @property
     def screening_model(self) -> str:
-        """Get the screening model, falling back to the default model.
-
-        Falls back to ``get_litellm_model()`` so that provider prefixes
-        (e.g. ``azure/``, ``ollama/``) are applied correctly.
-        """
-        return self.config.screening_model or self.config.get_litellm_model()
+        """Get the screening model with provider prefix, falling back to the default model."""
+        return self.config._apply_provider_prefix(
+            self.config.screening_model or self.config.model
+        )
 
     @property
     def deep_rca_model(self) -> str:
-        """Get the deep RCA model, falling back to the default model.
-
-        Falls back to ``get_litellm_model()`` so that provider prefixes
-        (e.g. ``azure/``, ``ollama/``) are applied correctly.
-        """
-        return self.config.deep_rca_model or self.config.get_litellm_model()
+        """Get the deep RCA model with provider prefix, falling back to the default model."""
+        return self.config._apply_provider_prefix(
+            self.config.deep_rca_model or self.config.model
+        )
 
     def select_model(self, tier: ModelTier) -> str:
         """Select model for the given task tier.

@@ -7,10 +7,10 @@ operator:
   resources:
     limits:
       cpu: 1000m
-      memory: 1Gi
+      memory: 2Gi
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
 
 ui:
   image:
@@ -60,5 +60,4 @@ sources:
     enabled: true
     endpoint: http://prometheus.otel-demo.svc.cluster.local:9090
   loki:
-    enabled: true
-    endpoint: http://loki.otel-demo.svc.cluster.local:3100
+    enabled: false
