@@ -59,6 +59,8 @@ pub struct InvestigatorConfig {
     pub prometheus_url: String,
     /// Loki URL for source queries (empty = not configured)
     pub loki_url: String,
+    /// LLM endpoint URL (empty = use provider default; required for Ollama)
+    pub llm_endpoint: String,
 }
 
 impl InvestigatorConfig {
@@ -119,6 +121,9 @@ impl InvestigatorConfig {
             loki_url: std::env::var("BEEPER_LOKI_URL")
                 .or_else(|_| std::env::var("LOKI_URL"))
                 .unwrap_or_default(),
+            llm_endpoint: std::env::var("BEEPER_INVESTIGATOR_LLM_ENDPOINT")
+                .or_else(|_| std::env::var("LLM_ENDPOINT"))
+                .unwrap_or_default(),
         }
     }
 }
@@ -144,6 +149,7 @@ impl Default for InvestigatorConfig {
             service_account_name: "beeper-investigator".to_string(),
             prometheus_url: String::new(),
             loki_url: String::new(),
+            llm_endpoint: String::new(),
         }
     }
 }
@@ -187,7 +193,7 @@ pub fn build_investigator_job(
     let owner_ref = investigation.controller_owner_ref(&()).unwrap();
 
     // Build environment variables
-    let env_vars = vec![
+    let mut env_vars = vec![
         EnvVar {
             name: "INVESTIGATION_ID".to_string(),
             value: Some(investigation_id.clone()),
@@ -215,7 +221,7 @@ pub fn build_investigator_job(
                 secret_key_ref: Some(SecretKeySelector {
                     name: config.llm_api_key_secret.clone(),
                     key: config.llm_api_key_secret_key.clone(),
-                    optional: Some(false),
+                    optional: Some(true),
                 }),
                 ..Default::default()
             }),
@@ -257,6 +263,15 @@ pub fn build_investigator_job(
             value_from: None,
         },
     ];
+
+    // Only pass LLM endpoint when configured (required for Ollama, not for cloud providers)
+    if !config.llm_endpoint.is_empty() {
+        env_vars.push(EnvVar {
+            name: "BEEPER_LLM_ENDPOINT".to_string(),
+            value: Some(config.llm_endpoint.clone()),
+            value_from: None,
+        });
+    }
 
     // Build resource requirements
     let resources = ResourceRequirements {

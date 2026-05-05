@@ -124,8 +124,9 @@ llm:
   apiKeySecret: llm-credentials
   # Key within the secret (default: api-key)
   apiKeySecretKey: api-key
-  # Optional: custom endpoint (required for Azure, optional for Ollama)
-  # endpoint: ""
+  # Optional: custom endpoint (required for Azure, required for Ollama)
+  # For Ollama: "http://host.docker.internal:11434" (Docker Desktop)
+  endpoint: ""
   # Cost management (future implementation in Story 3.9)
   maxTokensPerInvestigation: 100000
   maxConcurrentInvestigations: 2

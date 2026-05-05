@@ -47,10 +47,11 @@ qdrant:
       cpu: 50m
       memory: 256Mi
 
-# Development LLM settings
+# Development LLM settings — local Ollama (no API costs)
 llm:
-  provider: anthropic
-  model: claude-3-5-haiku-20241022  # Cheaper model for dev
+  provider: ollama
+  model: qwen3:8b
+  endpoint: "http://host.docker.internal:11434"
   maxTokensPerInvestigation: 10000
   maxConcurrentInvestigations: 2
 

@@ -65,6 +65,10 @@ spec:
                   name: {{ .Values.llm.apiKeySecret }}
                   key: {{ .Values.llm.apiKeySecretKey }}
                   optional: true
+            {{- if .Values.llm.endpoint }}
+            - name: LLM_ENDPOINT
+              value: {{ .Values.llm.endpoint | quote }}
+            {{- end }}
             - name: BEEPER_DETECTION_NAMESPACE
               value: {{ .Release.Namespace | quote }}
             - name: BEEPER_INVESTIGATOR_IMAGE
