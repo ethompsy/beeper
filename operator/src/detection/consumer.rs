@@ -259,9 +259,11 @@ impl DetectionConsumer {
 
 /// Generate an anomaly fingerprint for cooldown tracking.
 ///
-/// Format: "{anomaly_type}:{service}:{source}"
+/// Format: "{service}" — one investigation per service per cooldown window.
+/// The investigator job correlates ALL signals (metrics, logs, KB) for a service,
+/// so multiple investigations per service are wasteful and exhaust LLM budget.
 fn anomaly_fingerprint(event: &AnomalyEvent) -> String {
-    format!("{}:{}:{}", event.anomaly_type, event.service, event.source)
+    event.service.clone()
 }
 
 /// Map deviation magnitude to severity level.
@@ -305,7 +307,7 @@ mod tests {
     fn test_cooldown_prevents_duplicates() {
         let mut tracker = CooldownTracker::new(600);
 
-        let fp = "metric_spike:frontend:cpu_usage".to_string();
+        let fp = "frontend".to_string();
 
         // First time: not cooling down
         assert!(!tracker.is_cooling_down(&fp));
@@ -316,17 +318,17 @@ mod tests {
     }
 
     #[test]
-    fn test_cooldown_allows_different_fingerprints() {
+    fn test_cooldown_allows_different_services() {
         let mut tracker = CooldownTracker::new(600);
 
-        tracker.record("metric_spike:frontend:cpu_usage".to_string());
+        tracker.record("frontend".to_string());
 
-        // Different fingerprint should not be in cooldown
-        assert!(!tracker.is_cooling_down("error_rate:api-server:api-server"));
+        // Different service should not be in cooldown
+        assert!(!tracker.is_cooling_down("api-server"));
     }
 
     #[test]
-    fn test_anomaly_fingerprint_format() {
+    fn test_anomaly_fingerprint_is_service_only() {
         let event = AnomalyEvent {
             anomaly_type: AnomalyType::MetricSpike,
             source: "http_requests_total".to_string(),
@@ -336,10 +338,43 @@ mod tests {
             deviation: 4.0,
             context: vec![],
         };
-        assert_eq!(
-            anomaly_fingerprint(&event),
-            "metric_spike:frontend:http_requests_total"
-        );
+        // Fingerprint should be service-level only — one investigation per service
+        assert_eq!(anomaly_fingerprint(&event), "frontend");
+    }
+
+    #[test]
+    fn test_same_service_different_metrics_deduplicated() {
+        let mut tracker = CooldownTracker::new(600);
+
+        let event1 = AnomalyEvent {
+            anomaly_type: AnomalyType::MetricSpike,
+            source: "http_requests_total".to_string(),
+            service: "payment".to_string(),
+            condition: "test".to_string(),
+            timestamp_ms: 0,
+            deviation: 4.0,
+            context: vec![],
+        };
+        let event2 = AnomalyEvent {
+            anomaly_type: AnomalyType::ErrorRateSpike,
+            source: "error_rate".to_string(),
+            service: "payment".to_string(),
+            condition: "test".to_string(),
+            timestamp_ms: 0,
+            deviation: 5.0,
+            context: vec![],
+        };
+
+        let fp1 = anomaly_fingerprint(&event1);
+        let fp2 = anomaly_fingerprint(&event2);
+
+        // Both should produce same fingerprint (service-level dedup)
+        assert_eq!(fp1, fp2);
+        assert_eq!(fp1, "payment");
+
+        // Record first, second should be suppressed
+        tracker.record(fp1);
+        assert!(tracker.is_cooling_down(&fp2));
     }
 
     #[test]

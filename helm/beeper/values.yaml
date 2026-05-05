@@ -118,7 +118,7 @@ llm:
   # OpenAI: gpt-4o, gpt-4-turbo
   # Azure: azure/<deployment-name>
   # Ollama: ollama/llama3
-  model: claude-sonnet-4
+  model: claude-3-5-haiku-20241022
   # Kubernetes Secret containing the API key
   # Create with: kubectl create secret generic llm-credentials --from-literal=api-key=<your-key>
   apiKeySecret: llm-credentials

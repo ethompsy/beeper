@@ -261,9 +261,11 @@ impl BurnRateAlerter {
 
 /// Generate a fingerprint for alert cooldown tracking
 ///
-/// Format: "slo:{servicelevel_name}:{alert_index}"
-pub fn alert_fingerprint(servicelevel_name: &str, alert_index: usize) -> String {
-    format!("slo:{}:{}", servicelevel_name, alert_index)
+/// Format: "slo:{servicelevel_name}" — one investigation per ServiceLevel per cooldown window.
+/// Multiple burn rate alerts on the same ServiceLevel represent the same incident;
+/// the investigator correlates all signals for the affected service.
+pub fn alert_fingerprint(servicelevel_name: &str, _alert_index: usize) -> String {
+    format!("slo:{}", servicelevel_name)
 }
 
 /// Map alert severity string to Investigation Severity enum
@@ -286,14 +288,15 @@ mod tests {
     #[test]
     fn test_alert_fingerprint_format() {
         let fp = alert_fingerprint("payments-slo", 0);
-        assert_eq!(fp, "slo:payments-slo:0");
+        assert_eq!(fp, "slo:payments-slo");
     }
 
     #[test]
-    fn test_alert_fingerprint_different_index() {
+    fn test_alert_fingerprint_same_slo_different_alerts_deduplicated() {
+        // Multiple burn rate alerts on the same ServiceLevel = same incident
         let fp0 = alert_fingerprint("payments-slo", 0);
         let fp1 = alert_fingerprint("payments-slo", 1);
-        assert_ne!(fp0, fp1);
+        assert_eq!(fp0, fp1, "Same ServiceLevel must produce same fingerprint regardless of alert index");
     }
 
     #[test]

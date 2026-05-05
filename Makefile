@@ -112,12 +112,10 @@ demo-beeper:
 	@echo "==> Installing Beeper Helm chart..."
 	helm upgrade --install $(BEEPER_RELEASE) ./helm/beeper \
 		--namespace $(BEEPER_NAMESPACE) \
+		--values ./helm/beeper/values-dev.yaml \
 		--set operator.image.tag=$(BEEPER_TAG) \
-		--set operator.image.pullPolicy=Never \
 		--set ui.image.tag=$(BEEPER_TAG) \
-		--set ui.image.pullPolicy=Never \
 		--set investigator.image.tag=$(BEEPER_TAG) \
-		--set investigator.image.pullPolicy=Never \
 		--timeout 5m \
 		--wait
 	@echo "==> Beeper deployed."
