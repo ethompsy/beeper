@@ -39,13 +39,6 @@ impl EwmaDetector {
         }
     }
 
-    /// Create a new EWMA detector with default parameters.
-    ///
-    /// Defaults: alpha=0.2, threshold=3.0, min_samples=10
-    pub fn with_defaults() -> Self {
-        Self::new(0.2, 3.0, 10)
-    }
-
     /// Update the detector with a new value.
     ///
     /// Returns `Some(AnomalySignal)` if the value is anomalous,
@@ -263,10 +256,32 @@ mod tests {
     }
 
     #[test]
-    fn test_with_defaults() {
-        let detector = EwmaDetector::with_defaults();
-        assert_eq!(detector.alpha, 0.2);
-        assert_eq!(detector.threshold, 3.0);
-        assert_eq!(detector.min_samples, 10);
+    fn test_production_warmup_30_samples() {
+        // Validates the production default: min_samples=30
+        // Samples 1-30 must NOT fire even with large deviations
+        let mut detector = EwmaDetector::new(0.2, 3.0, 30);
+
+        detector.update(50.0); // sample 1: initialize mean
+        for i in 1..30 {
+            // Feed wildly varying values during warmup
+            let value = 50.0 + (i as f64) * 100.0;
+            let result = detector.update(value);
+            assert!(
+                result.is_none(),
+                "Should not fire during 30-sample warmup (sample {})",
+                i + 1
+            );
+        }
+
+        // Sample 31+: after warmup, a spike SHOULD be detectable
+        // First establish a brief stable baseline post-warmup
+        for _ in 0..10 {
+            detector.update(50.0);
+        }
+        let signal = detector.update(5000.0);
+        assert!(
+            signal.is_some(),
+            "Post-warmup spike should be detected"
+        );
     }
 }

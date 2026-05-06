@@ -1,6 +1,6 @@
 # Story 3.0c: Full Demo Walkthrough
 
-Status: ready-for-dev
+Status: failed
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -283,10 +283,48 @@ These are documented from Story 3-0b and should NOT be treated as test failures:
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6
 
 ### Debug Log References
 
 ### Completion Notes List
 
+**Walkthrough Result: FAIL** (2026-05-06)
+
+Walkthrough attempted with Ollama (qwen3:8b) via `host.docker.internal:11434`. All 5 acceptance criteria failed.
+
+**Critical Issues Found:**
+
+1. **Investigation flood at startup (23+ before otel-demo started)**
+   - EWMA detector triggers investigations during pod startup
+   - `min_samples` default of 10 is too low — accumulates in ~2.5 minutes
+   - Each otel-demo service triggers its own investigation (cooldown is per-service)
+   - **Ticket:** 3-0e-fix-investigation-startup-flood
+
+2. **UI "Investigation not found" on every detail click**
+   - Root cause: `operator/src/api.rs:418` uses `Api::all()` for the detail endpoint
+   - `Api::all().get()` fails on namespaced resources — kube-rs can't resolve namespace
+   - `Api::all().list()` works (list view) but `get()` does not (detail view)
+   - **Ticket:** 3-0f-fix-ui-investigation-detail-not-found
+
+3. **Investigators stall — Ollama connection timeout**
+   - `litellm.Timeout: Connection timed out after 600.0 seconds`
+   - Ollama defaults to `127.0.0.1:11434` — not reachable from kind cluster
+   - Requires `OLLAMA_HOST=0.0.0.0 ollama serve` — not documented
+   - Also: `Failed to parse LLM response as JSON` — LiteLLM/Ollama integration issue
+   - **Ticket:** 3-0g-fix-ollama-litellm-integration
+
+4. **Investigator RBAC insufficient**
+   - `Failed to list events in namespace beeper: Forbidden` for many K8s resource types
+   - Investigator SA lacks permissions for events, HPAs, services, etc.
+   - Investigators cannot gather K8s signals, reducing RCA quality
+   - **Ticket:** 3-0h-fix-investigator-rbac-permissions
+
+5. **UI cannot sort by time, no investigation numbering**
+   - Noted for Epic 3 (UI) — not a blocker ticket
+
+**Conclusion:** Demo walkthrough cannot succeed until issues 1-4 are resolved. Story 3-0c should be re-attempted after fix stories are completed.
+
 ### File List
+
+No code files modified — walkthrough-only story.

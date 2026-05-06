@@ -67,8 +67,13 @@ development_status:
   # Preparation tasks (from Epic 2 retrospective — must complete before Epic 3 stories)
   3-0a-fix-slo-engine-memory-leak: done
   3-0b-full-pipeline-e2e-verification: done
-  3-0c-full-demo-walkthrough: ready-for-dev
+  3-0c-full-demo-walkthrough: failed
   3-0d-ui-test-baseline: backlog
+  # Bug-fix stories from 3-0c walkthrough failure (2026-05-06)
+  3-0e-fix-investigation-startup-flood: done
+  3-0f-fix-ui-investigation-detail-not-found: ready-for-dev
+  3-0g-fix-ollama-litellm-integration: ready-for-dev
+  3-0h-fix-investigator-rbac-permissions: ready-for-dev
   epic-3: backlog
   3-1-install-tailwind-css-build-pipeline: backlog
   3-2-implement-layout-shell-base-template-migration: backlog

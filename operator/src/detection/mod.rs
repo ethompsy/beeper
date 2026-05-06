@@ -52,7 +52,7 @@ impl DetectionConfig {
             metric_threshold: env_f64("BEEPER_DETECTION_METRIC_THRESHOLD", 3.0),
             log_alpha: env_f64("BEEPER_DETECTION_LOG_ALPHA", 0.2),
             log_threshold: env_f64("BEEPER_DETECTION_LOG_THRESHOLD", 3.0),
-            min_samples: env_u64("BEEPER_DETECTION_MIN_SAMPLES", 10),
+            min_samples: env_u64("BEEPER_DETECTION_MIN_SAMPLES", 30),
             cooldown_secs: env_u64("BEEPER_DETECTION_COOLDOWN_SECS", 600),
             max_metrics: env_usize("BEEPER_DETECTION_MAX_METRICS", 10000),
             max_services: env_usize("BEEPER_DETECTION_MAX_SERVICES", 1000),
@@ -71,7 +71,7 @@ impl Default for DetectionConfig {
             metric_threshold: 3.0,
             log_alpha: 0.2,
             log_threshold: 3.0,
-            min_samples: 10,
+            min_samples: 30,
             cooldown_secs: 600,
             max_metrics: 10000,
             max_services: 1000,
@@ -158,7 +158,7 @@ mod tests {
         assert_eq!(config.metric_threshold, 3.0);
         assert_eq!(config.log_alpha, 0.2);
         assert_eq!(config.log_threshold, 3.0);
-        assert_eq!(config.min_samples, 10);
+        assert_eq!(config.min_samples, 30);
         assert_eq!(config.cooldown_secs, 600);
         assert_eq!(config.max_metrics, 10000);
         assert_eq!(config.max_services, 1000);
