@@ -37,11 +37,14 @@ pub struct ApiState {
     pub slo_cache: Option<SloCache>,
     pub budget_policy_state: Option<BudgetPolicyState>,
     pub qdrant_endpoint: Option<String>,
+    pub namespace: String,
 }
 
-/// Create the API router
+/// Create the API router (uses `BEEPER_DETECTION_NAMESPACE` env var, falls back to "default")
 pub fn api_router(client: Arc<Client>, buffer: Arc<IngestionBuffer>) -> Router {
-    api_router_with_detection(client, buffer, None, None)
+    let namespace =
+        std::env::var("BEEPER_DETECTION_NAMESPACE").unwrap_or_else(|_| "default".to_string());
+    api_router_with_detection(client, buffer, None, None, namespace)
 }
 
 /// Create the API router with optional LLM manager
@@ -50,7 +53,9 @@ pub fn api_router_with_llm(
     buffer: Arc<IngestionBuffer>,
     llm_manager: Option<Arc<LlmManager>>,
 ) -> Router {
-    api_router_with_detection(client, buffer, llm_manager, None)
+    let namespace =
+        std::env::var("BEEPER_DETECTION_NAMESPACE").unwrap_or_else(|_| "default".to_string());
+    api_router_with_detection(client, buffer, llm_manager, None, namespace)
 }
 
 /// Create the API router with optional LLM manager and detection stats
@@ -59,6 +64,7 @@ pub fn api_router_with_detection(
     buffer: Arc<IngestionBuffer>,
     llm_manager: Option<Arc<LlmManager>>,
     detection_stats: Option<Arc<DetectionStats>>,
+    namespace: String,
 ) -> Router {
     api_router_full(
         client,
@@ -68,10 +74,12 @@ pub fn api_router_with_detection(
         None,
         None,
         None,
+        namespace,
     )
 }
 
 /// Create the API router with all optional components including SLO cache
+#[allow(clippy::too_many_arguments)]
 pub fn api_router_full(
     client: Arc<Client>,
     buffer: Arc<IngestionBuffer>,
@@ -80,6 +88,7 @@ pub fn api_router_full(
     slo_cache: Option<SloCache>,
     budget_policy_state: Option<BudgetPolicyState>,
     qdrant_endpoint: Option<String>,
+    namespace: String,
 ) -> Router {
     let state = ApiState {
         client,
@@ -89,6 +98,7 @@ pub fn api_router_full(
         slo_cache,
         budget_policy_state,
         qdrant_endpoint,
+        namespace,
     };
 
     Router::new()
@@ -324,7 +334,8 @@ async fn list_investigations(
     State(state): State<ApiState>,
     Query(params): Query<InvestigationQuery>,
 ) -> impl IntoResponse {
-    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+    let investigations_api: Api<Investigation> =
+        Api::namespaced((*state.client).clone(), &state.namespace);
 
     match investigations_api.list(&ListParams::default()).await {
         Ok(investigation_list) => {
@@ -415,7 +426,8 @@ async fn get_investigation(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+    let investigations_api: Api<Investigation> =
+        Api::namespaced((*state.client).clone(), &state.namespace);
 
     match investigations_api.get(&id).await {
         Ok(inv) => {
@@ -503,7 +515,8 @@ async fn confirm_investigation(
     Path(id): Path<String>,
     Json(body): Json<ResolutionConfirmRequest>,
 ) -> impl IntoResponse {
-    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+    let investigations_api: Api<Investigation> =
+        Api::namespaced((*state.client).clone(), &state.namespace);
 
     match investigations_api.get(&id).await {
         Ok(_inv) => {
@@ -590,7 +603,8 @@ async fn reject_investigation(
     Path(id): Path<String>,
     Json(body): Json<ResolutionRejectRequest>,
 ) -> impl IntoResponse {
-    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+    let investigations_api: Api<Investigation> =
+        Api::namespaced((*state.client).clone(), &state.namespace);
 
     match investigations_api.get(&id).await {
         Ok(_inv) => {
@@ -686,7 +700,8 @@ async fn resolve_investigation(
     Path(id): Path<String>,
     Json(body): Json<ResolutionResolveRequest>,
 ) -> impl IntoResponse {
-    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+    let investigations_api: Api<Investigation> =
+        Api::namespaced((*state.client).clone(), &state.namespace);
 
     match investigations_api.get(&id).await {
         Ok(_inv) => {
@@ -803,7 +818,8 @@ async fn verify_investigation(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let investigations_api: Api<Investigation> = Api::all((*state.client).clone());
+    let investigations_api: Api<Investigation> =
+        Api::namespaced((*state.client).clone(), &state.namespace);
 
     match investigations_api.get(&id).await {
         Ok(inv) => {
@@ -1371,7 +1387,8 @@ async fn get_servicelevel(
     State(state): State<ApiState>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    let servicelevels_api: Api<ServiceLevel> = Api::all((*state.client).clone());
+    let servicelevels_api: Api<ServiceLevel> =
+        Api::namespaced((*state.client).clone(), &state.namespace);
 
     match servicelevels_api.get(&name).await {
         Ok(sl) => {
@@ -1504,7 +1521,8 @@ async fn get_servicelevel_budget(
     State(state): State<ApiState>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    let servicelevels_api: Api<ServiceLevel> = Api::all((*state.client).clone());
+    let servicelevels_api: Api<ServiceLevel> =
+        Api::namespaced((*state.client).clone(), &state.namespace);
 
     match servicelevels_api.get(&name).await {
         Ok(sl) => {
@@ -2921,6 +2939,36 @@ mod tests {
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"condition\":\"error\""));
         assert!(json.contains("\"error\":\"Secret not found\""));
+    }
+
+    #[test]
+    fn test_investigation_detail_response_all_fields() {
+        let response = InvestigationDetailResponse {
+            id: "inv-abc123".to_string(),
+            status: "active".to_string(),
+            service: "payment-service".to_string(),
+            severity: "high".to_string(),
+            condition: "High error rate detected".to_string(),
+            started_at: Some("2026-05-06T10:00:00Z".to_string()),
+            completed_at: None,
+            triggered_at: Some("2026-05-06T09:55:00Z".to_string()),
+            message: Some("Investigating root cause".to_string()),
+            error: None,
+            job_name: Some("inv-abc123-job".to_string()),
+            impact_score: Some(0.85),
+            workflow_state: Some("investigating".to_string()),
+            workflow_state_changed_at: Some("2026-05-06T10:01:00Z".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed["id"], "inv-abc123");
+        assert_eq!(parsed["status"], "active");
+        assert_eq!(parsed["service"], "payment-service");
+        assert_eq!(parsed["severity"], "high");
+        assert_eq!(parsed["impact_score"], 0.85);
+        assert_eq!(parsed["workflow_state"], "investigating");
     }
 }
 

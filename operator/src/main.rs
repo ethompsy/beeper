@@ -181,6 +181,7 @@ async fn main() -> anyhow::Result<()> {
     let api_budget_policy_state = budget_policy_state.clone();
     let api_qdrant_endpoint = qdrant_endpoint.clone();
     let api_llm_manager = llm_manager.clone();
+    let api_namespace = detection_config.namespace.clone();
     let health_handle = tokio::spawn(async move {
         if let Err(e) = start_health_api_server(
             health_client,
@@ -190,6 +191,7 @@ async fn main() -> anyhow::Result<()> {
             api_budget_policy_state,
             api_qdrant_endpoint,
             api_llm_manager,
+            api_namespace,
             health_port,
         )
         .await
@@ -365,6 +367,7 @@ async fn start_health_api_server(
     budget_policy_state: beeper_operator::slo::budget::BudgetPolicyState,
     qdrant_endpoint: String,
     llm_manager: Option<Arc<LlmManager>>,
+    namespace: String,
     port: u16,
 ) -> anyhow::Result<()> {
     use beeper_operator::api::api_router_full;
@@ -378,6 +381,7 @@ async fn start_health_api_server(
         Some(slo_cache),
         Some(budget_policy_state),
         Some(qdrant_endpoint),
+        namespace,
     );
     let app: Router = health.merge(api);
 
