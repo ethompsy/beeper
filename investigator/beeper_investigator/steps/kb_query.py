@@ -6,7 +6,6 @@ findings using LLM to build on prior research (FR5, FR6).
 
 import json
 import logging
-import re
 from typing import Any
 
 from beeper_investigator.context import InvestigationContext
@@ -14,6 +13,7 @@ from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.kb.client import KBClient
 from beeper_investigator.kb.schemas import SearchResult
 from beeper_investigator.llm.client import LlmClient, LlmClientError
+from beeper_investigator.llm.response_parser import parse_json_response
 from beeper_investigator.steps import StepResult
 
 logger = logging.getLogger(__name__)
@@ -55,15 +55,9 @@ Severity: {severity}
 KB search results:
 {formatted_results}"""
 
-_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
-
-
 def _parse_response(raw: str) -> dict[str, Any]:
     """Parse LLM response, stripping markdown fences if present."""
-    match = _CODE_FENCE_RE.search(raw)
-    text = match.group(1) if match else raw
-    result: dict[str, Any] = json.loads(text.strip())
-    return result
+    return parse_json_response(raw)
 
 
 def _check_exact_match(results: list[SearchResult]) -> SearchResult | None:

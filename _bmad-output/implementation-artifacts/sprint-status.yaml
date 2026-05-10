@@ -72,7 +72,7 @@ development_status:
   # Bug-fix stories from 3-0c walkthrough failure (2026-05-06)
   3-0e-fix-investigation-startup-flood: done
   3-0f-fix-ui-investigation-detail-not-found: done
-  3-0g-fix-ollama-litellm-integration: ready-for-dev
+  3-0g-fix-ollama-litellm-integration: done
   3-0h-fix-investigator-rbac-permissions: ready-for-dev
   epic-3: backlog
   3-1-install-tailwind-css-build-pipeline: backlog

@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.llm.client import LlmClient
+from beeper_investigator.llm.response_parser import parse_json_response
 from beeper_investigator.steps import StepResult
 
 if TYPE_CHECKING:
@@ -26,8 +26,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_LOOKBACK_MINUTES = 30
 _MAX_QUERIES_PER_LAYER = 3
 _MAX_SIGNALS_FOR_LLM = 50
-
-_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
 
 _LAYERS = ("infrastructure", "platform", "application", "data")
 
@@ -123,10 +121,7 @@ Gathered signals:
 
 def _parse_response(raw: str) -> dict[str, Any]:
     """Parse LLM response, stripping markdown fences if present."""
-    match = _CODE_FENCE_RE.search(raw)
-    text = match.group(1) if match else raw
-    result: dict[str, Any] = json.loads(text.strip())
-    return result
+    return parse_json_response(raw)
 
 
 def _resolve_default_queries(namespace: str) -> dict[str, dict[str, list[str]]]:

@@ -7,17 +7,15 @@ hypothesis with confidence level (FR7, FR44).
 
 import json
 import logging
-import re
 from typing import Any
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.llm.client import LlmClient
+from beeper_investigator.llm.response_parser import parse_json_response
 from beeper_investigator.steps import StepResult
 
 logger = logging.getLogger(__name__)
-
-_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
 
 _RCA_SYSTEM_PROMPT = """\
 You are a senior SRE performing deep root-cause analysis. Synthesize ALL \
@@ -77,11 +75,8 @@ SLO breach context:
 
 
 def _parse_response(raw: str) -> dict[str, Any]:
-    """Parse LLM response, stripping markdown fences if present."""
-    match = _CODE_FENCE_RE.search(raw)
-    text = match.group(1) if match else raw
-    result: dict[str, Any] = json.loads(text.strip())
-    return result
+    """Parse LLM response, stripping thinking tokens and markdown fences."""
+    return parse_json_response(raw)
 
 
 def _validate_confidence(

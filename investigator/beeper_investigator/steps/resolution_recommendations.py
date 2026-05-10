@@ -7,17 +7,15 @@ resolution recommendations for SREs (FR8, AC1-AC4).
 
 import json
 import logging
-import re
 from typing import Any
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.llm.client import LlmClient
+from beeper_investigator.llm.response_parser import parse_json_response
 from beeper_investigator.steps import StepResult
 
 logger = logging.getLogger(__name__)
-
-_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
 
 _RESOLUTION_SYSTEM_PROMPT = """\
 You are a senior SRE generating actionable resolution recommendations \
@@ -87,10 +85,7 @@ _CONFIDENCE_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 def _parse_response(raw: str) -> dict[str, Any]:
     """Parse LLM response, stripping markdown fences if present."""
-    match = _CODE_FENCE_RE.search(raw)
-    text = match.group(1) if match else raw
-    result: dict[str, Any] = json.loads(text.strip())
-    return result
+    return parse_json_response(raw)
 
 
 def _normalize_level(value: Any, default: str = "medium") -> str:

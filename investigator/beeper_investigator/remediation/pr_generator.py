@@ -7,7 +7,6 @@ Draft PRs are created at TL3; ready-for-merge PRs at TL4-5.
 
 import json
 import logging
-import re
 from typing import Any
 
 from beeper_investigator.context import InvestigationContext
@@ -18,6 +17,7 @@ from beeper_investigator.k8s.repository import (
 )
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.llm.client import LlmClient, ModelTier
+from beeper_investigator.llm.response_parser import parse_json_response
 from beeper_investigator.remediation.evidence_trail import EvidenceTrailFormatter
 from beeper_investigator.remediation.git_provider import create_git_provider
 from beeper_investigator.steps import StepResult
@@ -262,14 +262,9 @@ class PRGeneratorStep:
 
     def _parse_fix_response(self, raw: str) -> dict[str, Any] | None:
         """Parse LLM fix generation response as JSON."""
-        text = raw.strip()
-        # Strip markdown code fences
-        text = re.sub(r"^```(?:json)?\s*\n?", "", text)
-        text = re.sub(r"\n?```\s*$", "", text)
-
         try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError as exc:
+            parsed = parse_json_response(raw)
+        except (json.JSONDecodeError, ValueError) as exc:
             logger.warning("Failed to parse fix response as JSON: %s", exc)
             return None
 

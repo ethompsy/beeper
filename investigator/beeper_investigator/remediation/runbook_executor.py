@@ -6,7 +6,6 @@ them gated by trust level and confidence threshold (Story 4.2).
 
 import json
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,11 +14,10 @@ from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.kb.client import KBClient
 from beeper_investigator.kb.schemas import SearchResult
 from beeper_investigator.llm.client import LlmClient, ModelTier
+from beeper_investigator.llm.response_parser import parse_json_response
 from beeper_investigator.steps import StepResult
 
 logger = logging.getLogger(__name__)
-
-_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
 
 RUNBOOK_MATCH_THRESHOLD = 0.75
 
@@ -303,16 +301,13 @@ class RunbookExecutorStep:
 
     def _parse_interpret_response(self, raw: str) -> dict[str, Any]:
         """Parse LLM response, stripping markdown fences if present."""
-        match = _CODE_FENCE_RE.search(raw)
-        text = match.group(1) if match else raw
         try:
-            result: dict[str, Any] = json.loads(text.strip())
-            return result
+            return parse_json_response(raw)
         except (json.JSONDecodeError, ValueError) as exc:
             logger.warning(
                 "Failed to parse runbook interpretation response: %s (text: %.200s)",
                 exc,
-                text.strip(),
+                raw.strip(),
             )
             return {}
 

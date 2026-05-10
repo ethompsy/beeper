@@ -48,6 +48,9 @@ qdrant:
       memory: 256Mi
 
 # Development LLM settings — local Ollama (no API costs)
+# IMPORTANT: Ollama must bind all interfaces for kind cluster access:
+#   OLLAMA_HOST=0.0.0.0 ollama serve
+# Without this, investigator pods get connection timeouts to host.docker.internal.
 llm:
   provider: ollama
   model: qwen3:8b

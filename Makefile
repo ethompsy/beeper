@@ -7,6 +7,8 @@
 #   - docker (for building images)
 #   - helm 3.x installed
 #   - For full K8s demo: kind (installed automatically by demo-cluster)
+#   - For local LLM (Ollama): OLLAMA_HOST=0.0.0.0 ollama serve
+#     (must bind all interfaces so kind pods can reach host.docker.internal)
 
 DEMO_NAMESPACE := otel-demo
 BEEPER_NAMESPACE := beeper

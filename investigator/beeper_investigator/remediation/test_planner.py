@@ -7,18 +7,16 @@ trust level or sandbox availability (Story 4.3).
 
 import json
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from beeper_investigator.context import InvestigationContext
 from beeper_investigator.k8s.status import InvestigationStatusUpdater
 from beeper_investigator.llm.client import LlmClient, ModelTier
+from beeper_investigator.llm.response_parser import parse_json_response
 from beeper_investigator.steps import StepResult
 
 logger = logging.getLogger(__name__)
-
-_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL)
 
 VALID_VERIFICATION_TYPES = frozenset({
     "metric_check",
@@ -313,16 +311,13 @@ class TestPlannerStep:
         confidence_percentage: int,
     ) -> AdvisoryTestPlan:
         """Parse LLM response into AdvisoryTestPlan."""
-        match = _CODE_FENCE_RE.search(raw)
-        text = match.group(1) if match else raw
-
         try:
-            data: dict[str, Any] = json.loads(text.strip())
+            data: dict[str, Any] = parse_json_response(raw)
         except (json.JSONDecodeError, ValueError) as exc:
             logger.warning(
                 "Failed to parse test plan response: %s (text: %.200s)",
                 exc,
-                text.strip(),
+                raw.strip(),
             )
             return self._fallback_plan(confidence_level, confidence_percentage)
 

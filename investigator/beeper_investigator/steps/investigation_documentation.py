@@ -8,7 +8,6 @@ to the knowledge base for future reference and semantic search
 import json
 import logging
 import os
-import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -23,13 +22,10 @@ from beeper_investigator.kb.client import (
     KBClient,
 )
 from beeper_investigator.llm.client import LlmClient
+from beeper_investigator.llm.response_parser import parse_json_response
 from beeper_investigator.steps import StepResult
 
 logger = logging.getLogger(__name__)
-
-_CODE_FENCE_RE = re.compile(
-    r"```(?:json)?\s*\n?(.*?)\n?\s*```", re.DOTALL
-)
 
 _DEFAULT_BUFFER_DIR = "/tmp/beeper-buffer"
 _MAX_RETRIES = 3
@@ -87,10 +83,7 @@ Related investigations: {related_ids}"""
 
 def _parse_response(raw: str) -> dict[str, Any]:
     """Parse LLM response, stripping markdown fences."""
-    match = _CODE_FENCE_RE.search(raw)
-    text = match.group(1) if match else raw
-    result: dict[str, Any] = json.loads(text.strip())
-    return result
+    return parse_json_response(raw)
 
 
 class InvestigationDocumentationStep:

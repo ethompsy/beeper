@@ -114,6 +114,44 @@ def get_required_env(name: str) -> str:
     return value
 
 
+def _check_ollama_connectivity(endpoint: str, logger: logging.Logger) -> None:
+    """Fast connectivity check for Ollama endpoint.
+
+    Makes a lightweight HTTP request with a short timeout to fail fast
+    instead of waiting for LiteLLM's default 600s timeout.
+
+    Args:
+        endpoint: Ollama API endpoint URL.
+        logger: Logger instance.
+    """
+    if not endpoint:
+        logger.warning("Ollama provider configured but BEEPER_LLM_ENDPOINT not set")
+        return
+
+    import urllib.request
+    import urllib.error
+
+    try:
+        req = urllib.request.Request(endpoint, method="GET")
+        with urllib.request.urlopen(req, timeout=10):
+            logger.info("Ollama connectivity check passed: %s", endpoint)
+    except urllib.error.URLError as e:
+        logger.error(
+            "Ollama unreachable at %s — is Ollama running with OLLAMA_HOST=0.0.0.0? Error: %s",
+            endpoint,
+            e,
+        )
+        raise LlmUnavailableError(
+            f"Ollama unreachable at {endpoint}. "
+            "Ensure Ollama is running with OLLAMA_HOST=0.0.0.0 "
+            "so kind cluster pods can reach host.docker.internal. "
+            f"Error: {e}"
+        ) from e
+    except OSError as e:
+        logger.error("Ollama connectivity check failed: %s", e)
+        raise LlmUnavailableError(f"Ollama connectivity check failed: {e}") from e
+
+
 def main() -> None:
     """Main entry point for the Beeper Investigator.
 
@@ -157,6 +195,11 @@ def main() -> None:
             llm_client.provider,
             llm_client.model,
         )
+
+        # For Ollama: fast connectivity check (fail in seconds, not 600s timeout)
+        if llm_client.provider == "ollama":
+            endpoint = os.environ.get("BEEPER_LLM_ENDPOINT", "")
+            _check_ollama_connectivity(endpoint, logger)
 
         # Initialize Qdrant KB client from environment
         logger.info("Initializing Qdrant KB client")
