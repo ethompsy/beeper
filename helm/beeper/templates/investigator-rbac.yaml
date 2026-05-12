@@ -12,7 +12,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 ---
-# Role for investigator pods to access Qdrant and update their own status
+# Role for investigator pods: signal gathering, credential access, and investigation status updates
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -30,6 +30,26 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list"]
+  # Signal gathering: K8s core resources
+  - apiGroups: [""]
+    resources: ["events", "services", "pods", "endpoints"]
+    verbs: ["get", "list"]
+  # Signal gathering: Deployments
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  # Signal gathering: HorizontalPodAutoscalers
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
+  # Signal gathering: Ingresses
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list"]
+  # Signal gathering: cert-manager Certificates
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list"]
   # Allow reading and updating Investigation CR status
   - apiGroups: ["beeper.dev"]
     resources: ["investigations"]
@@ -37,6 +57,40 @@ rules:
   - apiGroups: ["beeper.dev"]
     resources: ["investigations/status"]
     verbs: ["get", "patch", "update"]
+  # Signal gathering: ServiceLevels and Repositories CRDs
+  - apiGroups: ["beeper.dev"]
+    resources: ["servicelevels", "repositories"]
+    verbs: ["get", "list"]
+---
+# ClusterRole for cluster-scoped resources (sandbox namespace detection)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "beeper.fullname" . }}-investigator
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: investigator
+rules:
+  # Sandbox executor: check if sandbox namespace exists
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "beeper.fullname" . }}-investigator
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: investigator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "beeper.fullname" . }}-investigator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "beeper.investigatorServiceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

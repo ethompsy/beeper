@@ -73,7 +73,7 @@ development_status:
   3-0e-fix-investigation-startup-flood: done
   3-0f-fix-ui-investigation-detail-not-found: done
   3-0g-fix-ollama-litellm-integration: done
-  3-0h-fix-investigator-rbac-permissions: ready-for-dev
+  3-0h-fix-investigator-rbac-permissions: done
   epic-3: backlog
   3-1-install-tailwind-css-build-pipeline: backlog
   3-2-implement-layout-shell-base-template-migration: backlog
