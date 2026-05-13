@@ -1,5 +1,6 @@
 """Tests for spending dashboard routes and service."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,6 +8,15 @@ from flask import Flask
 from flask.testing import FlaskClient
 
 from beeper_ui.services.spending_service import SpendingService
+
+# Dynamic dates for time-sensitive tests
+_now = datetime.now(timezone.utc)
+_TODAY_ISO = _now.strftime("%Y-%m-%dT%H:%M:%SZ")
+_TODAY_MINUS_1H = (_now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_TODAY_MINUS_2H = (_now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_YESTERDAY_ISO = (_now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_TODAY_DATE = _now.strftime("%Y-%m-%d")
+_YESTERDAY_DATE = (_now - timedelta(days=1)).strftime("%Y-%m-%d")
 
 # ── SpendingService tests ──────────────────────────
 
@@ -17,7 +27,7 @@ class TestSpendingService:
     def _make_point(
         self,
         cost_usd: float = 0.05,
-        created_at: str = "2026-03-07T12:00:00Z",
+        created_at: str = _TODAY_ISO,
         service: str = "api-gateway",
     ) -> MagicMock:
         """Create a mock Qdrant point with cost_stats."""
@@ -42,8 +52,8 @@ class TestSpendingService:
         svc._qdrant_client = MagicMock()
         svc._qdrant_client.scroll.return_value = (
             [
-                self._make_point(cost_usd=0.05, created_at="2026-03-07T10:00:00Z"),
-                self._make_point(cost_usd=0.10, created_at="2026-03-07T11:00:00Z"),
+                self._make_point(cost_usd=0.05, created_at=_TODAY_MINUS_2H),
+                self._make_point(cost_usd=0.10, created_at=_TODAY_MINUS_1H),
             ],
             None,
         )
@@ -79,16 +89,16 @@ class TestSpendingService:
         svc._qdrant_client = MagicMock()
         svc._qdrant_client.scroll.return_value = (
             [
-                self._make_point(cost_usd=0.05, created_at="2026-03-06T10:00:00Z"),
-                self._make_point(cost_usd=0.10, created_at="2026-03-07T10:00:00Z"),
+                self._make_point(cost_usd=0.05, created_at=_YESTERDAY_ISO),
+                self._make_point(cost_usd=0.10, created_at=_TODAY_ISO),
             ],
             None,
         )
 
         trend = svc.get_spending_trend(period="daily")
         assert len(trend) == 2
-        assert trend[0]["period"] == "2026-03-06"
-        assert trend[1]["period"] == "2026-03-07"
+        assert trend[0]["period"] == _YESTERDAY_DATE
+        assert trend[1]["period"] == _TODAY_DATE
         assert trend[0]["cost_usd"] > 0
 
     def test_get_cap_status_no_caps(self) -> None:

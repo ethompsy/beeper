@@ -68,7 +68,7 @@ development_status:
   3-0a-fix-slo-engine-memory-leak: done
   3-0b-full-pipeline-e2e-verification: done
   3-0c-full-demo-walkthrough: failed
-  3-0d-ui-test-baseline: backlog
+  3-0d-ui-test-baseline: done
   # Bug-fix stories from 3-0c walkthrough failure (2026-05-06)
   3-0e-fix-investigation-startup-flood: done
   3-0f-fix-ui-investigation-detail-not-found: done

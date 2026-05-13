@@ -1,6 +1,7 @@
 """Tests for cost insights routes and service methods."""
 
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +9,12 @@ from flask import Flask
 from flask.testing import FlaskClient
 
 from beeper_ui.services.spending_service import SpendingService
+
+# Dynamic dates so tests don't drift outside period filters
+_now = datetime.now(timezone.utc)
+_RECENT = _now.strftime("%Y-%m-%dT%H:%M:%SZ")
+_RECENT_1H = (_now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_RECENT_2H = (_now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 # ── SpendingService cost breakdown tests ──────────────────────────
 
@@ -18,7 +25,7 @@ class TestCostByService:
     def _make_point(
         self,
         cost_usd: float = 0.05,
-        created_at: str = "2026-03-07T12:00:00Z",
+        created_at: str = _RECENT,
         service: str = "api-gateway",
         severity: str = "high",
         per_model: dict | None = None,
@@ -51,17 +58,17 @@ class TestCostByService:
                 self._make_point(
                     cost_usd=0.10,
                     service="api-gateway",
-                    created_at="2026-03-07T10:00:00Z",
+                    created_at=_RECENT_2H,
                 ),
                 self._make_point(
                     cost_usd=0.20,
                     service="api-gateway",
-                    created_at="2026-03-07T11:00:00Z",
+                    created_at=_RECENT_1H,
                 ),
                 self._make_point(
                     cost_usd=0.05,
                     service="payment-service",
-                    created_at="2026-03-07T12:00:00Z",
+                    created_at=_RECENT,
                 ),
             ],
             None,
@@ -96,7 +103,7 @@ class TestCostByService:
                 self._make_point(
                     cost_usd=0.10,
                     service="api-gateway",
-                    created_at="2026-03-07T10:00:00Z",
+                    created_at=_RECENT_2H,
                     per_model={
                         "claude-haiku-3.5": {
                             "cost_usd": 0.02,
@@ -125,7 +132,7 @@ class TestCostBySeverity:
     def _make_point(
         self,
         cost_usd: float = 0.05,
-        created_at: str = "2026-03-07T12:00:00Z",
+        created_at: str = _RECENT,
         severity: str = "high",
     ) -> MagicMock:
         point = MagicMock()
@@ -163,7 +170,7 @@ class TestCostByModel:
 
     def _make_point(
         self,
-        created_at: str = "2026-03-07T12:00:00Z",
+        created_at: str = _RECENT,
         per_model: dict | None = None,
     ) -> MagicMock:
         point = MagicMock()
@@ -245,7 +252,7 @@ class TestHighCostServices:
         self,
         cost_usd: float = 0.05,
         service: str = "api-gateway",
-        created_at: str = "2026-03-07T12:00:00Z",
+        created_at: str = _RECENT,
     ) -> MagicMock:
         point = MagicMock()
         point.payload = {
@@ -266,17 +273,17 @@ class TestHighCostServices:
                 self._make_point(
                     cost_usd=1.00,
                     service="noisy-service",
-                    created_at="2026-03-07T10:00:00Z",
+                    created_at=_RECENT_2H,
                 ),
                 self._make_point(
                     cost_usd=0.10,
                     service="quiet-a",
-                    created_at="2026-03-07T11:00:00Z",
+                    created_at=_RECENT_1H,
                 ),
                 self._make_point(
                     cost_usd=0.10,
                     service="quiet-b",
-                    created_at="2026-03-07T12:00:00Z",
+                    created_at=_RECENT,
                 ),
             ],
             None,
@@ -300,17 +307,17 @@ class TestHighCostServices:
                 self._make_point(
                     cost_usd=0.10,
                     service="svc-a",
-                    created_at="2026-03-07T10:00:00Z",
+                    created_at=_RECENT_2H,
                 ),
                 self._make_point(
                     cost_usd=0.12,
                     service="svc-b",
-                    created_at="2026-03-07T11:00:00Z",
+                    created_at=_RECENT_1H,
                 ),
                 self._make_point(
                     cost_usd=0.11,
                     service="svc-c",
-                    created_at="2026-03-07T12:00:00Z",
+                    created_at=_RECENT,
                 ),
             ],
             None,
@@ -328,7 +335,7 @@ class TestHighCostServices:
                 self._make_point(
                     cost_usd=5.0,
                     service="only-service",
-                    created_at="2026-03-07T10:00:00Z",
+                    created_at=_RECENT_2H,
                 ),
             ],
             None,
@@ -346,12 +353,12 @@ class TestHighCostServices:
                 self._make_point(
                     cost_usd=1.00,
                     service="noisy",
-                    created_at="2026-03-07T10:00:00Z",
+                    created_at=_RECENT_2H,
                 ),
                 self._make_point(
                     cost_usd=0.05,
                     service="quiet",
-                    created_at="2026-03-07T11:00:00Z",
+                    created_at=_RECENT_1H,
                 ),
             ],
             None,
@@ -370,7 +377,7 @@ class TestExportCostData:
         cost_usd: float = 0.10,
         service: str = "api-gateway",
         severity: str = "high",
-        created_at: str = "2026-03-07T12:00:00Z",
+        created_at: str = _RECENT,
         per_model: dict | None = None,
     ) -> MagicMock:
         point = MagicMock()
@@ -449,7 +456,7 @@ class TestPeriodFiltering:
     def _make_point(
         self,
         cost_usd: float = 0.05,
-        created_at: str = "2026-03-07T12:00:00Z",
+        created_at: str = _RECENT,
         service: str = "api-gateway",
     ) -> MagicMock:
         point = MagicMock()
@@ -470,7 +477,7 @@ class TestPeriodFiltering:
             [
                 self._make_point(
                     cost_usd=0.10,
-                    created_at="2026-03-07T10:00:00Z",
+                    created_at=_RECENT_2H,
                 ),
                 self._make_point(
                     cost_usd=0.20,

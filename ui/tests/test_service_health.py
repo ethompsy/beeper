@@ -1,5 +1,7 @@
 """Tests for per-service health feeds (Story 7-4)."""
 
+from datetime import datetime, timedelta, timezone
+
 import httpx
 import respx
 from flask import Flask
@@ -11,6 +13,19 @@ from beeper_ui.services.service_health_service import (
     compute_health_status,
 )
 from tests.conftest import _RoleClient
+
+# Dynamic dates for time-sensitive tests
+_now = datetime.now(timezone.utc)
+_TODAY = _now.strftime("%Y-%m-%dT%H:%M:%SZ")
+_THREE_DAYS_AGO = (_now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_THREE_DAYS_AGO_PLUS_1H = (
+    (_now - timedelta(days=3) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+)
+_TODAY_PLUS_1H = (_now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_FIFTEEN_DAYS_AGO = (_now - timedelta(days=15)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_FIFTEEN_DAYS_AGO_PLUS_1H = (
+    (_now - timedelta(days=15) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+)
 
 # --- Mock Data ---
 
@@ -59,7 +74,7 @@ MOCK_INVESTIGATIONS = [
         "service": "payment-service",
         "severity": "high",
         "condition": "latency_spike",
-        "started_at": "2026-03-18T10:00:00Z",
+        "started_at": _TODAY,
         "completed_at": None,
         "workflow_state": "investigating",
     },
@@ -69,8 +84,8 @@ MOCK_INVESTIGATIONS = [
         "service": "payment-service",
         "severity": "medium",
         "condition": "error_rate",
-        "started_at": "2026-03-15T08:00:00Z",
-        "completed_at": "2026-03-15T09:00:00Z",
+        "started_at": _THREE_DAYS_AGO,
+        "completed_at": _THREE_DAYS_AGO_PLUS_1H,
         "workflow_state": "resolved",
     },
     {
@@ -79,7 +94,7 @@ MOCK_INVESTIGATIONS = [
         "service": "api-gateway",
         "severity": "critical",
         "condition": "slo_breach",
-        "started_at": "2026-03-18T11:00:00Z",
+        "started_at": _TODAY_PLUS_1H,
         "completed_at": None,
         "workflow_state": "investigating",
     },
@@ -89,8 +104,8 @@ MOCK_INVESTIGATIONS = [
         "service": "auth-service",
         "severity": "low",
         "condition": "anomaly",
-        "started_at": "2026-03-01T08:00:00Z",
-        "completed_at": "2026-03-01T09:00:00Z",
+        "started_at": _FIFTEEN_DAYS_AGO,
+        "completed_at": _FIFTEEN_DAYS_AGO_PLUS_1H,
         "workflow_state": "verified",
     },
 ]

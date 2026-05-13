@@ -10,6 +10,8 @@ import os
 from functools import lru_cache
 from typing import Optional
 
+import litellm
+
 logger = logging.getLogger(__name__)
 
 # Default embedding model (OpenAI text-embedding-3-small = 1536 dimensions)
@@ -64,8 +66,6 @@ class EmbeddingService:
             Embedding vector as tuple (hashable for cache).
         """
         try:
-            import litellm
-
             # Set API key if provided
             if self._api_key:
                 os.environ["OPENAI_API_KEY"] = self._api_key
