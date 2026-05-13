@@ -1,0 +1,44 @@
+/*
+ * Tailwind CSS v4 Input — Beeper UI
+ *
+ * Build output: tailwind.css (gitignored)
+ * Dev:  make tailwind-watch
+ * Prod: make tailwind-build (or Dockerfile build stage)
+ *
+ * Preflight (CSS reset) is DISABLED to avoid breaking the existing
+ * 6,982-line main.css.  Only theme + utilities are imported.
+ */
+
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* ── Design Tokens v0.2.0 ─────────────────────────────────────────────────── */
+
+@theme {
+  /* Surface colors */
+  --color-surface-base: #0f0f1a;
+  --color-surface-raised: #1a1a2e;
+  --color-surface-overlay: #252540;
+
+  /* Primary */
+  --color-primary: #6366f1;
+  --color-primary-hover: #818cf8;
+
+  /* Status */
+  --color-status-healthy: #22c55e;
+  --color-status-warning: #f59e0b;
+  --color-status-critical: #ef4444;
+  --color-status-muted: #6b7280;
+
+  /* Text hierarchy */
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+
+  /* Breakpoints (clear defaults to prevent md/2xl leaking through) */
+  --breakpoint-*: initial;
+  --breakpoint-sm: 768px;
+  --breakpoint-lg: 1200px;
+  --breakpoint-xl: 1920px;
+}

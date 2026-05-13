@@ -74,8 +74,8 @@ development_status:
   3-0f-fix-ui-investigation-detail-not-found: done
   3-0g-fix-ollama-litellm-integration: done
   3-0h-fix-investigator-rbac-permissions: done
-  epic-3: backlog
-  3-1-install-tailwind-css-build-pipeline: backlog
+  epic-3: in-progress
+  3-1-install-tailwind-css-build-pipeline: done
   3-2-implement-layout-shell-base-template-migration: backlog
   3-3-build-sidebar-navigation-component: backlog
   3-4-implement-sidebar-state-management-route-driven-collapse: backlog

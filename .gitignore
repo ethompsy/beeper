@@ -82,6 +82,9 @@ secrets/
 *.whl
 *.tar.gz
 
+# Tailwind CSS (generated build output)
+ui/beeper_ui/static/css/tailwind.css
+
 # Node
 node_modules/
 

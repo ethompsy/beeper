@@ -23,7 +23,21 @@ BEEPER_TAG := dev
 .PHONY: demo-up demo-down demo-cluster demo-build demo-beeper \
         demo-deploy demo-teardown demo-status demo-logs \
         demo-fault demo-recover demo-fault-status demo-fault-list \
-        demo-ui demo-helm-repo
+        demo-ui demo-helm-repo \
+        tailwind-watch tailwind-build
+
+# ── Tailwind CSS ─────────────────────────────────────────────────────────────
+# Requires: tailwindcss standalone CLI on PATH
+#   Dev:    curl -sL -o /usr/local/bin/tailwindcss https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.0/tailwindcss-macos-arm64 && chmod +x /usr/local/bin/tailwindcss
+#   Docker: downloaded automatically in Dockerfile build stage
+
+## Watch mode for development (generates CSS on file changes)
+tailwind-watch:
+	tailwindcss --watch -i ui/beeper_ui/static/css/input.css -o ui/beeper_ui/static/css/tailwind.css
+
+## Production build (minified CSS)
+tailwind-build:
+	tailwindcss --minify -i ui/beeper_ui/static/css/input.css -o ui/beeper_ui/static/css/tailwind.css
 
 # ── One-command setup/teardown ───────────────────────────────────────────────
 
