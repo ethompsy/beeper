@@ -76,7 +76,7 @@ development_status:
   3-0h-fix-investigator-rbac-permissions: done
   epic-3: in-progress
   3-1-install-tailwind-css-build-pipeline: done
-  3-2-implement-layout-shell-base-template-migration: backlog
+  3-2-implement-layout-shell-base-template-migration: ready-for-dev
   3-3-build-sidebar-navigation-component: backlog
   3-4-implement-sidebar-state-management-route-driven-collapse: backlog
   epic-3-retrospective: optional
