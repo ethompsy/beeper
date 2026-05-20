@@ -1,0 +1,133 @@
+{# Layout shell macro (Story 3.2 — AD-3 / FR40-44).
+
+   Renders the page chrome: skip link, top bar (hamburger + logo + breadcrumb),
+   sidebar slot, content area. Page content is injected via {{ caller() }}.
+
+   Sidebar group rendering is Story 3.3 territory; for now the sidebar slot
+   contains a basic vertical link list so existing route tests keep passing.
+   Sidebar state interactivity (hamburger click, [ key) is Story 3.4 territory;
+   this macro only establishes the structural hooks.
+
+   Dimensions per ux-design-specification.md v1 (Component #1):
+     sidebar: 64px collapsed / 256px expanded at ≥1200px (lg:)
+     top bar: 48px height (h-12)
+     content: 16px / 24px padding (p-4 / lg:p-6)
+
+   LEGACY CSS INTERACTION (important): the existing main.css defines unscoped
+   element selectors — `header { padding: 20px 0 }`, `nav { display: flex }`,
+   `main { padding: 20px 0 }` — and a global `* { box-sizing: border-box }`.
+   These cascade onto the semantic elements used here. The shell explicitly
+   neutralises each one with an overriding Tailwind utility so the legacy
+   rules cannot distort the layout:
+     <header> → `py-0`           cancels `header { padding: 20px 0 }`
+     <nav>    → `block`          cancels `nav { display: flex }`
+     <main>   → `pt-12 pb-0`     cancels `main { padding: 20px 0 }`
+   The bare sidebar <a> anchors deliberately inherit main.css's `nav a` rule
+   for styling (Story 3.3 replaces them with the sidebar_group macro).
+#}
+
+{% macro layout_shell(sidebar_state='auto', breadcrumb='') %}
+{# Below-min message — shown via CSS when viewport <768px (sm: breakpoint). #}
+<div id="below-min-message"
+     class="flex sm:hidden fixed inset-0 z-40 items-center justify-center
+            bg-surface-base text-text-secondary text-center p-8">
+  <p>Beeper is designed for laptop and desktop browsers.<br>
+    Please use a screen 768px or wider.</p>
+</div>
+
+{# Main app shell — hidden below 768px so only the message above renders. #}
+<div id="app-shell" class="hidden sm:block">
+
+  {# Skip link — first focusable element. Kept inside #app-shell so it is not
+     reachable on <768px, where the shell (and #main-content) are display:none. #}
+  <a href="#main-content"
+     class="sr-only focus:not-sr-only fixed top-2 left-2 z-50 px-3 py-2 rounded
+            bg-surface-raised text-text-primary
+            focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2
+            focus-visible:ring-offset-surface-base">
+    Skip to main content
+  </a>
+
+  {# Top bar — 48px height. `py-0` cancels main.css `header { padding: 20px 0 }`
+     so the h-12 content box is not collapsed under `box-sizing: border-box`. #}
+  <header class="fixed top-0 left-0 right-0 z-30 h-12 py-0
+                 bg-surface-base border-b border-surface-raised
+                 flex items-center gap-3 px-4 lg:px-6">
+    <button type="button" id="sidebar-toggle"
+            aria-expanded="false" aria-controls="sidebar"
+            class="p-2 -ml-2 rounded text-text-primary
+                   hover:bg-surface-raised
+                   focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2
+                   focus-visible:ring-offset-surface-base
+                   transition-colors duration-200 motion-reduce:transition-none">
+      <span class="sr-only">Toggle navigation</span>
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <a href="/" class="flex items-center gap-2 text-text-primary text-base font-semibold
+                       focus-visible:ring-2 focus-visible:ring-primary
+                       focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base
+                       rounded">
+      <span aria-hidden="true" class="w-2 h-2 rounded-full bg-primary inline-block"></span>
+      Beeper
+    </a>
+    {# Breadcrumb landmark only rendered when a page supplies one — avoids an
+       empty ARIA navigation landmark on pages without a breadcrumb. #}
+    {% if breadcrumb %}
+    <nav aria-label="Breadcrumb"
+         class="block text-sm text-text-secondary ml-2 min-w-0 truncate">{{ breadcrumb|safe }}</nav>
+    {% endif %}
+  </header>
+
+  {# Sidebar — fixed under the top bar; w-16 collapsed / w-64 expanded at ≥1200px.
+     `block` cancels main.css `nav { display: flex }` so the link list stacks
+     vertically and the <ul> fills the sidebar width.
+     `data-sidebar-state` is set from the {% block sidebar_state %} value
+     (defaults to 'auto'); Story 3.4 will read it to drive JS overrides.
+     Anchors are bare so existing test assertions like
+     `<a href="/analytics/">Analytics</a>` still match — main.css's `nav a`
+     rule styles them. Story 3.3 will replace this with the `sidebar_group`
+     macro. #}
+  <nav id="sidebar"
+       data-sidebar-state="{{ sidebar_state }}"
+       aria-label="Main navigation"
+       class="block fixed top-12 left-0 bottom-0 z-20 w-16 lg:w-64
+              bg-surface-base border-r border-surface-raised
+              overflow-y-auto overflow-x-hidden
+              transition-all duration-200 ease-in-out motion-reduce:transition-none">
+    <ul class="list-none m-0 py-2">
+      <li class="px-2 py-1"><a href="/investigations/">Investigations</a></li>
+      <li class="px-2 py-1"><a href="/knowledge/">Knowledge Base</a></li>
+      <li class="px-2 py-1"><a href="/sources/">Sources</a></li>
+      <li class="px-2 py-1"><a href="/health/">Health</a></li>
+      <li class="px-2 py-1"><a href="/metrics/">Metrics</a></li>
+      <li class="px-2 py-1"><a href="/spending/">Spending</a></li>
+      <li class="px-2 py-1"><a href="/spending/costs">Cost Insights</a></li>
+      <li class="px-2 py-1"><a href="/slo/">SLO</a></li>
+      <li class="px-2 py-1"><a href="/services/">Services</a></li>
+      <li class="px-2 py-1"><a href="/topology/">Topology</a></li>
+      <li class="px-2 py-1"><a href="/notifications/">Notifications</a></li>
+      <li class="px-2 py-1"><a href="/handoff/">Handoff</a></li>
+      <li class="px-2 py-1"><a href="/analytics/">Analytics</a></li>
+      <li class="px-2 py-1"><a href="/reports/executive">Reports</a></li>
+      <li class="px-2 py-1"><a href="/settings/trust/">Trust</a></li>
+    </ul>
+  </nav>
+
+  {# Content area — pushed right by the sidebar's current width.
+     `pt-12` clears the 48px fixed header AND overrides main.css
+     `main { padding: 20px 0 }` top padding; `pb-0` cancels its bottom padding.
+     `min-h-screen` (100vh) replaces an arbitrary calc() value — the pt-12
+     padding sits inside the 100vh under `box-sizing: border-box`, so the
+     content area fills the viewport with no extra vertical scroll. #}
+  <main id="main-content" aria-atomic="false"
+        class="ml-16 lg:ml-64 pt-12 pb-0 min-h-screen
+               transition-all duration-200 ease-in-out motion-reduce:transition-none">
+    <div class="p-4 lg:p-6">
+      {{ caller() }}
+    </div>
+  </main>
+</div>
+{% endmacro %}

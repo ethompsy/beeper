@@ -9,9 +9,16 @@
  * 6,982-line main.css.  Only theme + utilities are imported.
  */
 
-@layer theme, base, components, utilities;
+/* Story 3.2 H1 fix (third-pass code review): utilities are imported UNLAYERED
+   so they compete on normal CSS specificity with the existing unlayered
+   element selectors in main.css (`header { padding: ... }`, `nav { display:
+   flex }`, `main { padding: ... }`). With utilities inside `@layer utilities`,
+   ANY unlayered rule beats them regardless of specificity — that broke the
+   layout shell's `py-0`, `block`, and `pt-12 pb-0` overrides. Theme remains
+   layered so it loses to user overrides cleanly. */
+@layer theme;
 @import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities);
+@import "tailwindcss/utilities.css";
 
 /* ── Design Tokens v0.2.0 ─────────────────────────────────────────────────── */
 
