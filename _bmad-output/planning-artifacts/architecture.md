@@ -450,6 +450,33 @@ These decisions may seem natural to make during implementation but are explicitl
 - **Tailwind config:** `tailwind.config.js` at `ui/` root with `content: ['./beeper_ui/templates/**/*.html', './beeper_ui/static/js/**/*.js']` for tree-shaking
 - **Affects:** Makefile, UI Dockerfile, new `ui/tailwind.config.js`, new `ui/beeper_ui/static/css/input.css`
 
+**AD-7 addendum (2026-05-20, Story 3.2 implementation discovery): Tailwind v4 + main.css cascade contract**
+
+Story 3.1 implemented AD-7 using Tailwind v4 (not v3). The recommended v4 setup places utilities inside an `@layer utilities` via `@import "tailwindcss/utilities.css" layer(utilities);` in `input.css`.
+
+CSS `@layer` rules have **lower cascade priority than ALL unlayered rules, regardless of selector specificity**. The existing `main.css` (6,982 lines) is unlayered and contains bare-element selectors like `main { padding: 20px 0 }`, `header { padding: 20px 0 }`, and `nav { display: flex }`, plus a global `* { box-sizing: border-box }`. With Tailwind utilities layered, these unlayered legacy rules beat utility classes like `.p-6` even though `.p-6` has higher specificity (0,1,0 vs 0,0,1).
+
+This surfaced during Story 3.2's layout-shell migration: the shell's `<main>`, `<header>`, and `<nav>` rendered with legacy padding/display instead of the Tailwind utilities. **Fix (in `input.css`): drop the `layer(utilities)` annotation** so utilities cascade by normal specificity rules. Theme remains layered (`@layer theme;`) so it loses cleanly to author overrides.
+
+**Resulting cascade contract:**
+
+| Conflict type | Winner | Notes |
+|---|---|---|
+| Tailwind utility class (e.g. `.p-6`) vs bare element selector (e.g. `main { … }`) in `main.css` | **Tailwind utility** wins on class-vs-element specificity (0,1,0 > 0,0,1) | Intended behavior for the layout shell and any newly-migrated template |
+| Tailwind utility class vs class-based legacy selector (e.g. `.card { … }`) | **Same specificity (0,1,0)** — source order decides; `tailwind.css` loads first so `main.css` wins | Unmigrated pages using `.card`, `.entry-card`, etc. keep their legacy styling unchanged |
+| Tailwind utility class vs higher-specificity legacy selector (e.g. `.entry-card .header h2 { … }`) | **Legacy wins** (0,2,1 > 0,1,0) | Acceptable — per-template migration is per the Tailwind/CSS coexistence rule |
+| Property NOT touched by a Tailwind class (e.g. an element gets `px-4` but no `py-*`) | **Legacy wins** for the untouched axis | Mitigation: explicitly set the property via Tailwind |
+
+**Implication for future template-migration stories:** when migrating a template to Tailwind, set the FULL set of relevant properties via utilities so legacy bare-element rules cannot leak through on uncovered axes. The Story 3.2 layout shell (`components/layout.html`) demonstrates the pattern with three defensive overrides against known `main.css` selectors:
+
+| Shell element | Override | Cancels legacy rule |
+|---|---|---|
+| `<header>` | `py-0` | `header { padding: 20px 0 }` (would collapse the `h-12` box under `box-sizing: border-box`) |
+| `<nav>` | `block` | `nav { display: flex }` (would lay sidebar links horizontally) |
+| `<main>` | `pt-12 pb-0` | `main { padding: 20px 0 }` (and clears the 48px fixed header) |
+
+**Future cleanup option:** once enough pages migrate, `main.css`'s bare-element selectors (`body`, `header`, `nav`, `main`) can be removed or rewritten as classes, eliminating the need for these defensive overrides.
+
 ### Infrastructure & Deployment
 
 **Qdrant version alignment:** Upgrade Helm chart Qdrant to v1.15.0 to match local development. This is a values.yaml change, not an architectural decision, but noted here to prevent the version discrepancy from causing integration issues.
