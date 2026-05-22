@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import httpx
+import pytest
 import respx
 from flask import Flask
 from flask.testing import FlaskClient
@@ -560,6 +561,14 @@ class TestServiceSSEStream:
 class TestServiceNavigation:
     """Tests for service health navigation."""
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Top-nav removed in Story 3.2 layout shell migration. The old "
+        "top-bar `/services/` + `Services` link no longer exists in base.html. "
+        "Story 3.3 introduces sidebar nav with different macro markup. When "
+        "that lands this test becomes XPASS — REWRITE the assertion against "
+        "the new sidebar HTML and remove this xfail marker.",
+    )
     def test_services_nav_link_present(self, client: FlaskClient) -> None:
         """Test Services link appears in navigation."""
         response = client.get("/")

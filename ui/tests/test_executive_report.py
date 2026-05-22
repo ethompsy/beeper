@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
 import respx
 from flask.testing import FlaskClient
 from httpx import Response
@@ -638,6 +639,14 @@ class TestExecutiveTemplateContent:
         assert "executive-change-entry" in html
         assert "svc-a" in html
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Top-nav removed in Story 3.2 layout shell migration. The old "
+        "`<a href=\"/reports/executive\">Reports</a>` markup no longer exists. "
+        "Story 3.3 introduces sidebar nav with a different macro-based markup. "
+        "When that lands this test becomes XPASS — REWRITE the assertion "
+        "against the new sidebar HTML and remove this xfail marker.",
+    )
     def test_navigation_link_exists(self, client: FlaskClient) -> None:
         mock_svc = self._mock_service()
         with patch(

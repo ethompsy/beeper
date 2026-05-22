@@ -1,0 +1,79 @@
+{# ──────────────────────────────────────────────────────────────────────────
+   Layout shell macro — top bar + sidebar column + content slot
+
+   Imported by base.html and invoked via {% call layout_shell(...) %}.
+   The breadcrumb and sidebar arguments receive rendered HTML strings from
+   base.html's {% block breadcrumb %} and {% block sidebar %} via
+   self.breadcrumb() / self.sidebar(). Page content is yielded through
+   {{ caller() }} which receives the rendered {% block content %}.
+
+   AC ref (Story 3.2): #1, #2, #4, #5
+   Design tokens (UX spec lines 345–353):
+     sidebar:        w-16  (64px) collapsed  /  lg:w-64  (256px) ≥1200px
+     top bar:        h-12  (48px)
+     content area:   p-6   (24px padding)
+     breakpoints:    sm=768px, lg=1200px, xl=1920px
+
+   Tailwind/CSS coexistence: this file uses Tailwind utilities ONLY (no
+   classes from main.css). Architecture rule #11 — semantic tokens only,
+   never arbitrary [#hex] values.
+   ─────────────────────────────────────────────────────────────────────── #}
+{% macro layout_shell(breadcrumb='', sidebar='') %}
+<div class="min-h-screen bg-surface-base text-text-primary flex flex-col">
+    {# py-0 is required: legacy main.css has `header { padding: 20px 0 }` which
+       Tailwind's px-4 only overrides on the left/right axis. Without py-0 the
+       header's content box collapses to ~7px under box-sizing: border-box. #}
+    {# Skip-to-content link — visually hidden until focused. Lets keyboard /
+       screen-reader users bypass the sidebar to reach page content directly.
+       Uses sr-only + focus:* utilities so it appears in the top-left when
+       focused. Targets the id on <main> below. #}
+    <a href="#main-content"
+       class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-surface-overlay focus:text-text-primary focus:px-3 focus:py-1 focus:rounded">
+        Skip to main content
+    </a>
+
+    {# py-0 is required: legacy main.css has `header { padding: 20px 0 }` which
+       Tailwind's px-4 only overrides on the left/right axis. Without py-0 the
+       header's content box collapses to ~7px under box-sizing: border-box. #}
+    <header class="h-12 py-0 flex items-center gap-4 px-4 border-b border-surface-raised bg-surface-base">
+        {# aria-expanded reflects the SIDEBAR's visible state. Default is
+           "false" because at <1200px the sidebar collapses to a 64px icon
+           rail. Story 3.4 binds this dynamically: it flips to "true" when
+           the user expands via the hamburger, and reflects the per-route
+           {% block sidebar_state %} default per viewport. Story 3.3 wires
+           the JS click handler. #}
+        <button type="button"
+                id="sidebar-toggle"
+                aria-label="Toggle sidebar"
+                aria-controls="sidebar"
+                aria-expanded="false"
+                class="text-text-secondary hover:text-text-primary motion-reduce:transition-none">
+            {# Hamburger glyph. Click handler is added in Story 3.3. #}
+            <span aria-hidden="true">&#9776;</span>
+        </button>
+        <a href="/" class="font-semibold text-text-primary">Beeper</a>
+        {# Breadcrumb slot. Callers MUST pass autoescape-rendered HTML (i.e.
+           the result of self.breadcrumb() from base.html), NEVER raw HTML
+           from untrusted sources — the |safe filter bypasses escaping.
+           Future breadcrumb content should wrap in <nav aria-label="Breadcrumb">
+           per WAI-ARIA. #}
+        <div class="text-text-secondary text-sm flex-1 truncate">{{ breadcrumb|safe }}</div>
+    </header>
+
+    <div class="flex flex-1 min-h-0">
+        {# block + gap-0 override legacy main.css `nav { display: flex; gap: 20px }`
+           so Story 3.3's nav groups stack vertically with their own spacing. #}
+        <nav id="sidebar"
+             aria-label="Main navigation"
+             class="block w-16 lg:w-64 gap-0 bg-surface-base border-r border-surface-raised shrink-0 motion-reduce:transition-none">
+            {# Sidebar navigation populated in Story 3.3 (Observe / Learn / Manage groups). #}
+            {{ sidebar|safe }}
+            {# Sidebar collapse state (auto / collapsed / expanded enum) managed in Story 3.4. #}
+        </nav>
+
+        <main id="main-content" class="flex-1 p-6 overflow-x-auto min-w-0">
+            {{ caller() }}
+        </main>
+    </div>
+</div>
+{% endmacro %}

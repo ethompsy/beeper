@@ -1,3 +1,4 @@
+{% from "components/layout.html" import layout_shell %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,41 +10,29 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
-    <header>
-        <div class="container">
-            <div class="header-content">
-                <h1><a href="/">Beeper</a></h1>
-                <nav>
-                    <a href="/investigations/">Investigations</a>
-                    <a href="/knowledge/">Knowledge Base</a>
-                    <a href="/sources/">Sources</a>
-                    <a href="/health/">Health</a>
-                    <a href="/metrics/">Metrics</a>
-                    <a href="/spending/">Spending</a>
-                    <a href="/spending/costs">Cost Insights</a>
-                    <a href="/slo/">SLO</a>
-                    <a href="/services/">Services</a>
-                    <a href="/topology/">Topology</a>
-                    <a href="/notifications/">Notifications</a>
-                    <a href="/handoff/">Handoff</a>
-                    <a href="/analytics/">Analytics</a>
-                    <a href="/reports/executive">Reports</a>
-                    <a href="/settings/trust/">Trust</a>
-                </nav>
-            </div>
-            <p class="tagline">Agentic SRE Platform</p>
+    {#-
+       Overridable blocks consumed by the layout shell. Defined here at module
+       scope so child templates can {% block breadcrumb %}…{% endblock %} and
+       {% block sidebar %}…{% endblock %} as normal — self.breadcrumb() and
+       self.sidebar() render them and pass them into the macro.
+       Story 3.3 fills sidebar with the Observe/Learn/Manage nav; Story 3.4
+       wires breadcrumb on investigation detail.
+    -#}
+    {% call layout_shell(breadcrumb=self.breadcrumb(), sidebar=self.sidebar()) %}
+        {% block content %}
+        {# Default welcome content uses Tailwind only — the legacy `.card` class
+           (white bg) clashes with the dark shell's inherited text color.
+           max-w-prose caps line length for readability (≈65ch, semantic). #}
+        <div class="bg-surface-raised rounded-lg p-6 max-w-prose">
+            <h2 class="text-xl font-semibold text-text-primary mt-0 mb-3">Welcome to Beeper</h2>
+            <p class="text-text-secondary leading-relaxed m-0">Beeper investigates production anomalies, correlates signals across observability layers, and generates root cause hypotheses with resolution recommendations.</p>
         </div>
-    </header>
-    <main>
-        <div class="container">
-            {% block content %}
-            <div class="card">
-                <h2>Welcome to Beeper</h2>
-                <p>Beeper investigates production anomalies, correlates signals across observability layers, and generates root cause hypotheses with resolution recommendations.</p>
-            </div>
-            {% endblock %}
-        </div>
-    </main>
+        {% endblock %}
+    {% endcall %}
+
+    {% block breadcrumb %}{% endblock %}
+    {% block sidebar %}{% endblock %}
+
     {% include "components/_command_palette.html" %}
     {% include "components/_keyboard_help.html" %}
     <script src="{{ url_for('static', filename='js/command-palette.js') }}"></script>

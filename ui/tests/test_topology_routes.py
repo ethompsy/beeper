@@ -155,6 +155,14 @@ class TestTopologyRoutes:
         html = response.data.decode()
         assert "5.2x" in html
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Top-nav removed in Story 3.2 layout shell migration. The old "
+        "top-bar `Topology` link no longer exists in base.html. Story 3.3 "
+        "introduces sidebar nav with different macro markup. When that lands "
+        "this test becomes XPASS — REWRITE the assertion against the new "
+        "sidebar HTML and remove this xfail marker.",
+    )
     @patch("beeper_ui.routes.topology.get_topology_service")
     def test_topology_nav_link_visible(self, mock_get_svc, client: FlaskClient):
         """Topology link is present in main navigation."""

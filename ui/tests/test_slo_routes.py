@@ -1,6 +1,7 @@
 """Integration tests for SLO dashboard routes."""
 
 import httpx
+import pytest
 import respx
 from flask.testing import FlaskClient
 from httpx import Response
@@ -305,6 +306,14 @@ class TestSloAccessControl:
 class TestSloNavigation:
     """Tests for SLO navigation link."""
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Top-nav removed in Story 3.2 layout shell migration. The old "
+        "top-bar `/slo/` + `SLO` link no longer exists in base.html. "
+        "Story 3.3 introduces sidebar nav with different macro markup. When "
+        "that lands this test becomes XPASS — REWRITE the assertion against "
+        "the new sidebar HTML and remove this xfail marker.",
+    )
     def test_slo_navigation_link_present(self, client: FlaskClient) -> None:
         """Test SLO link appears in base navigation."""
         response = client.get("/")

@@ -9,9 +9,14 @@
  * 6,982-line main.css.  Only theme + utilities are imported.
  */
 
-@layer theme, base, components, utilities;
+/* Theme stays in a layer so design tokens compose cleanly with @theme below.
+   Utilities are unlayered so class-vs-element specificity decides the cascade —
+   without this, bare-element selectors in main.css (e.g. `main { padding: 20px 0 }`)
+   override Tailwind utility classes like `.p-6` even though .p-6 has higher
+   specificity. See Story 3.2 Dev Notes for the full cascade analysis. */
+@layer theme, base, components;
 @import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities);
+@import "tailwindcss/utilities.css";
 
 /* ── Design Tokens v0.2.0 ─────────────────────────────────────────────────── */
 

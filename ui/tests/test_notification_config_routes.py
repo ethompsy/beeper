@@ -6,6 +6,7 @@ Uses shared fixtures from conftest.py: app, user_client, admin_client, _RoleClie
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from flask import Flask
 
 from beeper_ui.services.notification_channel_service import (
@@ -350,6 +351,14 @@ class TestTestChannel:
 class TestNavigation:
     """Test navigation link is present."""
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Top-nav removed in Story 3.2 layout shell migration. The old "
+        "top-bar `href=\"/notifications/\"` link no longer exists in "
+        "base.html. Story 3.3 introduces sidebar nav with different macro "
+        "markup. When that lands this test becomes XPASS — REWRITE the "
+        "assertion against the new sidebar HTML and remove this xfail marker.",
+    )
     @patch("beeper_ui.routes.notification_config.NotificationChannelService")
     def test_notifications_link_in_nav(
         self, mock_svc_class: Any, user_client: _RoleClient
@@ -361,6 +370,14 @@ class TestNavigation:
         html = resp.data.decode()
         assert 'href="/notifications/"' in html
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Top-nav removed in Story 3.2 layout shell migration. The old "
+        "home-page `href=\"/notifications/\"` top-nav link no longer exists. "
+        "Story 3.3 introduces sidebar nav with different macro markup. When "
+        "that lands this test becomes XPASS — REWRITE the assertion against "
+        "the new sidebar HTML and remove this xfail marker.",
+    )
     def test_notifications_link_on_home(self, app: Flask) -> None:
         with app.test_client() as client:
             resp = client.get("/")

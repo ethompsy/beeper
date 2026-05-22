@@ -261,6 +261,14 @@ class TestHandoffError:
 class TestHandoffNavigation:
     """Tests for handoff link in base navigation."""
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Top-nav removed in Story 3.2 layout shell migration. The old "
+        "top-bar `href=\"/handoff/\"` link no longer exists in base.html. "
+        "Story 3.3 introduces sidebar nav with different macro markup. When "
+        "that lands this test becomes XPASS — REWRITE the assertion against "
+        "the new sidebar HTML and remove this xfail marker.",
+    )
     def test_nav_contains_handoff_link(self, client: FlaskClient) -> None:
         with patch(
             "beeper_ui.routes.handoff.HandoffService"

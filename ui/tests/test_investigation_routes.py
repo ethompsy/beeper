@@ -257,6 +257,14 @@ class TestInvestigationsRoute:
             # Close the response to stop the generator
             response.close()
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Top-nav removed in Story 3.2 layout shell migration. The old "
+        "top-bar `href=\"/investigations/\"` link no longer exists in "
+        "base.html. Story 3.3 introduces sidebar nav with different macro "
+        "markup. When that lands this test becomes XPASS — REWRITE the "
+        "assertion against the new sidebar HTML and remove this xfail marker.",
+    )
     @respx.mock
     def test_investigations_nav_link(self, client: FlaskClient) -> None:
         """Test that Investigations link appears in navigation."""

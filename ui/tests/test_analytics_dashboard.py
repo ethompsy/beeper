@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+import pytest
 import respx
 from flask.testing import FlaskClient
 from httpx import Response
@@ -585,6 +586,16 @@ class TestAnalyticsCommandPalette:
         # Command palette script should contain analytics entry
         assert "/analytics/" in html
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Top-nav removed in Story 3.2 layout shell migration. The old "
+        "`<a href=\"/analytics/\">Analytics</a>` markup no longer exists. "
+        "Story 3.3 introduces sidebar nav with a different macro-based markup "
+        "(likely `<a href=\"/analytics/\" class=\"sidebar-link\" "
+        "aria-current=\"page\">Analytics</a>`). When that lands this test "
+        "becomes XPASS — REWRITE the assertion against the new sidebar HTML "
+        "and remove this xfail marker.",
+    )
     @respx.mock
     def test_navigation_link_exists(self, client: FlaskClient) -> None:
         _mock_analytics_apis()
