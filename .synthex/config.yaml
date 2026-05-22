@@ -1,0 +1,461 @@
+# Synthex — Project Configuration
+#
+# This is the default configuration for the Synthex plugin.
+# To customize for your project, copy this file to:
+#   .synthex/config.yaml
+# in your project root.
+#
+# You only need to include sections you want to override.
+# Unspecified values use the defaults shown here.
+#
+# To create this file automatically, run the `init` command.
+
+# -------------------------------------------------------------------
+# Review Loop Settings (Global)
+# Shared defaults for all commands that run reviewer sub-agents.
+# Individual commands can override these under their own section.
+# Resolution order: per-command override > global > hardcoded default.
+# -------------------------------------------------------------------
+review_loops:
+
+  # Maximum review loop iterations before forcing completion.
+  # Each cycle: reviewers provide findings → caller fixes → re-review.
+  # If unresolved findings remain after max cycles, they are documented
+  # in the output (e.g., Open Questions, Summary).
+  max_cycles: 2
+
+  # Minimum severity level that must be addressed before exiting the loop.
+  # Options: critical, high, medium, low
+  # Default "high" means all CRITICAL and HIGH findings must be resolved.
+  # WARN-only results (MEDIUM and below) do NOT trigger the loop.
+  min_severity_to_address: high
+
+# -------------------------------------------------------------------
+# Implementation Plan Settings
+# Used by the `write-implementation-plan` command
+# -------------------------------------------------------------------
+implementation_plan:
+
+  # Sub-agents that review the draft implementation plan.
+  # Each reviewer provides structured feedback (CRITICAL/HIGH/MEDIUM/LOW)
+  # that the Product Manager must address before the plan is finalized.
+  #
+  # You can:
+  #   - Add project-specific reviewers (e.g., security-reviewer, compliance)
+  #   - Disable default reviewers by setting enabled: false
+  #   - Customize the focus area for each reviewer
+  reviewers:
+    - agent: architect
+      enabled: true
+      focus: "Technical architecture, feasibility, NFR coverage, missing technical tasks"
+
+    - agent: designer
+      enabled: true
+      focus: "Design tasks, UX impact, visual/interaction design clarity"
+
+    - agent: tech-lead
+      enabled: true
+      focus: "Task clarity, acceptance criteria, parallelizability, dependency accuracy"
+
+  # Maximum number of tasks to recommend for parallel execution per milestone.
+  # The PM uses this to size parallelizable work batches in the plan output.
+  # Can be overridden per-invocation via the `concurrent_tasks` parameter.
+  concurrent_tasks: 8
+
+  # Override: higher max_cycles for high-stakes implementation plans.
+  # (Global default is 2; plans get 3 because they affect many downstream tasks.)
+  review_loops:
+    max_cycles: 3
+
+# -------------------------------------------------------------------
+# Refine Requirements Settings
+# Used by the `refine-requirements` command
+# -------------------------------------------------------------------
+refine_requirements:
+
+  # Sub-agents that review the PRD for clarity and completeness.
+  # Each reviewer identifies ambiguities, gaps, and unclear areas
+  # from their professional perspective.
+  reviewers:
+    - agent: product-manager
+      enabled: true
+      focus: "Requirement clarity, acceptance criteria, scope boundaries, success metrics"
+
+    - agent: tech-lead
+      enabled: true
+      focus: "Technical clarity, implicit assumptions, NFR targets, missing requirements"
+
+    - agent: designer
+      enabled: true
+      focus: "UX clarity, interaction patterns, accessibility, user flow completeness"
+
+  # Per-command review loop overrides (inherits global review_loops defaults).
+  # review_loops:
+  #   max_cycles: 2
+
+# -------------------------------------------------------------------
+# Code Review Settings
+# Used by the `review-code` command
+# -------------------------------------------------------------------
+code_review:
+
+  # Reviewers to run in parallel during code review.
+  # code-reviewer and security-reviewer are always recommended.
+  # Add performance-engineer for performance-critical codebases.
+  reviewers:
+    - code-reviewer
+    - security-reviewer
+    # - performance-engineer  # Uncomment for performance-critical code
+
+  # Maximum diff size (in lines) before warning about review quality.
+  # Large diffs produce lower-quality reviews. Google recommends < 300 LOC.
+  max_diff_lines: 300
+
+  # Files to read for project conventions (code-reviewer uses these).
+  convention_sources:
+    - CLAUDE.md
+    - .eslintrc
+    - .prettierrc
+
+  # Specification paths for compliance checking.
+  # The code-reviewer checks code against specifications in these directories.
+  spec_paths:
+    - docs/specs
+
+  # Additional specialist reviewers (optional).
+  # Example: Add a domain-specific reviewer for regulated industries.
+  # specialists:
+  #   - agent: compliance-reviewer
+  #     focus: "Regulatory compliance, audit trail requirements"
+
+  # Per-command review loop overrides (inherits global review_loops defaults).
+  # review_loops:
+  #   max_cycles: 2
+
+# -------------------------------------------------------------------
+# Quality / Testing Settings
+# Used by the `test-coverage-analysis` command
+# -------------------------------------------------------------------
+quality:
+
+  # Coverage thresholds — new code should not drop below these.
+  coverage_thresholds:
+    line: 80
+    branch: 70
+    function: 80
+
+  # Test runner to use for coverage reports.
+  test_runner: vitest
+
+  # High-priority modules that should always have thorough coverage.
+  # Leave empty to auto-detect based on risk (auth, payments, data mutations).
+  priority_modules: []
+
+# -------------------------------------------------------------------
+# Architecture Settings
+# Used by `write-adr` and `write-rfc` commands
+# -------------------------------------------------------------------
+architecture:
+
+  # Where Architecture Decision Records are stored.
+  decisions_path: docs/specs/decisions
+
+  # Where RFCs (Request for Comments) are stored.
+  rfcs_path: docs/specs/rfcs
+
+  # Per-command review loop overrides (inherits global review_loops defaults).
+  # review_loops:
+  #   max_cycles: 2
+
+# -------------------------------------------------------------------
+# Design System Settings
+# Used by `design-system-audit` command and Design System Agent
+# -------------------------------------------------------------------
+design_system:
+
+  # Path to the design system specification document.
+  # This is the canonical reference for tokens, components, and patterns.
+  spec_path: docs/specs/design-system.md
+
+  # Directories to scan during compliance audits.
+  scan_paths:
+    - src/
+
+  # Design system specialist sub-agents (optional).
+  # Add framework-specific specialists for targeted guidance.
+  # specialists:
+  #   - agent: storybook-expert
+  #     focus: "Storybook configuration, story authoring, addon guidance"
+  #   - agent: figma-expert
+  #     focus: "Design token sync, Figma plugin guidance, handoff workflows"
+
+  # Per-command review loop overrides (inherits global review_loops defaults).
+  # review_loops:
+  #   max_cycles: 2
+
+# -------------------------------------------------------------------
+# Reliability Settings
+# Used by `reliability-review` command and SRE Agent
+# -------------------------------------------------------------------
+reliability:
+
+  # Path to SLO/SLI definitions document.
+  slo_document: docs/specs/slos.md
+
+  # Path to operational runbooks directory.
+  runbooks_path: docs/runbooks
+
+  # Per-command review loop overrides (inherits global review_loops defaults).
+  # review_loops:
+  #   max_cycles: 2
+
+# -------------------------------------------------------------------
+# Performance Audit Settings
+# Used by the `performance-audit` command
+# -------------------------------------------------------------------
+performance_audit:
+
+  # Per-command review loop overrides (inherits global review_loops defaults).
+  # review_loops:
+  #   max_cycles: 2
+
+# -------------------------------------------------------------------
+# Retrospective Settings
+# Used by `retrospective` command
+# -------------------------------------------------------------------
+retrospective:
+
+  # Where retrospective documents are stored.
+  output_path: docs/retros
+
+  # Retrospective format.
+  # Options: start-stop-continue, 4ls, sailboat
+  format: start-stop-continue
+
+  # Maximum improvement items per cycle.
+  # More than 3 competing for attention means none get done.
+  max_improvement_items: 3
+
+# -------------------------------------------------------------------
+# Next Priority Settings
+# Used by the `next-priority` command
+# -------------------------------------------------------------------
+next_priority:
+
+  # Maximum number of tasks to execute in parallel.
+  # Can be overridden per-invocation via the `concurrent_tasks` parameter.
+  concurrent_tasks: 8
+
+# -------------------------------------------------------------------
+# Worktree Settings
+# Used by the `next-priority` command for parallel task execution
+# -------------------------------------------------------------------
+worktrees:
+
+  # Base directory for git worktrees created during parallel execution.
+  # Relative paths resolve from the repository root.
+  # Use an absolute path (e.g., /tmp/) to place worktrees outside the repo.
+  #
+  # Default aligns with Claude Code's own convention (.claude/worktrees/).
+  # Ensure this path is in your .gitignore.
+  base_path: .claude/worktrees
+
+  # Prefix for worktree branch names.
+  branch_prefix: "feature/"
+
+# -------------------------------------------------------------------
+# Document Paths
+# Default locations for key project documents.
+# These can also be overridden via command parameters.
+# -------------------------------------------------------------------
+documents:
+  requirements: docs/reqs/main.md
+  implementation_plan: docs/plans/main.md
+  specs: docs/specs
+  decisions: docs/specs/decisions
+  rfcs: docs/specs/rfcs
+  runbooks: docs/runbooks
+  retros: docs/retros
+
+# ────────────────────────────────────────────────────────────────────────────
+# Multi-model review (FR-MR5) — off by default; users opt in via /init or by
+# editing this config. When enabled, the orchestrator fans review work out
+# across multiple LLM families (OpenAI, Google, local-Ollama) for richer,
+# correlation-resistant consolidation. CLI-only (no API keys in Synthex).
+# ────────────────────────────────────────────────────────────────────────────
+multi_model_review:
+  # Master switch. When false, today's native-only review behavior is preserved
+  # byte-identically (FR-MR23 regression contract).
+  enabled: true
+
+  # Strict mode: when true, preflight failures abort the review. When false,
+  # missing CLIs degrade gracefully to whatever proposers are available.
+  strict_mode: false
+
+  # When true, native Synthex sub-agents participate alongside external adapters.
+  # When false, only externals run. Almost always true — set false only when
+  # specifically isolating external behavior.
+  include_native_reviewers: true
+
+  # Minimum number of unique families across all configured proposers (counting
+  # natives as `anthropic`). Below this, preflight emits a family-diversity
+  # warning. Default 2 mirrors PRD recommendation.
+  min_family_diversity: 2
+
+  # Minimum number of available proposers required to proceed. Below this,
+  # preflight aborts (strict_mode) or emits a critical warning (lenient).
+  min_proposers_to_proceed: 2
+
+  # External proposer adapter list. Each entry references a `*-review-prompter`
+  # agent name. Empty list means "natives only" — equivalent to today's review.
+  # Adapters not installed at preflight surface as `error_code: cli_missing`.
+  reviewers:
+    - claude-review-prompter
+  # Example:
+  # reviewers:
+  #   - codex-review-prompter      # OpenAI / Codex CLI
+  #   - gemini-review-prompter     # Google / gcloud
+  #   - ollama-review-prompter     # Local model (qwen, llama, deepseek, etc.)
+
+  # Per-reviewer overrides. Each adapter may override its default model, family
+  # tag, or invocation flags. Use the agent name as the key.
+  per_reviewer:
+    # codex-review-prompter:
+    #   model: gpt-5
+    #   family: openai
+    # ollama-review-prompter:
+    #   model: qwen2.5-coder:32b
+    #   family: local-qwen
+
+  # Aggregator (consolidation step) configuration.
+  aggregator:
+    # `auto` resolves via FR-MR15 strict-total-order tier table (D17):
+    # Claude Opus > GPT-5 > Claude Sonnet > Gemini 2.5 Pro > DeepSeek V3 > Qwen 32B.
+    # When the strongest configured proposer is also a reviewer, the aggregator
+    # invocation is a separate freshly-spawned CLI call with judge-mode prompt.
+    # When no flagship matches, falls back to the host Claude session.
+    command: auto
+
+  # Per-command overrides. Each command can opt in or out independently.
+  per_command:
+    review_code:
+      enabled: false               # When true, /review-code uses multi-model
+      complexity_gate:             # FR-MR21a: skip multi-model on trivial diffs
+        threshold_lines_changed: 50
+        threshold_files_touched: 3
+        # Diffs touching these path globs ALWAYS escalate to multi-model:
+        always_escalate_paths:
+          - "**/auth/**"            # Authentication code — security-critical
+          - "**/payments/**"        # Payment flows — financial-critical
+          - "**/billing/**"         # Billing logic — financial-critical
+          - "**/migrations/**"      # DB migrations — irreversible / data-loss risk
+          - "**/security/**"        # Anything in a security namespace
+          - "**/secrets/**"         # Secret handling — credential exposure risk
+          - "**/crypto/**"          # Crypto code — subtle correctness matters
+    write_implementation_plan:
+      enabled: false               # When true, plan-review uses multi-model
+      # No complexity gate for plan review (FR-MR22): plans are always reviewed.
+    team_review:
+      enabled: false               # FR-MMT3: when true, /team-review uses multi-model orchestration
+      # No complexity gate for team-review (parallels FR-MR22's design for write-implementation-plan):
+      # team-review is invoked deliberately for high-risk changes; the user has already opted in
+
+  # Consolidation pipeline configuration.
+  consolidation:
+    # Stage 2 lexical Jaccard merge threshold (default 0.8 per FR-MR14).
+    stage2_jaccard_threshold: 0.8
+    # Stage 3 (embedding-based) — Phase 7 follow-up; not active in v1.
+    stage3_embedding_threshold: 0.85
+    stage4:
+      # Per-consolidation hard cap on Stage 4 LLM tiebreaker calls (D18).
+      # Prevents N² blow-up when many candidate pairs share buckets.
+      max_calls_per_consolidation: 25
+
+  # Per-finding minority-of-one demotion (FR-MR14b).
+  minority_of_one:
+    enabled: true
+    skip_categories: ["security"]   # Security findings never demoted
+
+  # Audit artifact (FR-MR24): per-invocation review record for traceability.
+  audit:
+    # When true, every multi-model invocation writes an audit file.
+    enabled: true
+    # Output directory; created if absent. Relative paths resolve against the
+    # project root.
+    output_path: "docs/reviews/"
+    # Where adapters write their raw invocation outputs (one file per call).
+    raw_output_path: "docs/reviews/raw/"
+    # FR-MMT30a: when true, audit artifact captures per-finding attribution telemetry
+    # (consolidated_finding_id, raised_by[], consensus_count, minority_of_one)
+    record_finding_attribution_telemetry: true
+
+  # External CLI permission model (ADR-003 / D27).
+  # Per-CLI permission mode for external review-prompter adapters.
+  # Three patterns:
+  #   - read-only       (Pattern 1, default): adapter invokes its CLI with
+  #                     read-only / plan-mode / --sandbox flags. The CLI cannot
+  #                     edit files, run shell commands, or modify state. Safe
+  #                     default for every environment.
+  #   - parent-mediated (Pattern 3): adapter invokes its CLI in a mode that
+  #                     proxies tool-use approval requests back to the parent
+  #                     Claude session (Codex app-server requestApproval,
+  #                     Claude Code canUseTool over --output-format stream-json).
+  #                     The parent session decides per request. Use this for
+  #                     CLIs that natively support approval proxying.
+  #   - sandbox-yolo    (Pattern 2): adapter invokes its CLI with full tool
+  #                     permissions inside an OS-level sandbox. Faster but
+  #                     riskier. Requires explicit user confirmation at spawn.
+  #                     Opt in only when you trust the CLI inside the sandbox.
+  #
+  # Defaults applied per CLI: Codex and Claude Code default to parent-mediated
+  # (Pattern 3) because their CLIs natively support approval proxying. All
+  # other CLIs default to read-only (Pattern 1) — the universal safe default.
+  # Override any entry here per project to opt into sandbox-yolo (Pattern 2)
+  # for a specific CLI; the spawning command will require explicit y/N
+  # confirmation when sandbox-yolo is configured.
+  external_permission_mode:
+    # Universal default applied to any CLI not explicitly listed below.
+    default: read-only
+    #
+    # Allowed keys: `default`, plus the bare adapter names listed below
+    # (`codex`, `claude`, `gemini`, `bedrock`, `llm`, `ollama`). Any other
+    # key in this block is **silently ignored** by the adapters and is
+    # never propagated to a shell invocation. The adapter binary names
+    # (`which codex`, `which gemini`, `which aws`, etc.) are HARDCODED
+    # in each `*-review-prompter` agent's Step 1 (CLI Presence Check) —
+    # they are NOT derived from these config-key names. This prevents
+    # an adversarial project config from injecting a path-traversal or
+    # shell-metacharacter binary name. The Layer 1 schema test
+    # `tests/schemas/external-permission-mode-key-validation.test.ts`
+    # enforces this allow-list (Task 88 / Phase 11.2 / Security MEDIUM #4).
+    #
+    # Per-CLI defaults. CLI names are the bare adapter name (the
+    # `<cli>-review-prompter` agent file's prefix).
+    codex: parent-mediated      # Pattern 3 via `codex app-server` JSON-RPC requestApproval
+    claude: parent-mediated     # Pattern 3 via Claude Code `canUseTool` over --output-format stream-json
+    gemini: read-only           # Pattern 1 via `--readonly` flag
+    bedrock: read-only          # Pattern 1 — `aws bedrock-runtime invoke-model` has no tool-use surface
+    llm: read-only              # Pattern 1 — `llm` CLI is a stateless provider-API wrapper
+    ollama: read-only           # Pattern 1 — Ollama HTTP API has no tool-use surface
+
+  # Pattern 2 (sandbox-yolo) trust-boundary configuration.
+  # Defines the OS-sandbox wrappers used when a CLI is configured for
+  # sandbox-yolo. Without these, Pattern 2 has no real sandbox and
+  # effectively grants full permissions — Pattern 2-capable adapters
+  # MUST verify the configured profile/flags exist before spawning
+  # (Step 0 profile-existence check; Task 87 / Phase 11.2).
+
+  # macOS sandbox-exec profile path. Pattern 2 wraps the CLI as
+  # `sandbox-exec -f <path> <cli-invocation>`. The shipped default
+  # denies network egress, denies file-writes outside /tmp, and limits
+  # reads to the current working directory subtree. Override per
+  # project to relax or tighten as needed.
+  sandbox_profile_path: "plugins/synthex/config/sandbox.sb"
+
+  # Linux bwrap (bubblewrap) flag set. Pattern 2 wraps the CLI as
+  # `bwrap <flags> <cli-invocation>`. The shipped default creates a
+  # read-only root with a writable /tmp; processes inherit the host's
+  # network namespace (set `--unshare-net` to also block network).
+  # Override per project to harden or relax. Flags are applied in
+  # order; first match wins for overlapping mounts.
+  sandbox_bwrap_flags: "--ro-bind / / --bind /tmp /tmp --proc /proc --dev /dev"

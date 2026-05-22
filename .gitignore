@@ -92,3 +92,9 @@ node_modules/
 tmp/
 temp/
 *.tmp
+
+# Synthex worktrees (parallel task execution)
+.claude/worktrees/
+
+# Synthex per-developer state (upgrade-nudge tracking)
+.synthex/state.json
