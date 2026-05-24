@@ -590,7 +590,11 @@ class TestAnalyticsCommandPalette:
         _mock_analytics_apis()
         response = client.get("/analytics/")
         html = response.data.decode()
-        assert '<a href="/analytics/">Analytics</a>' in html
+        # Loosened for Story 3.3 sidebar markup: the nav link now carries
+        # Tailwind classes + an icon span, so an exact-tag match no longer holds.
+        # Intent preserved — the Analytics nav link exists with its href + label.
+        assert 'href="/analytics/"' in html
+        assert "Analytics" in html
 
 
 # =============================================================================

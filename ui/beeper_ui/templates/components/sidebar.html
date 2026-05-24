@@ -1,0 +1,76 @@
+{# Sidebar navigation group macro (Story 3.3 — FR40-42, UX spec Component #2).
+
+   Renders one collapsible navigation group (Observe / Learn / Manage) inside
+   the #sidebar <nav> from the layout shell (Story 3.2). The layout shell owns
+   the responsive width (w-16 collapsed rail / lg:w-64 expanded) and the 200ms
+   transition; this macro renders the GROUP HEADER + ITEM LIST that live inside.
+
+   Responsive model (matches the shell's `lg:` = 1200px breakpoint):
+     • Base width (<1200px): the sidebar is a 64px ICON RAIL. Group header text
+       and item labels are `sr-only` so only the icon column shows; every item
+       carries `title="{label}"` so the browser shows a hover TOOLTIP for
+       orientation (Grafana pattern, UX spec line 1069). The group-header
+       chevron is hidden on the rail (no room, group can't toggle when collapsed).
+     • Expanded (lg:): labels become visible (`lg:not-sr-only`) and the chevron
+       shows. Full Observe/Learn/Manage labels + item names render (FR42).
+
+   LEGACY CSS INTERACTION (see layout.html header comment): main.css defines
+   unscoped `nav { display: flex }` and `nav a { ... }`. The shell already
+   neutralises `nav { display:flex }` with `block` on #sidebar. Anchors here
+   carry `block` so they stack and fill width despite `nav a` legacy styling,
+   and explicit Tailwind text/colour utilities so the component reads as a
+   semantic-token design rather than inheriting legacy link colours.
+
+   active_item: compare against each item's `url` OR `label`. The matching item
+   gets the active style (surface-raised bg + 2px primary left border, UX spec
+   line 1070) AND `aria-current="page"`.
+#}
+
+{% macro sidebar_group(label, icon, items, expanded=true, active_item='') %}
+<div class="sidebar-group mb-2" data-group="{{ label }}" data-expanded="{{ 'true' if expanded else 'false' }}">
+  {# Group header: icon + label + expand/collapse chevron. On the collapsed
+     rail only the icon is visible (label is sr-only, chevron hidden). Story 3.4
+     wires the click-to-toggle interaction; this is the structural hook. #}
+  <div class="sidebar-group-header flex items-center gap-2 px-3 py-2
+              text-text-secondary text-xl font-semibold select-none"
+       title="{{ label }}">
+    <span aria-hidden="true" class="shrink-0 inline-flex items-center justify-center w-5 h-5">
+      {{ icon|safe }}
+    </span>
+    <span class="sr-only lg:not-sr-only flex-1 min-w-0 truncate">{{ label }}</span>
+    {# Chevron: ▾ when expanded, ▸ when collapsed. Hidden on the icon rail. #}
+    <span aria-hidden="true" class="hidden lg:inline-block text-text-muted shrink-0
+                                    transition-transform duration-200 motion-reduce:transition-none
+                                    {{ '' if expanded else '-rotate-90' }}">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+  </div>
+
+  {# Item list. `expanded` controls visibility (default shown). #}
+  <ul class="sidebar-group-items list-none m-0 p-0 {{ '' if expanded else 'hidden' }}">
+    {% for item in items %}
+    {% set is_active = active_item and (active_item == item.url or active_item == item.label) %}
+    <li>
+      <a href="{{ item.url }}"
+         class="sidebar-item block flex items-center gap-3 mx-1 px-2 py-2 rounded
+                text-sm no-underline
+                border-l-2 border-transparent
+                transition-colors duration-200 motion-reduce:transition-none
+                focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2
+                focus-visible:ring-offset-surface-base
+                {% if is_active %}bg-surface-raised border-primary text-text-primary font-medium{% else %}text-text-secondary hover:bg-surface-raised hover:text-text-primary{% endif %}"
+         title="{{ item.label }}"
+         {% if is_active %}aria-current="page"{% endif %}>
+        <span aria-hidden="true" class="shrink-0 inline-flex items-center justify-center w-5 h-5">
+          {% if item.icon %}{{ item.icon|safe }}{% else %}<span class="w-1.5 h-1.5 rounded-full bg-current inline-block"></span>{% endif %}
+        </span>
+        <span class="sr-only lg:not-sr-only min-w-0 truncate">{{ item.label }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endmacro %}

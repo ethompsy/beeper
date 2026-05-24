@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 3, Milestone 3.1 — **Task 3.3 (Build Sidebar Navigation Component)** is the next actionable task. Phases 1–2 are complete; Milestone 3.0 is complete except the blocked `3-0c` (see Open Questions).
+**Current resume point:** Phase 3, Milestone 3.1 — **Task 3.4 (Sidebar State Management & Route-Driven Collapse)** is the next actionable task. Phases 1–2 complete; Tasks 3.1–3.3 done; Milestone 3.0 complete except the blocked `3-0c` (see Open Questions). Completing 3.4 finishes Milestone 3.1 and Phase 3.
 
 ## Decisions
 
@@ -131,20 +131,23 @@ Collapsible left sidebar (Observe/Learn/Manage), responsive 768px–1920px+, inv
 |---|------|-----------|--------------|--------|
 | 3.1 | Install Tailwind CSS build pipeline | M | None | done |
 | 3.2 | Implement layout shell & `base.html` migration | L | 3.1 | done |
-| 3.3 | Build sidebar navigation component | M | 3.2 | pending |
+| 3.3 | Build sidebar navigation component | M | 3.2 | done |
 | 3.4 | Implement sidebar state management & route-driven collapse | M | 3.3 | pending |
 
 **Task 3.1 — done.** `[T]` `make tailwind-watch`/`tailwind-build` produce `static/css/tailwind.css`; `[T]` config carries v0.2.0 tokens + breakpoints (sm=768, lg=1200, xl=1920) + content tree-shake paths; `[T]` generated CSS gitignored; `[T]` Dockerfile minifies as a build stage (AD-7).
 
 **Task 3.2 — done.** `[T]` `base.html` imports layout macro (sidebar + 48px top bar + content with 24px padding) using `{% block content %}`; `[T]` responsive 256px/64px sidebar, no horizontal scroll 768–1920px+ (FR43); `[T]` all 29 templates inherit `base.html` (AD-3, verified by grep); `[T]` `layout.html` macro exposes hamburger slot, logo, `{% block breadcrumb %}`.
 
-**Task 3.3 — pending.** *(next actionable)*
-- `[T]` `sidebar_group(label, icon, items, expanded, active_item)` in `templates/components/sidebar.html` renders a collapsible group (label/icon/items) with Tailwind classes.
-- `[T]` Groups populated: Observe = Investigations, Sources, Ingestion Stats; Learn = Knowledge Base, Metrics; Manage = Spending (FR40).
-- `[T]` Viewport ≥1200px: sidebar expanded by default with labels (FR42).
-- `[T]` Viewport <1200px: collapsed to 64px icon rail with hover tooltips.
-- `[T]` Hamburger toggles expand with 200ms CSS transition (FR41); <1200px overlays content (float) rather than pushing.
-- `[H]` Sidebar visual hierarchy and grouping read clearly at both expanded and collapsed widths.
+**Task 3.3 — done (2026-05-23).** Implemented `templates/components/sidebar.html` (`sidebar_group` macro), wired into `layout.html` as Observe/Learn/Manage groups; `base.html` gained an `{% block active_item %}` for active-state plumbing. **Superset decision (product owner):** all 15 live routes retained, sorted into the 3 spec groups (Observe: Investigations/Sources/Health/SLO/Services/Topology · Learn: Knowledge Base/Metrics/Analytics/Reports/Handoff · Manage: Spending/Cost Insights/Notifications/Trust). "Ingestion Stats" deferred to Story 5.2.
+- `[T]` `sidebar_group(...)` renders collapsible group w/ label/icon/items + Tailwind → `test_sidebar_navigation.py::TestSidebarGroupMacro::test_renders_label_icon_and_items_with_tailwind`
+- `[T]` Groups & membership in order (FR40) → `TestGroupsAndMembership::{test_group_headers_appear_in_order, test_observe_group_membership, test_learn_group_membership, test_manage_group_membership, test_all_fifteen_routes_present}`
+- `[T]` ≥1200px expanded with labels (FR42) → `TestExpandedAtWideViewport::{test_sidebar_expanded_width_hook, test_labels_visible_at_lg}`
+- `[T]` <1200px 64px icon rail + hover tooltips → `TestCollapsedIconRail::{test_collapsed_rail_width, test_items_expose_tooltip_and_icon}`
+- `[T]` 200ms transition + float overlay (FR41) → `TestTransitionAndFloat::{test_sidebar_has_200ms_transition, test_sidebar_floats_over_content}`
+- `[T]` active_item highlight (`aria-current="page"` + active style) → `TestActiveItem::test_active_by_url_gets_aria_current_and_style`
+- `[H]` Visual hierarchy/grouping reads clearly — **approved by user 2026-05-23** after rendered review (expanded + collapsed screenshots). Accepted dots-only collapsed rail; per-item icons noted as future polish.
+- **Bug fixed during `[H]` review:** group icons were rendering as escaped raw SVG text (Jinja autoescape); fixed with `|safe` on the trusted hardcoded SVGs.
+- **Test note:** two brittle exact-tag nav assertions (`test_analytics_dashboard.py`, `test_executive_report.py`) loosened to `href=`/label substring checks to accommodate the new anchor markup. Full UI suite: 2111 passed.
 
 **Task 3.4 — pending.**
 - `[T]` Non-detail templates set `{% block sidebar_state %}auto{% endblock %}` → viewport-responsive (expanded ≥1200, collapsed <1200) (AD-6).

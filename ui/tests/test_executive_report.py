@@ -646,7 +646,11 @@ class TestExecutiveTemplateContent:
         ):
             response = client.get("/reports/executive")
         html = response.data.decode()
-        assert '<a href="/reports/executive">Reports</a>' in html
+        # Loosened for Story 3.3 sidebar markup: the nav link now carries
+        # Tailwind classes + an icon span, so an exact-tag match no longer holds.
+        # Intent preserved — the Reports nav link exists with its href + label.
+        assert 'href="/reports/executive"' in html
+        assert "Reports" in html
 
     def test_command_palette_has_executive_command(self) -> None:
         """command-palette.js contains Executive Report entry with correct href and chord."""

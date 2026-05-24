@@ -11,8 +11,9 @@
 <body class="bg-surface-base">
 {%- set sidebar_state_value %}{% block sidebar_state %}auto{% endblock %}{% endset -%}
 {%- set breadcrumb_value %}{% block breadcrumb %}{% endblock %}{% endset -%}
+{%- set active_item_value %}{% block active_item %}{% endblock %}{% endset -%}
 {%- from "components/layout.html" import layout_shell -%}
-{%- call layout_shell(sidebar_state=sidebar_state_value|trim, breadcrumb=breadcrumb_value|trim) -%}
+{%- call layout_shell(sidebar_state=sidebar_state_value|trim, breadcrumb=breadcrumb_value|trim, active_item=active_item_value|trim) -%}
 {% block content %}
 <div class="card">
     <h2>Welcome to Beeper</h2>

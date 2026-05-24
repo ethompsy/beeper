@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "beeper-ui",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "cd ui && BEEPER_UI_PORT=5050 poetry run flask --app beeper_ui.app run --host 127.0.0.1 --port 5050 --no-reload"
+      ],
+      "port": 5050
+    }
+  ]
+}

@@ -22,11 +22,14 @@
      <header> → `py-0`           cancels `header { padding: 20px 0 }`
      <nav>    → `block`          cancels `nav { display: flex }`
      <main>   → `pt-12 pb-0`     cancels `main { padding: 20px 0 }`
-   The bare sidebar <a> anchors deliberately inherit main.css's `nav a` rule
-   for styling (Story 3.3 replaces them with the sidebar_group macro).
+   The sidebar nav items are rendered by the `sidebar_group` macro (Story 3.3),
+   imported below — each group's anchors carry explicit Tailwind text/colour
+   utilities so they override main.css's `nav a` rule.
 #}
 
-{% macro layout_shell(sidebar_state='auto', breadcrumb='') %}
+{% from "components/sidebar.html" import sidebar_group %}
+
+{% macro layout_shell(sidebar_state='auto', breadcrumb='', active_item='') %}
 {# Below-min message — shown via CSS when viewport <768px (sm: breakpoint). #}
 <div id="below-min-message"
      class="flex sm:hidden fixed inset-0 z-40 items-center justify-center
@@ -82,14 +85,14 @@
   </header>
 
   {# Sidebar — fixed under the top bar; w-16 collapsed / w-64 expanded at ≥1200px.
-     `block` cancels main.css `nav { display: flex }` so the link list stacks
-     vertically and the <ul> fills the sidebar width.
+     `fixed` (with z-20) means the sidebar OVERLAYS content rather than pushing
+     it at base width — content's left margin is only `ml-16`, so the expanding
+     rail floats over it on <1200px viewports (FR41 float behaviour). `block`
+     cancels main.css `nav { display: flex }` so groups stack vertically.
      `data-sidebar-state` is set from the {% block sidebar_state %} value
      (defaults to 'auto'); Story 3.4 will read it to drive JS overrides.
-     Anchors are bare so existing test assertions like
-     `<a href="/analytics/">Analytics</a>` still match — main.css's `nav a`
-     rule styles them. Story 3.3 will replace this with the `sidebar_group`
-     macro. #}
+     Nav groups + items are rendered by the sidebar_group macro (Story 3.3):
+     Observe / Learn / Manage, Observe first, Investigations first. #}
   <nav id="sidebar"
        data-sidebar-state="{{ sidebar_state }}"
        aria-label="Main navigation"
@@ -97,23 +100,44 @@
               bg-surface-base border-r border-surface-raised
               overflow-y-auto overflow-x-hidden
               transition-all duration-200 ease-in-out motion-reduce:transition-none">
-    <ul class="list-none m-0 py-2">
-      <li class="px-2 py-1"><a href="/investigations/">Investigations</a></li>
-      <li class="px-2 py-1"><a href="/knowledge/">Knowledge Base</a></li>
-      <li class="px-2 py-1"><a href="/sources/">Sources</a></li>
-      <li class="px-2 py-1"><a href="/health/">Health</a></li>
-      <li class="px-2 py-1"><a href="/metrics/">Metrics</a></li>
-      <li class="px-2 py-1"><a href="/spending/">Spending</a></li>
-      <li class="px-2 py-1"><a href="/spending/costs">Cost Insights</a></li>
-      <li class="px-2 py-1"><a href="/slo/">SLO</a></li>
-      <li class="px-2 py-1"><a href="/services/">Services</a></li>
-      <li class="px-2 py-1"><a href="/topology/">Topology</a></li>
-      <li class="px-2 py-1"><a href="/notifications/">Notifications</a></li>
-      <li class="px-2 py-1"><a href="/handoff/">Handoff</a></li>
-      <li class="px-2 py-1"><a href="/analytics/">Analytics</a></li>
-      <li class="px-2 py-1"><a href="/reports/executive">Reports</a></li>
-      <li class="px-2 py-1"><a href="/settings/trust/">Trust</a></li>
-    </ul>
+    <div class="py-2">
+      {{ sidebar_group(
+        'Observe',
+        '<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M2 16h16M4 16V9m4 7V5m4 11v-4m4 4V7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        [
+          {'label': 'Investigations', 'url': '/investigations/'},
+          {'label': 'Sources', 'url': '/sources/'},
+          {'label': 'Health', 'url': '/health/'},
+          {'label': 'SLO', 'url': '/slo/'},
+          {'label': 'Services', 'url': '/services/'},
+          {'label': 'Topology', 'url': '/topology/'}
+        ],
+        active_item=active_item
+      ) }}
+      {{ sidebar_group(
+        'Learn',
+        '<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 4h6a2 2 0 012 2v10a2 2 0 00-2-2H4V4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M16 4h-4a2 2 0 00-2 2v10a2 2 0 012-2h4V4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+        [
+          {'label': 'Knowledge Base', 'url': '/knowledge/'},
+          {'label': 'Metrics', 'url': '/metrics/'},
+          {'label': 'Analytics', 'url': '/analytics/'},
+          {'label': 'Reports', 'url': '/reports/executive'},
+          {'label': 'Handoff', 'url': '/handoff/'}
+        ],
+        active_item=active_item
+      ) }}
+      {{ sidebar_group(
+        'Manage',
+        '<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+        [
+          {'label': 'Spending', 'url': '/spending/'},
+          {'label': 'Cost Insights', 'url': '/spending/costs'},
+          {'label': 'Notifications', 'url': '/notifications/'},
+          {'label': 'Trust', 'url': '/settings/trust/'}
+        ],
+        active_item=active_item
+      ) }}
+    </div>
   </nav>
 
   {# Content area — pushed right by the sidebar's current width.
