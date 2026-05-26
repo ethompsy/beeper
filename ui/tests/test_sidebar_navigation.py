@@ -97,14 +97,18 @@ class TestSidebarGroupMacro:
     def test_expanded_default_shows_items(self, app: Flask) -> None:
         # expanded defaults to true → item list is NOT hidden.
         html = _render_group(app, expanded="true")
-        match = re.search(r'<ul class="sidebar-group-items([^"]*)"', html)
+        # `[^>]*` tolerates the `id=` aria-controls target added in Story 3.4;
+        # the assertion still pins the sidebar-group-items hidden/shown class.
+        match = re.search(r'<ul[^>]*class="sidebar-group-items([^"]*)"', html)
         assert match is not None
         assert "hidden" not in match.group(1)
 
     def test_collapsed_group_hides_items(self, app: Flask) -> None:
         # expanded=false → the group's item <ul> carries `hidden`.
         html = _render_group(app, expanded="false")
-        match = re.search(r'<ul class="sidebar-group-items([^"]*)"', html)
+        # `[^>]*` tolerates the `id=` aria-controls target added in Story 3.4;
+        # the assertion still pins the sidebar-group-items hidden/shown class.
+        match = re.search(r'<ul[^>]*class="sidebar-group-items([^"]*)"', html)
         assert match is not None
         assert "hidden" in match.group(1)
 

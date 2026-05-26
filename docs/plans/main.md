@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 3, Milestone 3.1 — **Task 3.4 (Sidebar State Management & Route-Driven Collapse)** is the next actionable task. Phases 1–2 complete; Tasks 3.1–3.3 done; Milestone 3.0 complete except the blocked `3-0c` (see Open Questions). Completing 3.4 finishes Milestone 3.1 and Phase 3.
+**Current resume point:** Phase 4, Milestone 4.1 — **Task 4.1 (Investigation list view with status filtering)** is the next actionable task. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1). `next-priority` stops at the Phase 3 boundary — the next session picks up Phase 4 (Milestone 4.1: 4.1 → then 4.2 → 4.3‖4.4).
 
 ## Decisions
 
@@ -132,7 +132,7 @@ Collapsible left sidebar (Observe/Learn/Manage), responsive 768px–1920px+, inv
 | 3.1 | Install Tailwind CSS build pipeline | M | None | done |
 | 3.2 | Implement layout shell & `base.html` migration | L | 3.1 | done |
 | 3.3 | Build sidebar navigation component | M | 3.2 | done |
-| 3.4 | Implement sidebar state management & route-driven collapse | M | 3.3 | pending |
+| 3.4 | Implement sidebar state management & route-driven collapse | M | 3.3 | done |
 
 **Task 3.1 — done.** `[T]` `make tailwind-watch`/`tailwind-build` produce `static/css/tailwind.css`; `[T]` config carries v0.2.0 tokens + breakpoints (sm=768, lg=1200, xl=1920) + content tree-shake paths; `[T]` generated CSS gitignored; `[T]` Dockerfile minifies as a build stage (AD-7).
 
@@ -149,13 +149,15 @@ Collapsible left sidebar (Observe/Learn/Manage), responsive 768px–1920px+, inv
 - **Bug fixed during `[H]` review:** group icons were rendering as escaped raw SVG text (Jinja autoescape); fixed with `|safe` on the trusted hardcoded SVGs.
 - **Test note:** two brittle exact-tag nav assertions (`test_analytics_dashboard.py`, `test_executive_report.py`) loosened to `href=`/label substring checks to accommodate the new anchor markup. Full UI suite: 2111 passed.
 
-**Task 3.4 — pending.**
-- `[T]` Non-detail templates set `{% block sidebar_state %}auto{% endblock %}` → viewport-responsive (expanded ≥1200, collapsed <1200) (AD-6).
-- `[T]` Investigation-detail template sets `collapsed` → collapsed regardless of width, hamburger still visible (FR44).
-- `[T]` Manual toggle (hamburger or `[` key) writes `sidebar-manual-override` to sessionStorage; cleared on next full navigation.
-- `[T]` Per-group open/closed state persisted in sessionStorage by group label; defaults all-expanded.
-- `[T]` Transitions: `width 200ms ease-in-out` (sidebar), `margin-left 200ms ease-in-out` (content); respects `prefers-reduced-motion`.
-- `[H]` Collapse/expand renders smoothly without visible reflow or jank (NFR17).
+**Task 3.4 — done (2026-05-26).** Implemented the three-state sidebar machine driven by a single `data-sidebar-state` attribute on `#app-shell` (the `group/shell` root, added in `components/layout.html`). State is pure-CSS via Tailwind `group-data-[sidebar-state=…]/shell:` utilities on `#sidebar` (width), `#main-content` (margin), and the `sidebar_group` label/chevron spans (visibility) — the `group-data` overrides outrank the bare `lg:` utilities on specificity, so a forced state wins at every breakpoint (AD-6: CSS owns responsive, JS owns only the toggle). New `static/js/sidebar.js` handles the hamburger/`[`-key toggle + per-group persistence; group headers became accessible toggle `<button>`s. `investigations/detail.html` sets `collapsed` (FR44). Tests follow the repo convention (render + static JS/CSS-source assertions, per `test_command_palette.py`): `tests/test_sidebar_state.py` (28 tests). Full UI suite: **2139 passed**.
+- `[T]` Non-detail templates → `auto` viewport-responsive (AD-6) → `test_sidebar_state.py::TestAutoStateOnNonDetailPages::{test_root_page_is_auto, test_investigation_list_is_auto, test_auto_uses_responsive_width, test_auto_content_uses_responsive_margin, test_state_root_is_app_shell_group}` (browser-verified: 256px @1300px, 64px rail @1000px)
+- `[T]` Investigation-detail → `collapsed` regardless of width, hamburger visible (FR44) → `TestDetailForcedCollapsed::{test_detail_sets_collapsed_state, test_detail_keeps_hamburger_visible, test_sidebar_has_collapsed_width_override, test_content_has_collapsed_margin_override, test_expanded_override_present_for_forced_expand}` (browser-verified: 64px @1300px + hamburger visible)
+- `[T]` Manual toggle (hamburger or `[`) writes `sidebar-manual-override`; cleared on next full navigation → `TestManualToggleOverride::{test_sidebar_js_loaded, test_sidebar_js_exists, test_override_written_to_sessionstorage, test_override_cleared_on_full_navigation, test_hamburger_click_wired, test_bracket_key_toggles_sidebar, test_hamburger_has_aria_wiring}` (browser-verified: both toggles flip state + write override; override null after nav; `[` ignored in inputs)
+- `[T]` Per-group open/closed persisted by group label; defaults all-expanded → `TestPerGroupPersistence::{test_group_header_is_a_toggle_button, test_groups_expose_label_data_attribute, test_items_list_has_id_for_aria_controls, test_default_groups_expanded, test_persistence_keyed_by_group_label, test_default_expanded_when_unset}` (browser-verified: Observe collapse persists across navigation; Learn default-expanded)
+- `[T]` Transitions `width`/`margin-left` 200ms ease-in-out; respects `prefers-reduced-motion` → `TestTransitions::{test_sidebar_width_transition, test_content_margin_transition, test_sidebar_and_content_respect_reduced_motion, test_group_chevron_transition_is_reduced_motion_safe, test_js_respects_reduced_motion_via_css_not_js}` (browser-verified: `transition: all 0.2s cubic-bezier(0.4,0,0.2,1)`)
+- `[H]` Collapse/expand renders smoothly without visible reflow or jank (NFR17) — **approved by user 2026-05-26** after rendered review (expanded-wide, collapsed-rail-on-detail, narrow-auto-rail screenshots). Sidebar `width` + content `margin-left` animate in lockstep over 200ms; `position: fixed` overlay avoids content reflow.
+- **Drive-by fix:** the top-bar hamburger (`#sidebar-toggle`, from Story 3.2) showed the grey UA-default button background because Tailwind preflight is disabled (`input.css`); gave it `bg-transparent border-0`, matching the new group-header buttons. **Broader follow-up:** other native `<button>`s across the app likely share this UA-default-chrome issue (preflight off) — out of scope here.
+- **Test note:** two brittle Story 3.3 regexes in `test_sidebar_navigation.py` (`test_expanded_default_shows_items`, `test_collapsed_group_hides_items`) assumed `class` was the first attribute on the items `<ul>`; loosened `<ul class=` → `<ul[^>]*class=` to accommodate the new `id=` (aria-controls target). Intent preserved.
 
 **Parallelizable:** None within Milestone 3.1 — 3.1→3.2→3.3→3.4 is a strict chain. Task 3.3 has an `[H]` criterion; start its user review early so it overlaps with 3.4 prep. _(max 8 concurrent per config, not reached here)_
 **Milestone Value:** Every page renders in a consistent, responsive, navigable shell — foundation for Epics 4–5 views.

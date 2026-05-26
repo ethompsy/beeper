@@ -4,6 +4,13 @@
 {% if investigation %}Investigation {{ investigation.id }} - Beeper{% else %}Investigation Not Found - Beeper{% endif %}
 {% endblock %}
 
+{# FR44 (Story 3.4): the investigation-detail view forces the sidebar to the
+   64px icon rail at every width so the timeline gets maximum horizontal room.
+   The top-bar hamburger stays visible, so the user can still expand on demand.
+   `collapsed` overrides the responsive `auto` default via the #app-shell
+   data-sidebar-state state machine in components/layout.html. #}
+{% block sidebar_state %}collapsed{% endblock %}
+
 {% block content %}
 <div class="breadcrumb">
     <a href="/investigations/" hx-get="/investigations/" hx-target="#main-content" hx-push-url="true">&#8592; Back to Investigations</a>
