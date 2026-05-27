@@ -20,6 +20,27 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css";
 
+/* Minimal <button> reset (the one slice of Preflight we DO want).
+   Preflight is disabled above to protect main.css, but a side effect is that
+   native <button>s render with the browser's grey UA chrome. That chrome has
+   THREE independent sources, and all three must be neutralised:
+     1. `appearance: auto`         → native push-button paint (the grey/white
+                                      square that only vanishes once an opaque
+                                      background is set, e.g. on :hover);
+     2. `background-color: buttonface` → the grey fill (survives appearance:none);
+     3. `border: 2px outset …`     → the beveled UA border (also survives).
+   This is button-scoped ONLY — it does not touch margins, box-sizing, fonts,
+   or borders on any other element, so it cannot break main.css the way full
+   Preflight would. Every styled button sets its own background/border via a
+   class (specificity 0,1,0), which beats this element rule (0,0,1); unstyled
+   buttons fall back to a clean transparent box instead of grey chrome. */
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: transparent;
+  border: 0 solid;
+}
+
 /* ── Design Tokens v0.2.0 ─────────────────────────────────────────────────── */
 
 @theme {

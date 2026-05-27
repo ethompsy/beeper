@@ -2716,6 +2716,61 @@ a.match-badge.kb-entry-link::after {
     background: #dc2626;
 }
 
+/* Success / danger action buttons (e.g. Apply / Reject in the adjustment
+   history table). Solid fills using the status tokens; `.btn` sets
+   border: none, which is what we want here. Placed after the (duplicated)
+   `.btn` rule above so nothing overrides them. */
+.btn-success {
+    background: var(--color-status-healthy);
+    color: #fff;
+}
+
+.btn-success:hover {
+    background: #16a34a;
+}
+
+.btn-danger {
+    background: var(--color-status-critical);
+    color: #fff;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+/* Investigation feedback buttons (were previously unstyled → grey UA chrome).
+   Neutral outline buttons on the light detail card; the selected choice fills
+   with a status-token accent. Must follow BOTH `.btn` definitions (1531 and
+   2744 both set `border: none`) so the outline border survives the cascade. */
+.feedback-btn {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    color: #374151;
+}
+
+.feedback-btn:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+}
+
+.feedback-accurate.feedback-btn-selected {
+    background: var(--color-status-healthy);
+    border-color: var(--color-status-healthy);
+    color: #fff;
+}
+
+.feedback-inaccurate.feedback-btn-selected {
+    background: var(--color-status-critical);
+    border-color: var(--color-status-critical);
+    color: #fff;
+}
+
+.feedback-not-an-issue.feedback-btn-selected {
+    background: var(--color-status-muted);
+    border-color: var(--color-status-muted);
+    color: #fff;
+}
+
 /* Confirmation result states */
 
 .confirmation-result {
