@@ -1,23 +1,45 @@
 {% extends "base.html" %}
+{% from "components/cards.html" import investigation_card %}
+{% from "components/empty.html" import empty_state %}
 
 {% block title %}Investigations - Beeper{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="kb-header-content">
-        <div>
-            <h2>Investigations</h2>
-            <p class="kb-description">Active and completed investigations triggered by anomaly detection.</p>
-        </div>
-    </div>
+{# Page header #}
+<div class="mb-6">
+  <h2 class="text-text-primary text-xl font-semibold">Investigations</h2>
+  <p class="text-text-secondary text-sm mt-1">Active and completed investigations triggered by anomaly detection.</p>
 </div>
 
-{# Filter Panel #}
+{# Status-group filter tabs (FR22: active/resolved/failed, default=active) #}
+{%- set current_group = selected_status_group if selected_status_group else 'active' -%}
+<div id="status-group-tabs" class="flex gap-1 mb-4 bg-surface-raised rounded-lg p-1 w-fit" role="tablist" aria-label="Investigation status group">
+  {% for tab_id, tab_label in [('active', 'Active'), ('resolved', 'Resolved'), ('failed', 'Failed')] %}
+  <a href="{{ url_for('investigations.list_investigations', status_group=tab_id) }}"
+     role="tab"
+     aria-selected="{{ 'true' if current_group == tab_id else 'false' }}"
+     hx-get="{{ url_for('investigations.list_investigations', status_group=tab_id) }}"
+     hx-target="#investigation-list"
+     hx-push-url="true"
+     class="status-group-tab px-3 py-1.5 rounded text-sm font-medium transition-colors duration-150
+            focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2
+            focus-visible:ring-offset-surface-base
+            {% if current_group == tab_id %}
+              bg-surface-overlay text-text-primary
+            {% else %}
+              text-text-secondary hover:text-text-primary hover:bg-surface-overlay/50
+            {% endif %}">
+    {{ tab_label }}
+  </a>
+  {% endfor %}
+</div>
+
+{# Filter Panel (legacy, preserves existing filter functionality) #}
 {% include "investigations/_filter_panel.html" %}
 
 {# Active Filter Chips #}
 {% if any_filter_active %}
-<div class="active-filters">
+<div class="active-filters mb-3">
     {% if selected_status %}
     <span class="filter-chip">
         <span class="chip-label">Status:</span> {{ selected_status|replace('_', ' ')|title }}

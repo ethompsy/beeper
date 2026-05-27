@@ -173,12 +173,12 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 4.1 | Investigation list view with status filtering | M | 3.2 | pending |
+| 4.1 | Investigation list view with status filtering | M | 3.2 | in progress |
 | 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | pending |
 | 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | pending |
 | 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | pending |
 
-**Task 4.1 — pending.**
+**Task 4.1 — in progress.** _(branch `feature/4.1-investigation-list-view`; build-for-review, not auto-merged)_
 - `[T]` List renders investigations via `investigation_card(inv)` (`cards.html`) showing service/severity/status/timestamp.
 - `[T]` `status_badge(status)` (`status.html`) colors status (green=active, amber=warning, red=failed, gray=completed).
 - `[T]` Status-group filter: active (Pending/Running) default; switch to resolved/failed (FR22).

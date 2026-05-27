@@ -18,7 +18,7 @@ def _make_investigation(
     inv_id: str = "inv-001",
     service: str = "api-gateway",
     severity: str = "high",
-    status: str = "completed",
+    status: str = "investigating",
     condition: str = "HighErrorRate",
 ) -> Investigation:
     return Investigation(
@@ -37,7 +37,7 @@ def _make_investigation_detail(
     inv_id: str = "inv-001",
     service: str = "api-gateway",
     severity: str = "high",
-    status: str = "completed",
+    status: str = "investigating",
     condition: str = "HighErrorRate",
 ) -> InvestigationDetail:
     return InvestigationDetail(
@@ -107,8 +107,12 @@ class TestListInvestigationsWithUrgency:
 
         response = client.get("/investigations/")
         assert response.status_code == 200
-        assert b"Urgency" in response.data  # Column header present
-        assert b"72" in response.data  # Urgency score displayed (rounded)
+        # Story 4.1 migrated the list to a card layout (investigation_card macro).
+        # Urgency scores are computed for internal sorting but not displayed in the
+        # card layout — they appear on the detail page. Verify the investigation
+        # card is rendered and investigation-related content is present.
+        assert b"inv-001" in response.data
+        assert b"investigation-card" in response.data
 
     @patch(URG_SVC_PATCH)
     @patch(SLO_SVC_PATCH)
@@ -190,9 +194,9 @@ class TestListInvestigationsWithUrgency:
 
         response = client.get("/investigations/")
         assert response.status_code == 200
-        assert b"inv-001" in response.data  # Still renders without urgency
-        # Urgency column shows dash when no score available
-        assert b"&mdash;" in response.data or b"mdash" in response.data
+        # Story 4.1: card layout replaces the table; urgency is not shown in the
+        # card list even when urgency service is unavailable. The list still renders.
+        assert b"inv-001" in response.data  # Card still renders without urgency
 
 
 class TestInvestigationUrgencyDetail:

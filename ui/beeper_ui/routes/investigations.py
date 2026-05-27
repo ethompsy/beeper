@@ -224,6 +224,14 @@ def _get_urgency_service() -> EscalationUrgencyService:
 # Valid sort options
 VALID_SORTS = {"urgency"}
 
+# Status group → constituent status values (FR22: active/resolved/failed grouping)
+STATUS_GROUPS: dict[str, set[str]] = {
+    "active": {"investigating", "awaiting_confirmation"},
+    "resolved": {"completed"},
+    "failed": {"failed"},
+}
+VALID_STATUS_GROUPS = set(STATUS_GROUPS.keys())
+
 
 @investigations_bp.route("/")
 def list_investigations() -> str:
@@ -252,6 +260,18 @@ def list_investigations() -> str:
     group_by = request.args.get("group_by", "")
     if group_by not in ("", "workflow_state"):
         group_by = ""
+    # Status-group filter (FR22): active=Pending/Running, resolved=completed, failed=failed
+    # Default is "active" when the status_group param is absent and no per-status filter set.
+    # Passing status_group= (empty) or status_group=all explicitly disables the default.
+    _sg_raw = request.args.get("status_group")  # None when param absent
+    if _sg_raw is None and not status:
+        # No explicit param → apply the active-first default (FR22)
+        status_group = "active"
+    elif _sg_raw in VALID_STATUS_GROUPS:
+        status_group = _sg_raw
+    else:
+        # Empty string, "all", or any invalid value → no group filter
+        status_group = ""
 
     svc = get_investigation_service()
     error_message: str | None = None
@@ -283,6 +303,12 @@ def list_investigations() -> str:
             for inv in investigations
             if inv.workflow_state == workflow_state_filter
         ]
+
+    # Apply status-group filter (FR22) — active/resolved/failed grouping.
+    # Only applied when status_group is set AND no explicit per-status filter overrides it.
+    if status_group and not status:
+        allowed = STATUS_GROUPS.get(status_group, set())
+        investigations = [inv for inv in investigations if inv.status in allowed]
 
     # Compute urgency scores for all investigations
     urgency_scores: dict[str, UrgencyScore] = {}
@@ -340,8 +366,11 @@ def list_investigations() -> str:
             reverse=True,
         )
 
-    # Calculate if any filter is active
-    any_filter_active = bool(status or service or severity or date_range or workflow_state_filter)
+    # Calculate if any filter is active.
+    # Default status_group="active" is NOT considered an active filter chip —
+    # it's the normal default view. Only non-default, non-empty groups are shown.
+    any_filter_active = bool(status or service or severity or date_range or workflow_state_filter
+                             or (status_group and status_group not in ("active", "")))
 
     # Group investigations by workflow state if requested
     grouped_investigations: dict[str, list[Investigation]] = {}
@@ -360,6 +389,7 @@ def list_investigations() -> str:
             workflow_state_counts=workflow_state_counts,
             group_by=group_by,
             grouped_investigations=grouped_investigations,
+            selected_status_group=status_group,
         )
 
     return render_template(
@@ -377,6 +407,7 @@ def list_investigations() -> str:
         any_filter_active=any_filter_active,
         group_by=group_by,
         grouped_investigations=grouped_investigations,
+        selected_status_group=status_group,
     )
 
 

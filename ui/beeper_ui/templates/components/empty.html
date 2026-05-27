@@ -1,0 +1,20 @@
+{# Empty state macro (Story 4.1).
+   Renders a centered empty-state message card.
+
+   Args:
+     title:       Primary heading text
+     description: Supporting explanation text
+     icon:        Optional SVG icon string (safe-rendered)
+#}
+
+{% macro empty_state(title, description, icon='') %}
+<div class="empty-state flex flex-col items-center justify-center py-16 px-8 text-center">
+  {% if icon %}
+  <div aria-hidden="true" class="mb-4 text-text-muted opacity-40 w-12 h-12">
+    {{ icon|safe }}
+  </div>
+  {% endif %}
+  <h3 class="text-text-primary text-base font-semibold mb-2">{{ title }}</h3>
+  <p class="text-text-secondary text-sm max-w-md">{{ description }}</p>
+</div>
+{% endmacro %}

@@ -1,3 +1,7 @@
+{% from "components/cards.html" import investigation_card %}
+{% from "components/empty.html" import empty_state %}
+
+{# Legacy macro preserved for SSE/HTMX paths that still render the table format #}
 {% macro investigation_row(inv) %}
 <tr class="investigation-row investigation-row-link">
     <td>
@@ -113,25 +117,41 @@
     {% endif %}
 </div>
 
-{% if group_by is defined and group_by == 'workflow_state' and grouped_investigations is defined and grouped_investigations %}
-    {% set state_order = ['detected', 'investigating', 'resolved', 'verified', 'failed', 'unknown'] %}
-    {% for state in state_order %}
-        {% if state in grouped_investigations %}
-        <div class="workflow-state-group">
-            <h3 class="workflow-state-group-header">
-                <span class="status-badge workflow-state-{{ state }}">{{ state|capitalize }}</span>
-                <span class="workflow-state-group-count">({{ grouped_investigations[state]|length }})</span>
-            </h3>
-            {{ investigations_table(grouped_investigations[state]) }}
-        </div>
-        {% endif %}
-    {% endfor %}
-{% else %}
-{{ investigations_table(investigations) }}
-{% endif %}
-{% else %}
-<div class="card empty-state">
-    <p>No active investigations.</p>
-    <p>Investigations are created automatically when Beeper detects anomalies in your services.</p>
+{# Card list using the investigation_card macro #}
+<div class="investigation-cards-list">
+    {% if group_by is defined and group_by == 'workflow_state' and grouped_investigations is defined and grouped_investigations %}
+        {% set state_order = ['detected', 'investigating', 'resolved', 'verified', 'failed', 'unknown'] %}
+        {% for state in state_order %}
+            {% if state in grouped_investigations %}
+            <div class="workflow-state-group mb-4">
+                <h3 class="workflow-state-group-header text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2 px-1">
+                    {{ state|capitalize }}
+                    <span class="workflow-state-group-count text-text-muted font-normal">({{ grouped_investigations[state]|length }})</span>
+                </h3>
+                {% for inv in grouped_investigations[state] %}
+                {{ investigation_card(inv) }}
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        {% for inv in investigations %}
+        {{ investigation_card(inv) }}
+        {% endfor %}
+    {% endif %}
 </div>
+{% else %}
+{%- set current_group = selected_status_group if selected_status_group is defined and selected_status_group else 'active' -%}
+{%- if current_group == 'resolved' -%}
+  {%- set empty_title = 'No resolved investigations' -%}
+  {%- set empty_desc = 'Resolved investigations will appear here once they are completed successfully.' -%}
+{%- elif current_group == 'failed' -%}
+  {%- set empty_title = 'No failed investigations' -%}
+  {%- set empty_desc = 'Failed investigations will appear here when Beeper encounters an error during analysis.' -%}
+{%- else -%}
+  {%- set empty_title = 'No active investigations' -%}
+  {%- set empty_desc = 'Investigations appear automatically when Beeper detects anomalies in your services.' -%}
+{%- endif -%}
+{{ empty_state(empty_title, empty_desc,
+   '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2"/><path d="M24 14v12M24 34v.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>') }}
 {% endif %}
