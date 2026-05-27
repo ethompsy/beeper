@@ -736,7 +736,10 @@ mod tests {
 
         // Oldest 10 events (event-0 through event-9) should have been evicted
         let first = &status.triggered_events[0];
-        assert_eq!(first.triggered_at, "event-10", "oldest events must be evicted first");
+        assert_eq!(
+            first.triggered_at, "event-10",
+            "oldest events must be evicted first"
+        );
 
         let last = &status.triggered_events[MAX_TRIGGERED_EVENTS - 1];
         assert_eq!(

@@ -296,7 +296,10 @@ mod tests {
         // Multiple burn rate alerts on the same ServiceLevel = same incident
         let fp0 = alert_fingerprint("payments-slo", 0);
         let fp1 = alert_fingerprint("payments-slo", 1);
-        assert_eq!(fp0, fp1, "Same ServiceLevel must produce same fingerprint regardless of alert index");
+        assert_eq!(
+            fp0, fp1,
+            "Same ServiceLevel must produce same fingerprint regardless of alert index"
+        );
     }
 
     #[test]

@@ -588,7 +588,10 @@ mod tests {
         assert_eq!(c.len(), 2, "orphaned entry slo-b must be removed");
         assert!(c.contains_key("slo-a"));
         assert!(!c.contains_key("slo-b"), "deleted CRD must be evicted");
-        assert!(c.contains_key("slo-c"), "CRD with failed calc must be preserved");
+        assert!(
+            c.contains_key("slo-c"),
+            "CRD with failed calc must be preserved"
+        );
     }
 
     #[tokio::test]
