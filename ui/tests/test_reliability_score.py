@@ -482,7 +482,9 @@ class TestServiceListSortRoute:
         response = client.get("/services/?sort=reliability")
         html = response.data.decode()
         import re
-        reliability_btn = re.search(r'<button[^>]*sort=reliability[^>]*>By Reliability</button>', html)
+        reliability_btn = re.search(
+            r'<button[^>]*sort=reliability[^>]*>By Reliability</button>', html
+        )
         assert reliability_btn is not None
         assert "active" in reliability_btn.group(0)
 

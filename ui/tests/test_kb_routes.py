@@ -1151,8 +1151,24 @@ class TestKBHistoryRoute:
         entry.version = 3
         mock_service.get_entry.return_value = entry
         mock_service.list_versions.return_value = [
-            {"version": 2, "author": "edit", "updated_at": "2026-02-16T10:00:00Z", "title": "History Entry v2", "content_length": 20, "tags": ["test"], "service": "api"},
-            {"version": 1, "author": "import", "updated_at": "2026-02-15T10:00:00Z", "title": "History Entry v1", "content_length": 15, "tags": ["test"], "service": "api"},
+            {
+                "version": 2,
+                "author": "edit",
+                "updated_at": "2026-02-16T10:00:00Z",
+                "title": "History Entry v2",
+                "content_length": 20,
+                "tags": ["test"],
+                "service": "api",
+            },
+            {
+                "version": 1,
+                "author": "import",
+                "updated_at": "2026-02-15T10:00:00Z",
+                "title": "History Entry v1",
+                "content_length": 15,
+                "tags": ["test"],
+                "service": "api",
+            },
         ]
 
         response = client.get("/knowledge/kb-hist-1/history")
@@ -1205,9 +1221,33 @@ class TestKBVersionViewRoute:
             "tags": ["tag1"],
         }
         mock_service.list_versions.return_value = [
-            {"version": 3, "author": "edit", "updated_at": "2026-02-17T10:00:00Z", "title": "v3", "content_length": 10, "tags": [], "service": "api"},
-            {"version": 2, "author": "edit", "updated_at": "2026-02-16T10:00:00Z", "title": "v2", "content_length": 10, "tags": [], "service": "api"},
-            {"version": 1, "author": "import", "updated_at": "2026-02-15T10:00:00Z", "title": "v1", "content_length": 10, "tags": [], "service": "api"},
+            {
+                "version": 3,
+                "author": "edit",
+                "updated_at": "2026-02-17T10:00:00Z",
+                "title": "v3",
+                "content_length": 10,
+                "tags": [],
+                "service": "api",
+            },
+            {
+                "version": 2,
+                "author": "edit",
+                "updated_at": "2026-02-16T10:00:00Z",
+                "title": "v2",
+                "content_length": 10,
+                "tags": [],
+                "service": "api",
+            },
+            {
+                "version": 1,
+                "author": "import",
+                "updated_at": "2026-02-15T10:00:00Z",
+                "title": "v1",
+                "content_length": 10,
+                "tags": [],
+                "service": "api",
+            },
         ]
 
         response = client.get("/knowledge/kb-ver-1/version/2")
@@ -1384,8 +1424,20 @@ class TestKBDiffRoute:
         entry.version = 2
         mock_service.get_entry.return_value = entry
         mock_service.get_version.side_effect = lambda eid, v: {
-            1: {"entry_id": "kb-diff-1", "version": 1, "title": "v1", "content": "old line", "author": "import"},
-            2: {"entry_id": "kb-diff-1", "version": 2, "title": "v2", "content": "old line\nnew line", "author": "edit"},
+            1: {
+                "entry_id": "kb-diff-1",
+                "version": 1,
+                "title": "v1",
+                "content": "old line",
+                "author": "import",
+            },
+            2: {
+                "entry_id": "kb-diff-1",
+                "version": 2,
+                "title": "v2",
+                "content": "old line\nnew line",
+                "author": "edit",
+            },
         }.get(v)
 
         response = client.get("/knowledge/kb-diff-1/diff/1/2")
@@ -1435,7 +1487,13 @@ class TestKBDiffRoute:
         entry.version = 2
         mock_service.get_entry.return_value = entry
         mock_service.get_version.side_effect = lambda eid, v: (
-            {"entry_id": "kb-diff-1", "version": 1, "title": "v1", "content": "line", "author": "import"}
+            {
+                "entry_id": "kb-diff-1",
+                "version": 1,
+                "title": "v1",
+                "content": "line",
+                "author": "import",
+            }
             if v == 1
             else None
         )
@@ -1455,7 +1513,13 @@ class TestKBDiffRoute:
         entry = _make_entry("kb-diff-1")
         entry.version = 2
         mock_service.get_entry.return_value = entry
-        same_content = {"entry_id": "kb-diff-1", "version": 1, "title": "v1", "content": "same content", "author": "import"}
+        same_content = {
+            "entry_id": "kb-diff-1",
+            "version": 1,
+            "title": "v1",
+            "content": "same content",
+            "author": "import",
+        }
         mock_service.get_version.return_value = same_content
 
         response = client.get("/knowledge/kb-diff-1/diff/1/1")
@@ -1475,7 +1539,13 @@ class TestKBDiffRoute:
         mock_service.get_entry.return_value = entry
         # get_version returns data for v1 but None for v3 (current, not snapshotted)
         mock_service.get_version.side_effect = lambda eid, v: (
-            {"entry_id": "kb-diff-1", "version": 1, "title": "v1", "content": "line 1\nline 2", "author": "import"}
+            {
+                "entry_id": "kb-diff-1",
+                "version": 1,
+                "title": "v1",
+                "content": "line 1\nline 2",
+                "author": "import",
+            }
             if v == 1
             else None
         )
@@ -1497,8 +1567,24 @@ class TestKBDiffRoute:
         entry.version = 3
         mock_service.get_entry.return_value = entry
         mock_service.list_versions.return_value = [
-            {"version": 2, "author": "edit", "updated_at": "2026-02-16T10:00:00Z", "title": "v2", "content_length": 20, "tags": [], "service": "api"},
-            {"version": 1, "author": "import", "updated_at": "2026-02-15T10:00:00Z", "title": "v1", "content_length": 15, "tags": [], "service": "api"},
+            {
+                "version": 2,
+                "author": "edit",
+                "updated_at": "2026-02-16T10:00:00Z",
+                "title": "v2",
+                "content_length": 20,
+                "tags": [],
+                "service": "api",
+            },
+            {
+                "version": 1,
+                "author": "import",
+                "updated_at": "2026-02-15T10:00:00Z",
+                "title": "v1",
+                "content_length": 15,
+                "tags": [],
+                "service": "api",
+            },
         ]
 
         response = client.get("/knowledge/kb-cmp-1/history")

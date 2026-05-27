@@ -1713,7 +1713,13 @@ class TestLinkPreservationOnUpdate:
 class TestGetServiceKnowledgeGrouped:
     """Tests for KBService.get_service_knowledge_grouped()."""
 
-    def _make_point(self, entry_id: str, entry_type: str, service: str, validation_status: str = "AI-generated") -> MagicMock:
+    def _make_point(
+        self,
+        entry_id: str,
+        entry_type: str,
+        service: str,
+        validation_status: str = "AI-generated",
+    ) -> MagicMock:
         """Create a mock Qdrant point."""
         point = MagicMock()
         point.id = f"point-{entry_id}"
@@ -1992,7 +1998,9 @@ class TestConfirmEntry:
         assert mock_client.upsert.call_count == 2
         # First upsert is the version snapshot (to knowledge_versions)
         first_call = mock_client.upsert.call_args_list[0]
-        collection = first_call.kwargs.get("collection_name") or first_call[1].get("collection_name")
+        collection = first_call.kwargs.get("collection_name") or first_call[1].get(
+            "collection_name"
+        )
         assert collection == "knowledge_versions"
 
     @patch("beeper_ui.services.kb_service.QdrantClient")

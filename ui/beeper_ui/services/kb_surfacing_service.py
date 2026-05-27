@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 INVESTIGATIONS_COLLECTION = "investigations"
 
 # Validation status weights for composite ranking
-# Normalized multipliers: proven (1.0) > human-confirmed (0.9) > corrected (0.8) > AI-generated (0.6)
+# Normalized multipliers: proven (1.0) > human-confirmed (0.9) > corrected (0.8)
+# > AI-generated (0.6)
 VALIDATION_WEIGHTS: dict[str, float] = {
     "proven": 1.0,
     "human-confirmed": 0.9,

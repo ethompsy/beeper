@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from flask import Flask
 from flask.testing import FlaskClient
 
 from beeper_ui.services.investigation_service import (
@@ -12,7 +11,6 @@ from beeper_ui.services.investigation_service import (
     InvestigationService,
     compute_remediation_status,
 )
-
 
 # --- compute_remediation_status tests ---
 
@@ -102,7 +100,13 @@ class TestComputeRemediationStatus:
             "verification_status": "degraded",
             "trust_gate_rollback_paths": [{"reason": "CPU usage increased 40%"}],
             "verification_results": [
-                {"metric": "cpu_usage", "pre_value": "20%", "post_value": "60%", "delta": "+40%", "status": "degraded"},
+                {
+                    "metric": "cpu_usage",
+                    "pre_value": "20%",
+                    "post_value": "60%",
+                    "delta": "+40%",
+                    "status": "degraded",
+                },
             ],
         }
         result = compute_remediation_status(findings)
@@ -257,7 +261,6 @@ class TestRemediationStatusField:
 
 def _read_static(filename: str) -> str:
     """Read a static file from the beeper_ui package."""
-    import importlib.resources as resources
     from pathlib import Path
 
     static_dir = Path(__file__).parent.parent / "beeper_ui" / "templates" / "investigations"
@@ -337,7 +340,9 @@ class TestRemediationProgressRoute:
         assert b"No remediation actions" in resp.data
 
     @patch("beeper_ui.routes.investigations.get_investigation_service")
-    def test_route_shows_rollback_details(self, mock_get_svc: MagicMock, client: FlaskClient) -> None:
+    def test_route_shows_rollback_details(
+        self, mock_get_svc: MagicMock, client: FlaskClient
+    ) -> None:
         mock_svc = MagicMock(spec=InvestigationService)
         mock_svc.get_remediation_progress.return_value = {
             "stage": "rolled_back",
@@ -353,7 +358,13 @@ class TestRemediationProgressRoute:
             "pr_url": None,
             "rollback_reason": "CPU usage increased 40%",
             "verification_results": [
-                {"metric": "cpu_usage", "pre_value": "20%", "post_value": "60%", "delta": "+40%", "status": "degraded"},
+                {
+                    "metric": "cpu_usage",
+                    "pre_value": "20%",
+                    "post_value": "60%",
+                    "delta": "+40%",
+                    "status": "degraded",
+                },
             ],
             "proven_fix_entry_id": None,
         }
@@ -371,7 +382,8 @@ class TestRemediationProgressRoute:
             "stage": "proposed",
             "label": "PR Open",
             "stages_completed": [{"name": "proposed", "status": "completed"}] + [
-                {"name": s, "status": "pending"} for s in ("approved", "testing", "applied", "verifying", "verified")
+                {"name": s, "status": "pending"}
+                for s in ("approved", "testing", "applied", "verifying", "verified")
             ],
             "pr_url": "https://github.com/org/repo/pull/99",
             "rollback_reason": None,
@@ -391,7 +403,8 @@ class TestRemediationProgressRoute:
             "stage": "verified",
             "label": "Verified",
             "stages_completed": [
-                {"name": s, "status": "completed"} for s in ("proposed", "approved", "testing", "applied", "verifying", "verified")
+                {"name": s, "status": "completed"}
+                for s in ("proposed", "approved", "testing", "applied", "verifying", "verified")
             ],
             "pr_url": None,
             "rollback_reason": None,
@@ -452,9 +465,15 @@ class TestRemediationSSEEvent:
 
     def test_compute_remediation_status_stage_change_detection(self) -> None:
         """Verify that SSE filtering works: same stage should not trigger re-emit."""
-        # Simulate two findings snapshots with same remediation stage but different non-remediation keys
+        # Simulate two findings snapshots with same remediation stage but different
+        # non-remediation keys
         findings_v1 = {"pr_generated": True, "draft": True, "root_cause": "memory leak"}
-        findings_v2 = {"pr_generated": True, "draft": True, "root_cause": "updated cause", "recommendations": "fix it"}
+        findings_v2 = {
+            "pr_generated": True,
+            "draft": True,
+            "root_cause": "updated cause",
+            "recommendations": "fix it",
+        }
         status_v1 = compute_remediation_status(findings_v1)
         status_v2 = compute_remediation_status(findings_v2)
         assert status_v1 is not None

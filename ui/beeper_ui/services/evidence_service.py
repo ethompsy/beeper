@@ -251,7 +251,9 @@ class EvidenceService:
                     evidence_type = "log"
                     source_type = "loki"
                 else:
-                    logger.debug("Unknown signal layer %r, defaulting to metric/prometheus", layer_str)
+                    logger.debug(
+                        "Unknown signal layer %r, defaulting to metric/prometheus", layer_str
+                    )
                     evidence_type = "metric"
                     source_type = "prometheus"
 
@@ -320,7 +322,11 @@ class EvidenceService:
                     investigation_id=investigation_id,
                     evidence_type="deploy",
                     title=f"Deploy Correlation: {sha_short} ({confidence})",
-                    content_preview=f"{message} by {author}" if message else f"Commit {sha_short} by {author}",
+                    content_preview=(
+                        f"{message} by {author}"
+                        if message
+                        else f"Commit {sha_short} by {author}"
+                    ),
                     source_ref=commit_sha,
                     source_type="git_commit",
                     timestamp=timestamp,
@@ -358,7 +364,11 @@ class EvidenceService:
                     investigation_id=investigation_id,
                     evidence_type="config_change",
                     title=f"Config Change: {resource_type}/{resource_name} ({confidence})",
-                    content_preview=change_desc[:200] if change_desc else f"{resource_type} {resource_name} changed",
+                    content_preview=(
+                        change_desc[:200]
+                        if change_desc
+                        else f"{resource_type} {resource_name} changed"
+                    ),
                     source_ref=resource_name,
                     source_type="config",
                     timestamp=timestamp,

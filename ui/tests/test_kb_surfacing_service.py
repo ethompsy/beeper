@@ -220,7 +220,8 @@ class TestSurfaceEntries:
         assert result.is_novel is False
         assert len(result.entries) == 4
 
-        # proven (0.8*1.0=0.8) > human-confirmed (0.8*0.9=0.72) > corrected (0.8*0.8=0.64) > AI (0.8*0.6=0.48)
+        # proven (0.8*1.0=0.8) > human-confirmed (0.8*0.9=0.72)
+        # > corrected (0.8*0.8=0.64) > AI (0.8*0.6=0.48)
         assert result.entries[0]["entry_id"] == "kb-proven"
         assert result.entries[0]["composite_score"] == pytest.approx(0.8)
         assert result.entries[1]["entry_id"] == "kb-human"

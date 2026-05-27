@@ -2,12 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-from flask import Flask
 from flask.testing import FlaskClient
 
 from beeper_ui.services.investigation_service import Investigation, InvestigationDetail
-
 
 # --- Investigation dataclass tests ---
 
@@ -336,7 +333,9 @@ class TestWorkflowStateCSSExists:
         """Verify workflow state CSS classes exist in main.css."""
         import pathlib
 
-        css_path = pathlib.Path(__file__).parent.parent / "beeper_ui" / "static" / "css" / "main.css"
+        css_path = (
+            pathlib.Path(__file__).parent.parent / "beeper_ui" / "static" / "css" / "main.css"
+        )
         css_content = css_path.read_text()
 
         assert ".workflow-state-detected" in css_content
@@ -349,7 +348,9 @@ class TestWorkflowStateCSSExists:
         """Verify workflow state badges use correct colors."""
         import pathlib
 
-        css_path = pathlib.Path(__file__).parent.parent / "beeper_ui" / "static" / "css" / "main.css"
+        css_path = (
+            pathlib.Path(__file__).parent.parent / "beeper_ui" / "static" / "css" / "main.css"
+        )
         css_content = css_path.read_text()
 
         # detected = yellow (#fbbf24)

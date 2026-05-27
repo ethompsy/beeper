@@ -12,8 +12,6 @@ import pytest
 from beeper_ui.app import create_app
 from beeper_ui.config import TestingConfig
 from beeper_ui.services.collaboration_service import (
-    CollaborationMessage,
-    CollaborationService,
     reset_collaboration_service,
 )
 from beeper_ui.websocket import socketio

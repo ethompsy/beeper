@@ -1,6 +1,5 @@
 """Tests for the import service."""
 
-import pytest
 
 from beeper_ui.services.import_service import (
     ImportResult,

@@ -1,14 +1,11 @@
 """Route and template integration tests for shift handoff summaries."""
 
-from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
-from flask import Flask
 from flask.testing import FlaskClient
 
 from beeper_ui.services.handoff_service import HandoffSummary
-
 
 # -----------------------------------------------------------------
 # Fixtures
