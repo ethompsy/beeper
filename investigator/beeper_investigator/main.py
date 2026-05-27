@@ -128,8 +128,8 @@ def _check_ollama_connectivity(endpoint: str, logger: logging.Logger) -> None:
         logger.warning("Ollama provider configured but BEEPER_LLM_ENDPOINT not set")
         return
 
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     try:
         req = urllib.request.Request(endpoint, method="GET")

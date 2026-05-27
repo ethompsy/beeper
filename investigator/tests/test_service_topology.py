@@ -232,7 +232,9 @@ class TestServiceTopologyStep:
         step = _make_step(service="payments")
 
         # Mock Qdrant snapshots with high burn rate
-        snapshots = {"payments": {"compliance": 0.92, "burn_rate": 15.0, "error_budget_remaining": 0.0}}
+        snapshots = {
+            "payments": {"compliance": 0.92, "burn_rate": 15.0, "error_budget_remaining": 0.0}
+        }
         with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
             result = step.execute()
 
@@ -466,7 +468,11 @@ class TestSLOCRDFieldExtraction:
         step._custom_api = MagicMock()
         step._custom_api.list_namespaced_custom_object.side_effect = [
             {"items": [{
-                "spec": {"service": "", "sli": {"type": "availability"}, "objective": {"target": 0.99}},
+                "spec": {
+                    "service": "",
+                    "sli": {"type": "availability"},
+                    "objective": {"target": 0.99},
+                },
                 "status": {},
             }]},
             {"items": []},
@@ -542,8 +548,14 @@ class TestQdrantSnapshotQuery:
         mock_resp.json.return_value = {
             "result": {
                 "points": [
-                    {"id": 2, "payload": {"service": "checkout", "burn_rate": 28.0, "compliance": 0.97}},
-                    {"id": 1, "payload": {"service": "checkout", "burn_rate": 5.0, "compliance": 0.99}},
+                    {
+                        "id": 2,
+                        "payload": {"service": "checkout", "burn_rate": 28.0, "compliance": 0.97},
+                    },
+                    {
+                        "id": 1,
+                        "payload": {"service": "checkout", "burn_rate": 5.0, "compliance": 0.99},
+                    },
                 ],
             }
         }
@@ -568,7 +580,9 @@ class TestQdrantSnapshotQuery:
             {"items": []},
         ]
 
-        snapshots = {"checkout": {"compliance": 0.972, "burn_rate": 28.0, "error_budget_remaining": 0.0}}
+        snapshots = {
+            "checkout": {"compliance": 0.972, "burn_rate": 28.0, "error_budget_remaining": 0.0}
+        }
         with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
             health = step._get_service_health()
 
@@ -583,12 +597,18 @@ class TestQdrantSnapshotQuery:
         step._custom_api = MagicMock()
         step._custom_api.list_namespaced_custom_object.side_effect = [
             {"items": [{
-                "spec": {"service": "checkout", "sli": {"type": "availability"}, "objective": {"target": 0.999}},
+                "spec": {
+                    "service": "checkout",
+                    "sli": {"type": "availability"},
+                    "objective": {"target": 0.999},
+                },
                 "status": {"condition": "Healthy"},
             }]},
             {"items": []},
         ]
-        snapshots = {"checkout": {"compliance": 0.998, "burn_rate": 3.5, "error_budget_remaining": 0.5}}
+        snapshots = {
+            "checkout": {"compliance": 0.998, "burn_rate": 3.5, "error_budget_remaining": 0.5}
+        }
         with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
             health = step._get_service_health()
 
@@ -600,12 +620,18 @@ class TestQdrantSnapshotQuery:
         step._custom_api = MagicMock()
         step._custom_api.list_namespaced_custom_object.side_effect = [
             {"items": [{
-                "spec": {"service": "checkout", "sli": {"type": "availability"}, "objective": {"target": 0.999}},
+                "spec": {
+                    "service": "checkout",
+                    "sli": {"type": "availability"},
+                    "objective": {"target": 0.999},
+                },
                 "status": {"condition": "Healthy"},
             }]},
             {"items": []},
         ]
-        snapshots = {"checkout": {"compliance": 0.9995, "burn_rate": 0.5, "error_budget_remaining": 0.8}}
+        snapshots = {
+            "checkout": {"compliance": 0.9995, "burn_rate": 0.5, "error_budget_remaining": 0.8}
+        }
         with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
             health = step._get_service_health()
 
@@ -637,7 +663,9 @@ class TestSLOPipelinePropagation:
             {"items": []},
         ]
 
-        snapshots = {"payments": {"compliance": 0.92, "burn_rate": 15.0, "error_budget_remaining": 0.0}}
+        snapshots = {
+            "payments": {"compliance": 0.92, "burn_rate": 15.0, "error_budget_remaining": 0.0}
+        }
         with patch.object(step, "_query_slo_snapshots", return_value=snapshots):
             result = step.execute()
 
