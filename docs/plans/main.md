@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 4, Milestone 4.1 — **Task 4.1 (Investigation list view with status filtering)** is the next actionable task. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1). `next-priority` stops at the Phase 3 boundary — the next session picks up Phase 4 (Milestone 4.1: 4.1 → then 4.2 → 4.3‖4.4).
+**Current resume point:** Phase 4, Milestone 4.1 — **Task 4.1 implemented on branch `feature/4.1-investigation-list-view`, awaiting review/merge** (not auto-merged per request; 2184 tests green). Once 4.1 merges to `main`, **Task 4.2** unblocks (then 4.3‖4.4). Until then the next `next-priority` pass has no actionable task (4.2–4.4 are blocked on 4.1). Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -184,6 +184,15 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - `[T]` Status-group filter: active (Pending/Running) default; switch to resolved/failed (FR22).
 - `[T]` Cards carry 3px status-colored left border; completed cards reduced-opacity/muted.
 - `[T]` Empty state via `empty_state(title, description, icon)` (`empty.html`) explaining investigations appear on detection.
+
+**Implemented on branch `feature/4.1-investigation-list-view` (2026-05-26) — awaiting review/merge (not auto-merged, per request; commit `35b8996`).** New macros `components/cards.html` (`investigation_card`), `components/status.html` (`status_badge`), `components/empty.html` (`empty_state`); `investigations/list.html` + `_list_content.html` migrated onto them; status-group tab filter (`status_group` param, default = active) added to `routes/investigations.py`. New components are Tailwind dark-token only (D4-compliant — verified no arbitrary `bg-[#…]` values). SSE hook (`#investigation-list`, `sse-connect=/investigations/stream`) preserved for Task 4.3. Full UI suite: **2184 passed**.
+- `[T]` AC1 card service/severity/status/timestamp → `test_investigation_list_view.py::TestInvestigationCardMacro::{test_card_shows_service,test_card_shows_severity,test_card_shows_status_via_badge,test_card_shows_timestamp}`
+- `[T]` AC2 status_badge colors (green/amber/red/gray) → `::TestStatusBadgeMacro::{test_badge_active_is_green,test_badge_awaiting_is_amber,test_badge_failed_is_red,test_badge_completed_is_gray}`
+- `[T]` AC3 status-group filter, active default (FR22) → `::TestStatusGroupFilter::{test_default_view_shows_active_investigations,test_default_view_hides_completed,test_status_group_resolved_shows_completed,test_status_group_failed_shows_failed,test_active_tab_has_aria_selected_true}`
+- `[T]` AC4 3px status border + completed muted → `::TestCardBorderAndMuting::{test_investigating_card_has_green_border,test_failed_card_has_red_border,test_completed_card_is_reduced_opacity,test_active_card_is_not_muted,test_card_border_uses_3px_via_tailwind}`
+- `[T]` AC5 empty_state title/description/detection-message → `::TestEmptyStateMacro::{test_empty_state_shows_title,test_empty_state_shows_description,test_empty_state_rendered_in_page_when_no_investigations,test_empty_state_message_mentions_detection}`
+- Existing tests updated for the new card markup + default-active filter (intent preserved; `status_group=all` bypasses the default where a test needs all rows): `test_investigation_routes.py`, `test_escalation_urgency_routes.py`, `test_investigation_workflow_states.py`.
+- **Review note:** urgency score is no longer shown on the card (was in the legacy table); still computed for `sort=urgency`. Confirm this is acceptable for the card layout, or fold urgency into the card before merge.
 
 **Task 4.2 — pending.**
 - `[T]` `summary_header(inv)` renders immediately (service/severity/signal-count/status), no SSE dependency (FR23); breadcrumb "Investigations > INV-{id}".
