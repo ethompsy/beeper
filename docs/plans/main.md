@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 4, Milestone 4.1 — **Tasks 4.1 (PR #4, `0e46e4e`) and 4.2 (PR #5, `eafe9ae`) done & merged to `main`**. **Task 4.3 (SSE streaming) in progress** on branch `feature/4.3-sse-streaming` (build-for-review). **Task 4.4 (Related KB panel) deferred** until 4.3 merges — both edit `investigations/detail.html`, so they are sequenced (not run concurrently) to avoid conflicts — and until Q2/AD-5 is verified against a live backend. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 4, Milestone 4.1 — **Tasks 4.1 (PR #4), 4.2 (PR #5), 4.3 (PR #6, `8d73909`) done & merged to `main`**. **Task 4.4 (Related KB panel) in progress** on branch `feature/4.4-related-kb-panel` (build-for-review) — the LAST task in Milestone 4.1 / Phase 4. Its KBQueryStep read path (Q2/AD-5) still needs verifying against a live operator/Qdrant (flagged; UI built on the existing `/related-kb` route + mock data per AD-8). Once 4.4 merges, **Phase 4 is complete** and the next `next-priority` advances to Phase 5. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -176,7 +176,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 | 4.1 | Investigation list view with status filtering | M | 3.2 | done |
 | 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | done |
 | 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | in progress |
-| 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | pending |
+| 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | in progress |
 
 **Task 4.1 — done.** _(merged via PR #4, squash commit `0e46e4e`; 2184 UI tests green at merge; all CI checks passed)_
 - `[T]` List renders investigations via `investigation_card(inv)` (`cards.html`) showing service/severity/status/timestamp.
@@ -228,7 +228,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - Updated existing tests to the `data-sse-url`/`data-sse-swap` contract (intent preserved): `test_investigation_detail_view.py::test_sse_hook_preserved_for_task_4_3`, `test_investigation_list_view.py::test_list_sse_container_preserved`.
 - **Review note:** all 12 detail SSE panels migrated to native-ES dispatch; lazy `hx-get` panels keep their initial HTMX load and also receive SSE updates. The new backfill endpoint derives steps from the same operator status source (`_get_step_states`/`PIPELINE_STEPS`) as the server-rendered timeline, so REST and SSE stay consistent.
 
-**Task 4.4 — pending.** *(verify Q2 / AD-5 before relying on the read path)*
+**Task 4.4 — in progress.** _(branch `feature/4.4-related-kb-panel`; build-for-review, not auto-merged)_ *(verify Q2 / AD-5 against a live backend before relying on the read path)*
 - `[T]` Viewport >1200px: fixed bottom bar "N Related KB Entries" via `kb_panel(entries, expanded)` (`kb.html`); click expands upward (FR26).
 - `[T]` Viewport ≤1200px: panel renders inline below the timeline.
 - `[T]` Panel reads KBQueryStep results from the `investigations` Qdrant collection (AD-5); shows titles with relevance context.
