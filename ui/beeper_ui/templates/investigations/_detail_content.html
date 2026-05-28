@@ -1,3 +1,4 @@
+{% from "components/investigation.html" import summary_header, investigation_step, conclusion_block %}
 {% if error_message %}
 <div class="card error-card">
     <h3>Unable to fetch investigation</h3>
@@ -6,47 +7,32 @@
 </div>
 {% elif investigation %}
 <div class="investigation-detail">
-    {# Header #}
-    <div class="card investigation-detail-header">
-        <div class="detail-header-row">
-            <div>
-                <h2>
-                    <span class="severity-indicator severity-{{ investigation.severity }}"
-                          role="img"
-                          aria-label="{{ investigation.severity }} severity"></span>
-                    {{ investigation.condition }}
-                </h2>
-                <div class="detail-meta">
-                    <code>{{ investigation.id }}</code>
-                    <span class="service-badge">{{ investigation.service }}</span>
-                    <span class="status-badge investigation-status-{{ investigation.status }}">
-                        {% if investigation.status == 'investigating' %}In Progress
-                        {% elif investigation.status == 'awaiting_confirmation' %}Awaiting Confirmation
-                        {% elif investigation.status == 'completed' %}Completed
-                        {% elif investigation.status == 'failed' %}Failed
-                        {% else %}{{ investigation.status|replace('_', ' ')|title }}
-                        {% endif %}
-                    </span>
-                </div>
-                <div class="detail-timestamps">
-                    {% if investigation.triggered_at %}
-                    <span>Triggered: {{ investigation.triggered_at }}</span>
-                    {% endif %}
-                    {% if investigation.started_at %}
-                    <span>Started: {{ investigation.started_at }}</span>
-                    {% endif %}
-                    {% if investigation.completed_at %}
-                    <span>Completed: {{ investigation.completed_at }}</span>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-        {% if investigation.error %}
-        <div class="detail-error">
-            <strong>Error:</strong> {{ investigation.error }}
-        </div>
+    {# Summary header (Story 4.2, FR23) — service / severity / signal-count /
+       status, rendered immediately from server data with NO SSE dependency. #}
+    {{ summary_header(investigation) }}
+
+    {# Timestamps (kept as migrated dark-token row beneath the header). #}
+    <div class="flex flex-wrap gap-x-4 gap-y-1 text-text-muted text-xs mb-4">
+        {% if investigation.triggered_at %}
+        <span>Triggered: {{ investigation.triggered_at }}</span>
+        {% endif %}
+        {% if investigation.started_at %}
+        <span>Started: {{ investigation.started_at }}</span>
+        {% endif %}
+        {% if investigation.completed_at %}
+        <span>Completed: {{ investigation.completed_at }}</span>
         {% endif %}
     </div>
+    {% if investigation.error %}
+    <div class="bg-status-critical/10 border border-status-critical/30 text-status-critical
+                rounded-md px-4 py-3 text-sm mb-4">
+        <strong>Error:</strong> {{ investigation.error }}
+    </div>
+    {% endif %}
+
+    {# Conclusion (Story 4.2) — root cause / affected services / correlated-signal
+       count, visually distinct from the step timeline below. #}
+    {{ conclusion_block(investigation, findings, service_topology) }}
 
     {# Escalation Urgency #}
     <div id="urgency-score"
@@ -56,13 +42,17 @@
         <span class="htmx-indicator">Calculating urgency...</span>
     </div>
 
-    {# Step Progress Timeline #}
-    <div class="card">
-        <h3>Investigation Progress</h3>
+    {# Step Progress Timeline (Story 4.2) — completed steps render server-side so
+       the page is NEVER blank (NFR7). The #step-progress SSE container hook is
+       preserved for Task 4.3 (sse-swap="step-update"). #}
+    <section class="bg-surface-raised rounded-lg px-5 py-4 mb-4">
+        <h3 class="text-text-primary text-sm font-semibold uppercase tracking-wide mb-3">
+            Investigation Progress
+        </h3>
         <div id="step-progress" sse-swap="step-update" hx-swap="innerHTML">
-            {% include "investigations/_step_progress.html" %}
+            {% include "investigations/_step_timeline.html" %}
         </div>
-    </div>
+    </section>
 
     {# Remediation Progress #}
     <div class="card">

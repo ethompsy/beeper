@@ -1,0 +1,167 @@
+{# Investigation detail components (Story 4.2 — FR23/FR25, NFR7).
+
+   Dark-first Tailwind macros for the investigation detail page:
+     - summary_header(inv)             — service / severity / signal-count / status,
+                                          rendered immediately with NO SSE dependency.
+     - investigation_step(step, ...)   — one timeline step, 3px type-colored left border.
+     - conclusion_block(inv, findings, service_topology)
+                                       — root cause / affected services /
+                                          correlated-signal count, visually distinct.
+
+   Token discipline (AD-7 D4): only design-token utilities — no arbitrary color
+   values. `border-l-[3px]` is the one allowed arbitrary value (border WIDTH is
+   not a color token); border COLOR is always a token like `border-l-primary`.
+
+   Reuses status_badge() from components/status.html for the status pill.
+#}
+{% from "components/status.html" import status_badge %}
+
+
+{# ── Step type → left-border color token ──────────────────────────────────────
+   metric      → indigo        (primary)
+   log         → green         (status-healthy)
+   kb          → amber         (status-warning)
+   correlation → light indigo  (primary-hover)
+   summary     → gray          (status-muted)
+   Used by investigation_step(); kept here so the contract lives in one place. #}
+{% macro _step_border_color(step_type) %}
+{%- if step_type == 'metric' -%}border-l-primary
+{%- elif step_type == 'log' -%}border-l-status-healthy
+{%- elif step_type == 'kb' -%}border-l-status-warning
+{%- elif step_type == 'correlation' -%}border-l-primary-hover
+{%- else -%}border-l-status-muted
+{%- endif -%}
+{% endmacro %}
+
+
+{# ── Summary header (FR23) ────────────────────────────────────────────────────
+   Renders service / severity / signal-count / status immediately from server
+   data. NO SSE / streaming dependency — this is the never-blank header (NFR7).
+   `signal_count` is read from inv (falls back to 0 when not yet known). #}
+{% macro summary_header(inv) %}
+{%- set signal_count = inv.signal_count if inv.signal_count is not none else 0 -%}
+<header class="investigation-summary-header bg-surface-raised rounded-lg px-5 py-4 mb-4"
+        data-no-sse="true"
+        aria-label="Investigation summary">
+  <div class="flex items-start justify-between gap-4 flex-wrap">
+    <div class="min-w-0">
+      <div class="flex items-center gap-3 flex-wrap">
+        <span class="text-text-primary font-semibold text-sm font-mono">{{ inv.id }}</span>
+        {# Service name as a label on a surface-raised → overlay chip (FR25) #}
+        <span class="service-label inline-flex items-center px-2 py-0.5 rounded
+                     bg-surface-overlay text-text-secondary text-xs font-medium"
+              data-field="service">{{ inv.service }}</span>
+        <span class="severity-tag text-xs px-1.5 py-0.5 rounded
+                     {% if inv.severity == 'critical' %}bg-status-critical/20 text-status-critical
+                     {% elif inv.severity == 'high' %}bg-status-warning/20 text-status-warning
+                     {% elif inv.severity == 'medium' %}bg-primary/20 text-primary
+                     {% else %}bg-status-muted/20 text-status-muted{% endif %}"
+              data-field="severity">{{ inv.severity|capitalize }}</span>
+      </div>
+      <h2 class="text-text-primary text-lg font-semibold mt-2">{{ inv.condition }}</h2>
+    </div>
+    <div class="shrink-0 flex flex-col items-end gap-2">
+      {{ status_badge(inv.status) }}
+      <span class="text-text-secondary text-xs whitespace-nowrap" data-field="signal-count">
+        {{ signal_count }} signal{{ "s" if signal_count != 1 else "" }}
+      </span>
+    </div>
+  </div>
+</header>
+{% endmacro %}
+
+
+{# ── Investigation step (timeline) ────────────────────────────────────────────
+   One timeline step rendered server-side (NFR7 — completed steps never blank).
+     step               — dict with .label, .state, and .type (metric/log/kb/
+                           correlation/summary). .type drives the left border.
+     is_first_evidence  — when true, marks the first evidence-bearing step
+                           (used for a subtle top connector / emphasis).
+     order              — 1-based ordinal, exposed as data-order for tests + a11y. #}
+{% macro investigation_step(step, is_first_evidence=False, order=0) %}
+{%- set border_color = _step_border_color(step.type)|trim -%}
+{%- set state = step.state | default('pending') -%}
+<li class="investigation-step relative flex gap-3 bg-surface-raised
+           border-l-[3px] {{ border_color }} rounded-r-md pl-4 pr-3 py-3 mb-2
+           {% if state == 'pending' %}opacity-60{% endif %}
+           {% if is_first_evidence %}is-first-evidence{% endif %}"
+    data-step-type="{{ step.type }}"
+    data-step-state="{{ state }}"
+    data-order="{{ order }}"
+    {% if is_first_evidence %}data-first-evidence="true"{% endif %}>
+  <span class="step-indicator shrink-0 mt-0.5 inline-flex items-center justify-center
+               w-5 h-5 rounded-full text-xs
+               {% if state == 'completed' %}bg-status-healthy/15 text-status-healthy
+               {% elif state == 'active' %}bg-primary/15 text-primary
+               {% elif state == 'error' %}bg-status-critical/15 text-status-critical
+               {% else %}bg-surface-overlay text-text-muted{% endif %}"
+        aria-hidden="true">
+    {% if state == 'completed' %}&#10003;
+    {% elif state == 'error' %}&#10007;
+    {% elif state == 'active' %}&#8226;
+    {% else %}&#8226;{% endif %}
+  </span>
+  <div class="min-w-0 flex-1">
+    <span class="step-label block text-text-primary text-sm font-medium">{{ step.label }}</span>
+    {% if step.detail %}
+    {# Evidence values render in monospace (FR25) #}
+    <span class="step-value block text-text-secondary text-xs font-mono mt-1 break-words">{{ step.detail }}</span>
+    {% endif %}
+  </div>
+</li>
+{% endmacro %}
+
+
+{# ── Conclusion block (root cause / affected services / correlated signals) ───
+   Visually distinct from steps: an overlay-surface card with a primary accent,
+   NOT the surface-raised + left-border treatment used by steps.
+     inv              — investigation (provides the subject service).
+     findings         — pipeline findings dict (root_cause_hypothesis,
+                        signals_gathered).
+     service_topology — optional topology dict; downstream dependents are folded
+                        into the affected-services set. #}
+{% macro conclusion_block(inv, findings, service_topology={}) %}
+{%- set root_cause = findings.get('root_cause_hypothesis') if findings else None -%}
+{%- set signal_count = findings.get('signals_gathered', 0) if findings else 0 -%}
+{%- set affected = [] -%}
+{%- if inv and inv.service -%}{%- set _ = affected.append(inv.service) -%}{%- endif -%}
+{%- if service_topology and service_topology.get('downstream') -%}
+  {%- for svc in service_topology.get('downstream') -%}
+    {%- if svc not in affected -%}{%- set _ = affected.append(svc) -%}{%- endif -%}
+  {%- endfor -%}
+{%- endif -%}
+<section class="investigation-conclusion bg-surface-overlay rounded-lg
+                border border-primary/40 px-5 py-4 mb-4"
+         aria-label="Investigation conclusion">
+  <h3 class="text-text-primary text-sm font-semibold uppercase tracking-wide mb-3">
+    Conclusion
+  </h3>
+  <div class="grid gap-4 lg:grid-cols-3">
+    <div class="conclusion-field" data-field="root-cause">
+      <span class="block text-text-muted text-xs uppercase tracking-wide mb-1">Root Cause</span>
+      {% if root_cause %}
+      <p class="text-text-primary text-sm">{{ root_cause }}</p>
+      {% else %}
+      <p class="text-text-muted text-sm italic">Not yet determined</p>
+      {% endif %}
+    </div>
+    <div class="conclusion-field" data-field="affected-services">
+      <span class="block text-text-muted text-xs uppercase tracking-wide mb-1">Affected Services</span>
+      {% if affected %}
+      <div class="flex flex-wrap gap-1.5">
+        {% for svc in affected %}
+        <span class="service-label inline-flex items-center px-2 py-0.5 rounded
+                     bg-surface-raised text-text-secondary text-xs font-medium">{{ svc }}</span>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-text-muted text-sm italic">None identified</p>
+      {% endif %}
+    </div>
+    <div class="conclusion-field" data-field="correlated-signals">
+      <span class="block text-text-muted text-xs uppercase tracking-wide mb-1">Correlated Signals</span>
+      <p class="text-text-primary text-2xl font-semibold font-mono">{{ signal_count }}</p>
+    </div>
+  </div>
+</section>
+{% endmacro %}
