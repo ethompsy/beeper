@@ -2,10 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from flask.testing import FlaskClient
 
-from beeper_ui.services.topology_service import ServiceDependency, ServiceNode
+from beeper_ui.services.topology_service import ServiceNode
 
 
 class TestTopologyRoutes:
@@ -33,7 +32,9 @@ class TestTopologyRoutes:
         mock_svc = MagicMock()
         mock_svc.get_all_services_topology.return_value = {
             "services": [
-                ServiceNode(name="payments", slo_status="warning", upstream_count=1, downstream_count=2),
+                ServiceNode(
+                    name="payments", slo_status="warning", upstream_count=1, downstream_count=2
+                ),
                 ServiceNode(name="orders", slo_status="healthy"),
             ],
             "dependencies": [],
@@ -61,7 +62,12 @@ class TestTopologyRoutes:
                 ServiceNode(name="orders"),
             ],
             "dependencies": [
-                {"source_service": "payments", "target_service": "orders", "dependency_type": "env_var", "port": 8080},
+                {
+                    "source_service": "payments",
+                    "target_service": "orders",
+                    "dependency_type": "env_var",
+                    "port": 8080,
+                },
             ],
             "active_investigations": {},
         }
@@ -130,7 +136,9 @@ class TestTopologyRoutes:
     def test_index_service_error_handled(self, mock_get_svc, client: FlaskClient):
         """TopologyServiceError is handled gracefully."""
         from beeper_ui.services.topology_service import TopologyServiceError
-        mock_get_svc.return_value.get_all_services_topology.side_effect = TopologyServiceError("Qdrant down")
+        mock_get_svc.return_value.get_all_services_topology.side_effect = TopologyServiceError(
+            "Qdrant down"
+        )
 
         response = client.get("/topology/")
         assert response.status_code == 200

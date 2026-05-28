@@ -162,7 +162,11 @@ class TestServiceKnowledgeRoute:
         mock_get_service.return_value = mock_service
         mock_service.get_available_services.return_value = ["payment-service"]
         mock_service.get_service_knowledge_grouped.return_value = {
-            "root_causes": [_make_entry("kb-1", "investigation", "Root Cause Entry", service="payment-service")],
+            "root_causes": [
+                _make_entry(
+                    "kb-1", "investigation", "Root Cause Entry", service="payment-service"
+                )
+            ],
             "runbooks": [],
             "proven_fixes": [],
             "patterns": [],

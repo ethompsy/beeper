@@ -235,7 +235,10 @@ def kb_import() -> str:
                 "knowledge/_import_result.html",
                 result=ImportResult(
                     success=False,
-                    error=f"File type not allowed. Allowed extensions: {', '.join(ALLOWED_EXTENSIONS)}",
+                    error=(
+                        "File type not allowed. Allowed extensions: "
+                        f"{', '.join(ALLOWED_EXTENSIONS)}"
+                    ),
                 ),
                 services=services,
             )
@@ -320,7 +323,10 @@ def kb_import() -> str:
                         "knowledge/_import_result.html",
                         result=ImportResult(
                             success=False,
-                            error="Embedding service not configured. Set OPENAI_API_KEY to enable imports.",
+                            error=(
+                                "Embedding service not configured. "
+                                "Set OPENAI_API_KEY to enable imports."
+                            ),
                         ),
                         services=services,
                     )
@@ -957,7 +963,8 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
                     return render_template(
                         "knowledge/_edit_result.html",
                         error=(
-                            f"This entry was modified by another user (version {current_entry.version}). "
+                            "This entry was modified by another user "
+                            f"(version {current_entry.version}). "
                             "Please reload the page and re-apply your changes."
                         ),
                     )

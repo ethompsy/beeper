@@ -15,7 +15,7 @@
         <tr>
             <td>{{ svc }}</td>
             <td id="eval-{{ svc }}">
-                <button class="btn btn-sm"
+                <button class="btn btn-primary btn-sm"
                         hx-post="{{ url_for('trust_settings.evaluate_service_threshold', service_name=svc) }}"
                         hx-target="#eval-{{ svc }}"
                         hx-swap="innerHTML">Evaluate</button>

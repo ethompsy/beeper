@@ -11,7 +11,7 @@ from flask import Flask
 from beeper_ui.services.notification_channel_service import (
     NotificationChannelServiceError,
 )
-
+from tests.conftest import _RoleClient
 
 SAMPLE_CHANNELS = [
     {

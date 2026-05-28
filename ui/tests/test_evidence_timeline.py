@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from flask import Flask
 
 from beeper_ui.app import create_app
 from beeper_ui.config import TestingConfig

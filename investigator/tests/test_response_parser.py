@@ -30,7 +30,10 @@ class TestParseJsonResponse:
 
     def test_thinking_tokens_stripped(self) -> None:
         """<think> blocks from qwen3/reasoning models are stripped."""
-        raw = '<think>\nLet me analyze this...\nThe root cause is likely X.\n</think>\n{"root_cause": "X"}'
+        raw = (
+            '<think>\nLet me analyze this...\nThe root cause is likely X.\n</think>\n'
+            '{"root_cause": "X"}'
+        )
         result = parse_json_response(raw)
         assert result == {"root_cause": "X"}
 

@@ -156,6 +156,25 @@ class LlmConfig:
             return model_name
         return f"{prefix}{model_name}"
 
+    def _strip_provider_prefix(self, model_name: str) -> str:
+        """Remove the LiteLLM provider prefix to get the bare model identifier.
+
+        Cache keys, usage counters, and cost lookups are keyed by the bare
+        model name (e.g. ``claude-sonnet-4-20250514``), matching the
+        ``LLM_PRICING`` table; only LiteLLM routing uses the provider-prefixed
+        form. This reverses ``_apply_provider_prefix``.
+
+        Args:
+            model_name: A possibly provider-prefixed model identifier.
+
+        Returns:
+            The model name without a leading ``{provider}/`` prefix.
+        """
+        prefix = f"{self.provider}/"
+        if model_name.startswith(prefix):
+            return model_name[len(prefix):]
+        return model_name
+
     def get_litellm_model(self) -> str:
         """Get the default model string formatted for LiteLLM.
 
@@ -298,14 +317,17 @@ class LlmClient:
             LlmClientError: If the request fails.
         """
         effective_model = model or self.config.get_litellm_model()
+        # Cache keys, usage counters, and cost lookups use the bare model name
+        # (no LiteLLM provider prefix); only the LiteLLM call uses the prefix.
+        tracking_model = self.config._strip_provider_prefix(effective_model)
 
         # Cache check (skip for non-deterministic temperature)
         if self.config.cache_enabled and temperature == 0.0:
-            cached = self._cache.get(messages, effective_model, max_tokens, temperature)
+            cached = self._cache.get(messages, tracking_model, max_tokens, temperature)
             if cached is not None:
                 logger.info("Cache hit for model %s", effective_model)
-                self._model_usage[f"{effective_model}(cached)"] = (
-                    self._model_usage.get(f"{effective_model}(cached)", 0) + 1
+                self._model_usage[f"{tracking_model}(cached)"] = (
+                    self._model_usage.get(f"{tracking_model}(cached)", 0) + 1
                 )
                 return cached
 
@@ -323,18 +345,18 @@ class LlmClient:
                 **kwargs,
             )
             content: str | None = response.choices[0].message.content
-            self._model_usage[effective_model] = (
-                self._model_usage.get(effective_model, 0) + 1
+            self._model_usage[tracking_model] = (
+                self._model_usage.get(tracking_model, 0) + 1
             )
             usage = getattr(response, "usage", None)
             if usage:
                 self.cost_tracker.record_call(
-                    model=effective_model,
+                    model=tracking_model,
                     prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
                     completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
                 )
             if self.config.cache_enabled and temperature == 0.0 and content:
-                self._cache.put(messages, effective_model, max_tokens, temperature, content)
+                self._cache.put(messages, tracking_model, max_tokens, temperature, content)
             if content is None:
                 return ""
             return content
@@ -374,14 +396,17 @@ class LlmClient:
             LlmClientError: If the request fails.
         """
         effective_model = model or self.config.get_litellm_model()
+        # Cache keys, usage counters, and cost lookups use the bare model name
+        # (no LiteLLM provider prefix); only the LiteLLM call uses the prefix.
+        tracking_model = self.config._strip_provider_prefix(effective_model)
 
         # Cache check (skip for non-deterministic temperature)
         if self.config.cache_enabled and temperature == 0.0:
-            cached = self._cache.get(messages, effective_model, max_tokens, temperature)
+            cached = self._cache.get(messages, tracking_model, max_tokens, temperature)
             if cached is not None:
                 logger.info("Cache hit for model %s", effective_model)
-                self._model_usage[f"{effective_model}(cached)"] = (
-                    self._model_usage.get(f"{effective_model}(cached)", 0) + 1
+                self._model_usage[f"{tracking_model}(cached)"] = (
+                    self._model_usage.get(f"{tracking_model}(cached)", 0) + 1
                 )
                 return cached
 
@@ -399,18 +424,18 @@ class LlmClient:
                 **kwargs,
             )
             content: str | None = response.choices[0].message.content
-            self._model_usage[effective_model] = (
-                self._model_usage.get(effective_model, 0) + 1
+            self._model_usage[tracking_model] = (
+                self._model_usage.get(tracking_model, 0) + 1
             )
             usage = getattr(response, "usage", None)
             if usage:
                 self.cost_tracker.record_call(
-                    model=effective_model,
+                    model=tracking_model,
                     prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
                     completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
                 )
             if self.config.cache_enabled and temperature == 0.0 and content:
-                self._cache.put(messages, effective_model, max_tokens, temperature, content)
+                self._cache.put(messages, tracking_model, max_tokens, temperature, content)
             if content is None:
                 return ""
             return content

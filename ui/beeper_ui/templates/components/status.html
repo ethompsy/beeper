@@ -1,0 +1,31 @@
+{# Status badge macro (Story 4.1).
+   Colors by status:
+     investigating        → status-healthy (green) — "Active"
+     awaiting_confirmation → status-warning (amber) — "Awaiting"
+     failed               → status-critical (red)  — "Failed"
+     completed            → status-muted (gray)    — "Completed"
+#}
+
+{% macro status_badge(status) %}
+{%- if status == 'investigating' -%}
+  {%- set badge_color = 'bg-status-healthy/15 text-status-healthy border border-status-healthy/30' -%}
+  {%- set label = 'In Progress' -%}
+{%- elif status == 'awaiting_confirmation' -%}
+  {%- set badge_color = 'bg-status-warning/15 text-status-warning border border-status-warning/30' -%}
+  {%- set label = 'Awaiting' -%}
+{%- elif status == 'failed' -%}
+  {%- set badge_color = 'bg-status-critical/15 text-status-critical border border-status-critical/30' -%}
+  {%- set label = 'Failed' -%}
+{%- elif status == 'completed' -%}
+  {%- set badge_color = 'bg-status-muted/15 text-status-muted border border-status-muted/30' -%}
+  {%- set label = 'Completed' -%}
+{%- else -%}
+  {%- set badge_color = 'bg-surface-overlay text-text-muted border border-surface-overlay' -%}
+  {%- set label = status|replace('_', ' ')|title if status else 'Unknown' -%}
+{%- endif -%}
+<span class="status-badge inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium {{ badge_color }}"
+      data-status="{{ status }}">
+  <span aria-hidden="true" class="w-1.5 h-1.5 rounded-full bg-current inline-block shrink-0"></span>
+  {{ label }}
+</span>
+{% endmacro %}

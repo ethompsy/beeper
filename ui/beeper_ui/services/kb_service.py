@@ -1327,7 +1327,11 @@ class KBService:
             now = datetime.now(timezone.utc)
             payload = {
                 "entry_id": entry_id,
-                "entry_type": entry_type if entry_type is not None else existing_payload.get("entry_type", "unknown"),
+                "entry_type": (
+                    entry_type
+                    if entry_type is not None
+                    else existing_payload.get("entry_type", "unknown")
+                ),
                 "title": new_title,
                 "content": new_content,
                 "service": new_service,
@@ -1336,9 +1340,15 @@ class KBService:
                 "author": author or existing_payload.get("author"),
                 "version": new_version,
                 "tags": new_tags,
-                "validation_status": validation_status if validation_status is not None else existing_payload.get("validation_status"),
+                "validation_status": (
+                    validation_status
+                    if validation_status is not None
+                    else existing_payload.get("validation_status")
+                ),
                 "source_investigation_id": existing_payload.get("source_investigation_id"),
-                "contributing_investigations": existing_payload.get("contributing_investigations", []),
+                "contributing_investigations": existing_payload.get(
+                    "contributing_investigations", []
+                ),
                 "linked_investigations": existing_payload.get("linked_investigations", []),
             }
 

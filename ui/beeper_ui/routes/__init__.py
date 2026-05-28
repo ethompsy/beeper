@@ -9,6 +9,7 @@ def register_blueprints(app: Flask) -> None:
     Args:
         app: Flask application instance.
     """
+    from beeper_ui.routes.analytics import analytics_bp
     from beeper_ui.routes.confidence_gates import confidence_gates_bp
     from beeper_ui.routes.handoff import handoff_bp
     from beeper_ui.routes.health import health_bp
@@ -18,14 +19,13 @@ def register_blueprints(app: Flask) -> None:
     from beeper_ui.routes.notification_config import notification_config_bp
     from beeper_ui.routes.notifications import notifications_bp
     from beeper_ui.routes.reports import reports_bp
+    from beeper_ui.routes.services import services_bp
     from beeper_ui.routes.slo import slo_bp
     from beeper_ui.routes.sources import sources_bp
     from beeper_ui.routes.spending import spending_bp
-    from beeper_ui.routes.services import services_bp
     from beeper_ui.routes.topology import topology_bp
     from beeper_ui.routes.trust_config import trust_config_bp
     from beeper_ui.routes.trust_settings import trust_settings_bp
-    from beeper_ui.routes.analytics import analytics_bp
 
     app.register_blueprint(sources_bp)
     app.register_blueprint(investigations_bp)

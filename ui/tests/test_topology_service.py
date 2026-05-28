@@ -2,14 +2,10 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from beeper_ui.services.topology_service import (
     ServiceDependency,
     ServiceNode,
     TopologyService,
-    TopologyServiceError,
-    get_topology_service,
 )
 
 
@@ -71,8 +67,16 @@ class TestTopologyService:
                         {"source_service": "frontend", "target_service": "payments"},
                     ],
                     "health": {
-                        "payments": {"slo_status": "warning", "has_active_investigation": True, "burn_rate": 3.5},
-                        "orders": {"slo_status": "healthy", "has_active_investigation": False, "burn_rate": 0.5},
+                        "payments": {
+                            "slo_status": "warning",
+                            "has_active_investigation": True,
+                            "burn_rate": 3.5,
+                        },
+                        "orders": {
+                            "slo_status": "healthy",
+                            "has_active_investigation": False,
+                            "burn_rate": 0.5,
+                        },
                     },
                     "blast_radius": 1,
                 },

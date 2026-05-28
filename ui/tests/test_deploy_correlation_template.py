@@ -1,6 +1,5 @@
 """Tests for deploy correlation template rendering."""
 
-from unittest.mock import MagicMock, patch
 
 import pytest
 

@@ -38,8 +38,14 @@
     Please use a screen 768px or wider.</p>
 </div>
 
-{# Main app shell — hidden below 768px so only the message above renders. #}
-<div id="app-shell" class="hidden sm:block">
+{# Main app shell — hidden below 768px so only the message above renders.
+   `group/shell` + `data-sidebar-state` make this the STATE ROOT for Story 3.4:
+   the sidebar width, content margin, and label visibility all react to this
+   one attribute via `group-data-[sidebar-state=…]/shell:` variants on the
+   descendants below. `data-sidebar-state` comes from the page's
+   {% block sidebar_state %} (default 'auto'); sidebar.js flips it on toggle. #}
+<div id="app-shell" data-sidebar-state="{{ sidebar_state }}"
+     class="group/shell hidden sm:block">
 
   {# Skip link — first focusable element. Kept inside #app-shell so it is not
      reachable on <768px, where the shell (and #main-content) are display:none. #}
@@ -58,7 +64,7 @@
                  flex items-center gap-3 px-4 lg:px-6">
     <button type="button" id="sidebar-toggle"
             aria-expanded="false" aria-controls="sidebar"
-            class="p-2 -ml-2 rounded text-text-primary
+            class="p-2 -ml-2 rounded bg-transparent border-0 cursor-pointer text-text-primary
                    hover:bg-surface-raised
                    focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2
                    focus-visible:ring-offset-surface-base
@@ -84,19 +90,27 @@
     {% endif %}
   </header>
 
-  {# Sidebar — fixed under the top bar; w-16 collapsed / w-64 expanded at ≥1200px.
-     `fixed` (with z-20) means the sidebar OVERLAYS content rather than pushing
-     it at base width — content's left margin is only `ml-16`, so the expanding
-     rail floats over it on <1200px viewports (FR41 float behaviour). `block`
-     cancels main.css `nav { display: flex }` so groups stack vertically.
-     `data-sidebar-state` is set from the {% block sidebar_state %} value
-     (defaults to 'auto'); Story 3.4 will read it to drive JS overrides.
-     Nav groups + items are rendered by the sidebar_group macro (Story 3.3):
-     Observe / Learn / Manage, Observe first, Investigations first. #}
+  {# Sidebar — fixed under the top bar. `fixed` (with z-20) means the sidebar
+     OVERLAYS content rather than pushing it at base width — content's left
+     margin is only `ml-16`, so the expanding rail floats over it on <1200px
+     viewports (FR41 float behaviour). `block` cancels main.css `nav { display:
+     flex }` so groups stack vertically.
+
+     WIDTH — three-state machine (Story 3.4, AD-6), driven by the parent
+     #app-shell `data-sidebar-state`:
+       • auto      → `w-16 lg:w-64` (CSS-responsive: 64px rail <1200px, 256px ≥1200px)
+       • collapsed → `…/shell:w-16` forces the 64px rail at EVERY width (FR44)
+       • expanded  → `…/shell:w-64` forces 256px at every width
+     The `group-data-…/shell:` overrides carry higher selector specificity than
+     the bare `lg:w-64`, so they win regardless of viewport. Nav groups + items
+     are rendered by the sidebar_group macro (Story 3.3): Observe / Learn /
+     Manage, Observe first, Investigations first. #}
   <nav id="sidebar"
-       data-sidebar-state="{{ sidebar_state }}"
        aria-label="Main navigation"
-       class="block fixed top-12 left-0 bottom-0 z-20 w-16 lg:w-64
+       class="block fixed top-12 left-0 bottom-0 z-20
+              w-16 lg:w-64
+              group-data-[sidebar-state=collapsed]/shell:w-16
+              group-data-[sidebar-state=expanded]/shell:w-64
               bg-surface-base border-r border-surface-raised
               overflow-y-auto overflow-x-hidden
               transition-all duration-200 ease-in-out motion-reduce:transition-none">
@@ -148,6 +162,8 @@
      content area fills the viewport with no extra vertical scroll. #}
   <main id="main-content" aria-atomic="false"
         class="ml-16 lg:ml-64 pt-12 pb-0 min-h-screen
+               group-data-[sidebar-state=collapsed]/shell:ml-16
+               group-data-[sidebar-state=expanded]/shell:ml-64
                transition-all duration-200 ease-in-out motion-reduce:transition-none">
     <div class="p-4 lg:p-6">
       {{ caller() }}

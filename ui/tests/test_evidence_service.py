@@ -7,7 +7,6 @@ import pytest
 from beeper_ui.services.evidence_service import (
     EvidenceReference,
     EvidenceService,
-    TimelineEvent,
     get_evidence_service,
     reset_evidence_service,
 )

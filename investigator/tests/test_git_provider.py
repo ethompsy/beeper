@@ -97,8 +97,15 @@ class TestGitHubProvider:
         )
 
     def test_commit_files_creates_new(self):
+        try:
+            from github import UnknownObjectException
+        except ImportError:  # pragma: no cover - github lib installed in CI
+            UnknownObjectException = Exception
+
         provider, mock_repo = self._make_provider()
-        mock_repo.get_contents.side_effect = Exception("not found")
+        # Provider detects "file absent" via UnknownObjectException, not a bare
+        # Exception — simulate the real PyGithub error so the create path runs.
+        mock_repo.get_contents.side_effect = UnknownObjectException(404, None)
         mock_repo.create_file.return_value = {"commit": MagicMock(sha="def456")}
 
         sha = provider.commit_files("beeper/fix-1", {"src/app.py": "content"}, "fix")
@@ -181,8 +188,14 @@ class TestGitLabProvider:
         )
 
     def test_commit_files(self):
+        try:
+            from gitlab.exceptions import GitlabGetError
+        except ImportError:  # pragma: no cover - gitlab lib installed in CI
+            GitlabGetError = Exception
+
         provider, mock_project = self._make_provider()
-        mock_project.files.get.side_effect = Exception("not found")
+        # Provider treats GitlabGetError (not a bare Exception) as "file absent".
+        mock_project.files.get.side_effect = GitlabGetError("not found")
         mock_commit = MagicMock()
         mock_commit.id = "abc123"
         mock_project.commits.create.return_value = mock_commit

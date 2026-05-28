@@ -27,19 +27,44 @@
 #}
 
 {% macro sidebar_group(label, icon, items, expanded=true, active_item='') %}
+{% set items_id = 'sidebar-group-' ~ (label | lower | replace(' ', '-')) %}
 <div class="sidebar-group mb-2" data-group="{{ label }}" data-expanded="{{ 'true' if expanded else 'false' }}">
-  {# Group header: icon + label + expand/collapse chevron. On the collapsed
-     rail only the icon is visible (label is sr-only, chevron hidden). Story 3.4
-     wires the click-to-toggle interaction; this is the structural hook. #}
-  <div class="sidebar-group-header flex items-center gap-2 px-3 py-2
-              text-text-secondary text-xl font-semibold select-none"
-       title="{{ label }}">
+  {# Group header: a toggle BUTTON (icon + label + chevron). sidebar.js wires
+     the click-to-toggle and persists open/closed per group label in
+     sessionStorage (Story 3.4, AC4). `aria-expanded`/`aria-controls` make the
+     collapse state announce to assistive tech. `bg-transparent border-0` —
+     together with the global `button { appearance:none; background:transparent;
+     border:0 }` reset in input.css — neutralises the legacy/UA <button> chrome
+     (the bg/border classes alone do NOT kill the native `appearance:auto`
+     paint); `w-full text-left` keep it visually identical to the prior <div>
+     header.
+
+     LABEL + CHEVRON VISIBILITY follow the same three-state machine as the
+     shell width (Story 3.4): visible when the shell is `expanded`, or when it
+     is `auto` AND ≥1200px (`lg:`); hidden on the collapsed icon rail. The
+     `group-data-…/shell:` overrides outrank the bare `lg:` utilities on
+     specificity, so a forced-`collapsed` shell hides labels even at ≥1200px. #}
+  <button type="button"
+          class="sidebar-group-header flex items-center gap-2 px-3 py-2 w-full text-left
+                 bg-transparent border-0 cursor-pointer
+                 text-text-secondary text-xl font-semibold select-none
+                 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2
+                 focus-visible:ring-offset-surface-base"
+          title="{{ label }}"
+          aria-expanded="{{ 'true' if expanded else 'false' }}"
+          aria-controls="{{ items_id }}">
     <span aria-hidden="true" class="shrink-0 inline-flex items-center justify-center w-5 h-5">
       {{ icon|safe }}
     </span>
-    <span class="sr-only lg:not-sr-only flex-1 min-w-0 truncate">{{ label }}</span>
+    <span class="sr-only lg:not-sr-only
+                 group-data-[sidebar-state=collapsed]/shell:sr-only
+                 group-data-[sidebar-state=expanded]/shell:not-sr-only
+                 flex-1 min-w-0 truncate">{{ label }}</span>
     {# Chevron: ▾ when expanded, ▸ when collapsed. Hidden on the icon rail. #}
-    <span aria-hidden="true" class="hidden lg:inline-block text-text-muted shrink-0
+    <span aria-hidden="true" class="sidebar-group-chevron hidden lg:inline-block
+                                    group-data-[sidebar-state=collapsed]/shell:hidden
+                                    group-data-[sidebar-state=expanded]/shell:inline-block
+                                    text-text-muted shrink-0
                                     transition-transform duration-200 motion-reduce:transition-none
                                     {{ '' if expanded else '-rotate-90' }}">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -47,10 +72,11 @@
               stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </span>
-  </div>
+  </button>
 
   {# Item list. `expanded` controls visibility (default shown). #}
-  <ul class="sidebar-group-items list-none m-0 p-0 {{ '' if expanded else 'hidden' }}">
+  <ul id="{{ items_id }}"
+      class="sidebar-group-items list-none m-0 p-0 {{ '' if expanded else 'hidden' }}">
     {% for item in items %}
     {% set is_active = active_item and (active_item == item.url or active_item == item.label) %}
     <li>
@@ -67,7 +93,10 @@
         <span aria-hidden="true" class="shrink-0 inline-flex items-center justify-center w-5 h-5">
           {% if item.icon %}{{ item.icon|safe }}{% else %}<span class="w-1.5 h-1.5 rounded-full bg-current inline-block"></span>{% endif %}
         </span>
-        <span class="sr-only lg:not-sr-only min-w-0 truncate">{{ item.label }}</span>
+        <span class="sr-only lg:not-sr-only
+                     group-data-[sidebar-state=collapsed]/shell:sr-only
+                     group-data-[sidebar-state=expanded]/shell:not-sr-only
+                     min-w-0 truncate">{{ item.label }}</span>
       </a>
     </li>
     {% endfor %}

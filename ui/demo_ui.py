@@ -349,7 +349,7 @@ InvestigationService.update_kb_with_resolution = _mock_update_kb
 InvestigationService.close = _mock_close
 
 # Patch KBService to avoid Qdrant connections
-from beeper_ui.services.kb_service import KBService
+from beeper_ui.services.kb_service import KBService  # noqa: E402
 
 KBService.list_entries_by_service = lambda self, *a, **kw: []
 KBService.get_entry = lambda self, *a, **kw: None
@@ -361,10 +361,10 @@ KBService.close = lambda self: None
 # updates. For the demo, we replace them with idle generators that keep the
 # connection alive without sending any events (the initial page render already
 # includes all data via template includes).
-import time as _time
-from collections.abc import Generator as _Generator
+import time as _time  # noqa: E402
+from collections.abc import Generator as _Generator  # noqa: E402
 
-import beeper_ui.routes.investigations as _inv_routes
+import beeper_ui.routes.investigations as _inv_routes  # noqa: E402
 
 
 def _idle_detail_sse(
@@ -416,6 +416,6 @@ if __name__ == "__main__":
         sev_color = {"critical": "31", "high": "33", "medium": "36", "low": "32"}
         color = sev_color.get(inv.severity, "0")
         print(f"    \033[{color}m[{inv.severity:>8}]\033[0m {inv.id} — {inv.condition[:50]}")
-    print(f"\n  \033[2mClick any investigation to see full details.\033[0m\n")
+    print("\n  \033[2mClick any investigation to see full details.\033[0m\n")
 
     app.run(debug=True, host="127.0.0.1", port=5050)

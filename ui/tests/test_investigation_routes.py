@@ -231,14 +231,16 @@ class TestInvestigationsRoute:
     def test_investigations_filter_invalid_date_range(
         self, client: FlaskClient
     ) -> None:
-        """Test invalid date range is ignored."""
+        """Test invalid date range is ignored (date filter not applied)."""
         respx.get("http://mock-operator:8080/api/v1/investigations").mock(
             return_value=Response(200, json=MOCK_INVESTIGATIONS)
         )
 
-        response = client.get("/investigations/?date_range=invalid")
+        # Pass status_group=all to bypass default active-only filter so we
+        # can verify that the invalid date_range itself has no effect on output.
+        response = client.get("/investigations/?date_range=invalid&status_group=all")
         assert response.status_code == 200
-        # All investigations should still appear (invalid range ignored)
+        # Both investigations should appear — invalid date_range is silently ignored.
         assert b"inv-abc123" in response.data
         assert b"inv-xyz789" in response.data
 
@@ -2219,7 +2221,8 @@ class TestResolutionConfirmation:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-awaiting-002"
                 )
-                # Iteration 1: step-update, findings-update, evidence-update, evidence-timeline-update, confirmation-update
+                # Iteration 1: step-update, findings-update, evidence-update,
+                # evidence-timeline-update, confirmation-update
                 # (no remediation-update: findings lack remediation keys)
                 # Iteration 2: no key change, but resolution_action changed → confirmation-update
                 events = []
@@ -2269,8 +2272,10 @@ class TestResolutionConfirmation:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-awaiting-001"
                 )
-                # Iteration 1 yields: step-update, findings-update, evidence-update, evidence-timeline-update
-                # Iteration 2 yields: findings-update, evidence-update, evidence-timeline-update, confirmation-update
+                # Iteration 1 yields: step-update, findings-update, evidence-update,
+                # evidence-timeline-update
+                # Iteration 2 yields: findings-update, evidence-update, evidence-timeline-update,
+                # confirmation-update
                 # (no remediation-update: findings lack remediation keys)
                 # Total: 8 events
                 events = []
@@ -2694,7 +2699,8 @@ class TestInvestigationResolution:
                 gen = _generate_detail_sse_events(
                     "http://mock-operator:8080", 5.0, "inv-res-002"
                 )
-                # Iteration 1: step-update, findings-update, evidence-update, evidence-timeline-update, resolution-update (5)
+                # Iteration 1: step-update, findings-update, evidence-update,
+                # evidence-timeline-update, resolution-update (5)
                 # (no remediation-update: findings lack remediation keys)
                 # Iteration 2: resolution-update only (value changed, no key change) (1)
                 events = []
@@ -2887,7 +2893,10 @@ class TestInvestigationDetailDeployCorrelation:
                     "anomaly_detected_at": "2026-03-17T12:04:30+00:00",
                 }
             ],
-            "deploy_summary": "Anomaly started 4 min 30 sec after deploy abc123d by alice@example.com (strong correlation)",
+            "deploy_summary": (
+                "Anomaly started 4 min 30 sec after deploy abc123d by alice@example.com "
+                "(strong correlation)"
+            ),
         }
 
         with patch(

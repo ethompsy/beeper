@@ -279,9 +279,6 @@ mod tests {
             detector.update(50.0);
         }
         let signal = detector.update(5000.0);
-        assert!(
-            signal.is_some(),
-            "Post-warmup spike should be detected"
-        );
+        assert!(signal.is_some(), "Post-warmup spike should be detected");
     }
 }
