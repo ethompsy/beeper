@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 4, Milestone 4.1 — **Task 4.1 done (PR #4, `0e46e4e`)**; **Task 4.2 done (branch `feature/4.2-investigation-detail`, `517a296`, awaiting review/merge)**. Once 4.2 merges, **Tasks 4.3 (SSE streaming) and 4.4 (Related KB panel) unblock and may run concurrently** (4.4 also needs Q2/AD-5 verified). Until 4.2 merges, the next `next-priority` pass has no actionable task (4.3/4.4 blocked on 4.2). Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 4, Milestone 4.1 — **Tasks 4.1 (PR #4, `0e46e4e`) and 4.2 (PR #5, `eafe9ae`) done & merged to `main`**. **Task 4.3 (SSE streaming) in progress** on branch `feature/4.3-sse-streaming` (build-for-review). **Task 4.4 (Related KB panel) deferred** until 4.3 merges — both edit `investigations/detail.html`, so they are sequenced (not run concurrently) to avoid conflicts — and until Q2/AD-5 is verified against a live backend. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -175,7 +175,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 |---|------|-----------|--------------|--------|
 | 4.1 | Investigation list view with status filtering | M | 3.2 | done |
 | 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | done |
-| 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | pending |
+| 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | in progress |
 | 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | pending |
 
 **Task 4.1 — done.** _(merged via PR #4, squash commit `0e46e4e`; 2184 UI tests green at merge; all CI checks passed)_
@@ -210,7 +210,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - D4/doctrine guards → `::TestTokenDisciplineAndMigration::*` (no arbitrary color values; migrated header drops legacy classes)
 - **Review notes:** (a) `affected_services` is derived (`inv.service` + `service_topology.downstream`, deduped) since findings lacks the field; (b) remaining legacy detail partials (`_findings`, `_unified_timeline`, `_evidence_panel`, `_recommendations`, urgency/remediation/gate/feedback/resolution/KB) intentionally NOT migrated — scoped to header+timeline+conclusion; (c) pre-existing duplicate `id="main-content"` (layout `<main>` + detail div) left as-is (it's the 4.3 SSE/htmx hook).
 
-**Task 4.3 — pending.**
+**Task 4.3 — in progress.** _(branch `feature/4.3-sse-streaming`; build-for-review, not auto-merged)_
 - `[T]` Running investigation opens `EventSource` from `static/js/sse.js`; steps append on arrival; list view receives `investigation_created`/`investigation_status` (FR24).
 - `[T]` Steps inserted at correct position by `order` field; UI updates ≤2s of event (NFR4).
 - `[T]` On drop, reconnect fetches `GET /api/v1/investigations/{id}` and diffs/inserts missed steps by `order` (AD-4 REST backfill).
