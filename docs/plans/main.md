@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 4, Milestone 4.1 — **Tasks 4.1 (PR #4, `0e46e4e`) and 4.2 (PR #5, `eafe9ae`) done & merged to `main`**. **Task 4.3 (SSE streaming) in progress** on branch `feature/4.3-sse-streaming` (build-for-review). **Task 4.4 (Related KB panel) deferred** until 4.3 merges — both edit `investigations/detail.html`, so they are sequenced (not run concurrently) to avoid conflicts — and until Q2/AD-5 is verified against a live backend. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 4, Milestone 4.1 — **Tasks 4.1 (PR #4), 4.2 (PR #5), 4.3 (PR #6, `8d73909`) done & merged to `main`**. **Task 4.4 (Related KB panel) in progress** on branch `feature/4.4-related-kb-panel` (build-for-review) — the LAST task in Milestone 4.1 / Phase 4. Its KBQueryStep read path (Q2/AD-5) still needs verifying against a live operator/Qdrant (flagged; UI built on the existing `/related-kb` route + mock data per AD-8). Once 4.4 merges, **Phase 4 is complete** and the next `next-priority` advances to Phase 5. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -176,7 +176,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 | 4.1 | Investigation list view with status filtering | M | 3.2 | done |
 | 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | done |
 | 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | in progress |
-| 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | pending |
+| 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | in progress |
 
 **Task 4.1 — done.** _(merged via PR #4, squash commit `0e46e4e`; 2184 UI tests green at merge; all CI checks passed)_
 - `[T]` List renders investigations via `investigation_card(inv)` (`cards.html`) showing service/severity/status/timestamp.
@@ -228,12 +228,21 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - Updated existing tests to the `data-sse-url`/`data-sse-swap` contract (intent preserved): `test_investigation_detail_view.py::test_sse_hook_preserved_for_task_4_3`, `test_investigation_list_view.py::test_list_sse_container_preserved`.
 - **Review note:** all 12 detail SSE panels migrated to native-ES dispatch; lazy `hx-get` panels keep their initial HTMX load and also receive SSE updates. The new backfill endpoint derives steps from the same operator status source (`_get_step_states`/`PIPELINE_STEPS`) as the server-rendered timeline, so REST and SSE stay consistent.
 
-**Task 4.4 — pending.** *(verify Q2 / AD-5 before relying on the read path)*
+**Task 4.4 — in progress.** _(branch `feature/4.4-related-kb-panel`; build-for-review, not auto-merged)_ *(verify Q2 / AD-5 against a live backend before relying on the read path)*
 - `[T]` Viewport >1200px: fixed bottom bar "N Related KB Entries" via `kb_panel(entries, expanded)` (`kb.html`); click expands upward (FR26).
 - `[T]` Viewport ≤1200px: panel renders inline below the timeline.
 - `[T]` Panel reads KBQueryStep results from the `investigations` Qdrant collection (AD-5); shows titles with relevance context.
 - `[T]` 0 results → "0 Related KB Entries" shown, not hidden.
 - `[T]` Clicking an entry expands detail in-panel (past context/resolution/service).
+
+**Implemented on branch `feature/4.4-related-kb-panel` (2026-05-26) — awaiting review/merge (not auto-merged, per request; commit `1dd3b14`).** New `components/kb.html` (`kb_panel(entries, expanded, is_novel, exact_match_entry, exact_match_found)`) — fully Tailwind, `bg-surface-overlay` floating panel (UX elevation table), **no new custom CSS** (`main.css` untouched), no arbitrary values. Wide (`lg:` ≥1200px): `lg:fixed lg:bottom-0` anchored bottom bar **"N Related KB Entries"** that expands UPWARD (expandable body `order-first` above the count bar `order-last`). Narrow (<1200px): `static`, inline below the timeline. Per-entry detail via native `<details>/<summary>` (service / past-context / type / date / "Open full entry" + preserved `sendKBFeedback` relevant/not-relevant buttons). New dependency-free `static/js/kb-panel.js` toggles the panel (`aria-expanded`, `max-h-0`↔`max-h-96`, re-binds on `htmx:afterSwap`); reduced-motion respected. `_related_kb.html` now renders `kb_panel(...)`; `_detail_content.html` dropped the legacy `.card`/`<h3>` wrapper but PRESERVED the `hx-get` lazy-load + `data-sse-swap="kb-update"` (Task 4.3 hook). ruff clean. Full UI suite: **2293 passed** (+28).
+- `[T]` AC1 wide fixed bottom bar "N Related KB Entries", expands upward (FR26) → `test_related_kb_panel.py::TestAC1WideFixedBottomBarExpandsUpward`
+- `[T]` AC2 narrow inline/static below timeline → `::TestAC2NarrowInlineBelowTimeline`
+- `[T]` AC3 entry titles with relevance context (AD-5) → `::TestAC3EntryTitlesWithRelevance`
+- `[T]` AC4 0 results → "0 Related KB Entries" shown, not hidden → `::TestAC4ZeroResultsShowsCount`
+- `[T]` AC5 clicking an entry expands detail in-panel → `::TestAC5EntryDetailExpandsInPanel`
+- Updated existing tests to the new markup (intent preserved): `test_investigation_routes.py` (exact-match banner, validation ranking, lazy-load), `test_evidence_timeline.py::TestRelatedKBTemplateEnhancements` (chip status-text vs legacy `.validation-*` classes).
+- **Q2/AD-5 (OPEN — must verify before trusting end-to-end):** the KBQueryStep → `investigations` Qdrant read path is verifiable only against a live operator/Qdrant (down in dev); UI built on the existing `/related-kb` route + representative mock data. Runtime responsive/expand DOM behavior verified in-browser per AD-8.
 
 **Parallelizable:** 4.1→4.2 sequential; once 4.2 lands, 4.3 and 4.4 may run concurrently (both build on detail). _(max 8 concurrent per config)_
 **Milestone Value:** SREs and demo viewers watch investigations unfold live with inline evidence and KB context.

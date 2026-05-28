@@ -183,16 +183,19 @@
         </div>
     </div>
 
-    {# Related Knowledge Base Entries — entries found relevant TO this investigation #}
-    <div class="card">
-        <h3>Related Knowledge Base Entries</h3>
-        <div id="related-kb"
-             hx-get="/investigations/{{ investigation.id }}/related-kb"
-             hx-trigger="load"
-             hx-swap="innerHTML"
-             data-sse-swap="kb-update">
-            <span class="htmx-indicator">Loading related KB entries...</span>
-        </div>
+    {# Related Knowledge Base Entries — entries found relevant TO this
+       investigation. Task 4.4 (FR26/AD-5): the subtree is migrated WHOLLY to
+       the fully-Tailwind kb_panel component (rendered by the lazy-loaded
+       _related_kb.html). The container keeps the hx-get lazy-load and the
+       data-sse-swap="kb-update" hook from Task 4.3 — kb_panel(...) is the
+       swapped content. No legacy .card wrapper here so the panel can anchor as
+       a fixed bottom bar on wide screens (>1200px) and inline on narrow. #}
+    <div id="related-kb"
+         hx-get="/investigations/{{ investigation.id }}/related-kb"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         data-sse-swap="kb-update">
+        <span class="htmx-indicator text-text-muted text-sm">Loading related KB entries...</span>
     </div>
 
     {# Evidence Panels #}
