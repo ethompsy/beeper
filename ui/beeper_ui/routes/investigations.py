@@ -12,6 +12,7 @@ from flask import (
     Response,
     abort,
     current_app,
+    jsonify,
     render_template,
     request,
     stream_with_context,
@@ -46,6 +47,13 @@ from beeper_ui.services.slo_service import SloService, SloServiceError
 logger = logging.getLogger(__name__)
 
 investigations_bp = Blueprint("investigations", __name__, url_prefix="/investigations")
+
+# JSON API blueprint (AD-4 REST backfill). Kept separate from the HTML
+# `investigations_bp` so it can live under the /api/v1 prefix the SSE client
+# uses to diff/insert steps missed during a disconnect.
+investigations_api_bp = Blueprint(
+    "investigations_api", __name__, url_prefix="/api/v1/investigations"
+)
 
 # Valid filter values (security: prevent arbitrary values)
 VALID_STATUSES = {"investigating", "awaiting_confirmation", "completed", "failed"}
@@ -1592,7 +1600,11 @@ def _generate_sse_events(
 ) -> Generator[str, None, None]:
     """Generate SSE events by polling the operator API.
 
-    Renders HTML partials for HTMX SSE swap integration.
+    Renders the list partial and emits the FR24 list events consumed by the
+    native EventSource client (sse.js): ``investigation_created`` when a new
+    investigation appears, ``investigation_status`` when an existing one changes
+    status. Both carry the freshly-rendered list partial so the client just
+    swaps the list innerHTML.
     """
     svc = InvestigationService(
         operator_url=operator_url,
@@ -1606,17 +1618,16 @@ def _generate_sse_events(
             current_fingerprint = _investigation_fingerprint(investigations)
 
             if current_fingerprint != last_fingerprint:
-                # Determine event type
-                if not last_fingerprint:
-                    event_type = "investigation-update"
-                elif len(current_fingerprint.split("|")) > len(
-                    last_fingerprint.split("|")
-                ):
-                    event_type = "investigation-new"
+                # Distinguish a newly-created investigation (more entries than
+                # last poll) from a status change on an existing one (FR24).
+                if last_fingerprint and len(
+                    current_fingerprint.split("|")
+                ) > len(last_fingerprint.split("|")):
+                    event_type = "investigation_created"
                 else:
-                    event_type = "investigation-update"
+                    event_type = "investigation_status"
 
-                # Render HTML partial for HTMX swap
+                # Render HTML partial for the client innerHTML swap.
                 # Note: urgency_scores not computed in SSE path (too expensive
                 # for every poll cycle); template handles missing data gracefully.
                 html = render_template(
@@ -1639,6 +1650,52 @@ def _generate_sse_events(
             return
 
         time.sleep(SSE_POLL_INTERVAL)
+
+
+@investigations_api_bp.route("/<investigation_id>")
+def investigation_detail_json(
+    investigation_id: str,
+) -> tuple[Response, int] | Response:
+    """JSON view of an investigation's current steps for SSE REST backfill.
+
+    AD-4: after the EventSource reconnects, the client fetches this endpoint and
+    diffs/inserts any steps it missed while disconnected, keyed by `order`. The
+    `order` here mirrors the 1-based ordinal the step timeline template assigns
+    (loop.index), so the client can position missed steps deterministically.
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    svc = get_investigation_service()
+    try:
+        detail = svc.get_investigation(investigation_id)
+        if detail is None:
+            return jsonify({"error": "not_found"}), 404
+
+        step_states = _get_step_states(detail.message, detail.status)
+        steps = [
+            {
+                "order": idx,
+                "key": step.get("key"),
+                "label": step.get("label"),
+                "state": step.get("state"),
+                "type": step.get("type"),
+            }
+            for idx, step in enumerate(step_states, start=1)
+        ]
+        return jsonify(
+            {
+                "id": detail.id,
+                "status": detail.status,
+                "service": detail.service,
+                "message": detail.message,
+                "steps": steps,
+            }
+        )
+    except InvestigationServiceError:
+        return jsonify({"error": "operator_unavailable"}), 503
+    finally:
+        svc.close()
 
 
 @investigations_bp.route("/stream")

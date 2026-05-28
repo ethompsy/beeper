@@ -68,16 +68,18 @@
 </div>
 {% endif %}
 
-{# Investigation List with SSE updates #}
+{# Investigation List with real-time SSE updates (Task 4.3, AD-4).
+   Native EventSource (sse.js) — NOT the htmx SSE extension. The container's
+   data-sse-url is the stream URL; FR24 list events (investigation_created /
+   investigation_status) and the legacy update events all swap this list's
+   innerHTML. #}
 <div id="investigation-list"
-     hx-ext="sse"
-     sse-connect="/investigations/stream"
-     sse-swap="investigation-update"
-     hx-swap="innerHTML">
+     data-sse-url="/investigations/stream"
+     data-sse-swap="investigation_created investigation_status">
     {% include "investigations/_list_content.html" %}
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/htmx-ext-sse.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sse.js') }}"></script>
 {% endblock %}

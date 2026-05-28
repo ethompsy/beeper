@@ -43,13 +43,14 @@
     </div>
 
     {# Step Progress Timeline (Story 4.2) — completed steps render server-side so
-       the page is NEVER blank (NFR7). The #step-progress SSE container hook is
-       preserved for Task 4.3 (sse-swap="step-update"). #}
+       the page is NEVER blank (NFR7). Task 4.3 (AD-4) streams live step updates
+       via native EventSource (sse.js): data-sse-swap="step-update" registers
+       this container; steps are merged by their data-order. #}
     <section class="bg-surface-raised rounded-lg px-5 py-4 mb-4">
         <h3 class="text-text-primary text-sm font-semibold uppercase tracking-wide mb-3">
             Investigation Progress
         </h3>
-        <div id="step-progress" sse-swap="step-update" hx-swap="innerHTML">
+        <div id="step-progress" data-sse-swap="step-update">
             {% include "investigations/_step_timeline.html" %}
         </div>
     </section>
@@ -61,7 +62,7 @@
              hx-get="/investigations/{{ investigation.id }}/remediation-progress"
              hx-trigger="load"
              hx-swap="innerHTML"
-             sse-swap="remediation-update">
+             data-sse-swap="remediation-update">
             <span class="htmx-indicator">Loading remediation progress...</span>
         </div>
     </div>
@@ -69,7 +70,7 @@
     {# Findings #}
     <div class="card">
         <h3>Findings</h3>
-        <div id="findings" sse-swap="findings-update" hx-swap="innerHTML">
+        <div id="findings" data-sse-swap="findings-update">
             {% include "investigations/_findings.html" %}
         </div>
     </div>
@@ -77,7 +78,7 @@
     {# Unified Investigation Timeline #}
     <div class="card">
         <h3>Investigation Timeline</h3>
-        <div id="evidence-timeline" sse-swap="evidence-timeline-update" hx-swap="innerHTML">
+        <div id="evidence-timeline" data-sse-swap="evidence-timeline-update">
             {% include "investigations/_unified_timeline.html" %}
         </div>
     </div>
@@ -85,7 +86,7 @@
     {# Deploy Correlation #}
     <div class="card">
         <h3>Deploy Correlation</h3>
-        <div id="deploy-correlation" sse-swap="deploy-correlation-update" hx-swap="innerHTML">
+        <div id="deploy-correlation" data-sse-swap="deploy-correlation-update">
             {% include "investigations/_deploy_correlation.html" %}
         </div>
     </div>
@@ -93,7 +94,7 @@
     {# Service Dependency Topology #}
     <div class="card">
         <h3>Service Dependencies</h3>
-        <div id="service-topology" sse-swap="topology-update" hx-swap="innerHTML">
+        <div id="service-topology" data-sse-swap="topology-update">
             {% include "investigations/_service_topology.html" %}
         </div>
     </div>
@@ -101,7 +102,7 @@
     {# Change Event Correlation #}
     <div class="card">
         <h3>Change Event Correlation</h3>
-        <div id="change-events" sse-swap="change-events-update" hx-swap="innerHTML">
+        <div id="change-events" data-sse-swap="change-events-update">
             {% include "investigations/_change_events.html" %}
         </div>
     </div>
@@ -143,7 +144,7 @@
     {% if investigation.status not in ('investigating', 'failed') %}
     <div class="card">
         <h3>Investigation Feedback</h3>
-        <div id="feedback-section" sse-swap="feedback-update" hx-swap="innerHTML">
+        <div id="feedback-section" data-sse-swap="feedback-update">
             {% set current_feedback = findings.get('investigation_feedback', '') if findings else '' %}
             {% set investigation_id = investigation.id %}
             {% include "investigations/_feedback_buttons.html" with context %}
@@ -155,7 +156,7 @@
     {% if findings and findings.get('recommendations') and investigation.status not in ('investigating', 'failed') %}
     <div class="card">
         <h3>Resolution Confirmation</h3>
-        <div id="confirmation-result" sse-swap="confirmation-update" hx-swap="innerHTML">
+        <div id="confirmation-result" data-sse-swap="confirmation-update">
             {% include "investigations/_confirmation_form.html" %}
         </div>
     </div>
@@ -165,7 +166,7 @@
     {% if investigation.status not in ('investigating', 'failed') %}
     <div class="card">
         <h3>Investigation Resolution</h3>
-        <div id="resolution-result" sse-swap="resolution-update" hx-swap="innerHTML">
+        <div id="resolution-result" data-sse-swap="resolution-update">
             {% include "investigations/_resolution_form.html" %}
         </div>
     </div>
@@ -189,13 +190,13 @@
              hx-get="/investigations/{{ investigation.id }}/related-kb"
              hx-trigger="load"
              hx-swap="innerHTML"
-             sse-swap="kb-update">
+             data-sse-swap="kb-update">
             <span class="htmx-indicator">Loading related KB entries...</span>
         </div>
     </div>
 
     {# Evidence Panels #}
-    <div id="evidence" sse-swap="evidence-update" hx-swap="innerHTML">
+    <div id="evidence" data-sse-swap="evidence-update">
     {% if findings %}
     {% include "investigations/_evidence_panel.html" %}
     {% endif %}

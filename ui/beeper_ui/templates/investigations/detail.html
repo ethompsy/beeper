@@ -39,9 +39,12 @@
 </div>
 {% else %}
 <div class="investigation-layout">
+    {# AD-4 (Task 4.3): native EventSource streaming via sse.js — NOT the htmx
+       SSE extension. The container exposes the SSE stream URL and the REST
+       backfill endpoint as data attributes (no hardcoded URLs in JS). #}
     <div id="main-content"
-         hx-ext="sse"
-         sse-connect="/investigations/{{ investigation.id }}/stream">
+         data-sse-url="/investigations/{{ investigation.id }}/stream"
+         data-sse-backfill-url="/api/v1/investigations/{{ investigation.id }}">
         {% include "investigations/_detail_content.html" %}
     </div>
     {% include "investigations/_collaboration_panel.html" %}
@@ -50,7 +53,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/htmx-ext-sse.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sse.js') }}"></script>
 <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
 <script src="{{ url_for('static', filename='js/investigation-collab.js') }}"></script>
 {% endblock %}
