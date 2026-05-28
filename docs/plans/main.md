@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 4, Milestone 4.1 — **Task 4.1 implemented on branch `feature/4.1-investigation-list-view`, awaiting review/merge** (not auto-merged per request; 2184 tests green). Once 4.1 merges to `main`, **Task 4.2** unblocks (then 4.3‖4.4). Until then the next `next-priority` pass has no actionable task (4.2–4.4 are blocked on 4.1). Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 4, Milestone 4.1 — **Task 4.1 done (merged via PR #4, `0e46e4e`)**. **Task 4.2 (Investigation detail: summary header & step timeline)** now in progress on branch `feature/4.2-investigation-detail`. Once 4.2 merges, **4.3 and 4.4 unblock and may run concurrently**. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -173,12 +173,12 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 4.1 | Investigation list view with status filtering | M | 3.2 | in progress |
-| 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | pending |
+| 4.1 | Investigation list view with status filtering | M | 3.2 | done |
+| 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | in progress |
 | 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | pending |
 | 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | pending |
 
-**Task 4.1 — in progress.** _(branch `feature/4.1-investigation-list-view`; build-for-review, not auto-merged)_
+**Task 4.1 — done.** _(merged via PR #4, squash commit `0e46e4e`; 2184 UI tests green at merge; all CI checks passed)_
 - `[T]` List renders investigations via `investigation_card(inv)` (`cards.html`) showing service/severity/status/timestamp.
 - `[T]` `status_badge(status)` (`status.html`) colors status (green=active, amber=warning, red=failed, gray=completed).
 - `[T]` Status-group filter: active (Pending/Running) default; switch to resolved/failed (FR22).
@@ -194,7 +194,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - Existing tests updated for the new card markup + default-active filter (intent preserved; `status_group=all` bypasses the default where a test needs all rows): `test_investigation_routes.py`, `test_escalation_urgency_routes.py`, `test_investigation_workflow_states.py`.
 - **Review note:** urgency score is no longer shown on the card (was in the legacy table); still computed for `sort=urgency`. Confirm this is acceptable for the card layout, or fold urgency into the card before merge.
 
-**Task 4.2 — pending.**
+**Task 4.2 — in progress.** _(branch `feature/4.2-investigation-detail`; build-for-review, same flow as 4.1)_
 - `[T]` `summary_header(inv)` renders immediately (service/severity/signal-count/status), no SSE dependency (FR23); breadcrumb "Investigations > INV-{id}".
 - `[T]` Steps via `investigation_step(step, is_first_evidence, order)` (`investigation.html`) with 3px type-colored left border (metric=indigo, log=green, KB=amber, correlation=light indigo, summary=gray).
 - `[T]` Evidence in `ui-monospace`; service names as labels on `surface-raised` (FR25).
