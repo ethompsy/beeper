@@ -1,0 +1,22 @@
+{# Investigation step timeline (Story 4.2, NFR7).
+
+   Renders each pipeline step via the investigation_step() macro. Completed steps
+   are server-rendered here so the page is never blank; Task 4.3 swaps this
+   container's contents over SSE (sse-swap="step-update" on the parent).
+
+   is_first_evidence is set on the first NON-summary (evidence-bearing) step so
+   the timeline can visually anchor where evidence collection begins. #}
+{% from "components/investigation.html" import investigation_step %}
+
+{%- set evidence_types = ['metric', 'log', 'kb', 'correlation'] -%}
+{%- set ns = namespace(first_evidence_seen=False) -%}
+<ul class="step-timeline list-none m-0 p-0">
+    {% for step in step_states %}
+    {%- set is_first = (not ns.first_evidence_seen) and (step.type in evidence_types) -%}
+    {%- if is_first -%}{%- set ns.first_evidence_seen = True -%}{%- endif -%}
+    {{ investigation_step(step, is_first_evidence=is_first, order=loop.index) }}
+    {% endfor %}
+    {% if not step_states %}
+    <li class="text-text-muted text-sm italic">Waiting for investigation to start...</li>
+    {% endif %}
+</ul>

@@ -56,6 +56,9 @@ class InvestigationDetail(Investigation):
     message: str | None = None
     error: str | None = None
     job_name: str | None = None
+    # Count of correlated signals gathered during the investigation. Surfaced in
+    # the summary header (Story 4.2, FR23) immediately from server data — no SSE.
+    signal_count: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "InvestigationDetail":
@@ -74,6 +77,7 @@ class InvestigationDetail(Investigation):
             job_name=data.get("job_name"),
             workflow_state=data.get("workflow_state"),
             workflow_state_changed_at=data.get("workflow_state_changed_at"),
+            signal_count=data.get("signal_count"),
         )
 
 

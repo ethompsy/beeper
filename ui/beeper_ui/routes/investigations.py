@@ -411,37 +411,46 @@ def list_investigations() -> str:
     )
 
 
-# Pipeline step definitions for timeline display
+# Pipeline step definitions for timeline display.
+# `type` drives the 3px type-colored left border in the investigation_step macro
+# (Story 4.2): metric=indigo, log=green, kb=amber, correlation=light-indigo,
+# summary=gray.
 PIPELINE_STEPS = [
     {
         "key": "customer_impact",
         "label": "Customer Impact Assessment",
         "message": "Assessing customer impact",
+        "type": "summary",
     },
     {
         "key": "kb_query",
         "label": "Knowledge Base Query",
         "message": "Querying knowledge base",
+        "type": "kb",
     },
     {
         "key": "signal_correlation",
         "label": "Signal Correlation",
         "message": "Correlating signals across architectural layers",
+        "type": "correlation",
     },
     {
         "key": "rca_hypothesis",
         "label": "Root Cause Hypothesis",
         "message": "Generating root cause hypothesis",
+        "type": "metric",
     },
     {
         "key": "resolution_recommendation",
         "label": "Resolution Recommendations",
         "message": "Generating resolution recommendations",
+        "type": "log",
     },
     {
         "key": "documentation",
         "label": "Documentation",
         "message": "Documenting investigation findings",
+        "type": "summary",
     },
 ]
 
@@ -535,6 +544,16 @@ def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
 
         findings = svc.get_investigation_findings(investigation_id)
         step_states = _get_step_states(investigation.message, investigation.status)
+        # Surface the correlated-signal count in the summary header (FR23). The
+        # operator may not include it on the investigation record, so fall back
+        # to the pipeline findings' signals_gathered count when available.
+        if investigation.signal_count is None and findings:
+            signals_gathered = findings.get("signals_gathered")
+            if signals_gathered is not None:
+                try:
+                    investigation.signal_count = int(signals_gathered)
+                except (TypeError, ValueError):
+                    investigation.signal_count = None
     except InvestigationServiceError:
         error_message = "Unable to connect to the Beeper operator."
 
@@ -1276,7 +1295,7 @@ def _generate_detail_sse_events(
             if current_message != last_message or current_phase != last_phase:
                 step_states = _get_step_states(current_message, current_phase)
                 html = render_template(
-                    "investigations/_step_progress.html",
+                    "investigations/_step_timeline.html",
                     step_states=step_states,
                     investigation=detail,
                 )
