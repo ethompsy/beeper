@@ -1,62 +1,16 @@
-{% if exact_match_found and exact_match_entry %}
-<div class="prior-research-banner" role="status">
-    <strong>Building on prior research:</strong>
-    <a href="{{ url_for('knowledge.kb_entry', entry_id=exact_match_entry.entry_id) }}"
-       target="_blank"
-       class="kb-entry-link">{{ exact_match_entry.title }}</a>
-</div>
-{% endif %}
+{# Related KB partial (lazy-loaded via hx-get + swapped on the kb-update SSE
+   event from Task 4.3). Task 4.4 migrates this subtree WHOLLY to the fully
+   Tailwind kb_panel component (components/kb.html) — no legacy .kb-entry-card /
+   .relevance-score / .content-preview markup remains here.
 
-{% if surfacing_result and surfacing_result.entries %}
-<div class="kb-sort-indicator">Ranked by relevance and validation status</div>
-<div class="related-kb-list" id="kb-surfacing-entries">
-    {% for entry in surfacing_result.entries %}
-    <div class="kb-entry-card kb-surfacing-entry" data-entry-id="{{ entry.entry_id }}">
-        <div class="kb-entry-card-header">
-            <a href="{{ entry.link }}"
-               target="_blank"
-               class="kb-entry-link">{{ entry.title }}</a>
-            <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
-            {% if entry.validation_status == 'proven' %}
-            <span class="validation-status-badge validation-proven" title="Proven fix (weight: 3x)">&#9733; proven</span>
-            {% elif entry.validation_status == 'human-confirmed' %}
-            <span class="validation-status-badge validation-human-confirmed" title="Human-confirmed (weight: 2x)">&#10003; human-confirmed</span>
-            {% else %}
-            <span class="validation-status-badge validation-ai-generated" title="AI-generated (weight: 1x)">&#9881; AI-generated</span>
-            {% endif %}
-            {% if entry.relevance_score is not none %}
-            <span class="relevance-score" title="Relevance: {{ (entry.relevance_score * 100) | int }}%">{{ (entry.relevance_score * 100) | int }}%</span>
-            {% endif %}
-        </div>
-        {% if entry.service %}
-        <span class="service-badge">{{ entry.service }}</span>
-        {% endif %}
-        {% if entry.created_at %}
-        <span class="entry-date">{{ entry.created_at }}</span>
-        {% endif %}
-        {% if entry.content_preview %}
-        <p class="content-preview">{{ entry.content_preview }}{% if entry.content_preview | length >= 150 %}...{% endif %}</p>
-        {% endif %}
-        <div class="kb-feedback-actions">
-            <button class="kb-feedback-btn kb-feedback-relevant"
-                    data-entry-id="{{ entry.entry_id }}"
-                    data-feedback="relevant"
-                    onclick="sendKBFeedback('{{ entry.entry_id }}', true)"
-                    title="Mark as relevant">&#128077; Relevant</button>
-            <button class="kb-feedback-btn kb-feedback-not-relevant"
-                    data-entry-id="{{ entry.entry_id }}"
-                    data-feedback="not-relevant"
-                    onclick="sendKBFeedback('{{ entry.entry_id }}', false)"
-                    title="Mark as not relevant">&#128078; Not Relevant</button>
-        </div>
-    </div>
-    {% endfor %}
-</div>
-{% elif surfacing_result and surfacing_result.is_novel %}
-<div class="kb-novel-issue" role="status">
-    <strong>No prior knowledge found &mdash; this may be a novel issue</strong>
-    <p>This investigation will be flagged as a candidate for new KB entry creation.</p>
-</div>
-{% else %}
-<p class="empty-state-text">No related KB entries found for this service.</p>
-{% endif %}
+   The route (investigation_related_kb) passes surfacing_result (.entries /
+   .is_novel), exact_match_entry and exact_match_found; we adapt those to the
+   kb_panel macro contract. The panel renders even at N=0 (zero-state). #}
+{% from "components/kb.html" import kb_panel %}
+{{ kb_panel(
+     entries=(surfacing_result.entries if surfacing_result else []),
+     expanded=false,
+     is_novel=(surfacing_result.is_novel if surfacing_result else false),
+     exact_match_entry=exact_match_entry,
+     exact_match_found=exact_match_found,
+   ) }}

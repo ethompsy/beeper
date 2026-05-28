@@ -1,0 +1,182 @@
+{# Related Knowledge Base panel (Task 4.4, FR26 / AD-5).
+
+   Built ENTIRELY in Tailwind — NO new custom CSS (per UX spec Phase 2:
+   "New components in Tailwind. No new custom CSS.").
+
+   Responsive behaviour (breakpoint lg = 1200px, configured in input.css):
+     • Wide (≥1200px):  an anchored FIXED bottom bar (lg:fixed lg:bottom-0)
+       reading "N Related KB Entries"; the entry list expands UPWARD on click
+       (the list sits ABOVE the bar in source order; the bar is order-last).
+     • Narrow (<1200px): the panel renders INLINE/static below the timeline
+       (default = static, no fixed positioning; overridden only at lg:).
+
+   Elevation: this is a FLOATING surface → bg-surface-overlay (#252540) per the
+   UX elevation table ("Floating: surface-overlay — Expanded KB panel").
+
+   Zero-state: the count bar is ALWAYS rendered, even at N=0 ("0 Related KB
+   Entries") — hiding it would make the feature invisible (UX decision #2).
+
+   Per-entry expand uses native <details>/<summary> (keyboard-accessible, no JS).
+   Panel-level expand/collapse is driven by static/js/kb-panel.js (aria-expanded
+   toggle, z-index/upward growth, respects prefers-reduced-motion).
+
+   Macro args:
+     entries          — list of surfaced KB entries (each: entry_id, link, title,
+                        entry_type, validation_status, relevance_score, service,
+                        created_at, content_preview).
+     expanded         — initial expanded state (default false → collapsed bar).
+     is_novel         — render the "novel issue" note inside the expanded region.
+     exact_match_entry / exact_match_found — render the "prior research" banner.
+#}
+
+{% macro _validation_chip(status) %}
+{%- if status == 'proven' -%}
+  <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium
+               bg-status-healthy/15 text-status-healthy border border-status-healthy/30"
+        title="Proven fix (weight: 3x)">&#9733; proven</span>
+{%- elif status == 'human-confirmed' -%}
+  <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium
+               bg-primary/15 text-primary border border-primary/30"
+        title="Human-confirmed (weight: 2x)">&#10003; human-confirmed</span>
+{%- else -%}
+  <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium
+               bg-status-muted/15 text-text-muted border border-status-muted/30"
+        title="AI-generated (weight: 1x)">&#9881; AI-generated</span>
+{%- endif -%}
+{% endmacro %}
+
+{% macro kb_panel(entries, expanded=false, is_novel=false, exact_match_entry=none, exact_match_found=false) %}
+{%- set count = entries|length if entries else 0 -%}
+{%- set noun = 'Entry' if count == 1 else 'Entries' -%}
+<aside id="kb-panel"
+       data-kb-panel
+       data-expanded="{{ 'true' if expanded else 'false' }}"
+       aria-label="Related Knowledge Base"
+       class="kb-panel block static z-0 mt-8
+              lg:fixed lg:bottom-0 lg:left-0 lg:right-0 lg:z-30 lg:mt-0
+              bg-surface-overlay border-t border-surface-raised
+              text-text-primary">
+  {# Expandable region — in source order it sits ABOVE the count bar so it grows
+     UPWARD on wide screens; the bar below is order-last via flex on lg. #}
+  <div class="lg:flex lg:flex-col">
+    <div id="kb-panel-body"
+         data-kb-panel-body
+         class="kb-panel-body order-first overflow-y-auto
+                max-h-0 transition-all duration-150 ease-out
+                motion-reduce:transition-none
+                {% if expanded %}max-h-96{% endif %}"
+         {% if not expanded %}hidden{% endif %}>
+      <div class="px-4 py-3 border-b border-surface-raised lg:border-b-0 lg:border-t">
+        {% if exact_match_found and exact_match_entry %}
+        <div role="status"
+             class="mb-3 rounded-md bg-primary/10 border border-primary/30 px-3 py-2 text-sm">
+          <strong class="text-text-primary">Building on prior research:</strong>
+          <a href="{{ url_for('knowledge.kb_entry', entry_id=exact_match_entry.entry_id) }}"
+             target="_blank"
+             class="text-primary hover:text-primary-hover underline ml-1">{{ exact_match_entry.title }}</a>
+        </div>
+        {% endif %}
+
+        {% if count > 0 %}
+        <p class="text-text-secondary text-xs mb-2">Ranked by relevance and validation status</p>
+        <ul class="related-kb-list flex flex-col gap-2" id="kb-surfacing-entries">
+          {% for entry in entries %}
+          <li class="kb-surfacing-entry" data-entry-id="{{ entry.entry_id }}">
+            <details class="kb-entry group rounded-md bg-surface-raised border border-surface-overlay
+                            open:bg-surface-overlay open:border-primary/30">
+              <summary class="kb-entry-summary flex items-center gap-2 flex-wrap cursor-pointer
+                              list-none px-3 py-2 rounded-md
+                              hover:bg-surface-overlay transition-colors duration-150
+                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
+                              focus-visible:ring-offset-2 focus-visible:ring-offset-surface-overlay">
+                <span aria-hidden="true"
+                      class="text-text-muted text-xs transition-transform duration-150
+                             motion-reduce:transition-none group-open:rotate-90 shrink-0">&#9656;</span>
+                <span class="kb-entry-title text-text-primary text-sm font-medium truncate min-w-0 flex-1">{{ entry.title }}</span>
+                {{ _validation_chip(entry.validation_status) }}
+                {% if entry.relevance_score is not none %}
+                <span class="kb-relevance text-text-secondary text-xs font-mono shrink-0"
+                      title="Relevance: {{ (entry.relevance_score * 100) | int }}%">{{ (entry.relevance_score * 100) | int }}% relevant</span>
+                {% endif %}
+              </summary>
+              <div class="kb-entry-detail px-3 pb-3 pt-1 border-t border-surface-overlay">
+                <div class="flex flex-wrap items-center gap-2 mb-2">
+                  {% if entry.service %}
+                  <span class="kb-entry-service inline-flex items-center px-2 py-0.5 rounded text-xs
+                               font-mono bg-surface-overlay text-text-secondary">{{ entry.service }}</span>
+                  {% endif %}
+                  {% if entry.entry_type %}
+                  <span class="text-text-muted text-xs">{{ entry.entry_type|replace('_', ' ') }}</span>
+                  {% endif %}
+                  {% if entry.created_at %}
+                  <span class="text-text-muted text-xs">{{ entry.created_at }}</span>
+                  {% endif %}
+                </div>
+                {% if entry.content_preview %}
+                <p class="kb-entry-context text-text-secondary text-sm leading-relaxed">{{ entry.content_preview }}{% if entry.content_preview | length >= 150 %}&hellip;{% endif %}</p>
+                {% endif %}
+                <div class="flex items-center gap-2 mt-3">
+                  <a href="{{ entry.link }}" target="_blank"
+                     class="text-primary hover:text-primary-hover text-xs underline">Open full entry</a>
+                </div>
+                {# KB relevance feedback (preserve sendKBFeedback affordance). #}
+                <div class="kb-feedback-actions flex items-center gap-2 mt-3">
+                  <button type="button"
+                          class="kb-feedback-btn kb-feedback-relevant inline-flex items-center gap-1
+                                 px-2 py-1 rounded text-xs border border-surface-overlay
+                                 text-text-secondary hover:text-status-healthy hover:border-status-healthy/40
+                                 disabled:opacity-50 transition-colors duration-150"
+                          data-entry-id="{{ entry.entry_id }}"
+                          data-feedback="relevant"
+                          onclick="sendKBFeedback('{{ entry.entry_id }}', true)"
+                          title="Mark as relevant">&#128077; Relevant</button>
+                  <button type="button"
+                          class="kb-feedback-btn kb-feedback-not-relevant inline-flex items-center gap-1
+                                 px-2 py-1 rounded text-xs border border-surface-overlay
+                                 text-text-secondary hover:text-status-critical hover:border-status-critical/40
+                                 disabled:opacity-50 transition-colors duration-150"
+                          data-entry-id="{{ entry.entry_id }}"
+                          data-feedback="not-relevant"
+                          onclick="sendKBFeedback('{{ entry.entry_id }}', false)"
+                          title="Mark as not relevant">&#128078; Not Relevant</button>
+                </div>
+              </div>
+            </details>
+          </li>
+          {% endfor %}
+        </ul>
+        {% elif is_novel %}
+        <div role="status"
+             class="kb-novel-issue rounded-md bg-status-warning/10 border border-status-warning/30 px-3 py-2">
+          <strong class="text-text-primary block text-sm">No prior knowledge found &mdash; this may be a novel issue</strong>
+          <p class="text-text-secondary text-sm mt-1">This investigation will be flagged as a candidate for new KB entry creation.</p>
+        </div>
+        {% else %}
+        <p class="kb-empty-state text-text-secondary text-sm">No related KB entries found for this service.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Count bar — always rendered, even at N=0 (UX decision #2). Order-last on
+       wide screens so the body above grows upward. #}
+    <button type="button"
+            id="kb-panel-toggle"
+            data-kb-panel-toggle
+            aria-expanded="{{ 'true' if expanded else 'false' }}"
+            aria-controls="kb-panel-body"
+            class="kb-panel-bar order-last w-full flex items-center justify-between gap-3
+                   px-4 py-3 text-left cursor-pointer
+                   bg-surface-overlay hover:bg-surface-raised transition-colors duration-150
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
+                   focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base">
+      <span class="flex items-center gap-2 min-w-0">
+        <span aria-hidden="true"
+              class="kb-panel-caret text-text-secondary text-sm transition-transform duration-150
+                     motion-reduce:transition-none {% if expanded %}rotate-180{% endif %}">&#9650;</span>
+        <span class="kb-panel-count text-text-primary text-sm font-medium">{{ count }} Related KB {{ noun }}</span>
+      </span>
+      <span class="kb-panel-action text-text-secondary text-xs shrink-0">{% if expanded %}collapse &darr;{% else %}expand &uarr;{% endif %}</span>
+    </button>
+  </div>
+</aside>
+{% endmacro %}

@@ -1396,9 +1396,10 @@ class TestRelatedKBNavigation:
         ):
             response = client.get("/investigations/inv-detail-001/related-kb")
             assert response.status_code == 200
+            # Task 4.4: prior-research banner migrated into the Tailwind
+            # kb_panel (no legacy .prior-research-banner class).
             assert b"Building on prior research" in response.data
             assert b"Exact Prior Incident" in response.data
-            assert b"prior-research-banner" in response.data
 
     @respx.mock
     def test_related_kb_operator_failure_returns_empty(
@@ -1501,8 +1502,10 @@ class TestRelatedKBNavigation:
         ):
             response = client.get("/investigations/inv-detail-001/related-kb")
             assert response.status_code == 200
-            assert b"validation-proven" in response.data
-            assert b"validation-ai-generated" in response.data
+            # Task 4.4: validation status surfaced as Tailwind chips with the
+            # status text (no legacy .validation-proven class names).
+            assert b"proven" in response.data
+            assert b"AI-generated" in response.data
             # Proven entry appears first (higher composite score)
             proven_pos = response.data.find(b"Proven Fix")
             ai_pos = response.data.find(b"AI Entry")
@@ -1525,7 +1528,10 @@ class TestRelatedKBNavigation:
             assert response.status_code == 200
             assert b'id="related-kb"' in response.data
             assert b"hx-trigger=\"load\"" in response.data
-            assert b"Related Knowledge Base Entries" in response.data
+            # Task 4.4: the legacy .card <h3> wrapper was dropped so the
+            # kb_panel can anchor as a fixed bottom bar; the lazy-load +
+            # kb-update SSE hooks are preserved on the container.
+            assert b'data-sse-swap="kb-update"' in response.data
 
     @respx.mock
     def test_findings_exact_match_clickable_link(

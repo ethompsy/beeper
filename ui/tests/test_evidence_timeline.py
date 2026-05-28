@@ -275,7 +275,8 @@ class TestRelatedKBTemplateEnhancements:
                 exact_match_entry=None,
                 exact_match_found=False,
             )
-            assert "validation-proven" in html
+            # Task 4.4: validation status surfaced via Tailwind kb_panel chip
+            # (status text, not the legacy .validation-proven class name).
             assert "proven" in html
             assert "88%" in html
 
@@ -301,7 +302,8 @@ class TestRelatedKBTemplateEnhancements:
                 exact_match_entry=None,
                 exact_match_found=False,
             )
-            assert "validation-ai-generated" in html
+            # Task 4.4: AI-generated status text via the kb_panel chip
+            # (no legacy .validation-ai-generated class name).
             assert "AI-generated" in html
 
     def test_correction_shows_human_confirmed_badge(self, app):
@@ -326,7 +328,9 @@ class TestRelatedKBTemplateEnhancements:
                 exact_match_entry=None,
                 exact_match_found=False,
             )
-            assert "validation-human-confirmed" in html
+            # Task 4.4: human-confirmed status text via the kb_panel chip
+            # (no legacy .validation-human-confirmed class name).
+            assert "human-confirmed" in html
             assert "72%" in html
 
 
