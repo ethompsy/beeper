@@ -511,14 +511,19 @@ class TestListPageIntegration:
 
     @respx.mock
     def test_list_sse_container_preserved(self, client: FlaskClient) -> None:
-        """id='investigation-list' SSE container is preserved (Task 4.3 hook)."""
+        """id='investigation-list' SSE container is preserved (Task 4.3 hook).
+
+        Task 4.3 (AD-4) migrated the list off the htmx SSE extension onto the
+        native EventSource client (sse.js): the stream URL now lives on
+        data-sse-url instead of the old htmx sse-connect attribute.
+        """
         respx.get("http://mock-operator:8080/api/v1/investigations").mock(
             return_value=Response(200, json=[])
         )
         response = client.get("/investigations/")
         assert response.status_code == 200
         assert b'id="investigation-list"' in response.data
-        assert b'sse-connect="/investigations/stream"' in response.data
+        assert b'data-sse-url="/investigations/stream"' in response.data
 
     @respx.mock
     def test_list_no_legacy_card_class_on_migrated_elements(

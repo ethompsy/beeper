@@ -486,13 +486,17 @@ class TestStepsRenderServerSide:
 
     @respx.mock
     def test_sse_hook_preserved_for_task_4_3(self, client: FlaskClient) -> None:
-        """The SSE step-update hook is preserved (sse-swap on #step-progress) so
-        Task 4.3 can stream live updates over the server-rendered baseline."""
+        """The SSE step-update hook is preserved on #step-progress so Task 4.3
+        can stream live updates over the server-rendered baseline.
+
+        Task 4.3 (AD-4) migrated the detail page off the htmx SSE extension onto
+        the native EventSource client (sse.js): the step container now carries
+        data-sse-swap="step-update" and the stream URL lives on data-sse-url."""
         with _mock_detail_page(client):
             response = client.get("/investigations/inv-detail-001")
             html = response.data.decode()
-            assert 'sse-swap="step-update"' in html
-            assert 'sse-connect="/investigations/inv-detail-001/stream"' in html
+            assert 'data-sse-swap="step-update"' in html
+            assert 'data-sse-url="/investigations/inv-detail-001/stream"' in html
 
     def test_step_timeline_partial_uses_macro(self) -> None:
         """_step_timeline.html drives rendering through investigation_step."""

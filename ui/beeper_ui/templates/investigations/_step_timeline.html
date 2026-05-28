@@ -1,8 +1,9 @@
 {# Investigation step timeline (Story 4.2, NFR7).
 
    Renders each pipeline step via the investigation_step() macro. Completed steps
-   are server-rendered here so the page is never blank; Task 4.3 swaps this
-   container's contents over SSE (sse-swap="step-update" on the parent).
+   are server-rendered here so the page is never blank; Task 4.3 (AD-4) streams
+   live step updates over native EventSource (sse.js), merging by data-order into
+   the #step-progress container (data-sse-swap="step-update" on the parent).
 
    is_first_evidence is set on the first NON-summary (evidence-bearing) step so
    the timeline can visually anchor where evidence collection begins. #}

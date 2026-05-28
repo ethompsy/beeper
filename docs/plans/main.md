@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 4, Milestone 4.1 — **Task 4.1 done (PR #4, `0e46e4e`)**; **Task 4.2 done (branch `feature/4.2-investigation-detail`, `517a296`, awaiting review/merge)**. Once 4.2 merges, **Tasks 4.3 (SSE streaming) and 4.4 (Related KB panel) unblock and may run concurrently** (4.4 also needs Q2/AD-5 verified). Until 4.2 merges, the next `next-priority` pass has no actionable task (4.3/4.4 blocked on 4.2). Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 4, Milestone 4.1 — **Tasks 4.1 (PR #4, `0e46e4e`) and 4.2 (PR #5, `eafe9ae`) done & merged to `main`**. **Task 4.3 (SSE streaming) in progress** on branch `feature/4.3-sse-streaming` (build-for-review). **Task 4.4 (Related KB panel) deferred** until 4.3 merges — both edit `investigations/detail.html`, so they are sequenced (not run concurrently) to avoid conflicts — and until Q2/AD-5 is verified against a live backend. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -175,7 +175,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 |---|------|-----------|--------------|--------|
 | 4.1 | Investigation list view with status filtering | M | 3.2 | done |
 | 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | done |
-| 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | pending |
+| 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | in progress |
 | 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | pending |
 
 **Task 4.1 — done.** _(merged via PR #4, squash commit `0e46e4e`; 2184 UI tests green at merge; all CI checks passed)_
@@ -210,13 +210,23 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - D4/doctrine guards → `::TestTokenDisciplineAndMigration::*` (no arbitrary color values; migrated header drops legacy classes)
 - **Review notes:** (a) `affected_services` is derived (`inv.service` + `service_topology.downstream`, deduped) since findings lacks the field; (b) remaining legacy detail partials (`_findings`, `_unified_timeline`, `_evidence_panel`, `_recommendations`, urgency/remediation/gate/feedback/resolution/KB) intentionally NOT migrated — scoped to header+timeline+conclusion; (c) pre-existing duplicate `id="main-content"` (layout `<main>` + detail div) left as-is (it's the 4.3 SSE/htmx hook).
 
-**Task 4.3 — pending.**
+**Task 4.3 — in progress.** _(branch `feature/4.3-sse-streaming`; build-for-review, not auto-merged)_
 - `[T]` Running investigation opens `EventSource` from `static/js/sse.js`; steps append on arrival; list view receives `investigation_created`/`investigation_status` (FR24).
 - `[T]` Steps inserted at correct position by `order` field; UI updates ≤2s of event (NFR4).
 - `[T]` On drop, reconnect fetches `GET /api/v1/investigations/{id}` and diffs/inserts missed steps by `order` (AD-4 REST backfill).
 - `[T]` After 5 failed retries, show "Live updates unavailable — refresh to sync"; detail stays viewable.
 - `[T]` New-investigation card highlight fades over 5s.
 - `[T]` Uses native `EventSource`, NOT HTMX (AD-4); auto-reconnect ≤5s (NFR9).
+
+**Implemented on branch `feature/4.3-sse-streaming` (2026-05-26) — awaiting review/merge (not auto-merged, per request; commit `65ba7e5`).** New `static/js/sse.js` (356 lines): native `EventSource` per AD-4 — replaces the htmx-ext-sse extension on the investigation detail + list pages; builds an event→element map from `data-sse-swap` attrs (1:1 with the old `sse-swap`) so all 12 detail panels keep updating; capped exponential backoff (`MAX_RECONNECT_MS=5000`, ≤5s NFR9), `MAX_RETRIES=5` then the exact banner; on every (re)connect REST-backfills from the NEW `GET /api/v1/investigations/{id}` JSON endpoint (`investigations_api_bp`) and inserts missed steps by `order`. List stream now emits `investigation_created`/`investigation_status` (FR24). 5s token-colored `@keyframes sse-highlight-fade` in `main.css` (no hex; reduced-motion guard). `htmx-ext-sse.js` retained (still used by `services/detail.html`). D4-clean; ruff clean. Full UI suite: **2265 passed** (+34). Runtime DOM behavior (live append, mid-stream reconnect→backfill, 5-retry banner, 5s fade) to be confirmed in-browser against a live operator (AD-8).
+- `[T]` AC1 native ES from sse.js + steps append + list FR24 events → `test_sse_streaming.py::TestAC1NativeEventSourceWiring::{test_sse_js_opens_native_event_source,test_detail_page_wires_sse_js_and_stream_url,test_list_registers_fr24_events,test_list_stream_emits_fr24_event_names}`
+- `[T]` AC2 steps inserted by `order`, ≤2s → `::TestAC2StepsInsertedByOrder::{test_inserts_steps_by_data_order,test_keeps_steps_sorted_ascending_by_order,test_update_is_immediate_not_delayed}`
+- `[T]` AC3 reconnect + REST backfill diff by order (AD-4) → `::TestAC3ReconnectRestBackfill::{test_auto_reconnects_on_drop,test_backfill_fetches_json_api_endpoint,test_backfill_diffs_and_inserts_missed_steps_by_order,test_backfill_json_endpoint_returns_steps_with_order}`
+- `[T]` AC4 5-retry cap + exact banner, detail stays viewable → `::TestAC4RetryLimitAndUnavailableBanner::{test_max_retries_is_five,test_exact_unavailable_message,test_banner_inserted_above_content_not_blanking_it}`
+- `[T]` AC5 new-card highlight fades 5s → `::TestAC5NewCardHighlightFade::{test_js_fade_window_is_5000ms,test_css_defines_5s_fade_animation}`
+- `[T]` AC6 native EventSource not HTMX + reconnect ≤5s → `::TestAC6NativeNotHtmxAndReconnectWindow::{test_sse_js_uses_native_event_source_not_htmx,test_detail_page_drops_htmx_sse_extension,test_reconnect_window_capped_at_5s,test_htmx_ext_sse_kept_for_other_pages}`
+- Updated existing tests to the `data-sse-url`/`data-sse-swap` contract (intent preserved): `test_investigation_detail_view.py::test_sse_hook_preserved_for_task_4_3`, `test_investigation_list_view.py::test_list_sse_container_preserved`.
+- **Review note:** all 12 detail SSE panels migrated to native-ES dispatch; lazy `hx-get` panels keep their initial HTMX load and also receive SSE updates. The new backfill endpoint derives steps from the same operator status source (`_get_step_states`/`PIPELINE_STEPS`) as the server-rendered timeline, so REST and SSE stay consistent.
 
 **Task 4.4 — pending.** *(verify Q2 / AD-5 before relying on the read path)*
 - `[T]` Viewport >1200px: fixed bottom bar "N Related KB Entries" via `kb_panel(entries, expanded)` (`kb.html`); click expands upward (FR26).
