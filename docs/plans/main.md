@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 4, Milestone 4.1 — **Task 4.1 done (merged via PR #4, `0e46e4e`)**. **Task 4.2 (Investigation detail: summary header & step timeline)** now in progress on branch `feature/4.2-investigation-detail`. Once 4.2 merges, **4.3 and 4.4 unblock and may run concurrently**. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 4, Milestone 4.1 — **Task 4.1 done (PR #4, `0e46e4e`)**; **Task 4.2 done (branch `feature/4.2-investigation-detail`, `517a296`, awaiting review/merge)**. Once 4.2 merges, **Tasks 4.3 (SSE streaming) and 4.4 (Related KB panel) unblock and may run concurrently** (4.4 also needs Q2/AD-5 verified). Until 4.2 merges, the next `next-priority` pass has no actionable task (4.3/4.4 blocked on 4.2). Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -174,7 +174,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
 | 4.1 | Investigation list view with status filtering | M | 3.2 | done |
-| 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | in progress |
+| 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | done |
 | 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | pending |
 | 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | pending |
 
@@ -194,12 +194,21 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - Existing tests updated for the new card markup + default-active filter (intent preserved; `status_group=all` bypasses the default where a test needs all rows): `test_investigation_routes.py`, `test_escalation_urgency_routes.py`, `test_investigation_workflow_states.py`.
 - **Review note:** urgency score is no longer shown on the card (was in the legacy table); still computed for `sort=urgency`. Confirm this is acceptable for the card layout, or fold urgency into the card before merge.
 
-**Task 4.2 — in progress.** _(branch `feature/4.2-investigation-detail`; build-for-review, same flow as 4.1)_
+**Task 4.2 — done.** _(implemented on branch `feature/4.2-investigation-detail`, commit `517a296`; build-for-review, same flow as 4.1)_
 - `[T]` `summary_header(inv)` renders immediately (service/severity/signal-count/status), no SSE dependency (FR23); breadcrumb "Investigations > INV-{id}".
 - `[T]` Steps via `investigation_step(step, is_first_evidence, order)` (`investigation.html`) with 3px type-colored left border (metric=indigo, log=green, KB=amber, correlation=light indigo, summary=gray).
 - `[T]` Evidence in `ui-monospace`; service names as labels on `surface-raised` (FR25).
 - `[T]` `conclusion_block(inv)` shows root cause / affected services / correlated count, visually distinct.
 - `[T]` Completed steps render immediately; page never blank (NFR7).
+
+**Implemented (2026-05-26) — full UI suite 2231 passed (+47); D4-compliant (no arbitrary color values); ruff clean.** New `components/investigation.html` (`summary_header`, `investigation_step`, `conclusion_block`, reuses `status_badge`) + `_step_timeline.html`; `detail.html`/`_detail_content.html` migrated onto them (legacy classes dropped on migrated elements); route adds `type` to `PIPELINE_STEPS` + derives `signal_count`; SSE `step-update` repointed to the new (fully-Tailwind) `_step_timeline.html`; legacy `_step_progress.html` removed. SSE hook preserved for 4.3.
+- `[T]` AC1 summary header (no-SSE) + breadcrumb → `test_investigation_detail_view.py::TestSummaryHeaderMacro::*` (10 tests incl. `test_header_has_no_sse_dependency`, `test_breadcrumb_reads_investigations_inv_id`, `test_page_renders_summary_header_immediately`)
+- `[T]` AC2 step macro + 3px type-colored border → `::TestInvestigationStepMacro::*` (incl. `test_metric_border_is_primary_indigo`, `test_log_border_is_status_healthy_green`, `test_kb_border_is_status_warning_amber`, `test_correlation_border_is_primary_hover`, `test_summary_border_is_status_muted_gray`, `test_step_uses_3px_left_border_width`)
+- `[T]` AC3 mono evidence + surface service labels (FR25) → `::TestEvidenceMonoAndServiceLabels::*`
+- `[T]` AC4 conclusion_block (root cause/affected/correlated) → `::TestConclusionBlock::*`
+- `[T]` AC5 server-rendered, never blank (NFR7) → `::TestStepsRenderServerSide::*` (incl. `test_completed_steps_present_without_streaming`, `test_sse_hook_preserved_for_task_4_3`)
+- D4/doctrine guards → `::TestTokenDisciplineAndMigration::*` (no arbitrary color values; migrated header drops legacy classes)
+- **Review notes:** (a) `affected_services` is derived (`inv.service` + `service_topology.downstream`, deduped) since findings lacks the field; (b) remaining legacy detail partials (`_findings`, `_unified_timeline`, `_evidence_panel`, `_recommendations`, urgency/remediation/gate/feedback/resolution/KB) intentionally NOT migrated — scoped to header+timeline+conclusion; (c) pre-existing duplicate `id="main-content"` (layout `<main>` + detail div) left as-is (it's the 4.3 SSE/htmx hook).
 
 **Task 4.3 — pending.**
 - `[T]` Running investigation opens `EventSource` from `static/js/sse.js`; steps append on arrival; list view receives `investigation_created`/`investigation_status` (FR24).
