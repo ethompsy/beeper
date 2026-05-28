@@ -235,6 +235,15 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - `[T]` 0 results → "0 Related KB Entries" shown, not hidden.
 - `[T]` Clicking an entry expands detail in-panel (past context/resolution/service).
 
+**Implemented on branch `feature/4.4-related-kb-panel` (2026-05-26) — awaiting review/merge (not auto-merged, per request; commit `1dd3b14`).** New `components/kb.html` (`kb_panel(entries, expanded, is_novel, exact_match_entry, exact_match_found)`) — fully Tailwind, `bg-surface-overlay` floating panel (UX elevation table), **no new custom CSS** (`main.css` untouched), no arbitrary values. Wide (`lg:` ≥1200px): `lg:fixed lg:bottom-0` anchored bottom bar **"N Related KB Entries"** that expands UPWARD (expandable body `order-first` above the count bar `order-last`). Narrow (<1200px): `static`, inline below the timeline. Per-entry detail via native `<details>/<summary>` (service / past-context / type / date / "Open full entry" + preserved `sendKBFeedback` relevant/not-relevant buttons). New dependency-free `static/js/kb-panel.js` toggles the panel (`aria-expanded`, `max-h-0`↔`max-h-96`, re-binds on `htmx:afterSwap`); reduced-motion respected. `_related_kb.html` now renders `kb_panel(...)`; `_detail_content.html` dropped the legacy `.card`/`<h3>` wrapper but PRESERVED the `hx-get` lazy-load + `data-sse-swap="kb-update"` (Task 4.3 hook). ruff clean. Full UI suite: **2293 passed** (+28).
+- `[T]` AC1 wide fixed bottom bar "N Related KB Entries", expands upward (FR26) → `test_related_kb_panel.py::TestAC1WideFixedBottomBarExpandsUpward`
+- `[T]` AC2 narrow inline/static below timeline → `::TestAC2NarrowInlineBelowTimeline`
+- `[T]` AC3 entry titles with relevance context (AD-5) → `::TestAC3EntryTitlesWithRelevance`
+- `[T]` AC4 0 results → "0 Related KB Entries" shown, not hidden → `::TestAC4ZeroResultsShowsCount`
+- `[T]` AC5 clicking an entry expands detail in-panel → `::TestAC5EntryDetailExpandsInPanel`
+- Updated existing tests to the new markup (intent preserved): `test_investigation_routes.py` (exact-match banner, validation ranking, lazy-load), `test_evidence_timeline.py::TestRelatedKBTemplateEnhancements` (chip status-text vs legacy `.validation-*` classes).
+- **Q2/AD-5 (OPEN — must verify before trusting end-to-end):** the KBQueryStep → `investigations` Qdrant read path is verifiable only against a live operator/Qdrant (down in dev); UI built on the existing `/related-kb` route + representative mock data. Runtime responsive/expand DOM behavior verified in-browser per AD-8.
+
 **Parallelizable:** 4.1→4.2 sequential; once 4.2 lands, 4.3 and 4.4 may run concurrently (both build on detail). _(max 8 concurrent per config)_
 **Milestone Value:** SREs and demo viewers watch investigations unfold live with inline evidence and KB context.
 **Observational Outcomes:** `[O]` UI loads ≤3s, list updates ≤2s of SSE (NFR4); `[O]` SSE holds 10 min, reconnects ≤5s (NFR9); `[O]` progressive render of partial step sets (NFR7).
