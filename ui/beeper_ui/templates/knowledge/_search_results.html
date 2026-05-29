@@ -1,44 +1,51 @@
+{# KB search results (Task 5.1, FR29). Dark design system — Tailwind only.
+   Renders matches for keyword and/or service/type/date filters. #}
+{% from "components/kb.html" import kb_type_badge %}
 {# Include active filters at top of results #}
 {% include "knowledge/_active_filters.html" %}
 
 {% if error_message %}
-<div class="search-error">
-    {{ error_message }}
+<div class="search-error bg-status-critical/10 border border-status-critical/30 rounded-lg px-4 py-3 mt-3">
+    <p class="text-status-critical text-sm m-0">{{ error_message }}</p>
 </div>
 {% elif (query or any_filter_active) and not entries %}
-<div class="search-no-results">
+<div class="search-no-results text-text-secondary text-sm mt-3 px-1">
     {% if query %}
-    <p>No results found for "{{ query }}"</p>
+    <p class="m-0">No results found for "{{ query }}"</p>
     {% else %}
-    <p>No entries match the selected filters.</p>
+    <p class="m-0">No entries match the selected filters.</p>
     {% endif %}
 </div>
 {% elif entries %}
 {% if not has_exact_matches %}
-<div class="search-notice">
+<div class="search-notice text-text-muted text-xs mt-3 mb-1 px-1">
     No exact matches found. Showing related entries.
 </div>
 {% endif %}
-<div class="search-results-list">
+<div class="search-results-list flex flex-col gap-2 mt-3">
     {% for entry in entries %}
-    <div class="search-result-item">
-        <div class="result-header">
-            <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}" class="result-title">
+    <div class="search-result-item bg-surface-raised rounded-lg border border-surface-overlay px-4 py-3
+                hover:bg-surface-overlay transition-colors duration-150">
+        <div class="result-header flex items-start justify-between gap-3">
+            <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}"
+               class="result-title text-text-primary font-medium hover:text-primary no-underline min-w-0">
                 {{ entry.title }}
             </a>
             {% if entry.relevance_score is not none %}
-            <span class="relevance-score" title="Relevance: {{ (entry.relevance_score * 100)|int }}%">
+            <span class="relevance-score text-text-secondary text-xs font-mono shrink-0"
+                  title="Relevance: {{ (entry.relevance_score * 100)|int }}%">
                 {{ (entry.relevance_score * 100)|int }}%
             </span>
             {% endif %}
         </div>
-        <div class="result-meta">
-            <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+        <div class="result-meta flex flex-wrap items-center gap-2 mt-1.5">
+            {{ kb_type_badge(entry.entry_type) }}
             {% if entry.service %}
-            <span class="service-badge">{{ entry.service }}</span>
+            <span class="service-badge inline-flex items-center px-2 py-0.5 rounded text-xs font-mono
+                         bg-surface-overlay text-text-secondary">{{ entry.service }}</span>
             {% endif %}
         </div>
-        <p class="result-snippet">{{ entry.content|strip_markdown|truncate(200)|highlight_query(query) }}</p>
+        <p class="result-snippet text-text-secondary text-sm mt-2 leading-relaxed">{{ entry.content|strip_markdown|truncate(200)|highlight_query(query) }}</p>
     </div>
     {% endfor %}
 </div>

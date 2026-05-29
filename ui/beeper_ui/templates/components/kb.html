@@ -45,6 +45,24 @@
 {%- endif -%}
 {% endmacro %}
 
+{# Entry-type chip (Task 5.1). Colors by KB entry type so list / search / detail
+   views share one visual vocabulary. Dark-token only, no arbitrary values. #}
+{% macro kb_type_badge(entry_type) %}
+{%- if entry_type == 'investigation' -%}
+  {%- set chip = 'bg-primary/15 text-primary border border-primary/30' -%}
+{%- elif entry_type == 'runbook' -%}
+  {%- set chip = 'bg-status-healthy/15 text-status-healthy border border-status-healthy/30' -%}
+{%- elif entry_type == 'correction' -%}
+  {%- set chip = 'bg-status-warning/15 text-status-warning border border-status-warning/30' -%}
+{%- elif entry_type == 'proven_fix' -%}
+  {%- set chip = 'bg-status-healthy/15 text-status-healthy border border-status-healthy/30' -%}
+{%- else -%}
+  {%- set chip = 'bg-surface-overlay text-text-muted border border-surface-overlay' -%}
+{%- endif -%}
+<span class="entry-type-badge inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ chip }}"
+      data-entry-type="{{ entry_type }}">{{ (entry_type or 'unknown')|replace('_', ' ')|capitalize }}</span>
+{% endmacro %}
+
 {% macro kb_panel(entries, expanded=false, is_novel=false, exact_match_entry=none, exact_match_found=false) %}
 {%- set count = entries|length if entries else 0 -%}
 {%- set noun = 'Entry' if count == 1 else 'Entries' -%}

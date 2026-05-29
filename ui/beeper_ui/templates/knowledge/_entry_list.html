@@ -1,16 +1,19 @@
+{# KB entry list (Task 5.1). Dark design system — Tailwind only.
+   AC4: empty KB renders an explanatory empty state, not a blank list. #}
+{% from "components/empty.html" import empty_state %}
 {% if error_message %}
-<div class="card error-card">
-    <p>{{ error_message }}</p>
+<div class="error-card bg-status-critical/10 border border-status-critical/30 rounded-lg px-4 py-3">
+    <p class="text-status-critical text-sm m-0">{{ error_message }}</p>
 </div>
 {% elif entries %}
-<div class="entry-grid">
+<div class="entry-grid flex flex-col gap-2">
     {% for entry in entries %}
     {% include "knowledge/_entry_card.html" %}
     {% endfor %}
 </div>
 {% else %}
-<div class="card empty-state">
-    <p>No KB entries found.</p>
-    <p>Import runbooks or wait for investigations to populate the knowledge base.</p>
-</div>
+{{ empty_state(
+    'No knowledge base entries yet',
+    'Entries appear automatically as Beeper completes investigations. You can also import runbooks to seed the knowledge base.',
+    '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 8h20l8 8v24a2 2 0 01-2 2H10a2 2 0 01-2-2V10a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M30 8v8h8M16 26h16M16 32h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>') }}
 {% endif %}

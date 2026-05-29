@@ -1,130 +1,184 @@
 {% extends "base.html" %}
+{% from "components/kb.html" import kb_type_badge %}
 
 {% block title %}{{ entry.title if entry else 'Not Found' }} - Knowledge Base - Beeper{% endblock %}
 
-{% block content %}
-<nav class="breadcrumb">
-    <a href="{{ url_for('knowledge.kb_index') }}">Knowledge Base</a>
-    <span class="separator">/</span>
-    <span class="current">{{ entry.title if entry else 'Not Found' }}</span>
-</nav>
+{# Breadcrumb (Task 5.1): "Knowledge Base > {title}" rendered into the top-bar
+   breadcrumb landmark so the migrated detail page carries no legacy classes. #}
+{% block breadcrumb %}
+<a href="{{ url_for('knowledge.kb_index') }}"
+   class="text-text-secondary hover:text-text-primary no-underline rounded">Knowledge Base</a>
+<span aria-hidden="true" class="mx-1 text-text-muted">&gt;</span>
+<span class="text-text-primary">{{ entry.title if entry else 'Not Found' }}</span>
+{% endblock %}
 
+{% block content %}
 {% if error_message %}
-<div class="card error-card">
-    <h3>Error</h3>
-    <p>{{ error_message }}</p>
-    <p><a href="{{ url_for('knowledge.kb_index') }}">Return to Knowledge Base</a></p>
+<div class="error-card bg-status-critical/10 border border-status-critical/30 rounded-lg px-4 py-3">
+    <h3 class="text-status-critical text-base font-semibold m-0">Error</h3>
+    <p class="text-text-secondary text-sm mt-1">{{ error_message }}</p>
+    <p class="mt-2 m-0"><a href="{{ url_for('knowledge.kb_index') }}" class="text-primary hover:text-primary-hover">Return to Knowledge Base</a></p>
 </div>
 {% elif not entry %}
-<div class="card error-card">
-    <h3>Entry Not Found</h3>
-    <p>The requested KB entry could not be found.</p>
-    <p><a href="{{ url_for('knowledge.kb_index') }}">Return to Knowledge Base</a></p>
+<div class="error-card bg-surface-raised border border-surface-overlay rounded-lg px-4 py-3">
+    <h3 class="text-text-primary text-base font-semibold m-0">Entry Not Found</h3>
+    <p class="text-text-secondary text-sm mt-1">The requested KB entry could not be found.</p>
+    <p class="mt-2 m-0"><a href="{{ url_for('knowledge.kb_index') }}" class="text-primary hover:text-primary-hover">Return to Knowledge Base</a></p>
 </div>
 {% else %}
-<article class="kb-entry">
-    <header class="entry-header-full">
-        <div class="entry-title-row">
-            <h2>{{ entry.title }}</h2>
-            <div class="entry-actions">
+<article class="kb-entry max-w-4xl">
+    <header class="entry-header-full mb-4">
+        <div class="entry-title-row flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="text-text-primary text-xl font-semibold m-0 min-w-0">{{ entry.title }}</h2>
+            <div class="entry-actions flex items-center gap-2 shrink-0">
                 {% if entry.validation_status == 'AI-generated' %}
-                <form method="post" action="{{ url_for('knowledge.kb_confirm', entry_id=entry.entry_id) }}" style="display:inline;">
-                    <button type="submit" class="btn btn-primary">Confirm as Accurate</button>
+                <form method="post" action="{{ url_for('knowledge.kb_confirm', entry_id=entry.entry_id) }}" class="inline">
+                    <button type="submit"
+                            class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium
+                                   bg-primary text-text-primary hover:bg-primary-hover transition-colors duration-150">Confirm as Accurate</button>
                 </form>
                 {% endif %}
-                <a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}" class="btn btn-secondary">History</a>
-                <a href="{{ url_for('knowledge.kb_edit', entry_id=entry.entry_id) }}" class="btn btn-secondary">Edit</a>
+                <a href="{{ url_for('knowledge.kb_history', entry_id=entry.entry_id) }}"
+                   class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium no-underline
+                          bg-surface-raised text-text-secondary border border-surface-overlay
+                          hover:bg-surface-overlay hover:text-text-primary transition-colors duration-150">History</a>
+                <a href="{{ url_for('knowledge.kb_edit', entry_id=entry.entry_id) }}"
+                   class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium no-underline
+                          bg-surface-raised text-text-secondary border border-surface-overlay
+                          hover:bg-surface-overlay hover:text-text-primary transition-colors duration-150">Edit</a>
             </div>
         </div>
-        <div class="entry-meta-full">
-            <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+        <div class="entry-meta-full flex flex-wrap items-center gap-2 mt-2 text-xs">
+            {{ kb_type_badge(entry.entry_type) }}
             {% if entry.service %}
-            <a href="{{ url_for('knowledge.service_knowledge', service_name=entry.service) }}" class="service-badge">
+            <a href="{{ url_for('knowledge.service_knowledge', service_name=entry.service) }}"
+               class="service-badge inline-flex items-center px-2 py-0.5 rounded font-mono
+                      bg-surface-overlay text-text-secondary hover:text-primary no-underline">
                 {{ entry.service }}
             </a>
             {% endif %}
             {% if entry.created_at %}
-            <span class="entry-date" title="{{ entry.created_at.isoformat() }}">
+            <span class="entry-date text-text-muted" title="{{ entry.created_at.isoformat() }}">
                 Created: {{ entry.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
             </span>
             {% endif %}
             {% if entry.author %}
-            <span class="entry-author">by {{ entry.author }}</span>
+            <span class="entry-author text-text-muted">by {{ entry.author }}</span>
             {% endif %}
-            <span class="entry-version">v{{ entry.version }}</span>
+            <span class="entry-version text-text-muted font-mono">v{{ entry.version }}</span>
             {% if entry.validation_status %}
-            <span class="status-badge status-{{ entry.validation_status|lower }}">{{ entry.validation_status }}</span>
+            <span class="status-badge inline-flex items-center px-2 py-0.5 rounded font-medium
+                         bg-surface-overlay text-text-secondary border border-surface-overlay">{{ entry.validation_status }}</span>
             {% endif %}
             {% if entry.auto_published %}
-            <span class="trust-badge trust-auto-published">Auto-published</span>
+            <span class="trust-badge inline-flex items-center px-2 py-0.5 rounded font-medium
+                         bg-primary/15 text-primary border border-primary/30">Auto-published</span>
             {% endif %}
         </div>
     </header>
 
     {% if entry.tags %}
-    <div class="entry-tags">
+    <div class="entry-tags flex flex-wrap gap-1.5 mb-4">
         {% for tag in entry.tags %}
-        <span class="tag">{{ tag }}</span>
+        <span class="tag inline-flex items-center px-1.5 py-0.5 rounded text-xs
+                     bg-surface-overlay text-text-muted">{{ tag }}</span>
         {% endfor %}
     </div>
     {% endif %}
 
-    {% if source_investigation or contributing_investigations %}
-    <div class="card investigation-links">
-        <h3>Investigation Links</h3>
-        {% if source_investigation %}
-        <div class="investigation-link-item">
-            <span class="link-type-badge badge-source">Source</span>
-            <a href="{{ url_for('investigations.investigation_detail', investigation_id=source_investigation.investigation_id) }}"
-               class="investigation-link">{{ source_investigation.investigation_id }}</a>
-        </div>
-        {% endif %}
-        {% if contributing_investigations %}
-        <div class="contributing-investigations">
-            <strong>Contributing Investigations:</strong>
-            <ul class="investigation-link-list">
-                {% for inv in contributing_investigations %}
-                <li>
-                    <span class="link-type-badge badge-contributing">Contributing</span>
-                    <a href="{{ url_for('investigations.investigation_detail', investigation_id=inv.investigation_id) }}"
-                       class="investigation-link">{{ inv.investigation_id }}</a>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-    </div>
+    {# Incident details (Task 5.1, FR31): root cause, resolution, affected
+       services, and source investigation reference. Structured payload fields
+       render as labeled sections when present; the full markdown record below
+       remains the source of truth. #}
+    {% set has_incident_details = entry.root_cause or entry.resolution or entry.affected_services or source_investigation or contributing_investigations %}
+    {% if has_incident_details %}
+    <section class="incident-details bg-surface-raised border border-surface-overlay rounded-lg p-4 mb-4"
+             aria-label="Incident details">
+        <h3 class="text-text-secondary text-xs font-semibold uppercase tracking-wider m-0 mb-3">Incident Details</h3>
+        <dl class="grid grid-cols-1 gap-3 m-0">
+            {% if entry.root_cause %}
+            <div class="incident-root-cause">
+                <dt class="text-text-muted text-xs mb-1">Root Cause</dt>
+                <dd class="text-text-primary text-sm m-0">{{ entry.root_cause }}</dd>
+            </div>
+            {% endif %}
+            {% if entry.resolution %}
+            <div class="incident-resolution">
+                <dt class="text-text-muted text-xs mb-1">Resolution</dt>
+                <dd class="text-text-primary text-sm m-0">{{ entry.resolution }}</dd>
+            </div>
+            {% endif %}
+            {% if entry.affected_services %}
+            <div class="incident-affected-services">
+                <dt class="text-text-muted text-xs mb-1">Affected Services</dt>
+                <dd class="m-0 flex flex-wrap gap-1.5">
+                    {% for svc in entry.affected_services %}
+                    <span class="service-badge inline-flex items-center px-2 py-0.5 rounded text-xs font-mono
+                                 bg-surface-overlay text-text-secondary">{{ svc }}</span>
+                    {% endfor %}
+                </dd>
+            </div>
+            {% endif %}
+            {% if source_investigation or contributing_investigations %}
+            <div class="incident-source-investigation">
+                <dt class="text-text-muted text-xs mb-1">Source Investigation</dt>
+                <dd class="m-0 flex flex-col gap-1.5">
+                    {% if source_investigation %}
+                    <span class="flex items-center gap-2">
+                        <span class="link-type-badge inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+                                     bg-primary/15 text-primary border border-primary/30">Source</span>
+                        <a href="{{ url_for('investigations.investigation_detail', investigation_id=source_investigation.investigation_id) }}"
+                           class="investigation-link text-primary hover:text-primary-hover text-sm font-mono no-underline">{{ source_investigation.investigation_id }}</a>
+                    </span>
+                    {% endif %}
+                    {% for inv in contributing_investigations %}
+                    <span class="flex items-center gap-2">
+                        <span class="link-type-badge inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+                                     bg-surface-overlay text-text-secondary border border-surface-overlay">Contributing</span>
+                        <a href="{{ url_for('investigations.investigation_detail', investigation_id=inv.investigation_id) }}"
+                           class="investigation-link text-primary hover:text-primary-hover text-sm font-mono no-underline">{{ inv.investigation_id }}</a>
+                    </span>
+                    {% endfor %}
+                </dd>
+            </div>
+            {% endif %}
+        </dl>
+    </section>
     {% endif %}
 
-    <div class="entry-content card">
+    <div class="entry-content prose-kb bg-surface-raised border border-surface-overlay rounded-lg p-4 text-text-secondary text-sm leading-relaxed">
         {{ entry.content|markdown }}
     </div>
 
-    <div class="correction-actions">
+    <div class="correction-actions flex items-center gap-2 mt-4">
         <button hx-get="{{ url_for('knowledge.kb_corrections_panel', entry_id=entry.entry_id) }}"
                 hx-target="#correction-panel"
                 hx-swap="innerHTML"
-                class="btn btn-secondary">Suggest Correction</button>
+                class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium
+                       bg-surface-raised text-text-secondary border border-surface-overlay
+                       hover:bg-surface-overlay hover:text-text-primary transition-colors duration-150">Suggest Correction</button>
         <button hx-get="{{ url_for('knowledge.kb_corrections_history', entry_id=entry.entry_id) }}"
                 hx-target="#correction-panel"
                 hx-swap="innerHTML"
-                class="btn btn-secondary">Corrections</button>
+                class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium
+                       bg-surface-raised text-text-secondary border border-surface-overlay
+                       hover:bg-surface-overlay hover:text-text-primary transition-colors duration-150">Corrections</button>
     </div>
 
-    <div id="correction-panel" class="card">
+    <div id="correction-panel" class="mt-3">
         <!-- Correction panel loaded via HTMX -->
     </div>
 
-    <div id="revision-panel" class="card">
+    <div id="revision-panel" class="mt-3">
         <!-- Revision panel loaded via HTMX -->
     </div>
 </article>
 
-<aside class="related-entries"
+<aside class="related-entries mt-6"
        hx-get="{{ url_for('knowledge.kb_related', entry_id=entry.entry_id, service=entry.service) }}"
        hx-trigger="load"
        hx-swap="innerHTML">
-    <span class="htmx-indicator">Loading related entries...</span>
+    <span class="htmx-indicator text-text-muted text-sm">Loading related entries...</span>
 </aside>
 {% endif %}
 {% endblock %}
