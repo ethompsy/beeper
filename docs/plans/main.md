@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 4, Milestone 4.1 — **Tasks 4.1 (PR #4), 4.2 (PR #5), 4.3 (PR #6, `8d73909`) done & merged to `main`**. **Task 4.4 (Related KB panel) in progress** on branch `feature/4.4-related-kb-panel` (build-for-review) — the LAST task in Milestone 4.1 / Phase 4. Its KBQueryStep read path (Q2/AD-5) still needs verifying against a live operator/Qdrant (flagged; UI built on the existing `/related-kb` route + mock data per AD-8). Once 4.4 merges, **Phase 4 is complete** and the next `next-priority` advances to Phase 5. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 5, Milestone 5.1 — **Phase 4 complete** (Tasks 4.1–4.4 merged via PRs #4–#7). **Tasks 5.1, 5.2, 5.3 implemented CONCURRENTLY (build-for-review)** on branches `feature/5.1-kb-views`, `feature/5.2-diagnostic-dashboard`, `feature/5.3-sources-spending` — each validated (per-task `[T]` tests + full UI suite green; ruff + D4 clean; `tailwind.css` excluded). They touch disjoint files (`components/kb.html` / `components/diagnostic.html`+`layout.html` / `components/status.html`) and merge in any order. (Plan notes for all three live on the `5.1` branch.) Once all three merge, **Phase 5 is complete** and the next `next-priority` advances to Phase 6 (Demo Automation & E2E). Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -258,17 +258,24 @@ Browse/search KB, view pipeline diagnostics (ingestion + detection stats, EWMA w
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 5.1 | Knowledge Base browsing, search & detail views | M | 3.2, 2.3 | pending |
-| 5.2 | Pipeline diagnostic dashboard (ingestion + detection stats) | M | 3.2, 1.4 | pending |
-| 5.3 | Source connection status & LLM spending views | M | 3.2 | pending |
+| 5.1 | Knowledge Base browsing, search & detail views | M | 3.2, 2.3 | in progress |
+| 5.2 | Pipeline diagnostic dashboard (ingestion + detection stats) | M | 3.2, 1.4 | in progress |
+| 5.3 | Source connection status & LLM spending views | M | 3.2 | in progress |
 
-**Task 5.1 — pending.**
+**Task 5.1 — in progress.** _(branch `feature/5.1-kb-views`; build-for-review, not auto-merged)_
 - `[T]` Learn > Knowledge Base lists entries with service/title/date (FR28).
 - `[T]` Search by keyword or service filters to matches (FR29).
 - `[T]` Entry detail shows past root cause, resolution, affected services, source investigation ref (FR31).
 - `[T]` Empty KB → explanatory empty state, not blank.
 
-**Task 5.2 — pending.** *(gated on Task 1.4 detection stats API)*
+**Implemented on branch `feature/5.1-kb-views` (commit `af59bf6`) — build-for-review.** Migrated KB index/search/entry templates to dark tokens (no arbitrary values; legacy classes removed on migrated elements). Added structured FR31 fields (`root_cause`/`resolution`/`affected_services`) to `KBEntry` + `kb_service.from_qdrant` parsing (additive, optional; falls back to markdown content + `resolution_outcome`). Shared `kb_type_badge` in `components/kb.html`; `empty_state` for AC4. Full UI suite **2303 passed**; ruff clean.
+- `[T]` AC1 list service/title/date (FR28) → `test_kb_views.py::TestAC1ListShowsServiceTitleDate::test_kb_index_lists_service_title_and_date`
+- `[T]` AC2 keyword/service search (FR29) → `::TestAC2SearchFiltersToMatches::{test_keyword_search_returns_matching_entries,test_service_filter_returns_filtered_entries}`
+- `[T]` AC3 entry detail FR31 fields → `::TestAC3EntryDetailShowsFR31Fields::{test_entry_detail_renders_root_cause_resolution_affected_and_source,test_kbentry_parses_fr31_fields_from_payload}`
+- `[T]` AC4 explanatory empty state → `::TestAC4EmptyState::test_empty_kb_renders_explanatory_empty_state`
+- **Review note:** service-layer change (`KBEntry` fields + Qdrant parsing); `knowledge/_related.html` left legacy (out of scope). Structured fields populate only when the authoring/resolution pipeline writes them; older entries fall back to markdown.
+
+**Task 5.2 — in progress.** _(branch `feature/5.2-diagnostic-dashboard`; build-for-review, not auto-merged)_ *(gated on Task 1.4 detection stats API — done)*
 - `[T]` Observe > Ingestion Stats shows `metrics_received`/`logs_received` via `metric_tile(label, value, status, trend)` (`diagnostic.html`) (FR32).
 - `[T]` Adds `anomalies_detected`, `anomalies_suppressed`, `active_metric_detectors` tiles (FR33).
 - `[T]` Warming up (`samples < minimum`): `ewma_progress(percentage, status)` bar + amber "Warming Up" chip; percentage = `samples / minimum * 100`.
@@ -276,11 +283,27 @@ Browse/search KB, view pipeline diagnostics (ingestion + detection stats, EWMA w
 - `[T]` `metrics_received == 0 && logs_received == 0`: red "No Data" chip, distinct from both other states.
 - `[T]` Dashboard auto-refreshes on pipeline state change.
 
-**Task 5.3 — pending.**
+**Implemented on branch `feature/5.2-diagnostic-dashboard` (commit `c6d2c53`) — build-for-review.** New `components/diagnostic.html` (`metric_tile`, `ewma_progress`, `pipeline_state_chip`, Tailwind-only); new `/health/ingestion` route + `ingestion.html`/`_ingestion_content.html`; extended `IngestionStats` with the 7 Task-1.4 fields (snake_case, confirmed vs operator `IngestionStatsResponse`). State precedence red `no_data` → amber `warming` (+progress, pct=samples/min*100 clamped 0–100) → green `active`, all via status tokens. Auto-refresh = HTMX `hx-trigger="every 5s"` (no general pipeline SSE channel; matches `health/status.html`). Added Observe > Ingestion Stats sidebar nav (deferred from Story 3.3). Full UI suite **2316 passed**; ruff clean.
+- `[T]` AC1 metrics/logs tiles via `metric_tile` (FR32) → `test_diagnostic_dashboard.py::TestAC1IngestionStatsTiles`
+- `[T]` AC2 detection tiles (FR33) → `::TestAC2DetectionTiles`
+- `[T]` AC3 warming amber chip + `ewma_progress` bar + pct math → `::TestAC3WarmingUpState`
+- `[T]` AC4 warmed green "Active" chip (distinct) → `::TestAC4WarmedActiveState`
+- `[T]` AC5 no-data red chip (distinct, precedence) → `::TestAC5NoDataState`
+- `[T]` AC6 auto-refresh → `::TestAC6AutoRefresh` (+ `::TestSidebarNavEntry`)
+- **Review note:** real numbers + HTMX swap-on-state-change need live-operator verification (AD-8); legacy `health/status.html` buffer card left unmigrated (out of scope).
+
+**Task 5.3 — in progress.** _(branch `feature/5.3-sources-spending`; build-for-review, not auto-merged)_
 - `[T]` Observe > Sources shows Prometheus/Loki connection status with indicators (FR34).
 - `[T]` Connected → green "Connected" + last-seen; disconnected → red "Disconnected".
 - `[T]` Manage > Spending shows LLM provider config + spending metrics (FR35).
 - `[T]` Operator restart resumes CRDs without duplicates, verified via source/investigation state consistency (NFR12).
+
+**Implemented on branch `feature/5.3-sources-spending` (commit `deaff9b`) — build-for-review.** Migrated sources + spending templates to dark tokens; new `source_status_badge` in `components/status.html` (connected→green "Connected" + last-seen; error/disconnected/failed→red "Disconnected"; else gray "Unknown"; preserves raw `data-status`). Added `SpendingService.get_provider_config()` (reads `BEEPER_LLM_*` env, masks API key to last 4) + "LLM Provider Configuration" block. AC4/NFR12: added dedup-by-name in `SourceService.get_sources()` + UI-layer consistency tests (operator idempotency itself covered by Rust `test_deterministic_job_name_prevents_duplicates`). Full UI suite **2300 passed**; ruff clean.
+- `[T]` AC1 Prom/Loki indicators (FR34) → `test_sources_spending_views.py::TestAC1SourceConnectionStatusIndicators::test_ac1_sources_show_prometheus_loki_status_indicators`
+- `[T]` AC2 connected-green+last-seen / disconnected-red → `::TestAC2ConnectedDisconnectedIndicators::{test_ac2_connected_green_with_last_seen_disconnected_red,test_ac2_disconnected_source_renders_red_label}`
+- `[T]` AC3 provider config + metrics (FR35) → `::TestAC3SpendingProviderConfigAndMetrics::{test_ac3_spending_dashboard_shows_provider_config_and_metrics,test_ac3_provider_config_masks_api_key_and_reads_env}`
+- `[T]` AC4 restart consistency (NFR12) → `::TestAC4RestartStateConsistency::{test_ac4_sources_view_is_consistent_and_dedup_free_after_restart,test_ac4_duplicate_resume_payload_is_deduplicated_by_name}`
+- **Review notes:** service-layer changes (`SourceService` dedup, `SpendingService` provider config); `costs.html`/`_cost_breakdown.html` left legacy (out of scope); NFR12 full end-to-end proof needs a live operator restart (UI-layer consistency proven here).
 
 **Parallelizable:** 5.1, 5.2, 5.3 are independent once Phase 3 lands and Task 1.4 is done — run all three concurrently. _(max 8 concurrent per config)_
 **Milestone Value:** Eric can diagnose "broken vs. warming up" from the UI in seconds; KB is browsable.
