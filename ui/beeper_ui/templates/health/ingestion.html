@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Ingestion Stats - Beeper{% endblock %}
+
+{# Highlight the Observe > Ingestion Stats sidebar item (matches the nav url). #}
+{% block active_item %}/health/ingestion{% endblock %}
+
+{# Breadcrumb (top-bar landmark, Tailwind-only — no legacy .breadcrumb). #}
+{% block breadcrumb %}
+<span class="text-text-secondary">Observe</span>
+<span aria-hidden="true" class="mx-1 text-text-muted">&gt;</span>
+<span class="text-text-primary">Ingestion Stats</span>
+{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+  <div>
+    <h1 class="text-text-primary text-xl font-semibold">Ingestion &amp; Detection</h1>
+    <p class="text-text-secondary text-sm mt-1">
+      Live pipeline diagnostics — ingestion throughput, anomaly detection, and EWMA warmup state.
+    </p>
+  </div>
+</div>
+
+{# Auto-refresh container (AC6): polls /health/ingestion every 5s. HTMX requests
+   return the _ingestion_content.html partial, so the dashboard re-renders on any
+   pipeline state change without a full-page reload. #}
+<div id="ingestion-stats"
+     hx-get="/health/ingestion"
+     hx-trigger="every 5s"
+     hx-swap="innerHTML"
+     aria-live="polite">
+  {% include "health/_ingestion_content.html" %}
+</div>
+{% endblock %}

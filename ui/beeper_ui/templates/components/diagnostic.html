@@ -1,0 +1,103 @@
+{# Diagnostic dashboard components (Task 5.2 — FR32-33).
+
+   Grafana-style pipeline diagnostics: large scannable metric numbers,
+   color-coded pipeline-state chips, and an EWMA warmup progress bar. Tailwind
+   ONLY (no main.css rules) per AD-7 — every state uses real design tokens:
+
+     warming (samples < minimum) → status-warning (amber)  "Warming Up"
+     active  (samples >= minimum) → status-healthy (green)  "Active"
+     no data (metrics==0 && logs==0) → status-critical (red) "No Data"
+
+   Macros:
+     metric_tile(label, value, status, trend)  — one large-number stat tile.
+     ewma_progress(percentage, status)          — warmup progress bar.
+     pipeline_state_chip(state)                  — the tri-state status chip.
+#}
+
+{# ── metric_tile ───────────────────────────────────────────────────────────
+   A single Grafana-style stat: small uppercase label, large mono value, and an
+   optional status-colored accent dot + optional trend hint. `status` is one of
+   healthy / warning / critical / muted / neutral (default neutral = no accent).
+#}
+{% macro metric_tile(label, value, status='neutral', trend='') %}
+{%- if status == 'healthy' -%}
+  {%- set accent = 'text-status-healthy' -%}
+{%- elif status == 'warning' -%}
+  {%- set accent = 'text-status-warning' -%}
+{%- elif status == 'critical' -%}
+  {%- set accent = 'text-status-critical' -%}
+{%- elif status == 'muted' -%}
+  {%- set accent = 'text-status-muted' -%}
+{%- else -%}
+  {%- set accent = 'text-primary' -%}
+{%- endif -%}
+<div class="metric-tile bg-surface-raised rounded-lg px-4 py-3 flex flex-col gap-1"
+     data-status="{{ status }}">
+  <div class="flex items-center gap-2">
+    {%- if status != 'neutral' -%}
+    <span aria-hidden="true" class="w-2 h-2 rounded-full bg-current shrink-0 {{ accent }}"></span>
+    {%- endif -%}
+    <span class="metric-tile-label text-xs font-medium uppercase tracking-wide text-text-muted">{{ label }}</span>
+  </div>
+  <span class="metric-tile-value text-3xl font-semibold font-mono leading-tight {{ accent }}">{{ value }}</span>
+  {%- if trend -%}
+  <span class="metric-tile-trend text-xs text-text-secondary">{{ trend }}</span>
+  {%- endif -%}
+</div>
+{% endmacro %}
+
+{# ── pipeline_state_chip ───────────────────────────────────────────────────
+   The three mutually-exclusive pipeline states. `state` is 'warming' /
+   'active' / 'no_data'. Each maps to a distinct status token + distinct label,
+   so the three render visually distinct (amber / green / red).
+#}
+{% macro pipeline_state_chip(state) %}
+{%- if state == 'no_data' -%}
+  {%- set chip = 'bg-status-critical/15 text-status-critical border border-status-critical/30' -%}
+  {%- set label = 'No Data' -%}
+{%- elif state == 'warming' -%}
+  {%- set chip = 'bg-status-warning/15 text-status-warning border border-status-warning/30' -%}
+  {%- set label = 'Warming Up' -%}
+{%- else -%}
+  {%- set chip = 'bg-status-healthy/15 text-status-healthy border border-status-healthy/30' -%}
+  {%- set label = 'Active' -%}
+{%- endif -%}
+<span class="pipeline-chip inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium {{ chip }}"
+      data-pipeline-state="{{ state }}" role="status">
+  <span aria-hidden="true" class="w-1.5 h-1.5 rounded-full bg-current inline-block shrink-0"></span>
+  {{ label }}
+</span>
+{% endmacro %}
+
+{# ── ewma_progress ─────────────────────────────────────────────────────────
+   Warmup progress bar. `percentage` is the clamped 0-100 fill; `status` colors
+   the fill (warning while warming, healthy once warmed). The numeric percent is
+   announced via aria-valuenow + shown as text so the bar is self-describing.
+#}
+{% macro ewma_progress(percentage, status='warning') %}
+{%- if status == 'healthy' -%}
+  {%- set fill = 'bg-status-healthy' -%}
+{%- else -%}
+  {%- set fill = 'bg-status-warning' -%}
+{%- endif -%}
+{%- set pct = percentage if percentage <= 100 else 100 -%}
+{%- set pct = pct if pct >= 0 else 0 -%}
+{# Floor to a whole percent so the value, aria-valuenow, and the inline fill
+   width all agree (no "25.0%" vs "25%" drift). #}
+{%- set pct = pct|round(0, 'floor')|int -%}
+<div class="ewma-progress" data-status="{{ status }}">
+  <div class="flex items-center justify-between mb-1">
+    <span class="text-xs font-medium text-text-secondary">EWMA Warmup</span>
+    <span class="ewma-progress-pct text-xs font-mono text-text-muted">{{ pct }}%</span>
+  </div>
+  <div class="h-2 w-full rounded-full bg-surface-overlay overflow-hidden"
+       role="progressbar"
+       aria-label="EWMA warmup progress"
+       aria-valuemin="0"
+       aria-valuemax="100"
+       aria-valuenow="{{ pct }}">
+    <div class="ewma-progress-fill h-full rounded-full {{ fill }} transition-[width] duration-300 motion-reduce:transition-none"
+         style="width: {{ pct }}%"></div>
+  </div>
+</div>
+{% endmacro %}
