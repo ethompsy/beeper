@@ -116,3 +116,22 @@ jobs:
 
       - name: Lint Helm chart
         run: helm lint ./helm/beeper
+
+  demo-config:
+    name: Demo Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test deps
+        run: pip install pytest pyyaml
+
+      # Static validation of demo manifests + deployment/port-forward automation
+      # (Task 6.1). No cluster needed; guards repeatability-critical config.
+      - name: Validate demo config
+        run: pytest demo/tests -q

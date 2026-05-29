@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 5, Milestone 5.1 — **Phase 4 complete** (Tasks 4.1–4.4 merged via PRs #4–#7). **Tasks 5.1, 5.2, 5.3 implemented CONCURRENTLY (build-for-review)** on branches `feature/5.1-kb-views`, `feature/5.2-diagnostic-dashboard`, `feature/5.3-sources-spending` — each validated (per-task `[T]` tests + full UI suite green; ruff + D4 clean; `tailwind.css` excluded). They touch disjoint files (`components/kb.html` / `components/diagnostic.html`+`layout.html` / `components/status.html`) and merge in any order. (Plan notes for all three live on the `5.1` branch.) Once all three merge, **Phase 5 is complete** and the next `next-priority` advances to Phase 6 (Demo Automation & E2E). Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 6, Milestone 6.1 — **Phases 1–5 complete** (Phase 5 Tasks 5.1/5.2/5.3 merged via PRs #8/#9/#10). **Task 6.1 (demo deploy & port-forward automation) in progress** on branch `feature/6.1-demo-deploy-automation` (build-for-review; driven live against the `beeper-demo` kind cluster). Once 6.1 merges, **Task 6.2 (fault injection/recovery)** unblocks (sequential — 6.2 depends on 6.1), then **Task 6.3** is the final E2E gate (`[H]` manual 3× demo run; resolves Q1/`3-0c`). NOTE: Phase 6 requires a live Docker/kind cluster (AD-8 manual verification) — not runnable in a plain CI/sandbox without one. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -319,15 +319,30 @@ Full demo lifecycle — deploy, verify, inject fault, watch, recover, repeat —
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 6.1 | Fix demo deployment & port-forward automation | M | Phase 1 | pending |
+| 6.1 | Fix demo deployment & port-forward automation | M | Phase 1 | in progress |
 | 6.2 | Fix fault injection & recovery automation | M | 6.1 | pending |
 | 6.3 | End-to-end demo validation — 3/3 repeatability | L | 6.1, 6.2, Phases 1–5 | pending |
 
-**Task 6.1 — pending.**
+**Task 6.1 — in progress.** _(branch `feature/6.1-demo-deploy-automation`; build-for-review, not auto-merged. Driven LIVE against the `beeper-demo` kind cluster.)_
 - `[T]` `make demo-deploy` deploys OTEL Astronomy Shop (16+ services), configures Collector → Beeper ingestion, applies ServiceLevel CRDs (FR36).
 - `[T]` `make demo-ui` establishes port-forwards (Beeper UI :8080, operator API, OTEL frontend); UI opens in browser (FR39).
 - `[T]` Helm-deployed Qdrant runs v1.15.0 (D2).
 - `[T]` `kind-config.yaml` port mappings correct for all demo services.
+
+**Implemented (2026-05-29).** Fixed four real defects in the demo automation — all rooted in Make running each recipe line in a separate shell, which is exactly the class of flakiness behind the failing `3-0c` / Q1:
+- **Finding A — `demo-deploy` leaked its Qdrant port-forward.** `… &` on one recipe line + `kill %1` on another (separate shells) never matched → `:6333` stayed bound → the next `demo-deploy`/`demo-up` failed. Fixed: forward + init + seed + teardown now run in ONE shell with a captured `PF_PID` and an `EXIT` trap. **Verified live** (EXIT trap tears the forward down; Qdrant `/readyz` 200, collections reachable through it).
+- **Finding B — `demo-ui`'s `wait` was a no-op.** Forwards backgrounded on separate lines + `wait` in its own childless shell → returned instantly, orphaning the forwards. Fixed: all forwards + `trap 'kill 0' INT TERM EXIT` + `wait` in one shell. **Verified live** (recipe blocks while serving; Ctrl+C group-teardown is verify-by-construction — no TTY in CI/sandbox to signal a process group, manual-confirm per AD-8).
+- **Finding C — `demo-ui` never forwarded the operator API.** Added `beeper-operator` `:8081 → svc :8080`. **Verified live**: `http://localhost:8081/healthz` 200 and `/api/v1/ingestion/stats` serves real data (200k+ metrics) — this is the "operator backend unavailable" symptom seen in the UI all along.
+- **Finding D — kind/NodePort mismatch.** `values-dev.yaml` set `ui.service.type: NodePort` but pinned no port, so K8s auto-assigned (live: 30351) while `kind-config.yaml` mapped host 5050→node 30050 → `localhost:5050` never reached the UI. Fixed: chart template now renders `nodePort`, `values-dev.yaml` pins `ui.service.nodePort: 30050`, kind-config documented/ordered. **Verified**: `helm template` renders `nodePort: 30050`; live UI + operator + OTel + Jaeger all 200 via the fixed `demo-ui`.
+- **D2 confirmed live:** `qdrant/qdrant:v1.15.0` (API reports 1.15.0).
+- **Deploy state confirmed live:** 24 OTel services Running, Source `connected=true`, 4 ServiceLevels healthy, operator ingesting.
+
+Test linkage (`demo/tests/test_demo_automation.py`, 13 static tests — pure pyyaml/file-parse, no cluster; AD-8 keeps the *runtime* checks manual). **Now wired into CI** via a new `demo-config` job in `.github/workflows/ci.yml` (also rescues the pre-existing `test_slo_manifests.py`, which ran in no CI job before):
+- `[T]` deploy (FR36) → `TestQdrantPortForwardNoLeak::*` (recipe single-shell/trap, init+seed present) + existing `test_slo_manifests.py` (CRD manifests) — plus live confirmation above.
+- `[T]` demo-ui forwards (FR39) → `TestDemoUiPortForwards::{test_demo_ui_forwards_beeper_ui,test_demo_ui_forwards_operator_api,test_demo_ui_forwards_otel_frontend_and_jaeger,test_demo_ui_waits_and_traps_in_one_shell}`
+- `[T]` Qdrant v1.15.0 (D2) → `TestQdrantVersion::test_values_dev_pins_qdrant_v1_15_0`
+- `[T]` kind port mappings correct → `TestKindNodePortConsistency::{test_kind_maps_5050_to_30050,test_ui_service_nodeport_is_pinned_to_30050,test_kind_and_values_nodeport_agree,test_ui_template_supports_nodeport,test_kind_config_valid_two_node_cluster}`
+- **Review/verify-on-fresh-cluster notes:** (a) kind `extraPortMappings` apply only at `kind create cluster`, so the 5050→30050 direct-access path is fully proven only after `make demo-down && make demo-up`; (b) OTel frontend-proxy/Jaeger direct kind access needs NodePort exposure in `otel-demo-values.yaml` (left as a documented TODO, not a blind edit — they work today via `demo-ui` port-forward); (c) the AC text "Beeper UI :8080" is a typo — convention is Beeper UI :5050, OTel Shop :8080 (kept); (d) **out of scope:** a pile of stale `inv-anomaly-*` pods stuck Terminating/Unknown (15d old, finalizer issue) — noise, not demo-automation; flag for cleanup.
 
 **Task 6.2 — pending.**
 - `[T]` `make demo-fault FAULT=payment-failure` injects fault; anomalous behavior begins (FR37).

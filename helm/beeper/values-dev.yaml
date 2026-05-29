@@ -17,6 +17,11 @@ ui:
     pullPolicy: Never
   service:
     type: NodePort
+    # Pin the NodePort to match kind-config.yaml's host 5050 -> node 30050
+    # mapping. Without this, K8s auto-assigns a random nodePort (e.g. 30351)
+    # and the kind port mapping silently fails to reach the UI. Pinning it lets
+    # the browser hit http://localhost:5050 directly (no port-forward needed).
+    nodePort: 30050
   resources:
     limits:
       cpu: 1000m
