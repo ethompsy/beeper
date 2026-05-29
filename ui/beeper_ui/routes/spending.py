@@ -97,12 +97,14 @@ def _load_spending_template_data(svc: SpendingService) -> dict[str, Any]:
     """
     summary = svc.get_spending_summary()
     cap_status = svc.get_cap_status()
+    provider_config = svc.get_provider_config()
     trend = svc.get_spending_trend(period="daily")
     chart = _compute_spend_chart_data(trend)
 
     return {
         "summary": summary,
         "cap_status": cap_status,
+        "provider_config": provider_config,
         "error_message": None,
         **chart,
     }

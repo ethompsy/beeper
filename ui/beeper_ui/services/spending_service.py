@@ -154,6 +154,58 @@ class SpendingService:
             "rate_limit": rate_limit_val,
         }
 
+    @staticmethod
+    def _mask_api_key(api_key: str | None) -> str | None:
+        """Mask an API key for safe display, revealing only the last 4 chars.
+
+        Args:
+            api_key: Raw API key value (may be None or empty).
+
+        Returns:
+            Masked representation (e.g. "••••••cdef"), or None if unset.
+        """
+        if not api_key:
+            return None
+        suffix = api_key[-4:] if len(api_key) >= 4 else api_key
+        return f"{'•' * 6}{suffix}"
+
+    def get_provider_config(self) -> dict[str, Any]:
+        """Get the configured LLM provider settings and spending caps (FR35).
+
+        Reads provider/model/key from the shared BEEPER_LLM_* environment
+        variables (same vars the investigator uses) so the Manage > Spending
+        view can show which provider/model spend is being charged against.
+        The API key is never returned in full — only a masked suffix.
+
+        Returns:
+            Dict with provider, model, masked api key, configured flag, and
+            the daily/monthly caps + rate limit driving enforcement.
+        """
+        provider = os.getenv("BEEPER_LLM_PROVIDER") or None
+        model = os.getenv("BEEPER_LLM_MODEL") or None
+        api_key = os.getenv("BEEPER_LLM_API_KEY")
+        endpoint = os.getenv("BEEPER_LLM_ENDPOINT") or None
+
+        daily_cap_cents = os.getenv("BEEPER_LLM_DAILY_CAP_CENTS")
+        monthly_cap_cents = os.getenv("BEEPER_LLM_MONTHLY_CAP_CENTS")
+        rate_limit = os.getenv("BEEPER_INVESTIGATION_RATE_LIMIT")
+
+        return {
+            "provider": provider,
+            "model": model,
+            "endpoint": endpoint,
+            "api_key_masked": self._mask_api_key(api_key),
+            "api_key_configured": bool(api_key),
+            "configured": bool(provider and model),
+            "daily_cap_usd": (
+                int(daily_cap_cents) / 100 if daily_cap_cents else None
+            ),
+            "monthly_cap_usd": (
+                int(monthly_cap_cents) / 100 if monthly_cap_cents else None
+            ),
+            "rate_limit": int(rate_limit) if rate_limit else None,
+        }
+
     def get_spending_trend(
         self, period: str = "daily"
     ) -> list[dict[str, Any]]:

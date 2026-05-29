@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 
+{% block title %}Sources - Beeper{% endblock %}
+
 {% block content %}
-<div class="card">
-    <h2>Data Sources</h2>
-    <p>Configured data sources and their connection status.</p>
+{# Page header (Task 5.3, FR34) #}
+<div class="mb-6">
+  <h2 class="text-text-primary text-xl font-semibold">Data Sources</h2>
+  <p class="text-text-secondary text-sm mt-1">Configured Prometheus and Loki data sources and their live connection status.</p>
 </div>
 
 <div id="sources-list" hx-get="/sources/" hx-trigger="every 5s" hx-swap="innerHTML">

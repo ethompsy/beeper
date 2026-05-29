@@ -1,89 +1,122 @@
 {% if error_message %}
-<div class="card error-card">
-    <p>{{ error_message }}</p>
+<div class="bg-surface-raised border border-status-critical/30 rounded-lg p-4">
+    <p class="text-status-critical text-sm">{{ error_message }}</p>
 </div>
 {% else %}
 
 {% if cap_status and cap_status.warnings %}
-<div class="spending-cap-alert">
+<div class="bg-status-warning/10 border border-status-warning/30 rounded-lg p-3 mb-4">
     {% for warning in cap_status.warnings %}
-    <p>{{ warning }}</p>
+    <p class="text-status-warning text-sm">{{ warning }}</p>
     {% endfor %}
 </div>
 {% endif %}
 
-<div class="spending-summary-cards">
-    <div class="card">
-        <h3>Daily Spend</h3>
-        <div class="spending-amount">${{ "%.2f"|format(summary.daily_cost_usd) }}</div>
+{# LLM Provider Configuration (Task 5.3, FR35) #}
+{% if provider_config %}
+<div class="bg-surface-raised rounded-lg border border-surface-overlay p-4 mb-4">
+    <h3 class="text-text-primary text-base font-semibold mb-3">LLM Provider Configuration</h3>
+    {% if provider_config.configured %}
+    <dl class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div>
+            <dt class="text-text-muted text-xs uppercase tracking-wider">Provider</dt>
+            <dd class="text-text-primary text-sm font-medium mt-0.5 capitalize" data-provider>{{ provider_config.provider }}</dd>
+        </div>
+        <div>
+            <dt class="text-text-muted text-xs uppercase tracking-wider">Model</dt>
+            <dd class="text-text-primary text-sm font-medium mt-0.5 font-mono" data-model>{{ provider_config.model }}</dd>
+        </div>
+        <div>
+            <dt class="text-text-muted text-xs uppercase tracking-wider">API Key</dt>
+            <dd class="text-text-primary text-sm font-medium mt-0.5 font-mono" data-api-key>
+                {%- if provider_config.api_key_masked -%}{{ provider_config.api_key_masked }}{%- else -%}Not set{%- endif -%}
+            </dd>
+        </div>
+        <div>
+            <dt class="text-text-muted text-xs uppercase tracking-wider">Endpoint</dt>
+            <dd class="text-text-primary text-sm font-medium mt-0.5 font-mono">{{ provider_config.endpoint or 'Default' }}</dd>
+        </div>
+    </dl>
+    {% else %}
+    <p class="text-text-secondary text-sm">No LLM provider configured. Set <code class="text-text-muted font-mono bg-surface-base px-1.5 py-0.5 rounded">BEEPER_LLM_PROVIDER</code> and <code class="text-text-muted font-mono bg-surface-base px-1.5 py-0.5 rounded">BEEPER_LLM_MODEL</code> to enable investigations.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+    <div class="bg-surface-raised rounded-lg border border-surface-overlay p-4">
+        <h3 class="text-text-secondary text-xs uppercase tracking-wider font-semibold">Daily Spend</h3>
+        <div class="text-text-primary text-2xl font-semibold mt-1">${{ "%.2f"|format(summary.daily_cost_usd) }}</div>
         {% if summary.daily_cap_usd %}
-        <div class="spending-cap-label">of ${{ "%.2f"|format(summary.daily_cap_usd) }} cap</div>
-        <div class="spending-progress-bar">
+        <div class="text-text-muted text-xs mt-1">of ${{ "%.2f"|format(summary.daily_cap_usd) }} cap</div>
+        <div class="h-1.5 bg-surface-base rounded-full mt-2 overflow-hidden">
             {% set dpct = summary.daily_pct or 0 %}
-            <div class="spending-progress-fill{% if dpct >= 95 %} spend-level-critical{% elif dpct >= 80 %} spend-level-high{% elif dpct >= 60 %} spend-level-warning{% endif %}" style="width: {{ [dpct, 100] | min }}%"></div>
+            <div class="h-full rounded-full {% if dpct >= 95 %}bg-status-critical{% elif dpct >= 80 %}bg-status-warning{% else %}bg-status-healthy{% endif %}" style="width: {{ [dpct, 100] | min }}%"></div>
         </div>
-        <div class="spending-pct">{{ "%.0f"|format(summary.daily_pct or 0) }}%</div>
+        <div class="text-text-secondary text-xs mt-1">{{ "%.0f"|format(summary.daily_pct or 0) }}%</div>
         {% else %}
-        <div class="spending-cap-label">No daily cap configured</div>
+        <div class="text-text-muted text-xs mt-1">No daily cap configured</div>
         {% endif %}
-        <div class="spending-detail">{{ summary.daily_investigation_count }} investigations today</div>
+        <div class="text-text-muted text-xs mt-2">{{ summary.daily_investigation_count }} investigations today</div>
     </div>
 
-    <div class="card">
-        <h3>Monthly Spend</h3>
-        <div class="spending-amount">${{ "%.2f"|format(summary.monthly_cost_usd) }}</div>
+    <div class="bg-surface-raised rounded-lg border border-surface-overlay p-4">
+        <h3 class="text-text-secondary text-xs uppercase tracking-wider font-semibold">Monthly Spend</h3>
+        <div class="text-text-primary text-2xl font-semibold mt-1">${{ "%.2f"|format(summary.monthly_cost_usd) }}</div>
         {% if summary.monthly_cap_usd %}
-        <div class="spending-cap-label">of ${{ "%.2f"|format(summary.monthly_cap_usd) }} cap</div>
-        <div class="spending-progress-bar">
+        <div class="text-text-muted text-xs mt-1">of ${{ "%.2f"|format(summary.monthly_cap_usd) }} cap</div>
+        <div class="h-1.5 bg-surface-base rounded-full mt-2 overflow-hidden">
             {% set mpct = summary.monthly_pct or 0 %}
-            <div class="spending-progress-fill{% if mpct >= 95 %} spend-level-critical{% elif mpct >= 80 %} spend-level-high{% elif mpct >= 60 %} spend-level-warning{% endif %}" style="width: {{ [mpct, 100] | min }}%"></div>
+            <div class="h-full rounded-full {% if mpct >= 95 %}bg-status-critical{% elif mpct >= 80 %}bg-status-warning{% else %}bg-status-healthy{% endif %}" style="width: {{ [mpct, 100] | min }}%"></div>
         </div>
-        <div class="spending-pct">{{ "%.0f"|format(summary.monthly_pct or 0) }}%</div>
+        <div class="text-text-secondary text-xs mt-1">{{ "%.0f"|format(summary.monthly_pct or 0) }}%</div>
         {% else %}
-        <div class="spending-cap-label">No monthly cap configured</div>
+        <div class="text-text-muted text-xs mt-1">No monthly cap configured</div>
         {% endif %}
-        <div class="spending-detail">{{ summary.monthly_investigation_count }} investigations this month</div>
+        <div class="text-text-muted text-xs mt-2">{{ summary.monthly_investigation_count }} investigations this month</div>
     </div>
 
-    <div class="card">
-        <h3>Rate</h3>
-        <div class="spending-amount">{{ summary.rate_per_hour }}/hr</div>
+    <div class="bg-surface-raised rounded-lg border border-surface-overlay p-4">
+        <h3 class="text-text-secondary text-xs uppercase tracking-wider font-semibold">Rate</h3>
+        <div class="text-text-primary text-2xl font-semibold mt-1">{{ summary.rate_per_hour }}/hr</div>
         {% if summary.rate_limit %}
-        <div class="spending-cap-label">limit: {{ summary.rate_limit }}/hr</div>
+        <div class="text-text-muted text-xs mt-1">limit: {{ summary.rate_limit }}/hr</div>
         {% else %}
-        <div class="spending-cap-label">No rate limit configured</div>
+        <div class="text-text-muted text-xs mt-1">No rate limit configured</div>
         {% endif %}
-        <div class="spending-detail">Projected: ${{ "%.2f"|format(summary.projected_monthly_usd) }}/month</div>
+        <div class="text-text-muted text-xs mt-2">Projected: ${{ "%.2f"|format(summary.projected_monthly_usd) }}/month</div>
     </div>
 
-    <div class="card">
-        <h3>Enforcement</h3>
+    <div class="bg-surface-raised rounded-lg border border-surface-overlay p-4">
+        <h3 class="text-text-secondary text-xs uppercase tracking-wider font-semibold">Enforcement</h3>
+        <div class="mt-2">
         {% if cap_status.caps_configured %}
             {% if cap_status.enforcement_active %}
-            <span class="cap-status-badge cap-status-active">Active</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-status-critical/15 text-status-critical border border-status-critical/30">Active</span>
             {% elif cap_status.warnings %}
-            <span class="cap-status-badge cap-status-warning">Warning</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-status-warning/15 text-status-warning border border-status-warning/30">Warning</span>
             {% else %}
-            <span class="cap-status-badge cap-status-ok">OK</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-status-healthy/15 text-status-healthy border border-status-healthy/30">OK</span>
             {% endif %}
         {% else %}
-        <span class="cap-status-badge cap-status-inactive">Not Configured</span>
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-surface-overlay text-text-muted border border-status-muted/30">Not Configured</span>
         {% endif %}
+        </div>
     </div>
 </div>
 
 {% if data_points %}
-<div class="card">
-    <h3>Daily Spend Trend</h3>
-    <svg class="spending-trend-chart" viewBox="0 0 {{ chart_width }} {{ chart_height }}" preserveAspectRatio="none">
+<div class="bg-surface-raised rounded-lg border border-surface-overlay p-4">
+    <h3 class="text-text-primary text-base font-semibold mb-3">Daily Spend Trend</h3>
+    <svg class="w-full h-72" viewBox="0 0 {{ chart_width }} {{ chart_height }}" preserveAspectRatio="none">
         {% for line in y_grid_lines %}
-        <line x1="60" y1="{{ line.y }}" x2="{{ chart_width - 60 }}" y2="{{ line.y }}" stroke="#e5e7eb" stroke-width="1"/>
-        <text x="55" y="{{ line.y + 4 }}" text-anchor="end" fill="#9ca3af" font-size="11">${{ "%.2f"|format(line.value) }}</text>
+        <line x1="60" y1="{{ line.y }}" x2="{{ chart_width - 60 }}" y2="{{ line.y }}" class="stroke-surface-overlay" stroke-width="1"/>
+        <text x="55" y="{{ line.y + 4 }}" text-anchor="end" class="fill-text-muted" font-size="11">${{ "%.2f"|format(line.value) }}</text>
         {% endfor %}
-        <polyline points="{{ trend_points }}" fill="none" stroke="#f59e0b" stroke-width="2"/>
+        <polyline points="{{ trend_points }}" fill="none" class="stroke-primary" stroke-width="2"/>
         {% for point in data_points %}
-        <circle cx="{{ point.x }}" cy="{{ point.y }}" r="4" fill="#f59e0b"/>
-        <text x="{{ point.x }}" y="{{ chart_height - 5 }}" text-anchor="middle" fill="#9ca3af" font-size="9">{{ point.period[-5:] }}</text>
+        <circle cx="{{ point.x }}" cy="{{ point.y }}" r="4" class="fill-primary"/>
+        <text x="{{ point.x }}" y="{{ chart_height - 5 }}" text-anchor="middle" class="fill-text-muted" font-size="9">{{ point.period[-5:] }}</text>
         {% endfor %}
     </svg>
 </div>
