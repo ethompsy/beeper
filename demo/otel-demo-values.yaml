@@ -59,6 +59,13 @@ components:
         memory: 512Mi
 
 # --- Observability backends (keep minimal for demos) ---
+# TODO(demo direct-access): to reach the OTel Shop and Jaeger at localhost:8080 /
+# :16686 WITHOUT `make demo-ui` port-forwarding, expose these as NodePorts whose
+# numbers match kind-config.yaml's extraPortMappings (frontend-proxy -> 30080,
+# jaeger -> 30686), then recreate the cluster. The exact override keys depend on
+# the opentelemetry-demo chart version (e.g. components.frontend-proxy.service /
+# jaeger.service) — verify with `helm template` against the pinned chart version
+# before enabling. Left commented so an unverified schema can't break demo-deploy.
 jaeger:
   enabled: true
 

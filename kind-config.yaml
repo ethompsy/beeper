@@ -5,19 +5,32 @@
 #   kind create cluster --name beeper-demo --config kind-config.yaml
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+#
+# Access model:
+#   - Beeper UI is exposed as a NodePort pinned to 30050 (helm values-dev.yaml:
+#     ui.service.nodePort), so the mapping below makes http://localhost:5050
+#     reach it directly — no port-forward needed.
+#   - The OTel Shop frontend-proxy and Jaeger ship from the upstream
+#     opentelemetry-demo chart as ClusterIP services, so the 30080/30686
+#     mappings below only carry traffic once those components are exposed as
+#     NodePorts with matching nodePorts. Until then, reach them via
+#     `make demo-ui` (kubectl port-forward). See TODO in demo/otel-demo-values.yaml.
+#
+# NOTE: extraPortMappings are applied only at `kind create cluster`. Changing
+# them requires recreating the cluster (`make demo-down && make demo-up`).
 nodes:
   - role: control-plane
     extraPortMappings:
-      # OTel Shop frontend proxy
+      # Beeper UI (NodePort pinned to 30050 in helm values-dev.yaml)
+      - containerPort: 30050
+        hostPort: 5050
+        protocol: TCP
+      # OTel Shop frontend-proxy (needs NodePort 30080 exposure — see TODO above)
       - containerPort: 30080
         hostPort: 8080
         protocol: TCP
-      # Jaeger UI
+      # Jaeger UI (needs NodePort 30686 exposure — see TODO above)
       - containerPort: 30686
         hostPort: 16686
-        protocol: TCP
-      # Beeper UI
-      - containerPort: 30050
-        hostPort: 5050
         protocol: TCP
   - role: worker

@@ -159,11 +159,17 @@ demo-deploy:
 		--timeout 10m \
 		--wait
 	@echo "==> Initializing Qdrant collections..."
-	kubectl -n $(BEEPER_NAMESPACE) port-forward svc/beeper-qdrant 6333:6333 &
-	sleep 2
-	python3 scripts/init-collections.py --host localhost --port 6333
+	@# Run the port-forward + init/seed in ONE shell so the trap reliably tears
+	@# the forward down. (Make runs each recipe line in a separate shell, so a
+	@# `... &` on one line and `kill %1` on another never matched — the forward
+	@# leaked and bound :6333, breaking the next `demo-deploy`/`demo-up`.)
+	@set -e; \
+	kubectl -n $(BEEPER_NAMESPACE) port-forward svc/beeper-qdrant 6333:6333 >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID 2>/dev/null || true' EXIT; \
+	sleep 3; \
+	python3 scripts/init-collections.py --host localhost --port 6333; \
 	python3 scripts/seed_kb.py --host localhost --port 6333
-	kill %1 2>/dev/null || true
 	@echo "==> Applying ServiceLevel CRDs..."
 	kubectl apply -f $(DEMO_DIR)/k8s/slo-checkout.yaml
 	kubectl apply -f $(DEMO_DIR)/k8s/slo-cart.yaml
@@ -272,13 +278,23 @@ demo-ui:
 	@echo "==> Port-forwarding demo UIs..."
 	@echo ""
 	@echo "  Beeper UI:       http://localhost:5050"
+	@echo "  Operator API:    http://localhost:8081  (e.g. /api/v1/ingestion/stats)"
 	@echo "  OTel Shop:       http://localhost:8080"
 	@echo "  Feature Flags:   http://localhost:8080/feature"
 	@echo "  Jaeger:          http://localhost:16686"
 	@echo ""
 	@echo "Press Ctrl+C to stop."
 	@echo ""
-	@kubectl -n $(DEMO_NAMESPACE) port-forward svc/frontend-proxy 8080:8080 &
-	@kubectl -n $(DEMO_NAMESPACE) port-forward svc/jaeger 16686:16686 &
-	@kubectl -n $(BEEPER_NAMESPACE) port-forward svc/beeper-ui 5050:80 2>/dev/null &
-	@wait
+	@# All port-forwards run as children of ONE shell, with `wait` blocking in
+	@# that same shell and a trap that kills the whole process group on exit.
+	@# (Previously each `... &` was its own recipe line/shell, so the trailing
+	@# `wait` had no children, returned instantly, and left orphaned forwards
+	@# that Ctrl+C could not stop.) Also forwards the operator API (:8081 -> svc
+	@# :8080) so the UI's backend calls resolve — without it the UI shows
+	@# "operator backend unavailable" (FR39).
+	@trap 'kill 0' INT TERM EXIT; \
+	kubectl -n $(DEMO_NAMESPACE) port-forward svc/frontend-proxy 8080:8080 >/dev/null 2>&1 & \
+	kubectl -n $(DEMO_NAMESPACE) port-forward svc/jaeger 16686:16686 >/dev/null 2>&1 & \
+	kubectl -n $(BEEPER_NAMESPACE) port-forward svc/beeper-ui 5050:80 >/dev/null 2>&1 & \
+	kubectl -n $(BEEPER_NAMESPACE) port-forward svc/beeper-operator 8081:8080 >/dev/null 2>&1 & \
+	wait
