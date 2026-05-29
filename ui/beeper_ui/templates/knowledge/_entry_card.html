@@ -1,35 +1,44 @@
-<div class="card entry-card">
-    <div class="entry-header">
-        <h3>
-            <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}">{{ entry.title }}</a>
+{# KB entry card (Task 5.1, FR28). Dark design system — Tailwind only.
+   Surfaces the three required list fields: service / title / date. #}
+{% from "components/kb.html" import kb_type_badge %}
+<div class="entry-card bg-surface-raised rounded-lg border border-surface-overlay
+            px-4 py-3 hover:bg-surface-overlay transition-colors duration-150"
+     data-entry-id="{{ entry.entry_id }}">
+    <div class="flex items-start justify-between gap-3">
+        <h3 class="text-base font-semibold min-w-0 m-0">
+            <a href="{{ url_for('knowledge.kb_entry', entry_id=entry.entry_id) }}"
+               class="entry-title text-text-primary hover:text-primary no-underline">{{ entry.title }}</a>
         </h3>
-        <span class="entry-type-badge badge-{{ entry.entry_type }}">{{ entry.entry_type }}</span>
+        {{ kb_type_badge(entry.entry_type) }}
     </div>
-    <div class="entry-meta">
+    <div class="entry-meta flex flex-wrap items-center gap-3 mt-2 text-xs">
         {% if entry.service %}
-        <a href="{{ url_for('knowledge.service_knowledge', service_name=entry.service) }}" class="service-badge">
+        <a href="{{ url_for('knowledge.service_knowledge', service_name=entry.service) }}"
+           class="service-badge inline-flex items-center px-2 py-0.5 rounded font-mono
+                  bg-surface-overlay text-text-secondary hover:text-primary no-underline">
             {{ entry.service }}
         </a>
         {% endif %}
         {% if entry.created_at %}
-        <span class="entry-date" title="{{ entry.created_at.isoformat() }}">
+        <span class="entry-date text-text-muted" title="{{ entry.created_at.isoformat() }}">
             {{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}
         </span>
         {% endif %}
         {% if entry.author %}
-        <span class="entry-author">by {{ entry.author }}</span>
+        <span class="entry-author text-text-muted">by {{ entry.author }}</span>
         {% endif %}
     </div>
     {% if entry.content %}
     {% set preview = entry.content|strip_markdown %}
-    <div class="entry-preview">
+    <p class="entry-preview text-text-secondary text-sm mt-2 leading-relaxed">
         {{ preview[:200] }}{% if preview|length > 200 %}...{% endif %}
-    </div>
+    </p>
     {% endif %}
     {% if entry.tags %}
-    <div class="entry-tags">
+    <div class="entry-tags flex flex-wrap gap-1.5 mt-2">
         {% for tag in entry.tags[:5] %}
-        <span class="tag">{{ tag }}</span>
+        <span class="tag inline-flex items-center px-1.5 py-0.5 rounded text-xs
+                     bg-surface-overlay text-text-muted">{{ tag }}</span>
         {% endfor %}
     </div>
     {% endif %}

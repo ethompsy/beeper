@@ -9,7 +9,7 @@ import logging
 import os
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -98,6 +98,12 @@ class KBEntry:
     auto_published: bool = False
     validation_status: Optional[str] = None  # AI-generated, human-confirmed, proven, corrected
     relevance_score: Optional[float] = None  # Set during semantic search
+    # Structured incident detail (FR31). Populated from the payload when the
+    # authoring agent / resolution flow records them; otherwise None/empty and
+    # the freeform `content` markdown remains the source of truth.
+    root_cause: Optional[str] = None
+    resolution: Optional[str] = None
+    affected_services: list[str] = field(default_factory=list)
 
     @classmethod
     def from_qdrant(cls, point_id: str | int | UUID, payload: dict[str, Any]) -> "KBEntry":
@@ -120,6 +126,21 @@ class KBEntry:
             except (ValueError, AttributeError):
                 pass
 
+        # Affected services may arrive as a list or a single string.
+        raw_affected = payload.get("affected_services")
+        if isinstance(raw_affected, str):
+            affected_services = [raw_affected] if raw_affected else []
+        elif isinstance(raw_affected, list):
+            affected_services = [str(s) for s in raw_affected if s]
+        else:
+            affected_services = []
+
+        # Resolution prefers explicit notes; falls back to the recorded outcome
+        # written by the investigation resolution flow.
+        resolution = payload.get("resolution") or payload.get("resolution_notes")
+        if not resolution and payload.get("resolution_outcome"):
+            resolution = str(payload["resolution_outcome"])
+
         return cls(
             id=str(point_id),
             entry_id=payload.get("entry_id", str(point_id)),
@@ -134,6 +155,9 @@ class KBEntry:
             tags=payload.get("tags", []),
             auto_published=payload.get("auto_published", False),
             validation_status=payload.get("validation_status"),
+            root_cause=payload.get("root_cause"),
+            resolution=resolution or None,
+            affected_services=affected_services,
         )
 
 

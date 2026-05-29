@@ -108,7 +108,8 @@ class TestKBEntryDetailLinks:
         # Both source and contributing links should appear
         assert b"inv-source-main" in response.data
         assert b"inv-contrib-extra" in response.data
-        assert b"Investigation Links" in response.data
+        # FR31: the source investigation reference renders within Incident Details
+        assert b"Source Investigation" in response.data
 
     @patch("beeper_ui.routes.knowledge.get_kb_service")
     def test_entry_detail_no_investigation_links(

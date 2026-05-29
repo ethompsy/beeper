@@ -148,7 +148,8 @@ class TestKBIndexRoute:
 
         response = client.get("/knowledge/")
         assert response.status_code == 200
-        assert b"No KB entries found" in response.data
+        # FR/AC4: empty KB renders the explanatory empty state, not a blank list.
+        assert b"No knowledge base entries yet" in response.data
 
     @patch("beeper_ui.routes.knowledge.get_kb_service")
     def test_kb_index_with_error(

@@ -3,32 +3,42 @@
 {% block title %}Knowledge Base - Beeper{% endblock %}
 
 {% block content %}
-<div class="kb-header">
-    <div class="kb-header-content">
-        <div>
-            <h2>Knowledge Base</h2>
-            <p class="kb-description">Browse investigations, runbooks, and corrections</p>
-        </div>
-        <div>
-            <a href="{{ url_for('knowledge.kb_learning') }}" class="btn btn-secondary">Learning Insights</a>
-            <a href="{{ url_for('knowledge.kb_trust_settings') }}" class="btn btn-secondary">Trust Settings</a>
-            <a href="{{ url_for('knowledge.kb_import') }}" class="btn btn-primary">Import Runbook</a>
-        </div>
+{# Page header (Task 5.1, FR28). Dark design system — Tailwind only. #}
+<div class="kb-header flex items-start justify-between gap-4 flex-wrap mb-6">
+    <div>
+        <h2 class="text-text-primary text-xl font-semibold m-0">Knowledge Base</h2>
+        <p class="kb-description text-text-secondary text-sm mt-1 m-0">Browse investigations, runbooks, and corrections</p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+        <a href="{{ url_for('knowledge.kb_learning') }}"
+           class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium no-underline
+                  bg-surface-raised text-text-secondary border border-surface-overlay
+                  hover:bg-surface-overlay hover:text-text-primary transition-colors duration-150">Learning Insights</a>
+        <a href="{{ url_for('knowledge.kb_trust_settings') }}"
+           class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium no-underline
+                  bg-surface-raised text-text-secondary border border-surface-overlay
+                  hover:bg-surface-overlay hover:text-text-primary transition-colors duration-150">Trust Settings</a>
+        <a href="{{ url_for('knowledge.kb_import') }}"
+           class="inline-flex items-center px-3 py-1.5 rounded text-sm font-medium no-underline
+                  bg-primary text-text-primary hover:bg-primary-hover transition-colors duration-150">Import Runbook</a>
     </div>
 </div>
 
 {% if error_message %}
-<div class="card error-card">
-    <h3>Unable to fetch KB entries</h3>
-    <p>{{ error_message }}</p>
+<div class="error-card bg-status-critical/10 border border-status-critical/30 rounded-lg px-4 py-3">
+    <h3 class="text-status-critical text-base font-semibold m-0">Unable to fetch KB entries</h3>
+    <p class="text-text-secondary text-sm mt-1 m-0">{{ error_message }}</p>
 </div>
 {% else %}
 
-<div class="kb-search">
-    <div class="search-input-wrapper">
+<div class="kb-search mb-4">
+    <div class="search-input-wrapper relative">
         <input type="search"
                id="kb-search"
                name="q"
+               class="w-full bg-surface-raised border border-surface-overlay rounded-lg px-3 py-2 text-sm
+                      text-text-primary placeholder:text-text-muted
+                      focus:outline-none focus:ring-2 focus:ring-primary"
                placeholder="Search knowledge base... (Press / to focus)"
                hx-get="{{ url_for('knowledge.kb_search') }}"
                hx-trigger="keyup changed delay:300ms, search"
@@ -38,7 +48,7 @@
                hx-push-url="true"
                autocomplete="off"
                value="{{ query|default('', true) }}">
-        <span id="search-loading" class="htmx-indicator">Searching...</span>
+        <span id="search-loading" class="htmx-indicator text-text-muted text-xs mt-1 block">Searching...</span>
     </div>
 </div>
 
