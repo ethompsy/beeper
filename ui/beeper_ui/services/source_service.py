@@ -86,9 +86,16 @@ class SourceService:
             response = self.client.get(f"{self.operator_url}/api/v1/sources")
             response.raise_for_status()
             data = response.json()
-            sources = [Source.from_dict(s) for s in data.get("sources", [])]
+            # De-duplicate by source name so an operator restart that briefly
+            # re-reports the same Source CRD during reconciliation never
+            # surfaces doubled rows in the UI (NFR12 consistency property).
+            # Last occurrence wins, preserving the freshest status snapshot.
+            deduped: dict[str, Source] = {}
+            for raw in data.get("sources", []):
+                source = Source.from_dict(raw)
+                deduped[source.name] = source
             # Sort alphabetically by name
-            return sorted(sources, key=lambda s: s.name)
+            return sorted(deduped.values(), key=lambda s: s.name)
         except httpx.TimeoutException as e:
             raise SourceServiceError(f"Timeout connecting to operator: {e}") from e
         except httpx.HTTPStatusError as e:

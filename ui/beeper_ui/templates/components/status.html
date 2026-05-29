@@ -29,3 +29,29 @@
   {{ label }}
 </span>
 {% endmacro %}
+
+{# Source connection-status badge (Task 5.3, FR34).
+   Maps operator source status to a Connected/Disconnected indicator:
+     connected            → status-healthy (green) — "Connected"
+     error / disconnected → status-critical (red)  — "Disconnected"
+     unknown / other      → status-muted (gray)    — "Unknown"
+#}
+{% macro source_status_badge(status) %}
+{%- if status == 'connected' -%}
+  {%- set badge_color = 'bg-status-healthy/15 text-status-healthy border border-status-healthy/30' -%}
+  {%- set label = 'Connected' -%}
+{%- elif status in ('error', 'disconnected', 'failed') -%}
+  {%- set badge_color = 'bg-status-critical/15 text-status-critical border border-status-critical/30' -%}
+  {%- set label = 'Disconnected' -%}
+{%- else -%}
+  {%- set badge_color = 'bg-surface-overlay text-text-muted border border-status-muted/30' -%}
+  {%- set label = 'Unknown' -%}
+{%- endif -%}
+<span class="status-badge inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium {{ badge_color }}"
+      data-status="{{ status }}"
+      role="img"
+      aria-label="{{ label }}">
+  <span aria-hidden="true" class="w-1.5 h-1.5 rounded-full bg-current inline-block shrink-0"></span>
+  {{ label }}
+</span>
+{% endmacro %}
