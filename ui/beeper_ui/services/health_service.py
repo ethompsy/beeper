@@ -38,12 +38,27 @@ class HealthStatus:
 
 @dataclass
 class IngestionStats:
-    """Ingestion buffer statistics."""
+    """Ingestion + detection pipeline statistics.
+
+    Buffer fields existed before Task 1.4. The pipeline-diagnostic fields
+    (metrics/logs received, anomaly detection counters, and the EWMA warmup
+    progress) were added to ``GET /api/v1/ingestion/stats`` by Task 1.4 and
+    are surfaced on the Observe > Ingestion Stats dashboard (Task 5.2, FR32-33).
+    All fields are snake_case to match the operator JSON exactly.
+    """
 
     buffer_size: int
     buffered_count: int
     dropped_count: int
     is_full: bool
+    # Task 1.4 pipeline-diagnostic fields (FR32-33).
+    metrics_received: int
+    logs_received: int
+    anomalies_detected: int
+    anomalies_suppressed: int
+    active_metric_detectors: int
+    ewma_warmup_samples: int
+    ewma_warmup_minimum: int
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "IngestionStats":
@@ -53,6 +68,13 @@ class IngestionStats:
             buffered_count=data.get("buffered_count", 0),
             dropped_count=data.get("dropped_count", 0),
             is_full=data.get("is_full", False),
+            metrics_received=data.get("metrics_received", 0),
+            logs_received=data.get("logs_received", 0),
+            anomalies_detected=data.get("anomalies_detected", 0),
+            anomalies_suppressed=data.get("anomalies_suppressed", 0),
+            active_metric_detectors=data.get("active_metric_detectors", 0),
+            ewma_warmup_samples=data.get("ewma_warmup_samples", 0),
+            ewma_warmup_minimum=data.get("ewma_warmup_minimum", 0),
         )
 
 
