@@ -221,10 +221,10 @@ demo-fault:
 	@test -n "$(FAULT)" || (echo "Error: FAULT is required. Run 'make demo-fault-list' for options." && exit 1)
 	@echo "==> Enabling fault '$(FAULT)'..."
 	@case "$(FAULT)" in \
-		payment-failure) FLAG_KEY=paymentFailure; ON_VARIANT='100%%' ;; \
+		payment-failure) FLAG_KEY=paymentFailure; ON_VARIANT='100%' ;; \
 		cart-failure)    FLAG_KEY=cartFailure;    ON_VARIANT=on ;; \
 		kafka-problems)  FLAG_KEY=kafkaQueueProblems; ON_VARIANT=on ;; \
-		slow-images)     FLAG_KEY=imageSlowLoad;  ON_VARIANT=on ;; \
+		slow-images)     FLAG_KEY=imageSlowLoad;  ON_VARIANT=10sec ;; \
 		high-cpu)        FLAG_KEY=adHighCpu;      ON_VARIANT=on ;; \
 		*) echo "Error: Unknown fault '$(FAULT)'. Run 'make demo-fault-list' for options." && exit 1 ;; \
 	esac && \

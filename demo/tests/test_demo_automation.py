@@ -173,3 +173,105 @@ class TestQdrantVersion:
     def test_values_dev_pins_qdrant_v1_15_0(self):
         values = yaml.safe_load(_read(VALUES_DEV))
         assert values["qdrant"]["image"]["tag"] == "v1.15.0"
+
+
+# --- Task 6.2: fault injection & recovery --------------------------------------
+
+# Valid flagd variants per fault flag, from the opentelemetry-demo chart's
+# demo.flagd.json (captured live 2026-05-29). Encodes the contract demo-fault
+# relies on so an invalid variant (e.g. imageSlowLoad has no "on") is caught
+# statically instead of only failing at flagd-resolve time during a live demo.
+FLAGD_VARIANTS = {
+    "paymentFailure": {"100%", "90%", "75%", "50%", "25%", "10%", "off"},
+    "cartFailure": {"on", "off"},
+    "kafkaQueueProblems": {"on", "off"},
+    "imageSlowLoad": {"10sec", "5sec", "off"},
+    "adHighCpu": {"on", "off"},
+}
+
+
+def _parse_demo_fault_cases():
+    """Parse demo-fault's case arms: {fault-name: (FLAG_KEY, ON_VARIANT)}.
+
+    Returns the LITERAL variant as flagd receives it. IMPORTANT: `%` is NOT
+    special in Make *recipes* (only in pattern rules / functions), so `%%` is
+    passed through verbatim — it does NOT collapse to `%`. Writing `100%%` set
+    flagd's defaultVariant to the non-existent `100%%` variant and silently
+    broke the payment-failure fault (the primary demo fault). This parser
+    therefore does NOT collapse `%%`, so that bug is caught, not hidden.
+    """
+    recipe = _recipe("demo-fault")
+    cases = {}
+    for m in re.finditer(
+        r"^\s*([a-z][a-z-]+]?\))\s*FLAG_KEY=(\w+);\s*ON_VARIANT=('?[^ ;']+'?)",
+        recipe,
+        re.MULTILINE,
+    ):
+        name = m.group(1).rstrip(")")
+        flag = m.group(2)
+        variant = m.group(3).strip("'")
+        cases[name] = (flag, variant)
+    return cases
+
+
+class TestFaultInjectionMapping:
+    """AC: `make demo-fault FAULT=<name>` injects a real fault (FR37); the named
+    faults each map to a valid, non-off flagd variant."""
+
+    def test_criterion_faults_are_handled(self):
+        cases = _parse_demo_fault_cases()
+        for name in ("payment-failure", "cart-failure", "high-cpu"):
+            assert name in cases, f"demo-fault must handle FAULT={name}"
+
+    def test_every_fault_uses_a_valid_nonoff_variant(self):
+        """Regression guard for slow-images -> imageSlowLoad=on (no such variant;
+        imageSlowLoad is 10sec/5sec/off)."""
+        cases = _parse_demo_fault_cases()
+        for name, (flag, variant) in cases.items():
+            assert flag in FLAGD_VARIANTS, f"{name}: unknown flag {flag}"
+            assert variant in FLAGD_VARIANTS[flag], (
+                f"{name}: ON_VARIANT={variant!r} is not a valid variant of "
+                f"{flag} ({sorted(FLAGD_VARIANTS[flag])})"
+            )
+            assert variant != "off", f"{name}: enabling a fault must not set 'off'"
+
+    def test_payment_failure_uses_100_percent(self):
+        flag, variant = _parse_demo_fault_cases()["payment-failure"]
+        assert flag == "paymentFailure" and variant == "100%"
+
+    def test_fault_list_matches_case_handler(self):
+        """Advertised faults (demo-fault-list) == handled faults (demo-fault).
+
+        Names are printed as `@echo "  <name>   <description>"`, so match a
+        2-space-indented token inside the echo strings (the description column
+        is separated by 2+ spaces; usage lines like `make demo-recover` use a
+        single space and are excluded)."""
+        listed = set(re.findall(r'"  ([a-z][a-z-]+) {2,}', _recipe("demo-fault-list")))
+        handled = set(_parse_demo_fault_cases())
+        assert handled == listed, (
+            f"handled-only: {handled - listed}; advertised-only: {listed - handled}"
+        )
+
+    def test_demo_fault_requires_FAULT_arg(self):
+        assert 'test -n "$(FAULT)"' in _recipe("demo-fault")
+
+    def test_demo_fault_rejects_unknown_fault(self):
+        recipe = _recipe("demo-fault")
+        assert "Unknown fault" in recipe and "exit 1" in recipe
+
+
+class TestFaultRecovery:
+    """AC: `make demo-recover` clears all faults (FR38)."""
+
+    def test_recover_disables_all_flags(self):
+        recipe = _recipe_code("demo-recover")
+        assert "state']='DISABLED'" in recipe or "'state']='DISABLED'" in recipe
+        assert "defaultVariant']='off'" in recipe
+
+    def test_recover_iterates_every_flag(self):
+        # Must reset ALL flags, not a single one, so any active fault is cleared.
+        recipe = _recipe_code("demo-recover")
+        assert "for f in flags" in recipe or "flags.get('flags'" in recipe
+
+    def test_recover_restarts_flagd(self):
+        assert "rollout restart deploy/flagd" in _recipe("demo-recover")

@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 6, Milestone 6.1 — **Phases 1–5 complete** (Phase 5 Tasks 5.1/5.2/5.3 merged via PRs #8/#9/#10). **Task 6.1 (demo deploy & port-forward automation) in progress** on branch `feature/6.1-demo-deploy-automation` (build-for-review; driven live against the `beeper-demo` kind cluster). Once 6.1 merges, **Task 6.2 (fault injection/recovery)** unblocks (sequential — 6.2 depends on 6.1), then **Task 6.3** is the final E2E gate (`[H]` manual 3× demo run; resolves Q1/`3-0c`). NOTE: Phase 6 requires a live Docker/kind cluster (AD-8 manual verification) — not runnable in a plain CI/sandbox without one. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 6, Milestone 6.1 — **Phases 1–5 complete; Task 6.1 merged (PR #11, `905d895`)**. **Task 6.2 (fault injection/recovery) in progress** on branch `feature/6.2-fault-injection` (build-for-review; driven live against the `beeper-demo` kind cluster — fixed the broken `payment-failure`/`slow-images` flag variants). Once 6.2 merges, **Task 6.3** is the final E2E gate (`[H]` manual 3× demo run; resolves Q1/`3-0c`) — it needs a live cluster + a scheduled user demo session. NOTE: Phase 6 requires a live Docker/kind cluster (AD-8 manual verification) — not runnable in a plain CI/sandbox without one. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -320,7 +320,7 @@ Full demo lifecycle — deploy, verify, inject fault, watch, recover, repeat —
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
 | 6.1 | Fix demo deployment & port-forward automation | M | Phase 1 | in progress |
-| 6.2 | Fix fault injection & recovery automation | M | 6.1 | pending |
+| 6.2 | Fix fault injection & recovery automation | M | 6.1 | in progress |
 | 6.3 | End-to-end demo validation — 3/3 repeatability | L | 6.1, 6.2, Phases 1–5 | pending |
 
 **Task 6.1 — in progress.** _(branch `feature/6.1-demo-deploy-automation`; build-for-review, not auto-merged. Driven LIVE against the `beeper-demo` kind cluster.)_
@@ -344,10 +344,22 @@ Test linkage (`demo/tests/test_demo_automation.py`, 13 static tests — pure pyy
 - `[T]` kind port mappings correct → `TestKindNodePortConsistency::{test_kind_maps_5050_to_30050,test_ui_service_nodeport_is_pinned_to_30050,test_kind_and_values_nodeport_agree,test_ui_template_supports_nodeport,test_kind_config_valid_two_node_cluster}`
 - **Review/verify-on-fresh-cluster notes:** (a) kind `extraPortMappings` apply only at `kind create cluster`, so the 5050→30050 direct-access path is fully proven only after `make demo-down && make demo-up`; (b) OTel frontend-proxy/Jaeger direct kind access needs NodePort exposure in `otel-demo-values.yaml` (left as a documented TODO, not a blind edit — they work today via `demo-ui` port-forward); (c) the AC text "Beeper UI :8080" is a typo — convention is Beeper UI :5050, OTel Shop :8080 (kept); (d) **out of scope:** a pile of stale `inv-anomaly-*` pods stuck Terminating/Unknown (15d old, finalizer issue) — noise, not demo-automation; flag for cleanup.
 
-**Task 6.2 — pending.**
+**Task 6.2 — in progress.** _(branch `feature/6.2-fault-injection`; build-for-review, not auto-merged. Driven LIVE against the `beeper-demo` kind cluster.)_
 - `[T]` `make demo-fault FAULT=payment-failure` injects fault; anomalous behavior begins (FR37).
 - `[T]` `make demo-recover` removes fault; demo returns to normal (FR38).
 - `[T]` Multiple fault names (`payment-failure`, `cart-failure`, `high-cpu`) each produce distinct anomalies/investigations.
+
+**Implemented (2026-05-29).** Found two real fault-injection bugs by cross-checking the `demo-fault` flag/variant mappings against the live flagd config:
+- **Finding F (critical) — `payment-failure` set an invalid variant `100%%`.** The recipe used `ON_VARIANT='100%%'` on the assumption that Make collapses `%%`→`%`. It does **not** — `%` is literal in Make *recipes* (only special in pattern rules/functions), so flagd received `defaultVariant=100%%`, which is not a valid `paymentFailure` variant (`100%/90%/…/off`). **The primary demo fault — the one `3-0c`/Q1's 3/3 run depends on — was silently broken.** Fixed → `'100%'`. **Verified live**: injecting now sets `defaultVariant='100%'` (was `'100%%'`).
+- **Finding E — `slow-images` set an invalid variant `on`.** `imageSlowLoad`'s variants are `10sec/5sec/off` (no `on`). Fixed → `10sec`. **Verified live**: sets `defaultVariant='10sec'`.
+- **`demo-recover` verified live**: resets every flag to `state=DISABLED, defaultVariant=off` (FR38) — confirmed all-clean after each test; cluster left clean.
+- The three criterion faults (`payment-failure`, `cart-failure`, `high-cpu`) map to valid, non-off variants; `demo-fault-list` advertises exactly the faults the `case` handles.
+
+Test linkage (`demo/tests/test_demo_automation.py`, +9 tests; pure-parse, no cluster — runtime "investigation appears" stays AD-8 manual). The parser intentionally does NOT collapse `%%`, so Finding F is caught not hidden:
+- `[T]` inject (FR37) → `TestFaultInjectionMapping::{test_criterion_faults_are_handled,test_every_fault_uses_a_valid_nonoff_variant,test_payment_failure_uses_100_percent,test_fault_list_matches_case_handler,test_demo_fault_requires_FAULT_arg,test_demo_fault_rejects_unknown_fault}` — plus live confirmation above.
+- `[T]` recover (FR38) → `TestFaultRecovery::{test_recover_disables_all_flags,test_recover_iterates_every_flag,test_recover_restarts_flagd}` — plus live confirmation.
+- `[T]` distinct faults → `test_every_fault_uses_a_valid_nonoff_variant` (each maps to a distinct valid flag/variant). The runtime *"each produces a distinct investigation"* outcome needs ~10-min EWMA warmup per fault → verified during the **6.3 manual demo run** (AD-8), not automatable here.
+- **Notes:** (a) minor — two `make demo-fault` calls within ~1s hit flagd's rollout-restart rate limit (`please wait before attempting to trigger another`); the configmap still updates, only the restart is skipped — normal single-fault usage is unaffected, flagged as a possible future `--wait`/retry hardening; (b) the new `demo/tests` run in the `demo-config` CI job added in 6.1.
 
 **Task 6.3 — pending.** *(resolves Q1 / the blocked 3-0c)*
 - `[H]` Run the full demo sequence (deploy → verify stats → await EWMA warmup → `demo-fault payment-failure` → investigation appears & completes → verify root cause references "payment service"/"error rate" → verify real Prometheus + Loki evidence → `demo-recover`) **3 consecutive times without cluster restart**, all succeeding (NFR8).
