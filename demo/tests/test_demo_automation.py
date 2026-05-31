@@ -278,6 +278,24 @@ class TestFaultRecovery:
         assert "rollout restart deploy/flagd" in _recipe("demo-recover")
 
 
+class TestLlmKeyGate:
+    """AC (demo robustness, Finding H): demo-beeper must not hard-fail when no
+    LLM API key is set if the deploy uses a local provider (ollama)."""
+
+    def test_demo_beeper_allows_missing_key_for_ollama(self):
+        recipe = _recipe("demo-beeper")
+        # Detects the provider and treats ollama/local as not requiring a key.
+        assert "values-dev.yaml" in recipe and "provider:" in recipe
+        assert 'LLM_PROVIDER" = "ollama"' in recipe or "ollama" in recipe
+        # Still creates the secret (placeholder) so the chart's secretKeyRef resolves.
+        assert "placeholder" in recipe.lower()
+        assert "kubectl create secret generic llm-credentials" in recipe
+
+    def test_demo_beeper_still_errors_for_cloud_without_key(self):
+        recipe = _recipe("demo-beeper")
+        assert "exit 1" in recipe  # cloud provider + no key still fails fast
+
+
 class TestDemoReadmeScript:
     """AC (6.3): demo/README.md documents the full demo script with timing
     (2–3 min warmup; 5–10 min investigation) and the 3/3 repeatability run."""

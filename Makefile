@@ -106,19 +106,29 @@ demo-build:
 demo-beeper:
 	@echo "==> Creating namespace $(BEEPER_NAMESPACE)..."
 	kubectl create namespace $(BEEPER_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
-	@# Create LLM credentials secret from ANTHROPIC_API_KEY or BEEPER_LLM_API_KEY
+	@# Create the LLM credentials secret from ANTHROPIC_API_KEY or BEEPER_LLM_API_KEY.
+	@# The key is REQUIRED only for cloud providers (e.g. anthropic). Local
+	@# providers (ollama) don't use it, so for them we warn and store a
+	@# placeholder rather than failing the whole demo — otherwise `make demo-up`
+	@# dies here even though values-dev.yaml runs entirely on local Ollama.
+	@# The secret is always created so the chart's secretKeyRef resolves.
 	@LLM_KEY="$${ANTHROPIC_API_KEY:-$${BEEPER_LLM_API_KEY:-}}"; \
+	LLM_PROVIDER="$$(grep -A8 '^llm:' ./helm/beeper/values-dev.yaml | grep -m1 'provider:' | awk '{print $$2}')"; \
 	if [ -z "$$LLM_KEY" ]; then \
-		echo ""; \
-		echo "ERROR: ANTHROPIC_API_KEY (or BEEPER_LLM_API_KEY) must be set."; \
-		echo "  Investigations require an LLM API key to complete."; \
-		echo "  Export your key and re-run:"; \
-		echo "    export ANTHROPIC_API_KEY=sk-ant-..."; \
-		echo "    make demo-up"; \
-		echo ""; \
-		echo "  Without an API key, SLO monitoring and fault injection still work,"; \
-		echo "  but investigator jobs will fail."; \
-		exit 1; \
+		if [ "$$LLM_PROVIDER" = "ollama" ] || [ "$$LLM_PROVIDER" = "local" ]; then \
+			echo "==> No LLM API key set; provider '$$LLM_PROVIDER' is local and needs none — using placeholder secret."; \
+			LLM_KEY="unused-local-$$LLM_PROVIDER"; \
+		else \
+			echo ""; \
+			echo "ERROR: ANTHROPIC_API_KEY (or BEEPER_LLM_API_KEY) must be set for LLM provider '$$LLM_PROVIDER'."; \
+			echo "  Cloud-provider investigations require an API key to complete."; \
+			echo "  Export your key and re-run:"; \
+			echo "    export ANTHROPIC_API_KEY=sk-ant-..."; \
+			echo "    make demo-up"; \
+			echo ""; \
+			echo "  (Local providers like ollama do not need a key.)"; \
+			exit 1; \
+		fi; \
 	fi; \
 	echo "==> Creating LLM credentials secret..."; \
 	kubectl create secret generic llm-credentials \
