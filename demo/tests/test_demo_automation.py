@@ -22,6 +22,7 @@ VALUES_DEV = os.path.join(REPO_ROOT, "helm", "beeper", "values-dev.yaml")
 UI_SVC_TEMPLATE = os.path.join(
     REPO_ROOT, "helm", "beeper", "templates", "ui-deployment.yaml"
 )
+DEMO_README = os.path.join(REPO_ROOT, "demo", "README.md")
 
 
 def _read(path):
@@ -275,3 +276,43 @@ class TestFaultRecovery:
 
     def test_recover_restarts_flagd(self):
         assert "rollout restart deploy/flagd" in _recipe("demo-recover")
+
+
+class TestDemoReadmeScript:
+    """AC (6.3): demo/README.md documents the full demo script with timing
+    (2–3 min warmup; 5–10 min investigation) and the 3/3 repeatability run."""
+
+    def test_readme_has_full_demo_script_section(self):
+        readme = _read(DEMO_README)
+        assert re.search(r"Full Demo Script|3/3 Validation", readme), (
+            "README must document the end-to-end demo script"
+        )
+
+    def test_readme_documents_warmup_and_investigation_timing(self):
+        readme = _read(DEMO_README).lower()
+        assert "warmup" in readme
+        # 2–3 min warmup and 5–10 min investigation timings present
+        assert re.search(r"2[–-]3\s*min", readme), "missing ~2–3 min warmup timing"
+        assert re.search(r"5[–-]10\s*min", readme), "missing ~5–10 min investigation timing"
+
+    def test_readme_documents_three_consecutive_runs(self):
+        readme = _read(DEMO_README).lower()
+        assert "3" in readme and (
+            "consecutive" in readme or "3/3" in readme or "3×" in readme or "3x" in readme
+        )
+
+    def test_readme_covers_recover_and_no_insufficient_data(self):
+        readme = _read(DEMO_README).lower()
+        assert "demo-recover" in readme
+        assert "insufficient data" in readme  # the zero-insufficient-data [T]
+
+    def test_readme_fault_flag_names_match_makefile(self):
+        """The README fault table must use the SAME flag keys as demo-fault
+        (guards the doc drift where it said paymentServiceFailure etc.)."""
+        readme = _read(DEMO_README)
+        case_flags = {flag for (flag, _v) in _parse_demo_fault_cases().values()}
+        for flag in case_flags:
+            assert flag in readme, f"README must document the real flag key {flag!r}"
+        # And must NOT reference the old wrong names.
+        for wrong in ("paymentServiceFailure", "cartServiceFailure", "adServiceHighCpu"):
+            assert wrong not in readme, f"stale/incorrect flag name in README: {wrong}"

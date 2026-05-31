@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 6, Milestone 6.1 — **Phases 1–5 complete; Task 6.1 merged (PR #11, `905d895`)**. **Task 6.2 (fault injection/recovery) in progress** on branch `feature/6.2-fault-injection` (build-for-review; driven live against the `beeper-demo` kind cluster — fixed the broken `payment-failure`/`slow-images` flag variants). Once 6.2 merges, **Task 6.3** is the final E2E gate (`[H]` manual 3× demo run; resolves Q1/`3-0c`) — it needs a live cluster + a scheduled user demo session. NOTE: Phase 6 requires a live Docker/kind cluster (AD-8 manual verification) — not runnable in a plain CI/sandbox without one. Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** Phase 6, Milestone 6.1 — **Phases 1–5 complete; Tasks 6.1 (PR #11) and 6.2 (PR #12, `24cc4f3`) merged**. **Task 6.3 (E2E 3/3 validation) in progress** on branch `feature/6.3-e2e-demo-validation` — its `[T]` (timed `demo/README.md` 3/3 script + flag-name doc fix) is DONE and tested; its **`[H]` 3× demo run is the only thing standing between the project and done**, and is BLOCKED on the local LLM being unavailable (Ollama not running on the host; see Task 6.3 notes) + a scheduled witnessed session. This is the LAST task — once the `[H]` run passes 3/3, Q1/`3-0c` resolve and the project hits its definition of done. NOTE: Phase 6 requires a live Docker/kind cluster + LLM (AD-8 manual verification). Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
 
 ## Decisions
 
@@ -321,7 +321,7 @@ Full demo lifecycle — deploy, verify, inject fault, watch, recover, repeat —
 |---|------|-----------|--------------|--------|
 | 6.1 | Fix demo deployment & port-forward automation | M | Phase 1 | in progress |
 | 6.2 | Fix fault injection & recovery automation | M | 6.1 | in progress |
-| 6.3 | End-to-end demo validation — 3/3 repeatability | L | 6.1, 6.2, Phases 1–5 | pending |
+| 6.3 | End-to-end demo validation — 3/3 repeatability | L | 6.1, 6.2, Phases 1–5 | in progress |
 
 **Task 6.1 — in progress.** _(branch `feature/6.1-demo-deploy-automation`; build-for-review, not auto-merged. Driven LIVE against the `beeper-demo` kind cluster.)_
 - `[T]` `make demo-deploy` deploys OTEL Astronomy Shop (16+ services), configures Collector → Beeper ingestion, applies ServiceLevel CRDs (FR36).
@@ -361,10 +361,14 @@ Test linkage (`demo/tests/test_demo_automation.py`, +9 tests; pure-parse, no clu
 - `[T]` distinct faults → `test_every_fault_uses_a_valid_nonoff_variant` (each maps to a distinct valid flag/variant). The runtime *"each produces a distinct investigation"* outcome needs ~10-min EWMA warmup per fault → verified during the **6.3 manual demo run** (AD-8), not automatable here.
 - **Notes:** (a) minor — two `make demo-fault` calls within ~1s hit flagd's rollout-restart rate limit (`please wait before attempting to trigger another`); the configmap still updates, only the restart is skipped — normal single-fault usage is unaffected, flagged as a possible future `--wait`/retry hardening; (b) the new `demo/tests` run in the `demo-config` CI job added in 6.1.
 
-**Task 6.3 — pending.** *(resolves Q1 / the blocked 3-0c)*
+**Task 6.3 — in progress.** _(branch `feature/6.3-e2e-demo-validation`; resolves Q1 / the blocked 3-0c)_
 - `[H]` Run the full demo sequence (deploy → verify stats → await EWMA warmup → `demo-fault payment-failure` → investigation appears & completes → verify root cause references "payment service"/"error rate" → verify real Prometheus + Loki evidence → `demo-recover`) **3 consecutive times without cluster restart**, all succeeding (NFR8).
 - `[T]` Zero "insufficient data" results while faults are active.
 - `[T]` `demo/README.md` documents the full script with timing (2–3 min warmup; 5–10 min investigation).
+
+**Progress (2026-05-29).** The `[T]` documentation criterion is DONE and the `[H]` run is staged:
+- `[T]` **`demo/README.md` now documents the full timed 3/3 script** — "Full Demo Script — 3/3 Validation (NFR8)": one-time setup + a 7-step per-cycle runbook (verify ingestion via operator API → await EWMA warmup ~2–3 min → `demo-fault payment-failure` → watch investigation ~5–10 min → verify evidence-backed root cause names the payment service with real Prom/Loki data and **zero "insufficient data"** → `demo-recover` → confirm clean), repeated 3× with no restart. Also **fixed a doc bug**: the Available Faults table listed non-existent flag names (`paymentServiceFailure`/`cartServiceFailure`/`adServiceHighCpu`) — corrected to the real `paymentFailure`/`cartFailure`/`adHighCpu` (+ variants), and added the operator-API :8081 access. → `demo/tests/test_demo_automation.py::TestDemoReadmeScript::*` (5 tests, incl. flag-names-match-Makefile guard). The "zero insufficient-data" `[T]` is documented as a pass-criterion and verified during the live run.
+- `[H]` **BLOCKED on environment, pending a scheduled user session.** Pre-flight of the live `beeper-demo` cluster (2026-05-29): operator 1/1 healthy, ingesting (6.9M metrics / 65k logs / 612 anomalies / 8156 detectors), faults clean — BUT the **LLM is unavailable**: `values-dev.yaml` uses local Ollama (`host.docker.internal:11434`) and nothing is listening (`localhost:11434` → no response). Investigations can't *complete* without it, so the 3/3 acceptance run can't pass yet. **Action required (user):** start Ollama (`OLLAMA_HOST=0.0.0.0 ollama serve`, model `qwen3:8b`) — or switch the deployment to Anthropic via `ANTHROPIC_API_KEY` — then run the README script 3×. The `[H]` is inherently a witnessed acceptance run (investor-confidence + human judgement on root-cause quality + ~10–15 min/cycle), so it stays a user/paired session per the command's `[H]` rule.
 
 **Parallelizable:** 6.1→6.2 sequential; 6.3 is the final gate after all prior phases. Task 6.3 has an `[H]` criterion (manual demo run) — schedule the user review session explicitly. _(max 8 concurrent per config)_
 **Milestone Value:** Eric joins investor calls confident the demo works repeatably — the project definition of done.
