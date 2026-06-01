@@ -173,7 +173,7 @@ impl LogDetector {
         for &label in SERVICE_LABELS {
             if let Some(value) = entry.labels.get(label) {
                 if !value.is_empty() {
-                    return value.clone();
+                    return super::normalize_service(value);
                 }
             }
         }

@@ -59,9 +59,9 @@ impl DetectionConfig {
         Self {
             enabled: env_bool("BEEPER_DETECTION_ENABLED", true),
             metric_alpha: env_f64("BEEPER_DETECTION_METRIC_ALPHA", 0.2),
-            metric_threshold: env_f64("BEEPER_DETECTION_METRIC_THRESHOLD", 3.0),
+            metric_threshold: env_f64("BEEPER_DETECTION_METRIC_THRESHOLD", 4.0),
             log_alpha: env_f64("BEEPER_DETECTION_LOG_ALPHA", 0.2),
-            log_threshold: env_f64("BEEPER_DETECTION_LOG_THRESHOLD", 3.0),
+            log_threshold: env_f64("BEEPER_DETECTION_LOG_THRESHOLD", 4.0),
             min_samples: env_u64("BEEPER_DETECTION_MIN_SAMPLES", 30),
             cooldown_secs: env_u64("BEEPER_DETECTION_COOLDOWN_SECS", 600),
             max_metrics: env_usize("BEEPER_DETECTION_MAX_METRICS", 10000),
@@ -83,9 +83,9 @@ impl Default for DetectionConfig {
         Self {
             enabled: true,
             metric_alpha: 0.2,
-            metric_threshold: 3.0,
+            metric_threshold: 4.0,
             log_alpha: 0.2,
-            log_threshold: 3.0,
+            log_threshold: 4.0,
             min_samples: 30,
             cooldown_secs: 600,
             max_metrics: 10000,
@@ -104,6 +104,29 @@ impl Default for DetectionConfig {
 /// Default metric-name prefixes filtered from investigation triggers:
 /// host/runtime telemetry that is not a service-health signal.
 const DEFAULT_METRIC_DENYLIST: &[&str] = &["system_", "v8js_", "process_", "runtime_"];
+
+/// Normalise a service-identifying label value to a bare service name by
+/// stripping any `namespace/` prefix. The same logical service can be attributed
+/// differently depending on which label carries it — e.g. an OTel-collector
+/// metric labels it `service=otel-demo/payment` while the app's own metric uses
+/// `service_name=payment`. Collapsing to the last path segment gives one
+/// identity (and one cooldown fingerprint) per service.
+pub(crate) fn normalize_service(value: &str) -> String {
+    value.rsplit('/').next().unwrap_or(value).to_string()
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::normalize_service;
+
+    #[test]
+    fn test_normalize_service_strips_namespace_prefix() {
+        assert_eq!(normalize_service("otel-demo/payment"), "payment");
+        assert_eq!(normalize_service("payment"), "payment");
+        assert_eq!(normalize_service("a/b/checkout"), "checkout");
+        assert_eq!(normalize_service(""), "");
+    }
+}
 
 /// Detection statistics shared via atomic counters.
 pub struct DetectionStats {
@@ -193,9 +216,9 @@ mod tests {
         let config = DetectionConfig::default();
         assert!(config.enabled);
         assert_eq!(config.metric_alpha, 0.2);
-        assert_eq!(config.metric_threshold, 3.0);
+        assert_eq!(config.metric_threshold, 4.0);
         assert_eq!(config.log_alpha, 0.2);
-        assert_eq!(config.log_threshold, 3.0);
+        assert_eq!(config.log_threshold, 4.0);
         assert_eq!(config.min_samples, 30);
         assert_eq!(config.cooldown_secs, 600);
         assert_eq!(config.max_metrics, 10000);

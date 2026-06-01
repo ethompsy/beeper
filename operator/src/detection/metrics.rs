@@ -183,7 +183,7 @@ impl MetricDetector {
         for &label in SERVICE_LABELS {
             if let Some(value) = sample.labels.get(label) {
                 if !value.is_empty() {
-                    return value.clone();
+                    return super::normalize_service(value);
                 }
             }
         }
