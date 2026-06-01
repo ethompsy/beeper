@@ -41,6 +41,16 @@ pub struct DetectionConfig {
     pub window_secs: u64,
     /// Kubernetes namespace for Investigation CRDs
     pub namespace: String,
+    /// Skip anomalies that cannot be attributed to a named service
+    /// (`service == "unknown"`). An incident-response investigation that can't
+    /// name a service isn't actionable — these are almost always
+    /// infrastructure/host metrics with no `service`-identifying label.
+    pub skip_unknown_service: bool,
+    /// Metric-name prefixes whose anomalies never trigger investigations.
+    /// These are runtime/host telemetry (GC, heap, CPU-time, process stats),
+    /// not service-health SLIs — investigating them is noise. Set the env var
+    /// to an empty string to disable filtering.
+    pub metric_denylist_prefixes: Vec<String>,
 }
 
 impl DetectionConfig {
@@ -49,9 +59,9 @@ impl DetectionConfig {
         Self {
             enabled: env_bool("BEEPER_DETECTION_ENABLED", true),
             metric_alpha: env_f64("BEEPER_DETECTION_METRIC_ALPHA", 0.2),
-            metric_threshold: env_f64("BEEPER_DETECTION_METRIC_THRESHOLD", 3.0),
+            metric_threshold: env_f64("BEEPER_DETECTION_METRIC_THRESHOLD", 4.0),
             log_alpha: env_f64("BEEPER_DETECTION_LOG_ALPHA", 0.2),
-            log_threshold: env_f64("BEEPER_DETECTION_LOG_THRESHOLD", 3.0),
+            log_threshold: env_f64("BEEPER_DETECTION_LOG_THRESHOLD", 4.0),
             min_samples: env_u64("BEEPER_DETECTION_MIN_SAMPLES", 30),
             cooldown_secs: env_u64("BEEPER_DETECTION_COOLDOWN_SECS", 600),
             max_metrics: env_usize("BEEPER_DETECTION_MAX_METRICS", 10000),
@@ -59,6 +69,11 @@ impl DetectionConfig {
             window_secs: env_u64("BEEPER_DETECTION_WINDOW_SECS", 300),
             namespace: env::var("BEEPER_DETECTION_NAMESPACE")
                 .unwrap_or_else(|_| "default".to_string()),
+            skip_unknown_service: env_bool("BEEPER_DETECTION_SKIP_UNKNOWN_SERVICE", true),
+            metric_denylist_prefixes: env_csv(
+                "BEEPER_DETECTION_METRIC_DENYLIST",
+                DEFAULT_METRIC_DENYLIST,
+            ),
         }
     }
 }
@@ -68,16 +83,48 @@ impl Default for DetectionConfig {
         Self {
             enabled: true,
             metric_alpha: 0.2,
-            metric_threshold: 3.0,
+            metric_threshold: 4.0,
             log_alpha: 0.2,
-            log_threshold: 3.0,
+            log_threshold: 4.0,
             min_samples: 30,
             cooldown_secs: 600,
             max_metrics: 10000,
             max_services: 1000,
             window_secs: 300,
             namespace: "default".to_string(),
+            skip_unknown_service: true,
+            metric_denylist_prefixes: DEFAULT_METRIC_DENYLIST
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         }
+    }
+}
+
+/// Default metric-name prefixes filtered from investigation triggers:
+/// host/runtime telemetry that is not a service-health signal.
+const DEFAULT_METRIC_DENYLIST: &[&str] = &["system_", "v8js_", "process_", "runtime_"];
+
+/// Normalise a service-identifying label value to a bare service name by
+/// stripping any `namespace/` prefix. The same logical service can be attributed
+/// differently depending on which label carries it — e.g. an OTel-collector
+/// metric labels it `service=otel-demo/payment` while the app's own metric uses
+/// `service_name=payment`. Collapsing to the last path segment gives one
+/// identity (and one cooldown fingerprint) per service.
+pub(crate) fn normalize_service(value: &str) -> String {
+    value.rsplit('/').next().unwrap_or(value).to_string()
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::normalize_service;
+
+    #[test]
+    fn test_normalize_service_strips_namespace_prefix() {
+        assert_eq!(normalize_service("otel-demo/payment"), "payment");
+        assert_eq!(normalize_service("payment"), "payment");
+        assert_eq!(normalize_service("a/b/checkout"), "checkout");
+        assert_eq!(normalize_service(""), "");
     }
 }
 
@@ -146,6 +193,20 @@ fn env_usize(key: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// Parse a comma-separated env var into a Vec of trimmed, non-empty strings.
+/// If the var is unset, returns `default`. If set to an empty/blank string,
+/// returns an empty Vec (i.e. an explicit way to disable the list).
+fn env_csv(key: &str, default: &[&str]) -> Vec<String> {
+    match env::var(key) {
+        Ok(v) => v
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        Err(_) => default.iter().map(|s| s.to_string()).collect(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,14 +216,28 @@ mod tests {
         let config = DetectionConfig::default();
         assert!(config.enabled);
         assert_eq!(config.metric_alpha, 0.2);
-        assert_eq!(config.metric_threshold, 3.0);
+        assert_eq!(config.metric_threshold, 4.0);
         assert_eq!(config.log_alpha, 0.2);
-        assert_eq!(config.log_threshold, 3.0);
+        assert_eq!(config.log_threshold, 4.0);
         assert_eq!(config.min_samples, 30);
         assert_eq!(config.cooldown_secs, 600);
         assert_eq!(config.max_metrics, 10000);
         assert_eq!(config.max_services, 1000);
         assert_eq!(config.window_secs, 300);
         assert_eq!(config.namespace, "default");
+        assert!(config.skip_unknown_service);
+        assert_eq!(
+            config.metric_denylist_prefixes,
+            vec!["system_", "v8js_", "process_", "runtime_"]
+        );
+    }
+
+    #[test]
+    fn test_env_csv_parsing() {
+        // unset → default
+        assert_eq!(
+            env_csv("BEEPER_TEST_UNSET_CSV_XYZ", &["a", "b"]),
+            vec!["a", "b"]
+        );
     }
 }

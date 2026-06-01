@@ -22,6 +22,10 @@ VALUES_DEV = os.path.join(REPO_ROOT, "helm", "beeper", "values-dev.yaml")
 UI_SVC_TEMPLATE = os.path.join(
     REPO_ROOT, "helm", "beeper", "templates", "ui-deployment.yaml"
 )
+DEMO_README = os.path.join(REPO_ROOT, "demo", "README.md")
+INVESTIGATOR_RBAC = os.path.join(
+    REPO_ROOT, "helm", "beeper", "templates", "investigator-rbac.yaml"
+)
 
 
 def _read(path):
@@ -275,3 +279,80 @@ class TestFaultRecovery:
 
     def test_recover_restarts_flagd(self):
         assert "rollout restart deploy/flagd" in _recipe("demo-recover")
+
+
+class TestLlmKeyGate:
+    """AC (demo robustness, Finding H): demo-beeper must not hard-fail when no
+    LLM API key is set if the deploy uses a local provider (ollama)."""
+
+    def test_demo_beeper_allows_missing_key_for_ollama(self):
+        recipe = _recipe("demo-beeper")
+        # Detects the provider and treats ollama/local as not requiring a key.
+        assert "values-dev.yaml" in recipe and "provider:" in recipe
+        assert 'LLM_PROVIDER" = "ollama"' in recipe or "ollama" in recipe
+        # Still creates the secret (placeholder) so the chart's secretKeyRef resolves.
+        assert "placeholder" in recipe.lower()
+        assert "kubectl create secret generic llm-credentials" in recipe
+
+    def test_demo_beeper_still_errors_for_cloud_without_key(self):
+        recipe = _recipe("demo-beeper")
+        assert "exit 1" in recipe  # cloud provider + no key still fails fast
+
+
+class TestInvestigatorRbac:
+    """AC (Q6): the investigator SA must be able to `list` investigations — the
+    Service Topology step enumerates Investigation CRs. Without `list` it 403s.
+    Guards the helm Role rule (rendered via {{ }}, so parse the raw template)."""
+
+    def test_investigator_role_can_list_investigations(self):
+        text = _read(INVESTIGATOR_RBAC)
+        # Find the rule block for the bare `investigations` resource and assert
+        # it grants get + list + patch.
+        m = re.search(
+            r'resources:\s*\["investigations"\]\s*\n\s*verbs:\s*(\[[^\]]*\])',
+            text,
+        )
+        assert m, "no rule block for the investigations resource found"
+        verbs = m.group(1)
+        for v in ("get", "list", "patch"):
+            assert f'"{v}"' in verbs, f"investigator Role must grant '{v}' on investigations (have: {verbs})"
+
+
+class TestDemoReadmeScript:
+    """AC (6.3): demo/README.md documents the full demo script with timing
+    (2–3 min warmup; 5–10 min investigation) and the 3/3 repeatability run."""
+
+    def test_readme_has_full_demo_script_section(self):
+        readme = _read(DEMO_README)
+        assert re.search(r"Full Demo Script|3/3 Validation", readme), (
+            "README must document the end-to-end demo script"
+        )
+
+    def test_readme_documents_warmup_and_investigation_timing(self):
+        readme = _read(DEMO_README).lower()
+        assert "warmup" in readme
+        # 2–3 min warmup and 5–10 min investigation timings present
+        assert re.search(r"2[–-]3\s*min", readme), "missing ~2–3 min warmup timing"
+        assert re.search(r"5[–-]10\s*min", readme), "missing ~5–10 min investigation timing"
+
+    def test_readme_documents_three_consecutive_runs(self):
+        readme = _read(DEMO_README).lower()
+        assert "3" in readme and (
+            "consecutive" in readme or "3/3" in readme or "3×" in readme or "3x" in readme
+        )
+
+    def test_readme_covers_recover_and_no_insufficient_data(self):
+        readme = _read(DEMO_README).lower()
+        assert "demo-recover" in readme
+        assert "insufficient data" in readme  # the zero-insufficient-data [T]
+
+    def test_readme_fault_flag_names_match_makefile(self):
+        """The README fault table must use the SAME flag keys as demo-fault
+        (guards the doc drift where it said paymentServiceFailure etc.)."""
+        readme = _read(DEMO_README)
+        case_flags = {flag for (flag, _v) in _parse_demo_fault_cases().values()}
+        for flag in case_flags:
+            assert flag in readme, f"README must document the real flag key {flag!r}"
+        # And must NOT reference the old wrong names.
+        for wrong in ("paymentServiceFailure", "cartServiceFailure", "adServiceHighCpu"):
+            assert wrong not in readme, f"stale/incorrect flag name in README: {wrong}"

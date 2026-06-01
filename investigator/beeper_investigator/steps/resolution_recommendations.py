@@ -178,7 +178,7 @@ class ResolutionRecommendationStep:
         try:
             raw = self.llm_client.complete_sync(
                 messages,
-                max_tokens=1024,
+                max_tokens=3072,
                 temperature=0.0,
                 model=model_name,
             )
