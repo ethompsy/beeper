@@ -110,3 +110,52 @@ class TestParseJsonResponse:
         raw = 'Here is the result:\n\n{"key": "value"}'
         result = parse_json_response(raw)
         assert result == {"key": "value"}
+
+    # --- qwen3 / reasoning-model failure modes (Q4) ---------------------------
+
+    def test_draft_json_inside_think_is_ignored(self) -> None:
+        """A ```json draft the model writes INSIDE its <think> block must not be
+        mistaken for the answer — the real answer follows </think>.
+
+        This is the bug that made qwen3:8b fall back to defaults on ~every
+        investigation (the fence regex grabbed the in-think draft)."""
+        answer = '{"prometheus": ["rate(errors[5m])"], "loki": ["payment"]}'
+        raw = (
+            "<think>\nLet me draft a query set:\n"
+            '```json\n{"prometheus": ["DRAFT_WRONG"], "loki": []}\n```\n'
+            "Actually, let me refine that.\n</think>\n"
+            f"```json\n{answer}\n```"
+        )
+        result = parse_json_response(raw)
+        assert result == {
+            "prometheus": ["rate(errors[5m])"],
+            "loki": ["payment"],
+        }
+
+    def test_draft_json_inside_think_unfenced_answer(self) -> None:
+        """Same as above but the real answer after </think> is bare (no fence)."""
+        raw = (
+            '<think>draft: ```json\n{"answer": "WRONG"}\n``` reconsider</think>\n'
+            '{"answer": "right"}'
+        )
+        result = parse_json_response(raw)
+        assert result == {"answer": "right"}
+
+    def test_braces_inside_string_values(self) -> None:
+        """Braces inside JSON string values (e.g. PromQL/LogQL selectors) must
+        not prematurely terminate balanced-object extraction."""
+        raw = 'Here you go:\n{"query": "sum(rate(http_requests_total{job=\\"api\\"}[5m]))"}'
+        result = parse_json_response(raw)
+        assert result == {"query": 'sum(rate(http_requests_total{job="api"}[5m]))'}
+
+    def test_trailing_prose_after_json(self) -> None:
+        """Trailing prose after the JSON object is ignored."""
+        raw = '{"root_cause": "payment errors"}\n\nHope this helps!'
+        result = parse_json_response(raw)
+        assert result == {"root_cause": "payment errors"}
+
+    def test_non_dict_json_falls_through_to_object(self) -> None:
+        """A leading JSON array/scalar is skipped in favour of the object."""
+        raw = 'Here is a list [1, 2, 3] and the result: {"key": "value"}'
+        result = parse_json_response(raw)
+        assert result == {"key": "value"}
