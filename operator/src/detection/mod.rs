@@ -41,6 +41,16 @@ pub struct DetectionConfig {
     pub window_secs: u64,
     /// Kubernetes namespace for Investigation CRDs
     pub namespace: String,
+    /// Skip anomalies that cannot be attributed to a named service
+    /// (`service == "unknown"`). An incident-response investigation that can't
+    /// name a service isn't actionable — these are almost always
+    /// infrastructure/host metrics with no `service`-identifying label.
+    pub skip_unknown_service: bool,
+    /// Metric-name prefixes whose anomalies never trigger investigations.
+    /// These are runtime/host telemetry (GC, heap, CPU-time, process stats),
+    /// not service-health SLIs — investigating them is noise. Set the env var
+    /// to an empty string to disable filtering.
+    pub metric_denylist_prefixes: Vec<String>,
 }
 
 impl DetectionConfig {
@@ -59,6 +69,11 @@ impl DetectionConfig {
             window_secs: env_u64("BEEPER_DETECTION_WINDOW_SECS", 300),
             namespace: env::var("BEEPER_DETECTION_NAMESPACE")
                 .unwrap_or_else(|_| "default".to_string()),
+            skip_unknown_service: env_bool("BEEPER_DETECTION_SKIP_UNKNOWN_SERVICE", true),
+            metric_denylist_prefixes: env_csv(
+                "BEEPER_DETECTION_METRIC_DENYLIST",
+                DEFAULT_METRIC_DENYLIST,
+            ),
         }
     }
 }
@@ -77,9 +92,18 @@ impl Default for DetectionConfig {
             max_services: 1000,
             window_secs: 300,
             namespace: "default".to_string(),
+            skip_unknown_service: true,
+            metric_denylist_prefixes: DEFAULT_METRIC_DENYLIST
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         }
     }
 }
+
+/// Default metric-name prefixes filtered from investigation triggers:
+/// host/runtime telemetry that is not a service-health signal.
+const DEFAULT_METRIC_DENYLIST: &[&str] = &["system_", "v8js_", "process_", "runtime_"];
 
 /// Detection statistics shared via atomic counters.
 pub struct DetectionStats {
@@ -146,6 +170,20 @@ fn env_usize(key: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// Parse a comma-separated env var into a Vec of trimmed, non-empty strings.
+/// If the var is unset, returns `default`. If set to an empty/blank string,
+/// returns an empty Vec (i.e. an explicit way to disable the list).
+fn env_csv(key: &str, default: &[&str]) -> Vec<String> {
+    match env::var(key) {
+        Ok(v) => v
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        Err(_) => default.iter().map(|s| s.to_string()).collect(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,5 +202,19 @@ mod tests {
         assert_eq!(config.max_services, 1000);
         assert_eq!(config.window_secs, 300);
         assert_eq!(config.namespace, "default");
+        assert!(config.skip_unknown_service);
+        assert_eq!(
+            config.metric_denylist_prefixes,
+            vec!["system_", "v8js_", "process_", "runtime_"]
+        );
+    }
+
+    #[test]
+    fn test_env_csv_parsing() {
+        // unset → default
+        assert_eq!(
+            env_csv("BEEPER_TEST_UNSET_CSV_XYZ", &["a", "b"]),
+            vec!["a", "b"]
+        );
     }
 }

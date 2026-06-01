@@ -74,22 +74,45 @@ pub struct MetricDetector {
     threshold: f64,
     /// Minimum samples before detection
     min_samples: u64,
+    /// Metric-name prefixes that are never tracked/triggered (host/runtime noise).
+    denylist_prefixes: Vec<String>,
 }
 
 impl MetricDetector {
     /// Create a new metric detector.
-    pub fn new(alpha: f64, threshold: f64, min_samples: u64, max_tracked: usize) -> Self {
+    pub fn new(
+        alpha: f64,
+        threshold: f64,
+        min_samples: u64,
+        max_tracked: usize,
+        denylist_prefixes: Vec<String>,
+    ) -> Self {
         Self {
             states: HashMap::new(),
             max_tracked,
             alpha,
             threshold,
             min_samples,
+            denylist_prefixes,
         }
+    }
+
+    /// Returns true if the metric name matches a denylisted prefix.
+    fn is_denylisted(&self, name: &str) -> bool {
+        self.denylist_prefixes
+            .iter()
+            .any(|p| name.starts_with(p.as_str()))
     }
 
     /// Process a metric sample, returning an anomaly event if detected.
     pub fn process(&mut self, sample: &MetricSample) -> Option<AnomalyEvent> {
+        // Host/runtime telemetry (system_*, v8js_*, process_*, …) is not a
+        // service-health signal — never track or investigate it. Filtering here
+        // also keeps these high-cardinality series out of the EWMA state map.
+        if self.is_denylisted(&sample.name) {
+            return None;
+        }
+
         let key = MetricKey::from_sample(sample);
         let now = Instant::now();
 
@@ -198,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_processes_multiple_metrics_independently() {
-        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000);
+        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000, vec![]);
 
         // Feed steady state for metric_a
         for _ in 0..20 {
@@ -220,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_bounded_hashmap_eviction() {
-        let mut detector = MetricDetector::new(0.2, 3.0, 10, 3);
+        let mut detector = MetricDetector::new(0.2, 3.0, 10, 3, vec![]);
 
         // Add 3 metrics to fill capacity
         detector.process(&make_sample("m1", 1.0, vec![]));
@@ -235,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_service_extraction_with_app_label() {
-        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000);
+        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000, vec![]);
 
         // app label should be used when service is not present
         for _ in 0..20 {
@@ -285,7 +308,7 @@ mod tests {
         // Two samples with different `service_name` values MUST produce separate
         // MetricKey entries. Without `service_name` in DISCRIMINATING_LABELS,
         // payment + frontend metrics of the same name collapse into one EWMA state.
-        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000);
+        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000, vec![]);
 
         detector.process(&make_sample(
             "http_requests_total",
@@ -307,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_min_sample_count_returns_minimum() {
-        let mut detector = MetricDetector::new(0.2, 3.0, 100, 10000);
+        let mut detector = MetricDetector::new(0.2, 3.0, 100, 10000, vec![]);
 
         // Empty detector returns 0
         assert_eq!(detector.min_sample_count(), 0);
@@ -327,7 +350,7 @@ mod tests {
 
     #[test]
     fn test_anomaly_event_fields() {
-        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000);
+        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000, vec![]);
 
         let labels = vec![("service", "frontend"), ("instance", "web-1")];
 
@@ -347,5 +370,47 @@ mod tests {
         assert!(event.deviation > 3.0);
         assert!(event.condition.contains("cpu_usage"));
         assert!(event.condition.contains("spike"));
+    }
+
+    #[test]
+    fn test_denylisted_metrics_never_trigger() {
+        // Host/runtime metrics matching a denylist prefix must never produce an
+        // anomaly, even on a large spike — and must not be tracked at all.
+        let denylist = vec!["system_".to_string(), "v8js_".to_string()];
+        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000, denylist);
+
+        for _ in 0..20 {
+            detector.process(&make_sample(
+                "v8js_gc_duration_seconds",
+                50.0,
+                vec![("service", "frontend")],
+            ));
+        }
+        let result = detector.process(&make_sample(
+            "v8js_gc_duration_seconds",
+            5000.0,
+            vec![("service", "frontend")],
+        ));
+        assert!(result.is_none(), "denylisted metric must not trigger");
+        assert_eq!(
+            detector.tracked_count(),
+            0,
+            "denylisted metric must not be tracked"
+        );
+
+        // A non-denylisted metric on the same detector still works.
+        for _ in 0..20 {
+            detector.process(&make_sample(
+                "http_errors",
+                1.0,
+                vec![("service", "frontend")],
+            ));
+        }
+        let ok = detector.process(&make_sample(
+            "http_errors",
+            500.0,
+            vec![("service", "frontend")],
+        ));
+        assert!(ok.is_some(), "non-denylisted metric should still trigger");
     }
 }

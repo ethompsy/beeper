@@ -95,6 +95,7 @@ impl DetectionConsumer {
             self.config.metric_threshold,
             self.config.min_samples,
             self.config.max_metrics,
+            self.config.metric_denylist_prefixes.clone(),
         );
 
         let mut log_detector = LogDetector::new(
@@ -178,6 +179,19 @@ impl DetectionConsumer {
             }
 
             if let Some(event) = event {
+                // Skip anomalies we can't attribute to a named service — an
+                // investigation that can't name a service isn't actionable for
+                // incident response (these are host/infra metrics lacking a
+                // service label). Opt out via BEEPER_DETECTION_SKIP_UNKNOWN_SERVICE=false.
+                if self.config.skip_unknown_service && event.service == "unknown" {
+                    debug!(
+                        component = "detection",
+                        source = %event.source,
+                        "Skipping anomaly with no service attribution (service=unknown)"
+                    );
+                    continue;
+                }
+
                 let fingerprint = anomaly_fingerprint(&event);
 
                 if cooldown.is_cooling_down(&fingerprint) {
@@ -406,7 +420,7 @@ mod integration_tests {
     #[tokio::test]
     async fn test_metric_samples_through_buffer_produce_anomaly() {
         let buffer = IngestionBuffer::new(1000);
-        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000);
+        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000, vec![]);
 
         // Send steady-state metrics through buffer
         for _ in 0..20 {
@@ -598,7 +612,7 @@ mod integration_tests {
     #[tokio::test]
     async fn test_steady_state_through_buffer_no_anomalies() {
         let buffer = IngestionBuffer::new(1000);
-        let mut metric_detector = MetricDetector::new(0.2, 3.0, 10, 10000);
+        let mut metric_detector = MetricDetector::new(0.2, 3.0, 10, 10000, vec![]);
         let mut log_detector = LogDetector::new(0.2, 3.0, 10, 1000, 300);
 
         // Send steady-state metrics
@@ -657,7 +671,7 @@ mod integration_tests {
     fn test_warmup_samples_metric_only_workload() {
         // When only metric detectors are active (no error logs), warmup_samples
         // should reflect the metric detector's min, NOT be stuck at 0.
-        let mut metric_detector = MetricDetector::new(0.2, 3.0, 10, 10000);
+        let mut metric_detector = MetricDetector::new(0.2, 3.0, 10, 10000, vec![]);
         let log_detector = LogDetector::new(0.2, 3.0, 10, 1000, 300);
 
         // Feed 5 metric samples to one key
