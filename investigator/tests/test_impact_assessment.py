@@ -129,14 +129,17 @@ class TestCustomerImpactStep:
         call_kwargs = mock_llm.complete_sync.call_args
         assert call_kwargs[1]["model"] == "claude-3-haiku-20240307"
 
-    def test_low_max_tokens(self) -> None:
-        """Step uses low max_tokens for screening efficiency."""
+    def test_bounded_max_tokens(self) -> None:
+        """Step uses a bounded max_tokens — large enough that a reasoning model
+        (e.g. qwen3) can emit its <think> block AND the JSON answer without
+        truncating (a 256 cap truncated qwen mid-think → empty response →
+        parse failure), but still bounded for screening efficiency."""
         step, mock_llm, _ = _make_step()
 
         step.execute()
 
         call_kwargs = mock_llm.complete_sync.call_args
-        assert call_kwargs[1]["max_tokens"] <= 256
+        assert 1024 <= call_kwargs[1]["max_tokens"] <= 4096
 
     def test_prompt_includes_context(self) -> None:
         """LLM prompt includes condition, service, and severity."""

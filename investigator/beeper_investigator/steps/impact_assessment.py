@@ -82,7 +82,7 @@ class CustomerImpactStep:
         try:
             raw = self.llm_client.complete_sync(
                 messages,
-                max_tokens=256,
+                max_tokens=1536,
                 temperature=0.0,
                 model=model_name,
             )
