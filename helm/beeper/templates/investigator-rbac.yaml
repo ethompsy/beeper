@@ -50,10 +50,13 @@ rules:
   - apiGroups: ["cert-manager.io"]
     resources: ["certificates"]
     verbs: ["get", "list"]
-  # Allow reading and updating Investigation CR status
+  # Allow reading and updating Investigation CR status.
+  # `list` is required by the Service Topology step, which enumerates
+  # Investigation CRs to correlate related/concurrent investigations — without
+  # it the step logs a 403 ("cannot list resource investigations") and degrades.
   - apiGroups: ["beeper.dev"]
     resources: ["investigations"]
-    verbs: ["get", "patch"]
+    verbs: ["get", "list", "patch"]
   - apiGroups: ["beeper.dev"]
     resources: ["investigations/status"]
     verbs: ["get", "patch", "update"]

@@ -23,6 +23,9 @@ UI_SVC_TEMPLATE = os.path.join(
     REPO_ROOT, "helm", "beeper", "templates", "ui-deployment.yaml"
 )
 DEMO_README = os.path.join(REPO_ROOT, "demo", "README.md")
+INVESTIGATOR_RBAC = os.path.join(
+    REPO_ROOT, "helm", "beeper", "templates", "investigator-rbac.yaml"
+)
 
 
 def _read(path):
@@ -294,6 +297,25 @@ class TestLlmKeyGate:
     def test_demo_beeper_still_errors_for_cloud_without_key(self):
         recipe = _recipe("demo-beeper")
         assert "exit 1" in recipe  # cloud provider + no key still fails fast
+
+
+class TestInvestigatorRbac:
+    """AC (Q6): the investigator SA must be able to `list` investigations — the
+    Service Topology step enumerates Investigation CRs. Without `list` it 403s.
+    Guards the helm Role rule (rendered via {{ }}, so parse the raw template)."""
+
+    def test_investigator_role_can_list_investigations(self):
+        text = _read(INVESTIGATOR_RBAC)
+        # Find the rule block for the bare `investigations` resource and assert
+        # it grants get + list + patch.
+        m = re.search(
+            r'resources:\s*\["investigations"\]\s*\n\s*verbs:\s*(\[[^\]]*\])',
+            text,
+        )
+        assert m, "no rule block for the investigations resource found"
+        verbs = m.group(1)
+        for v in ("get", "list", "patch"):
+            assert f'"{v}"' in verbs, f"investigator Role must grant '{v}' on investigations (have: {verbs})"
 
 
 class TestDemoReadmeScript:
