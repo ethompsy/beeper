@@ -16,11 +16,29 @@ RUN poetry config virtualenvs.create false
 RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 # Tailwind CSS build stage
-FROM alpine:3.19 AS tailwind
+# Use a glibc base (matching the bookworm runtime stage) so the standalone
+# tailwindcss binary's libstdc++/libgcc deps resolve. The previous Dockerfile
+# hardcoded the linux-x64 binary on Alpine, which (a) fails on arm64 build hosts
+# like Apple Silicon (exit 133, wrong arch) and (b) is the wrong libc for Alpine
+# (musl). TARGETARCH (provided by buildx / the build host) selects the binary.
+FROM debian:bookworm-slim AS tailwind
+ARG TARGETARCH
 WORKDIR /build
-ADD https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.0/tailwindcss-linux-x64 /usr/local/bin/tailwindcss
-RUN chmod +x /usr/local/bin/tailwindcss \
-    && echo "73f0e5459054e5cfaa8ab6f3b940f3fbe0f13cc7fd83bc24e7c655033c203400  /usr/local/bin/tailwindcss" | sha256sum -c
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    case "${TARGETARCH:-amd64}" in \
+      arm64) tw="tailwindcss-linux-arm64"; \
+             sum="8f48dcb72be3b351c10563c5329b4638ba8516820dc3b3a1609625a166e87cbd" ;; \
+      amd64) tw="tailwindcss-linux-x64"; \
+             sum="73f0e5459054e5cfaa8ab6f3b940f3fbe0f13cc7fd83bc24e7c655033c203400" ;; \
+      *) echo "unsupported TARGETARCH=${TARGETARCH}"; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /usr/local/bin/tailwindcss \
+      "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.0/${tw}"; \
+    chmod +x /usr/local/bin/tailwindcss; \
+    echo "${sum}  /usr/local/bin/tailwindcss" | sha256sum -c -
 COPY beeper_ui/static/css/input.css ./input.css
 COPY beeper_ui/templates/ ./beeper_ui/templates/
 COPY beeper_ui/static/js/ ./beeper_ui/static/js/
