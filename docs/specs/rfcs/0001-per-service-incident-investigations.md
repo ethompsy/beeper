@@ -1,113 +1,114 @@
-# RFC 0001 — Per-service-incident investigations
+# RFC 0001 — Per-service-incident investigations (with cross-service correlation)
 
-- **Status:** Draft (for review)
-- **Date:** 2026-06-03
+- **Status:** Draft v2 — core model accepted; sub-questions open (see §9)
+- **Date:** 2026-06-03 (v2 incorporates review decisions Q-A…Q-E)
 - **Author:** Eng (with Claude)
-- **Affects:** Operator (`detection/consumer.rs`), Investigation CRD lifecycle, Investigator (signal scope), demo viability on resource-constrained / local-LLM setups
-- **Supersedes (as the root cause of):** the symptom-level patches Q5 (metric/service filtering), Q7 (service-attribution dedup), the 3σ→4σ default, and Q8 (unbounded investigator-Job concurrency). Those remain useful defence-in-depth but do not address the underlying granularity flaw.
+- **Affects:** Operator (`detection/consumer.rs`, investigation lifecycle), Investigator (signal scope, cross-incident correlation, progress/checkpointing), Investigation CRD, demo viability on resource-constrained / local-LLM setups
+- **Supersedes (as the root cause of):** the symptom-level patches Q5 (metric/service filtering), Q7 (service-attribution dedup), the 3σ→4σ default, and **Q8 (blunt investigator-Job concurrency cap — now explicitly dropped, see §6/Q-E)**.
 
 ## 1. Summary
 
-Today the operator opens **one Investigation per anomaly signal**, deduplicated only by an in-memory time cooldown. It should instead open **one active Investigation per service incident** — a single investigation that collates *all* anomalous signals for a service while that service is unhealthy, and closes/re-opens on incident boundaries. Concurrency across *different* failing services is expected and fine; concurrency for the *same* service is not.
+Today the operator opens **one Investigation per anomaly signal**, deduplicated only by an in-memory time cooldown. It should instead open **one active Investigation per service incident** — a single investigation that collates *all* anomalous signals for a service while that service is unhealthy — **and those investigations should be aware of one another and correlate across services** (a downstream service's errors are often *caused* by an upstream service's incident; that causal link is the most valuable output Beeper can produce).
 
-This RFC proposes the model change, a phased implementation (a small, high-impact "active-investigation guard" first), and the lifecycle/edge-case decisions that need sign-off before coding.
+Concurrency across *different* failing services is expected; concurrency for the *same* service is a bug. This RFC defines the model, a phased plan, a progress-based (not wall-clock) liveness model with checkpointing, and the cross-service correlation capability.
 
-## 2. Problem
+## 2. Problem (grounded in code + live evidence)
 
-### 2.1 Current behaviour (grounded in code)
+- **Creation** — `operator/src/detection/consumer.rs`: every `AnomalyEvent` past a time cooldown creates an Investigation CRD + investigator Job.
+- **Dedup** — `anomaly_fingerprint = event.service` checked against an **in-memory** `CooldownTracker` (600 s). **No check for an already-active Investigation.**
+- **Two structural failures:**
+  1. **Duration ≫ cooldown.** A full investigation takes ~12–15 min (~7 sequential LLM steps); cooldown is 10 min → a still-unhealthy service re-fires duplicates **before the first finishes**.
+  2. **In-memory cooldown is not durable** — lost on operator restart → immediate re-fire for every service.
+- **Live blast radius (2026-06-02/03):** ~22–27 services trip at warmup → with the overlap, **48–106 concurrent investigator pods**, which **self-DOSed the host** (RAM free → ~78 MB / ~18 GB compressed) → local qwen throttled ~37→~15 tok/s, Ollama overloaded → LLM calls exceeded the client window → `litellm.APIConnectionError` → retries restart the slow calls → **0/48 completed**. Isolated, the same pipeline completes fine (RCA step ~70 s). **The system was failing itself, not hitting a model limit.**
+- **The investigator already gathers a service's signals broadly** (`signal_correlation.py`: PromQL/LogQL across app/platform/infra/business layers for the service) — so the redundancy is purely upstream, in *creation granularity*.
 
-- **Creation** — `operator/src/detection/consumer.rs`: every `AnomalyEvent` that passes a time cooldown creates an Investigation CRD + investigator Job.
-- **Dedup** — `anomaly_fingerprint(event) = event.service` (consumer.rs:279) checked against an **in-memory** `CooldownTracker` (`recent: HashMap<service, Instant>`, default 600 s). There is **no check for an already-active Investigation** for the service.
-- **Investigator** — `investigator/.../steps/signal_correlation.py` already generates PromQL/LogQL across 4 layers (app / platform / infra / business) **for the whole service**. So the investigator is *already* designed to collate a service's signals; the redundancy is created upstream.
-
-### 2.2 Why this is the root cause
-
-Two structural failures fall out of "per-anomaly + time-cooldown, no active guard":
-
-1. **Duration ≫ cooldown overlap.** A full investigation takes ~12–15 min (≈7 sequential LLM steps); the cooldown is 10 min. So a still-unhealthy service **re-fires a second investigation before the first finishes** → overlapping duplicates of the *same* incident. Measured live: ~22–27 services trip at warmup → with this overlap, **48–106 concurrent investigator pods**.
-2. **In-memory cooldown is not durable.** An operator restart forgets `recent` and immediately re-fires for every service.
-
-### 2.3 Observed blast radius (live, 2026-06-02/03)
-
-The duplicate flood **self-DOSes the host**: dozens of investigator pods exhausted RAM (free → ~78 MB, ~18 GB compressed), which throttled the local LLM (qwen3:8b: ~37 → ~15 tok/s) and overloaded Ollama → LLM calls exceeded the client window → `litellm.APIConnectionError` → retries restarted the slow calls → **0 of 48 investigations completed**. Isolated (one investigation, memory freed) the same pipeline completes fine (RCA step ~70 s). **The system was failing itself, not hitting a model limit.**
-
-Q5/Q7/4σ/Q8 each shaved a layer of this (fewer false trips, deduped attribution, a blunt concurrency cap) — but the unit of work is still wrong, so the pressure keeps resurfacing. This is "the one issue that keeps coming up."
+Q5/Q7/4σ/Q8 each shaved a layer; the unit of work is still wrong, so the pressure keeps resurfacing. **This is the one recurring issue.**
 
 ## 3. Target model
 
 | Aspect | Current | Target |
 |---|---|---|
-| Unit of investigation | one per anomaly signal | **one active per service incident** |
+| Unit of investigation | per anomaly signal | **per service incident** |
 | Concurrent investigations | anomalies × (duration ÷ cooldown overlap) | **= # distinct currently-failing services** |
-| New signal for a service already under investigation | spawns a duplicate | **folded into the open investigation** |
-| New incident on a service after the prior one resolved | (re-fires on cooldown expiry regardless) | **a fresh investigation opens** (gated on terminal state) |
-| Restart durability | in-memory (lost on restart) | **derived from API state** (Investigation CRDs) |
-| Max concurrency | unbounded | naturally bounded by reality (subsumes Q8) |
+| New signal for a service already under investigation | spawns a duplicate | **folded into the open investigation** (Phase 2) |
+| New incident after the prior resolved | re-fires on cooldown regardless | fresh investigation (gated on terminal state + re-open debounce) |
+| Restart durability | in-memory (lost) | **derived from API state** |
+| **Relationship between investigations** | **none** | **causal correlation across services** (Phase 3) |
+| Liveness / stuck handling | none | **progress-watchdog + checkpointing** (not wall-clock) |
+| Max concurrency | unbounded (needed Q8 cap) | naturally bounded by reality — **no separate cap (Q-E)** |
 
-### 3.1 Incident lifecycle (proposed state machine)
+### 3.1 Incident lifecycle
 
 ```
-        anomaly for service S, no active Investigation(S)
-   ────────────────────────────────────────────────────────►  OPEN  (Pending→Running)
-                                                                 │
-   further anomalies for S while OPEN ──► attach signal/condition │ (no new CRD)
-                                                                 ▼
-                                          investigator completes ──► RESOLVED (Completed/Failed)
-                                                                 │
-   anomaly for S after RESOLVED + re-open debounce window ───────┘  ► new incident → OPEN
+   anomaly for service S, no active Investigation(S)
+   ──────────────────────────────────────────────►  OPEN (Pending→Running)
+                                                        │
+   further anomalies for S while OPEN ── attach signal ─┤ (no new CRD; bump severity if higher — Q-C)
+   correlate against other active incidents ───────────┤ (Phase 3)
+                                                        ▼
+                        investigator completes ─────►  RESOLVED (Completed/Failed)
+                                                        │
+   anomaly for S after RESOLVED + re-open debounce ─────┘ ► new incident → OPEN
 ```
 
-- **OPEN guard:** "is there a non-terminal (Pending/Running) Investigation for S?" replaces the duplicate-suppression role of the time cooldown.
-- **Re-open debounce:** a (short) cooldown still applies *after* an investigation reaches a terminal state, so a flapping service doesn't immediately re-open. This is the cooldown's *correct* remaining job.
+## 4. Design — phases
 
-## 4. Design
-
-### 4.1 Phase 1 — Active-investigation guard (small, high-impact)
-
+### Phase 1 — Active-investigation guard (small, high-impact)
 In `consumer.rs`, before creating an Investigation for service S:
-1. Query the K8s API for non-terminal Investigations for S (label/field selector on a new `beeper.dev/service` label, or list+filter on `spec.service` + `status.phase ∉ {Completed, Failed}`).
-2. If one exists → **skip** (debug-log "service S already under investigation"); the running investigation already gathers S's signals.
-3. Else create it, and apply a `beeper.dev/service: <normalized>` label for cheap lookup.
-4. Keep the cooldown but **re-scope it to post-resolution re-open debounce** (start the clock when an investigation goes terminal, not when it's created).
+1. Query the K8s API for a non-terminal (Pending/Running) Investigation for S (via a new `beeper.dev/service: <normalized>` label selector; cache "active services" briefly in-memory to bound API calls).
+2. If one exists → **skip** (the running one already gathers S's signals).
+3. Else create it (apply the label; record namespace(s) — Q-D).
+4. Re-scope the cooldown to a **post-resolution re-open debounce** (clock starts when the investigation goes terminal, not at creation).
 
-Properties: collapses per-signal→per-service-incident; fixes duration>cooldown overlap; survives restarts (state is in the API, not memory); makes max-concurrency = # failing services (subsumes Q8); with Q5/4σ cutting false trips, the flood is gone *at the source*. ~No CRD schema change required.
+Collapses per-signal→per-service-incident; fixes duration>cooldown overlap; survives restarts (state is in the API, not memory); makes max-concurrency = # failing services. **No CRD schema change.**
 
-**Cost:** an API list/get per anomaly (mitigate with a label selector + a short in-memory cache of "active services").
+### Phase 2 — Signal attachment
+Fold subsequent anomalies for an open incident into the Investigation CR (`spec.conditions: []` / `status.observed_signals: []`) so it *aggregates* the incident. On a higher-severity signal, **bump the open CR's severity and merge** (Q-C — "the low signal may be the canary"). UI can then show "N signals on this incident."
 
-### 4.2 Phase 2 (optional) — True signal attachment
+### Phase 3 — Cross-service incident correlation (first-class goal, per Q-A)
+**Motivating example (from review):** an active investigation finds DB connection-pool exhaustion. A second service starts erroring; those errors are *DB timeouts caused by* the pool exhaustion. Beeper must surface that **B's incident is downstream of A's** — not two unrelated investigations.
 
-Fold subsequent anomalies for an open incident into the Investigation CR (e.g. `spec.conditions: []` / `status.observed_signals: []`) so it *aggregates* the incident rather than just deduping. The investigator already queries the whole service, so Phase 1 captures most of the value; Phase 2 improves fidelity (the RCA prompt sees every observed symptom, not just the first) and the UI can show "5 signals on this incident."
+Mechanism (builds on existing pieces):
+- The investigator can now **`list` Investigations** (the Q6 RBAC fix already enables this) → it can discover other **active/recent** incidents.
+- The **Service Topology** step already produces a `service_dependency_chain`; combine it with temporal overlap to find candidate upstream incidents.
+- When B's anomalous signals (e.g. DB timeouts) point at a dependency A that has a concurrent/recent incident, the investigator **links them**: B's investigation references A's as the probable upstream root cause; A's can reference its downstream blast radius.
+- **Representation (to design):** a `related_investigations` / causal-edge field on the CR (e.g. `caused_by: <investigation-id>`, `downstream: [...]`), enabling an incident graph / "parent incident" view.
 
-### 4.3 What does NOT change
+This is a real capability and likely warrants its **own detailed RFC** (correlation heuristics: dependency direction, temporal windows, signal-type matching like "timeouts to host X" ↔ "X saturation"; how to avoid false links; UI for the incident graph). Captured here as the accepted direction; Phase 3 design TBD.
 
-- The investigator's signal-gathering (already per-service across 4 layers).
-- The Pending→Running→Completed/Failed CRD state machine (we *read* phase; we don't add states in Phase 1).
-- SSE/UI (one investigation per service is strictly fewer, simpler entities).
+### Liveness: progress-watchdog + checkpointing (replaces blind TTL — per Q-B)
+"Stuck" ≠ wall-clock age. An investigation may legitimately take a while. Define **stuck = not making progress**, detected via activity signals:
+- the investigator emits a **heartbeat / step-progress** (already logs per-step) and records `last_progress_at`;
+- progress = active LLM calls (litellm) and/or Qdrant interactions and/or step transitions.
 
-## 5. Edge cases / decisions to confirm
+If `now - last_progress_at` exceeds a **no-progress** threshold (not a total-duration cap), the operator treats it as stuck — **but first triggers a checkpoint: the investigator dumps in-progress work (gathered signals, partial analysis, completed steps) to durable storage (Qdrant `investigations` collection)** so nothing is lost, then the CR goes Failed-(stalled) and the service can re-open (resuming from the checkpoint if feasible). No work is discarded on timeout.
 
-1. **Service identity.** The guard keys on the (Q7-normalized) service name. Confirm normalization is the right identity (e.g. should namespace be part of identity for multi-namespace?). Proposed: normalized bare service name.
-2. **Cross-service incidents.** A failing dependency can make several services anomalous → several investigations. That's acceptable (one per service) — the investigator already records a `service_dependency_chain`. Do we later want a "parent incident" grouping? Out of scope for Phase 1.
-3. **Long-running / stuck investigations.** If an investigation hangs, the guard would suppress *all* new investigations for that service indefinitely. Need a **max investigation age / TTL** (operator marks it Failed after N min) so the service can re-open. Propose a configurable timeout (e.g. 20 min).
-4. **Re-open debounce window.** Value? Proposed: reuse `BEEPER_DETECTION_COOLDOWN_SECS` but measured from terminal time.
-5. **Severity escalation.** If a `low` investigation is open and a `critical` signal arrives for the same service, do we (a) ignore, (b) bump the open investigation's severity, (c) open a new one? Proposed: (b) bump severity on the open CR; no new CR.
-6. **Backwards-compat / migration.** Pure behaviour change in the operator; no data migration. Existing CRDs unaffected.
+## 5. What does NOT change (Phase 1)
+- Investigator signal-gathering breadth (already per-service, 4 layers).
+- The Pending→Running→Completed/Failed state machine (we *read* phase; Phase 1 adds no states).
+- SSE/UI entity model (strictly fewer, simpler investigations).
 
-## 6. Test strategy
+## 6. Resolved decisions (review 2026-06-03)
+- **Q-A → Phases 1 + 2, and add Phase 3 cross-service correlation as a first-class goal.** Investigators must be cross-service-aware and surface causal links between incidents.
+- **Q-B → No blind timeout.** "Stuck" = no-progress (LLM/Qdrant/step activity). On stall, **checkpoint in-progress work to durable storage** before failing; never lose investigator work.
+- **Q-C → Bump severity + merge the signal** into the existing investigation (canary principle).
+- **Q-D → Identity = normalized bare service name; record namespace(s) (a list) on the event/CR** for context and multi-namespace services.
+- **Q-E → Truly per-service; drop the blunt concurrency cap (Q8).** The per-service guard *is* the concurrency control.
 
-- **Operator unit (cargo):** guard suppresses a 2nd investigation while one is Pending/Running for S; allows a new one once terminal; re-open debounce respected; restart (no in-memory state) still suppresses because it reads the API; TTL marks a stuck investigation Failed.
-- **Integration (AD-8, manual/live):** warmup on the demo cluster opens **≤ one investigation per anomalous service**, concurrent pods ≈ # failing services (not 48–106); inject `payment-failure` → exactly one `payment` investigation; host RAM stays healthy; investigations complete on local qwen.
+## 7. Test strategy
+- **Operator unit (cargo):** guard suppresses a 2nd investigation while one is non-terminal for S; allows a new one once terminal + past re-open debounce; restart still suppresses (reads API, no in-memory state); no-progress watchdog triggers checkpoint→Failed; namespace list recorded on the event.
+- **Investigator unit (pytest):** severity bump+merge on higher-severity signal; cross-service correlation links B→A when B's signals implicate dependency A with a concurrent incident; checkpoint writes partial work to Qdrant.
+- **Integration (AD-8, live):** warmup opens ≤ one investigation per anomalous service; concurrent pods ≈ # failing services (not 48–106); host RAM healthy; investigations complete on local qwen; the DB-pool→downstream scenario produces two *linked* incidents, not two orphans.
 
-## 7. Rollout
+## 8. Rollout
+1. **Phase 1** (active guard + drop Q8 cap + re-scope cooldown) — behind `BEEPER_DETECTION_ACTIVE_GUARD` (default on). Re-run the live demo profile; confirm concurrency = # failing services and completion on local qwen.
+2. **Phase 2** (signal attachment + severity bump/merge).
+3. **Liveness watchdog + checkpointing.**
+4. **Phase 3** (cross-service correlation) — own RFC.
 
-1. Land Phase 1 behind the existing config (guard on by default; `BEEPER_DETECTION_ACTIVE_GUARD=false` to fall back).
-2. Re-run the live demo profile; confirm concurrency = # failing services and completion on local qwen.
-3. Decide on Phase 2 (signal attachment) and the optional "parent incident" grouping separately.
-
-## 8. Open questions (need sign-off before implementation)
-
-- Q-A: Phase 1 only, or Phase 1 + Phase 2 together?
-- Q-B: Stuck-investigation TTL value (proposed 20 min) and behaviour (mark Failed → allow re-open).
-- Q-C: Severity-escalation behaviour (proposed: bump open CR).
-- Q-D: Service identity = normalized bare name (drop namespace)? Confirm.
-- Q-E: Keep Q8's blunt concurrency cap as a backstop, or rely solely on the per-service guard?
+## 9. Open sub-questions (need answers before/within each phase)
+- **S1 (Phase 3):** correlation representation — `caused_by` edge + `downstream[]` on the CR, vs a separate "Incident" parent object grouping member investigations? (Affects CRD schema + UI.)
+- **S2 (Phase 3):** correlation heuristics — how strict before asserting causality (dependency-direction + temporal-overlap + signal-type match)? How to present low-confidence links without overclaiming?
+- **S3 (liveness):** no-progress threshold value + how the investigator surfaces a heartbeat the operator can observe (CR `status.last_progress_at` updated each step? a Qdrant write?). Is checkpoint-resume in scope, or checkpoint-for-forensics only (v1)?
+- **S4 (Phase 2):** CR shape for multiple signals (`spec.conditions[]` vs `status.observed_signals[]`) — spec (desired/trigger) vs status (observed) semantics.
+- **S5 (Phase 1):** label-selector + active-services cache invalidation details; behaviour if the API list call fails (fail-open = create, or fail-closed = skip?).
