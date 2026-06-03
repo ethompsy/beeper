@@ -3,16 +3,16 @@
 //! Reads from the ingestion buffer, routes data to metric and log detectors,
 //! and creates Investigation CRDs when anomalies are detected.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use kube::api::PostParams;
+use kube::api::{ListParams, PostParams};
 use kube::{Api, Client};
 use tracing::{debug, error, info, warn};
 
-use crate::crds::investigation::{Investigation, InvestigationSpec, Severity};
+use crate::crds::investigation::{Investigation, InvestigationPhase, InvestigationSpec, Severity};
 use crate::ingestion::buffer::IngestionData;
 use crate::ingestion::IngestionBuffer;
 use crate::slo::impact::CustomerImpactScorer;
@@ -206,6 +206,25 @@ impl DetectionConsumer {
                     continue;
                 }
 
+                // Per-service-incident guard (RFC 0001, Phase 1): don't open a
+                // new investigation for a service that already has a non-terminal
+                // (Pending/Running) one — the running investigation already
+                // correlates ALL of the service's signals. This fixes the
+                // duplicate flood when an investigation outlives the cooldown,
+                // and survives operator restarts (the authority is API state,
+                // not the in-memory cooldown). Fail-open on API error (S5).
+                if service_has_active_investigation(&investigation_api, &event.service).await {
+                    debug!(
+                        component = "detection",
+                        service = %event.service,
+                        "Service already has an active investigation; skipping (RFC 0001)"
+                    );
+                    self.stats
+                        .anomalies_suppressed
+                        .fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
+
                 self.stats
                     .anomalies_detected
                     .fetch_add(1, Ordering::Relaxed);
@@ -231,7 +250,7 @@ impl DetectionConsumer {
                     None
                 };
 
-                let investigation = Investigation::new(
+                let mut investigation = Investigation::new(
                     &investigation_name,
                     InvestigationSpec {
                         condition: event.condition.clone(),
@@ -241,6 +260,16 @@ impl DetectionConsumer {
                         impact_score,
                     },
                 );
+                // Label the investigation with its service so the per-service
+                // guard above can find it cheaply via a label selector.
+                investigation
+                    .metadata
+                    .labels
+                    .get_or_insert_with(BTreeMap::new)
+                    .insert(
+                        SERVICE_LABEL.to_string(),
+                        service_label_value(&event.service),
+                    );
 
                 // Record cooldown before API call to prevent flood on persistent K8s failures
                 cooldown.record(fingerprint);
@@ -278,6 +307,62 @@ impl DetectionConsumer {
 /// so multiple investigations per service are wasteful and exhaust LLM budget.
 fn anomaly_fingerprint(event: &AnomalyEvent) -> String {
     event.service.clone()
+}
+
+/// Label key recording an Investigation's service, so the per-service guard
+/// (RFC 0001) can find a service's active investigation via a label selector.
+const SERVICE_LABEL: &str = "beeper.dev/service";
+
+/// Sanitize a service name into a valid Kubernetes label value:
+/// only `[A-Za-z0-9-_.]`, ≤63 chars, beginning and ending alphanumeric.
+fn service_label_value(service: &str) -> String {
+    let mapped: String = service
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let truncated: String = mapped.chars().take(63).collect();
+    truncated
+        .trim_matches(|c: char| !c.is_ascii_alphanumeric())
+        .to_string()
+}
+
+/// True if a phase counts as an *active* (non-terminal) investigation.
+/// Completed/Failed are terminal; Pending/Running/none (just created) are active.
+fn is_active_phase(phase: Option<&InvestigationPhase>) -> bool {
+    !matches!(
+        phase,
+        Some(InvestigationPhase::Completed) | Some(InvestigationPhase::Failed)
+    )
+}
+
+/// Returns true if `service` already has a non-terminal Investigation.
+///
+/// Fail-OPEN (RFC 0001, S5): on API error, log a warning and return `false`
+/// (allow creation) — an incident-response system must not silently drop a real
+/// incident because a list call failed.
+async fn service_has_active_investigation(api: &Api<Investigation>, service: &str) -> bool {
+    let selector = format!("{}={}", SERVICE_LABEL, service_label_value(service));
+    match api.list(&ListParams::default().labels(&selector)).await {
+        Ok(list) => list
+            .items
+            .iter()
+            .any(|inv| is_active_phase(inv.status.as_ref().and_then(|s| s.phase.as_ref()))),
+        Err(e) => {
+            warn!(
+                component = "detection",
+                service = %service,
+                error = %e,
+                "Active-investigation check failed; failing open (allowing creation)"
+            );
+            false
+        }
+    }
 }
 
 /// Map deviation magnitude to severity level.
@@ -354,6 +439,43 @@ mod tests {
         };
         // Fingerprint should be service-level only — one investigation per service
         assert_eq!(anomaly_fingerprint(&event), "frontend");
+    }
+
+    #[test]
+    fn test_is_active_phase() {
+        // Active (non-terminal): none-yet, Pending, Running
+        assert!(is_active_phase(None));
+        assert!(is_active_phase(Some(&InvestigationPhase::Pending)));
+        assert!(is_active_phase(Some(&InvestigationPhase::Running)));
+        // Terminal: Completed, Failed — a new investigation may open
+        assert!(!is_active_phase(Some(&InvestigationPhase::Completed)));
+        assert!(!is_active_phase(Some(&InvestigationPhase::Failed)));
+    }
+
+    #[test]
+    fn test_service_label_value_is_valid() {
+        // Plain names pass through.
+        assert_eq!(service_label_value("payment"), "payment");
+        assert_eq!(service_label_value("frontend-proxy"), "frontend-proxy");
+        // Invalid chars (e.g. a stray slash) become '-'; ends stay alphanumeric.
+        assert_eq!(
+            service_label_value("otel-demo/payment"),
+            "otel-demo-payment"
+        );
+        // Leading/trailing non-alphanumerics are trimmed (valid label value).
+        let v = service_label_value("/weird/");
+        assert!(v
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_alphanumeric())
+            .unwrap_or(true));
+        assert!(v
+            .chars()
+            .last()
+            .map(|c| c.is_ascii_alphanumeric())
+            .unwrap_or(true));
+        // Length capped at 63.
+        assert!(service_label_value(&"x".repeat(200)).len() <= 63);
     }
 
     #[test]
