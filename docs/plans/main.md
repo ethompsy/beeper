@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** Phase 6, Milestone 6.1 — **Phases 1–5 complete; Tasks 6.1 (PR #11) and 6.2 (PR #12, `24cc4f3`) merged**. **Task 6.3 (E2E 3/3 validation) in progress** on branch `feature/6.3-e2e-demo-validation` — its `[T]` (timed `demo/README.md` 3/3 script + flag-name doc fix) is DONE and tested; its **`[H]` 3× demo run is the only thing standing between the project and done**, and is BLOCKED on the local LLM being unavailable (Ollama not running on the host; see Task 6.3 notes) + a scheduled witnessed session. This is the LAST task — once the `[H]` run passes 3/3, Q1/`3-0c` resolve and the project hits its definition of done. NOTE: Phase 6 requires a live Docker/kind cluster + LLM (AD-8 manual verification). Phases 1–2 complete; **Phase 3 complete** (Tasks 3.1–3.4 done; Milestone 3.0 complete except the blocked `3-0c`, carried forward to Task 6.3 per Q1).
+**Current resume point:** **All implementation tasks merged to `main` — only the Task 6.3 `[H]` 3/3 acceptance run remains.** Phases 1–5 done; Phase 6 Tasks 6.1 (PR #11), 6.2 (PR #12), and 6.3-`[T]` + every live-run blocker (PR #13, `ad2da02` — Finding H, Q4 parser+truncation, Q5 trigger filtering, Q6 RBAC, Q7 attribution dedup, 4σ) all merged. (Status-table rows reconciled 2026-06-01 — earlier passes left them "in progress" though the work had merged.) **The single remaining item is Task 6.3's `[H]` criterion: run the documented `demo/README.md` 3/3 script and witness 3 consecutive evidence-backed payment-failure investigations (NFR8; resolves Q1/`3-0c`).** It is NOT autonomously actionable — it needs (a) the **Anthropic LLM switch** (local qwen3:8b throughput is the only remaining limiter — every code blocker is fixed; see Q4) and (b) a witnessed acceptance session. No other task is actionable until then. NOTE: Phase 6 = live Docker/kind cluster + LLM, AD-8 manual verification.
 
 ## Decisions
 
@@ -38,6 +38,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 | Q5 | Detection over-sensitivity: fires on system/`unknown`-service metrics (e.g. `system_cpu_time_seconds_total`), creating a baseline investigation backlog even on a fresh cluster | Buries an injected fault; backlog + concurrency=2 makes 3/3 impractically slow; noisy demo | **FIX LANDED (2026-06-01); pending live validation.** Root cause: the operator fired an investigation for ANY metric crossing 3σ with no service/metric filtering. Added (operator `src/detection/`): (1) skip anomalies with `service==unknown` (not actionable; `BEEPER_DETECTION_SKIP_UNKNOWN_SERVICE`, default on); (2) configurable metric-name denylist filtering host/runtime telemetry (`system_*`,`v8js_*`,`process_*`,`runtime_*`; `BEEPER_DETECTION_METRIC_DENYLIST`) so only service-health signals trigger. `cargo test` 46 pass (incl. new denylist/env tests), fmt+clippy clean. On `feature/6.3-e2e-demo-validation`. Per user direction, did NOT cap token budgets (limiting reasoning is the wrong lever — tune triggers instead). |
 | Q6 | Investigator SA `beeper-investigator` cannot `list investigations.beeper.dev` (403 in topology step; confirmed via `kubectl auth can-i`) | Topology step degraded; recurring 403s | **RESOLVED 2026-05-31** — added `list` to the investigations verbs in `helm/beeper/templates/investigator-rbac.yaml` (was `get,patch` → `get,list,patch`); applied live, `kubectl auth can-i` → yes; guarded by `test_demo_automation.py::TestInvestigatorRbac`. On `feature/6.3-e2e-demo-validation`. |
 | Q7 | Service attribution is inconsistent: the same service appears as both `otel-demo/payment` and `payment` (different metrics carry different service-identifying labels → `extract_service` returns different values) | Splits the per-service cooldown fingerprint, so a service can open ~2× the investigations; also clutters the list | **FIX LANDED (2026-06-01).** Added `detection::normalize_service` (strips any `namespace/` prefix → last path segment) applied in both `metrics.rs` + `logs.rs` `extract_service`, so `otel-demo/payment` and `payment` collapse to one identity/fingerprint. Same increment also raised the default deviation threshold 3σ→4σ (`metric/log_threshold`) to quiet per-service baseline self-triggers. `cargo test` 47 pass, fmt+clippy clean. On `feature/6.3-e2e-demo-validation`; pending operator rebuild + live re-observe. |
+| Q8 | **Operator spawns UNBOUNDED concurrent investigator Jobs** — one per anomaly Investigation CRD, no global cap. `maxConcurrentInvestigations` (values-dev `llm.*`) is NOT wired to Job spawning (`grep maxConcurrent operator/src` → nothing). At warmup ~22–27 services trip at once → ~25+ investigator pods spawn simultaneously. | **Actual root cause of "demo non-completion on local LLM"** — not qwen speed. ~25 Python investigator pods starved host RAM (free → ~78 MB, ~18 GB compressed) → throttled qwen ~37→~15 tok/s AND overloaded Ollama → big calls exceed the client window → `litellm.APIConnectionError` → retry-amplified spiral → **0/48 completed**. | Open — found 2026-06-02 via live profiling. **Fix: bound concurrent investigator Jobs in the operator** (work-queue/semaphore honouring `maxConcurrentInvestigations`; ~1–2 for local LLM). Corrected qwen profile: isolated + memory-freed → ~37 tok/s, small calls ~4 s, pod→Ollama 10 ms, RCA completes in ~70 s (no timeout). A *single* investigation still ≈12–15 min (~7+ sequential LLM steps) → for a snappy demo prefer Anthropic; for local qwen, Q8 makes it *complete* (slow) instead of spiralling. |
 
 ---
 
@@ -179,8 +180,8 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 |---|------|-----------|--------------|--------|
 | 4.1 | Investigation list view with status filtering | M | 3.2 | done |
 | 4.2 | Investigation detail: summary header & step timeline | L | 4.1 | done |
-| 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | in progress |
-| 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | in progress |
+| 4.3 | SSE real-time streaming & auto-reconnection | L | 4.2 | done |
+| 4.4 | Related Knowledge Base panel on investigation detail | M | 4.2, 2.3 | done |
 
 **Task 4.1 — done.** _(merged via PR #4, squash commit `0e46e4e`; 2184 UI tests green at merge; all CI checks passed)_
 - `[T]` List renders investigations via `investigation_card(inv)` (`cards.html`) showing service/severity/status/timestamp.
@@ -262,9 +263,9 @@ Browse/search KB, view pipeline diagnostics (ingestion + detection stats, EWMA w
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 5.1 | Knowledge Base browsing, search & detail views | M | 3.2, 2.3 | in progress |
-| 5.2 | Pipeline diagnostic dashboard (ingestion + detection stats) | M | 3.2, 1.4 | in progress |
-| 5.3 | Source connection status & LLM spending views | M | 3.2 | in progress |
+| 5.1 | Knowledge Base browsing, search & detail views | M | 3.2, 2.3 | done |
+| 5.2 | Pipeline diagnostic dashboard (ingestion + detection stats) | M | 3.2, 1.4 | done |
+| 5.3 | Source connection status & LLM spending views | M | 3.2 | done |
 
 **Task 5.1 — in progress.** _(branch `feature/5.1-kb-views`; build-for-review, not auto-merged)_
 - `[T]` Learn > Knowledge Base lists entries with service/title/date (FR28).
@@ -323,8 +324,8 @@ Full demo lifecycle — deploy, verify, inject fault, watch, recover, repeat —
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 6.1 | Fix demo deployment & port-forward automation | M | Phase 1 | in progress |
-| 6.2 | Fix fault injection & recovery automation | M | 6.1 | in progress |
+| 6.1 | Fix demo deployment & port-forward automation | M | Phase 1 | done |
+| 6.2 | Fix fault injection & recovery automation | M | 6.1 | done |
 | 6.3 | End-to-end demo validation — 3/3 repeatability | L | 6.1, 6.2, Phases 1–5 | in progress |
 
 **Task 6.1 — in progress.** _(branch `feature/6.1-demo-deploy-automation`; build-for-review, not auto-merged. Driven LIVE against the `beeper-demo` kind cluster.)_
