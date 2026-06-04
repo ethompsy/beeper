@@ -7,6 +7,15 @@ use super::types::AnomalySignal;
 
 /// EWMA-based anomaly detector
 ///
+/// Relative noise floor for the anomaly threshold. A (near-)constant stream is
+/// treated as having an effective stddev of at least this fraction of its mean,
+/// so a small wobble on a flat metric is not reported as a huge deviation (Q10).
+/// With the default 4σ threshold this means a flat metric must move ~20% of its
+/// level to fire — small enough to catch real step-changes, large enough to
+/// ignore the post-warmup jitter that previously triggered a false anomaly per
+/// service.
+const REL_STDDEV_FLOOR: f64 = 0.05;
+
 /// Tracks an exponentially weighted moving average and variance for a single
 /// time series. Fires an anomaly signal when a new value deviates beyond
 /// `threshold` standard deviations from the expected mean.
@@ -64,27 +73,29 @@ impl EwmaDetector {
         let diff = value - self.ewma;
         let old_stddev = self.ewma_var.sqrt();
 
-        // Check for anomaly BEFORE updating statistics
-        let anomaly = if self.samples > self.min_samples {
-            if old_stddev > 0.0 {
-                let deviation = diff.abs() / old_stddev;
-                if deviation > self.threshold {
-                    Some(AnomalySignal {
-                        observed: value,
-                        expected: self.ewma,
-                        stddev: old_stddev,
-                        deviation,
-                    })
-                } else {
-                    None
-                }
-            } else if diff.abs() > f64::EPSILON {
-                // Zero variance (constant input) with a change = definite anomaly
+        // Check for anomaly BEFORE updating statistics.
+        //
+        // Use a *relative noise floor*: a (near-)constant stream is treated as
+        // having an effective stddev of at least `REL_STDDEV_FLOOR * |mean|`,
+        // so a tiny wobble on a flat metric no longer reads as a near-infinite
+        // deviation. This replaces the previous `stddev == 0 && any change =>
+        // 1e6σ` rule, which fired a false anomaly on the first wobble of every
+        // flat gauge / steady rate after warmup — the dominant source of the
+        // warmup "investigation flood" (Q10). A real step-change still produces
+        // a large deviation and fires; a small wobble does not.
+        //
+        // A stream flat at *exactly* zero has a zero floor and does not fire
+        // from the metric detector (effective_stddev == 0 guard); genuine
+        // zero-baseline error spikes are covered by the log error-rate detector.
+        let effective_stddev = old_stddev.max(REL_STDDEV_FLOOR * self.ewma.abs());
+        let anomaly = if self.samples > self.min_samples && effective_stddev > 0.0 {
+            let deviation = diff.abs() / effective_stddev;
+            if deviation > self.threshold {
                 Some(AnomalySignal {
                     observed: value,
                     expected: self.ewma,
-                    stddev: 0.0,
-                    deviation: 1e6,
+                    stddev: effective_stddev,
+                    deviation,
                 })
             } else {
                 None
@@ -280,5 +291,41 @@ mod tests {
         }
         let signal = detector.update(5000.0);
         assert!(signal.is_some(), "Post-warmup spike should be detected");
+    }
+
+    // --- Q10: zero/near-zero-variance must not fire on a tiny wobble ---
+
+    #[test]
+    fn test_flat_metric_tiny_wobble_no_false_positive() {
+        // A perfectly flat metric (stddev == 0 after warmup) that wobbles by a
+        // negligible amount must NOT fire. Previously this hit the
+        // `stddev==0 => 1e6σ` rule and fired a false anomaly — the dominant
+        // cause of the per-service warmup investigation flood (Q10).
+        let mut detector = EwmaDetector::new(0.2, 4.0, 30);
+        for _ in 0..40 {
+            assert!(detector.update(1000.0).is_none());
+        }
+        // 0.1% wobble on a flat metric — must be ignored.
+        assert!(
+            detector.update(1001.0).is_none(),
+            "tiny wobble on a flat metric must not fire (Q10)"
+        );
+    }
+
+    #[test]
+    fn test_flat_metric_real_stepchange_still_fires() {
+        // The fix must NOT blind us: a large step-change on a flat metric still
+        // fires (the relative noise floor is small).
+        let mut detector = EwmaDetector::new(0.2, 4.0, 30);
+        for _ in 0..40 {
+            assert!(detector.update(1000.0).is_none());
+        }
+        let signal = detector.update(2000.0); // +100% step
+        assert!(
+            signal.is_some(),
+            "a real step-change on a flat metric must still fire"
+        );
+        // Deviation is finite/meaningful, not the old sentinel 1e6.
+        assert!(signal.unwrap().deviation < 1e6);
     }
 }
