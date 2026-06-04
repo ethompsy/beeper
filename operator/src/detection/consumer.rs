@@ -96,7 +96,8 @@ impl DetectionConsumer {
             self.config.min_samples,
             self.config.max_metrics,
             self.config.metric_denylist_prefixes.clone(),
-        );
+        )
+        .with_abs_stddev_floor(self.config.abs_stddev_floor);
 
         let mut log_detector = LogDetector::new(
             self.config.log_alpha,

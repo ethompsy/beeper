@@ -47,10 +47,28 @@ pub struct DetectionConfig {
     /// infrastructure/host metrics with no `service`-identifying label.
     pub skip_unknown_service: bool,
     /// Metric-name prefixes whose anomalies never trigger investigations.
-    /// These are runtime/host telemetry (GC, heap, CPU-time, process stats),
-    /// not service-health SLIs — investigating them is noise. Set the env var
-    /// to an empty string to disable filtering.
+    /// These are observability-stack/host telemetry and *static* runtime config
+    /// (collector self-metrics, process stats, heap ceilings), not service-health
+    /// SLIs — investigating them is noise. Note: dynamic GC metrics (`jvm_gc_*`,
+    /// `dotnet_gc_*`) are deliberately NOT denylisted — heavy GC is a real
+    /// incident symptom (stop-the-world pauses → latency → cascading errors), and
+    /// Q12 already surfaces it as a per-second rate. Set the env var to an empty
+    /// string to disable filtering.
     pub metric_denylist_prefixes: Vec<String>,
+    /// Absolute floor on the EWMA effective stddev (Q13b). Suppresses
+    /// division-by-near-zero instability on flat/idle streams so a negligible
+    /// wobble on a metric whose mean is ~0 is not read as a huge deviation.
+    ///
+    /// Default `0.0` (off): the floor is **unit-dependent** — the same constant
+    /// means very different things for a count/sec rate vs a seconds/sec GC-time
+    /// rate vs a bytes gauge — so a non-zero default could blind small-magnitude
+    /// signals (e.g. GC pause-time rate). Operators with homogeneous-unit metrics
+    /// may opt in via `BEEPER_DETECTION_ABS_STDDEV_FLOOR`. A count-scale value
+    /// (e.g. 0.5) preserves GC *frequency* detection (collections/sec is
+    /// count-scale) while quieting sub-1/sec idle-counter blips. The general
+    /// sparse-near-zero-counter case is tracked as Q13c (per-metric significance
+    /// thresholds / temporal persistence), not solvable by a single global floor.
+    pub abs_stddev_floor: f64,
 }
 
 impl DetectionConfig {
@@ -74,6 +92,7 @@ impl DetectionConfig {
                 "BEEPER_DETECTION_METRIC_DENYLIST",
                 DEFAULT_METRIC_DENYLIST,
             ),
+            abs_stddev_floor: env_f64("BEEPER_DETECTION_ABS_STDDEV_FLOOR", 0.0),
         }
     }
 }
@@ -97,13 +116,33 @@ impl Default for DetectionConfig {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            abs_stddev_floor: 0.0,
         }
     }
 }
 
 /// Default metric-name prefixes filtered from investigation triggers:
-/// host/runtime telemetry that is not a service-health signal.
-const DEFAULT_METRIC_DENYLIST: &[&str] = &["system_", "v8js_", "process_", "runtime_"];
+/// observability-stack/host telemetry and *static* runtime config that is not a
+/// service-health signal.
+///
+/// - `system_`, `process_`, `runtime_`, `v8js_` — host/runtime internals.
+/// - `otelcol_` — the OpenTelemetry Collector's own self-telemetry (the
+///   observability stack, not a monitored service).
+/// - `jvm_memory_limit`, `jvm_memory_init` — static heap ceilings/init sizes
+///   (config, not dynamic health).
+///
+/// Deliberately NOT denylisted: `jvm_gc_*` / `dotnet_gc_*` (heavy GC is a real
+/// incident symptom — Q12 surfaces it as a rate) and `jvm_memory_used` /
+/// `jvm_memory_committed` (a sustained climb is a leak signal).
+const DEFAULT_METRIC_DENYLIST: &[&str] = &[
+    "system_",
+    "v8js_",
+    "process_",
+    "runtime_",
+    "otelcol_",
+    "jvm_memory_limit",
+    "jvm_memory_init",
+];
 
 /// Normalise a service-identifying label value to a bare service name by
 /// stripping any `namespace/` prefix. The same logical service can be attributed
@@ -228,8 +267,17 @@ mod tests {
         assert!(config.skip_unknown_service);
         assert_eq!(
             config.metric_denylist_prefixes,
-            vec!["system_", "v8js_", "process_", "runtime_"]
+            vec![
+                "system_",
+                "v8js_",
+                "process_",
+                "runtime_",
+                "otelcol_",
+                "jvm_memory_limit",
+                "jvm_memory_init"
+            ]
         );
+        assert_eq!(config.abs_stddev_floor, 0.0);
     }
 
     #[test]
