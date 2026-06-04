@@ -113,7 +113,7 @@ If `now - last_progress_at` exceeds a **no-progress** threshold (not a total-dur
 - **S4 (Phase 2):** CR shape for multiple signals (`spec.conditions[]` vs `status.observed_signals[]`) — spec (desired/trigger) vs status (observed) semantics.
 - **S5 (Phase 1):** label-selector + active-services cache invalidation details; behaviour if the API list call fails (fail-open = create, or fail-closed = skip?). **[RESOLVED in Phase 1 impl, PR #17: fail-open.]**
 
-## 10. Detection-quality follow-ups — the baseline isn't actually calm (Q9–Q11)
+## 10. Detection-quality follow-ups — the baseline isn't actually calm (Q9–Q12)
 
 Live runs of the merged Phase 1 guard (2026-06-03/04) surfaced that **Phase 1 alone does not produce a calm baseline.** On a clean-slate restart, ~**every** service (23/25) opened one investigation simultaneously. Investigating *why* (the guard correctly capped it at 1/service) revealed these are **warmup false-positives, not real incidents** — and that on a single node with a local LLM, ~23 concurrent investigations re-starve the host (RAM free → ~92 MB, 0/23 complete). Three findings, in priority order:
 
@@ -129,4 +129,10 @@ The detectors live in a `HashMap` rebuilt in `DetectionConsumer::run()`, so **ev
 Phase 1 bounds duplicates **per service** but not **global** concurrent investigations. A genuine wide outage (or, today, the Q10/Q11 false-positive burst) → ~#services concurrent investigator pods → on a single node + local LLM, RAM starvation. The "blunt cap" dropped under Q-E is, for **this resource class**, legitimately needed — but as a **work-queue that processes N at a time and *defers* (not drops) the rest**, not a blind anomaly-dropper.
 **Resolution of the tension:** Fix Q10/Q11 first (then the baseline is genuinely calm and local qwen handles the few *real* investigations); keep Q9's work-queue as a **safety net** for true wide outages on resource-constrained nodes. On a real cluster + cloud LLM, per-service-only (no global cap) is correct — so make the global limit **opt-in/config-gated**, default off, recommended on for local/single-node.
 
-**Priority:** Q10 → Q11 → Q9. With Q10+Q11, the recurring "investigation flood / qwen self-DOS" is addressed at its true source (false anomalies), making the local-qwen 3/3 witnessable; Q9 is defence-in-depth. These are detection-quality items distinct from the per-service-incident *granularity* model above, but share the goal of a calm, trustworthy baseline.
+### Q12 — Detection runs on RAW cumulative metrics *(corrects Q10 — the actual dominant driver)*
+**The Q10 fix (PR #19) was implemented and measured live (2026-06-04) — and it corrected our hypothesis.** Q10 was *expected* to collapse the warmup burst; measured, it went **23 → 21**. The remaining investigations are **genuine >4σ deviations**, almost all on **cumulative counter / histogram-bucket metrics** (`rpc_*_bucket`, `*_duration_seconds_bucket`, `postgresql_blocks_read_total`, `quotes_total`, …) — including a `shipping http_server_duration drop to 0`, which is a **counter reset from a pod restart**.
+
+Root cause: the detector EWMAs **raw Prometheus counter/histogram values**, which are monotonic/cumulative and reset to 0 on restart. So normal load ramps look like spikes and restarts look like drops → a real-but-meaningless anomaly per service, independent of Q10.
+**Fix:** detect on **rates/deltas** (per-interval increase) for `*_total`/`*_bucket`, and treat a counter drop-to-lower as a reset (not an anomaly), instead of EWMA-ing raw cumulative values. Almost certainly **the highest-leverage detection-quality fix.**
+
+**Revised priority: Q12 → Q11 → Q10 → Q9.** Q12 is the dominant source of the warmup burst (cumulative-metric anomalies); Q11 amplifies it on every restart; Q10 is implemented (PR #19 — land it; removes a smaller flat-metric false-positive class, but verified *not* the burst fix); Q9 is the defence-in-depth safety net. With Q12 (+Q11), the baseline should be genuinely calm and the local-qwen 3/3 witnessable. These detection-quality items are distinct from the per-service-incident *granularity* model above, but share the goal of a calm, trustworthy baseline.
