@@ -207,18 +207,30 @@ impl DetectionConsumer {
                     continue;
                 }
 
-                // Per-service-incident guard (RFC 0001, Phase 1): don't open a
-                // new investigation for a service that already has a non-terminal
-                // (Pending/Running) one — the running investigation already
-                // correlates ALL of the service's signals. This fixes the
-                // duplicate flood when an investigation outlives the cooldown,
-                // and survives operator restarts (the authority is API state,
-                // not the in-memory cooldown). Fail-open on API error (S5).
-                if service_has_active_investigation(&investigation_api, &event.service).await {
+                // Per-service-incident guard (RFC 0001, Phase 1 + step 4): skip a
+                // new investigation for a service that either (a) already has a
+                // non-terminal investigation (the running one correlates ALL of
+                // the service's signals), or (b) had one go *terminal* within a
+                // re-open debounce window — longer after a Failure than a
+                // Completion, so a failed investigation on a persistent signal
+                // doesn't re-fire every ~investigation-duration. The authority is
+                // API state (Investigation `completed_at`), so this survives
+                // operator restart where the in-memory cooldown does not (Q11).
+                // Fail-open on API error (S5).
+                if let Some(reason) = service_guard_should_skip(
+                    &investigation_api,
+                    &event.service,
+                    chrono::Utc::now(),
+                    self.config.reopen_debounce_secs as i64,
+                    self.config.failed_reopen_debounce_secs as i64,
+                )
+                .await
+                {
                     debug!(
                         component = "detection",
                         service = %event.service,
-                        "Service already has an active investigation; skipping (RFC 0001)"
+                        reason = reason,
+                        "Investigation guard: skipping (per-service guard + re-open debounce)"
                     );
                     self.stats
                         .anomalies_suppressed
@@ -342,26 +354,93 @@ fn is_active_phase(phase: Option<&InvestigationPhase>) -> bool {
     )
 }
 
-/// Returns true if `service` already has a non-terminal Investigation.
+/// Parse an RFC3339 / ISO-8601 timestamp into a UTC instant; `None` if it can't
+/// be parsed (treated as "no debounce anchor").
+fn parse_rfc3339(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+}
+
+/// Decide whether to skip creating an investigation for a service given its
+/// existing investigations. `None` = allow; `Some(reason)` = skip (reason is a
+/// short static string for logging).
 ///
-/// Fail-OPEN (RFC 0001, S5): on API error, log a warning and return `false`
+/// Two durable, API-derived rules — the authority is API state, not the
+/// in-memory cooldown, so both survive operator restart (closing Q11 for this
+/// path):
+/// 1. Any **non-terminal** investigation (Pending/Running/AwaitingConfirmation)
+///    → skip — the active one already correlates all of the service's signals
+///    (RFC 0001 Phase 1).
+/// 2. A **terminal** investigation that went terminal (`completed_at`) within a
+///    re-open debounce window → skip. The window is longer for `Failed` than
+///    `Completed`: a failed investigation on a persistent (often non-actionable)
+///    signal will just fail again, so we back off harder instead of re-firing
+///    every ~investigation-duration. This breaks the observed fail→re-fire loop.
+fn service_guard_skip_reason(
+    items: &[Investigation],
+    now: chrono::DateTime<chrono::Utc>,
+    completed_debounce_secs: i64,
+    failed_debounce_secs: i64,
+) -> Option<&'static str> {
+    // Rule 1: an active (non-terminal) investigation exists.
+    if items
+        .iter()
+        .any(|inv| is_active_phase(inv.status.as_ref().and_then(|s| s.phase.as_ref())))
+    {
+        return Some("active investigation");
+    }
+    // Rule 2: a terminal investigation is still within its re-open debounce.
+    for inv in items {
+        let Some(status) = inv.status.as_ref() else {
+            continue;
+        };
+        let (window_secs, reason) = match status.phase {
+            Some(InvestigationPhase::Failed) => {
+                (failed_debounce_secs, "recent failed investigation")
+            }
+            Some(InvestigationPhase::Completed) => (completed_debounce_secs, "recently resolved"),
+            _ => continue,
+        };
+        if let Some(completed) = status.completed_at.as_deref().and_then(parse_rfc3339) {
+            if now.signed_duration_since(completed).num_seconds() < window_secs {
+                return Some(reason);
+            }
+        }
+    }
+    None
+}
+
+/// Returns `Some(reason)` if a new investigation for `service` should be skipped
+/// (active investigation present, or one went terminal within its re-open
+/// debounce window), else `None`.
+///
+/// Fail-OPEN (RFC 0001, S5): on API error, log a warning and return `None`
 /// (allow creation) — an incident-response system must not silently drop a real
 /// incident because a list call failed.
-async fn service_has_active_investigation(api: &Api<Investigation>, service: &str) -> bool {
+async fn service_guard_should_skip(
+    api: &Api<Investigation>,
+    service: &str,
+    now: chrono::DateTime<chrono::Utc>,
+    completed_debounce_secs: i64,
+    failed_debounce_secs: i64,
+) -> Option<&'static str> {
     let selector = format!("{}={}", SERVICE_LABEL, service_label_value(service));
     match api.list(&ListParams::default().labels(&selector)).await {
-        Ok(list) => list
-            .items
-            .iter()
-            .any(|inv| is_active_phase(inv.status.as_ref().and_then(|s| s.phase.as_ref()))),
+        Ok(list) => service_guard_skip_reason(
+            &list.items,
+            now,
+            completed_debounce_secs,
+            failed_debounce_secs,
+        ),
         Err(e) => {
             warn!(
                 component = "detection",
                 service = %service,
                 error = %e,
-                "Active-investigation check failed; failing open (allowing creation)"
+                "Investigation guard check failed; failing open (allowing creation)"
             );
-            false
+            None
         }
     }
 }
@@ -451,6 +530,145 @@ mod tests {
         // Terminal: Completed, Failed — a new investigation may open
         assert!(!is_active_phase(Some(&InvestigationPhase::Completed)));
         assert!(!is_active_phase(Some(&InvestigationPhase::Failed)));
+    }
+
+    // --- Re-open debounce guard (durable, breaks the fail→re-fire loop) ---
+
+    fn inv_with(phase: Option<InvestigationPhase>, completed_at: Option<&str>) -> Investigation {
+        use crate::crds::investigation::InvestigationStatus;
+        let mut inv = Investigation::new(
+            "t",
+            InvestigationSpec {
+                condition: "c".to_string(),
+                service: "kafka".to_string(),
+                severity: Severity::Medium,
+                triggered_at: None,
+                impact_score: None,
+            },
+        );
+        inv.status = Some(InvestigationStatus {
+            phase,
+            completed_at: completed_at.map(|s| s.to_string()),
+            ..Default::default()
+        });
+        inv
+    }
+
+    // 30 min completed window, 60 min failed window — matching the relative
+    // defaults (30 min / 1 h).
+    const COMPLETED_W: i64 = 1800;
+    const FAILED_W: i64 = 3600;
+
+    fn now() -> chrono::DateTime<chrono::Utc> {
+        parse_rfc3339("2026-06-05T17:00:00Z").unwrap()
+    }
+
+    #[test]
+    fn test_guard_active_blocks() {
+        let items = vec![inv_with(Some(InvestigationPhase::Running), None)];
+        assert_eq!(
+            service_guard_skip_reason(&items, now(), COMPLETED_W, FAILED_W),
+            Some("active investigation")
+        );
+    }
+
+    #[test]
+    fn test_guard_empty_allows() {
+        assert_eq!(
+            service_guard_skip_reason(&[], now(), COMPLETED_W, FAILED_W),
+            None
+        );
+    }
+
+    #[test]
+    fn test_guard_recent_failure_debounced() {
+        // Failed 10 min ago, 1 h failed-window → skip. This is the fail→re-fire
+        // loop fix: previously the released guard + expired in-memory cooldown
+        // let the service re-fire ~2 min after the failure.
+        let items = vec![inv_with(
+            Some(InvestigationPhase::Failed),
+            Some("2026-06-05T16:50:00Z"),
+        )];
+        assert_eq!(
+            service_guard_skip_reason(&items, now(), COMPLETED_W, FAILED_W),
+            Some("recent failed investigation")
+        );
+    }
+
+    #[test]
+    fn test_guard_old_failure_allows_retry() {
+        // Failed 90 min ago, 1 h failed-window → allow (eventual retry).
+        let items = vec![inv_with(
+            Some(InvestigationPhase::Failed),
+            Some("2026-06-05T15:30:00Z"),
+        )];
+        assert_eq!(
+            service_guard_skip_reason(&items, now(), COMPLETED_W, FAILED_W),
+            None
+        );
+    }
+
+    #[test]
+    fn test_guard_completed_uses_shorter_window() {
+        // Completed 20 min ago, 30 min completed-window → skip.
+        let recent = vec![inv_with(
+            Some(InvestigationPhase::Completed),
+            Some("2026-06-05T16:40:00Z"),
+        )];
+        assert_eq!(
+            service_guard_skip_reason(&recent, now(), COMPLETED_W, FAILED_W),
+            Some("recently resolved")
+        );
+        // Completed 40 min ago → allow (past the 30 min completed-window).
+        let old = vec![inv_with(
+            Some(InvestigationPhase::Completed),
+            Some("2026-06-05T16:20:00Z"),
+        )];
+        assert_eq!(
+            service_guard_skip_reason(&old, now(), COMPLETED_W, FAILED_W),
+            None
+        );
+    }
+
+    #[test]
+    fn test_guard_failed_window_longer_than_completed() {
+        // Same age (45 min): past the completed-window (30 min) but still inside
+        // the failed-window (60 min) — proves the phase-specific debounce.
+        let ts = Some("2026-06-05T16:15:00Z");
+        assert_eq!(
+            service_guard_skip_reason(
+                &[inv_with(Some(InvestigationPhase::Failed), ts)],
+                now(),
+                COMPLETED_W,
+                FAILED_W
+            ),
+            Some("recent failed investigation")
+        );
+        assert_eq!(
+            service_guard_skip_reason(
+                &[inv_with(Some(InvestigationPhase::Completed), ts)],
+                now(),
+                COMPLETED_W,
+                FAILED_W
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_guard_active_wins_over_debounce() {
+        // A running investigation blocks regardless of any terminal sibling.
+        let items = vec![
+            inv_with(
+                Some(InvestigationPhase::Failed),
+                Some("2026-06-05T15:00:00Z"),
+            ),
+            inv_with(Some(InvestigationPhase::Running), None),
+        ];
+        assert_eq!(
+            service_guard_skip_reason(&items, now(), COMPLETED_W, FAILED_W),
+            Some("active investigation")
+        );
     }
 
     #[test]
