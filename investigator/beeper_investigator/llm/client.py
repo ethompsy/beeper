@@ -311,13 +311,17 @@ class LlmClient:
     _NO_THINK_DIRECTIVE = "/no_think"
 
     def _apply_thinking_directive(
-        self, messages: list[dict[str, str]]
+        self, messages: list[dict[str, str]], *, keep_thinking: bool = False
     ) -> list[dict[str, str]]:
         """Return `messages` with the `/no_think` directive appended to the last
         user (or system) message when `disable_thinking` is set. Returns the
         input unchanged otherwise, and never mutates the caller's list.
+
+        `keep_thinking=True` lets a specific call opt out of the disable (used by
+        the deep-RCA hypothesis step, the one genuinely reasoning-heavy step,
+        which keeps `<think>` even when the rest of the pipeline runs without it).
         """
-        if not self.config.disable_thinking:
+        if keep_thinking or not self.config.disable_thinking:
             return messages
         out = [dict(m) for m in messages]
         idx = next(
@@ -344,6 +348,7 @@ class LlmClient:
         temperature: float = 0.0,
         *,
         model: str | None = None,
+        keep_thinking: bool = False,
         **kwargs: Any,
     ) -> str:
         """Send a completion request to the LLM.
@@ -367,8 +372,9 @@ class LlmClient:
         tracking_model = self.config._strip_provider_prefix(effective_model)
 
         # Apply the reasoning-disable directive (qwen3 /no_think) up-front so the
-        # cache key reflects it and the call sends fewer tokens.
-        messages = self._apply_thinking_directive(messages)
+        # cache key reflects it and the call sends fewer tokens. `keep_thinking`
+        # lets a reasoning-heavy call (deep-RCA) opt back in.
+        messages = self._apply_thinking_directive(messages, keep_thinking=keep_thinking)
 
         # Cache check (skip for non-deterministic temperature)
         if self.config.cache_enabled and temperature == 0.0:
@@ -427,6 +433,7 @@ class LlmClient:
         temperature: float = 0.0,
         *,
         model: str | None = None,
+        keep_thinking: bool = False,
         **kwargs: Any,
     ) -> str:
         """Send a synchronous completion request to the LLM.
@@ -450,8 +457,9 @@ class LlmClient:
         tracking_model = self.config._strip_provider_prefix(effective_model)
 
         # Apply the reasoning-disable directive (qwen3 /no_think) up-front so the
-        # cache key reflects it and the call sends fewer tokens.
-        messages = self._apply_thinking_directive(messages)
+        # cache key reflects it and the call sends fewer tokens. `keep_thinking`
+        # lets a reasoning-heavy call (deep-RCA) opt back in.
+        messages = self._apply_thinking_directive(messages, keep_thinking=keep_thinking)
 
         # Cache check (skip for non-deterministic temperature)
         if self.config.cache_enabled and temperature == 0.0:

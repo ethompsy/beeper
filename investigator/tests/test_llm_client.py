@@ -606,3 +606,12 @@ class TestThinkingDirective:
         messages = [{"role": "system", "content": "You are an SRE."}]
         out = client._apply_thinking_directive(messages)
         assert out[0]["content"].endswith("/no_think")
+
+    def test_keep_thinking_overrides_disable(self) -> None:
+        # The deep-RCA step opts back into reasoning even when the pipeline
+        # disables thinking — selective thinking (quality where it matters).
+        client = self._client(disable=True)
+        messages = [{"role": "user", "content": "Diagnose the outage."}]
+        out = client._apply_thinking_directive(messages, keep_thinking=True)
+        assert out is messages
+        assert "/no_think" not in out[0]["content"]
