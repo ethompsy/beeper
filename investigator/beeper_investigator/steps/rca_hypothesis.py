@@ -185,11 +185,18 @@ class RCAHypothesisStep:
         logger.info("Escalating to deep RCA model for hypothesis generation")
 
         try:
+            # This is the one genuinely reasoning-heavy step: keep the model's
+            # <think> reasoning ON even when the rest of the pipeline disables it
+            # (qwen3 /no_think), since the root-cause hypothesis is the highest-
+            # value output. It is correspondingly the slowest call on a local
+            # reasoning model, so give it generous per-call timeout headroom.
             raw = self.llm_client.complete_sync(
                 messages,
                 max_tokens=4096,
                 temperature=0.0,
                 model=model_name,
+                keep_thinking=True,
+                timeout=1200,
             )
         except Exception as exc:
             logger.warning("LLM RCA synthesis failed: %s", exc)

@@ -1,5 +1,12 @@
 # Development overrides for Beeper Helm chart
 
+# Local qwen3:8b is slow (~15 tok/s) and the deep-RCA step keeps <think> ON for
+# diagnosis quality, so a full investigation runs well past the 30-min default.
+# Give the demo headroom so investigations COMPLETE instead of being killed by
+# the Job deadline (Q4). On a fast cloud model the default (1800) is plenty.
+investigator:
+  activeDeadlineSeconds: 5400  # 90 min
+
 # Use local images for development
 operator:
   image:

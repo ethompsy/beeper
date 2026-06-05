@@ -89,6 +89,12 @@ spec:
               value: {{ .Values.investigator.resources.requests.cpu | quote }}
             - name: BEEPER_INVESTIGATOR_MEMORY_REQUEST
               value: {{ .Values.investigator.resources.requests.memory | quote }}
+            - name: BEEPER_INVESTIGATOR_ACTIVE_DEADLINE_SECONDS
+              value: {{ .Values.investigator.activeDeadlineSeconds | quote }}
+            - name: BEEPER_INVESTIGATOR_BACKOFF_LIMIT
+              value: {{ .Values.investigator.backoffLimit | quote }}
+            - name: BEEPER_INVESTIGATOR_TTL_SECONDS_AFTER_FINISHED
+              value: {{ .Values.investigator.ttlSecondsAfterFinished | quote }}
           livenessProbe:
             httpGet:
               path: /healthz
