@@ -33,6 +33,10 @@ pub struct EwmaDetector {
     ewma_var: f64,
     /// Number of samples processed.
     samples: u64,
+    /// Absolute floor on the effective stddev (Q13b). `0.0` = off (default).
+    /// Unit-dependent — see `DetectionConfig::abs_stddev_floor`. Set via
+    /// [`EwmaDetector::with_abs_stddev_floor`].
+    abs_stddev_floor: f64,
 }
 
 impl EwmaDetector {
@@ -45,7 +49,17 @@ impl EwmaDetector {
             ewma: 0.0,
             ewma_var: 0.0,
             samples: 0,
+            abs_stddev_floor: 0.0,
         }
+    }
+
+    /// Set an absolute floor on the effective stddev (Q13b). Fluent so existing
+    /// `new()` call sites are unchanged. A non-zero floor quiets near-zero
+    /// streams; `0.0` (default) is a no-op. See `DetectionConfig::abs_stddev_floor`
+    /// for the unit caveat.
+    pub fn with_abs_stddev_floor(mut self, floor: f64) -> Self {
+        self.abs_stddev_floor = floor.max(0.0);
+        self
     }
 
     /// Update the detector with a new value.
@@ -87,7 +101,14 @@ impl EwmaDetector {
         // A stream flat at *exactly* zero has a zero floor and does not fire
         // from the metric detector (effective_stddev == 0 guard); genuine
         // zero-baseline error spikes are covered by the log error-rate detector.
-        let effective_stddev = old_stddev.max(REL_STDDEV_FLOOR * self.ewma.abs());
+        // Effective stddev = max(observed, relative floor, absolute floor).
+        // The relative floor (Q10) quiets flat *non-zero* metrics; the optional
+        // absolute floor (Q13b, off by default) quiets near-*zero* streams where
+        // 5% of ~0 is still ~0. The absolute floor is unit-dependent and so
+        // opt-in — see DetectionConfig::abs_stddev_floor.
+        let effective_stddev = old_stddev
+            .max(REL_STDDEV_FLOOR * self.ewma.abs())
+            .max(self.abs_stddev_floor);
         let anomaly = if self.samples > self.min_samples && effective_stddev > 0.0 {
             let deviation = diff.abs() / effective_stddev;
             if deviation > self.threshold {
@@ -327,5 +348,49 @@ mod tests {
         );
         // Deviation is finite/meaningful, not the old sentinel 1e6.
         assert!(signal.unwrap().deviation < 1e6);
+    }
+
+    // --- Q13b: opt-in absolute stddev floor for near-zero streams ---
+
+    #[test]
+    fn test_abs_floor_suppresses_near_zero_wobble() {
+        // Without a floor, a flat near-zero stream fires on a tiny blip because
+        // the relative floor (5% of a ~0 mean) is itself ~0. A count-scale
+        // absolute floor quiets it. Same input, two detectors → isolates the floor.
+        let run = |floor: f64| {
+            let mut d = EwmaDetector::new(0.2, 4.0, 30).with_abs_stddev_floor(floor);
+            for _ in 0..40 {
+                d.update(0.2); // flat ~0.2/sec idle counter rate
+            }
+            d.update(0.6) // a 0.4 wobble — meaningless on an idle stream
+        };
+        assert!(
+            run(0.0).is_some(),
+            "no floor: tiny near-zero blip fires (the residual noise class)"
+        );
+        assert!(
+            run(0.5).is_none(),
+            "abs floor 0.5: tiny near-zero blip is suppressed (Q13b)"
+        );
+    }
+
+    #[test]
+    fn test_gc_frequency_rate_still_fires_with_abs_floor() {
+        // GC-safety regression. GC *frequency* (collections/sec, via Q12 rate) is
+        // count-scale, so a count-scale absolute floor does NOT blind it — heavy
+        // GC still fires. This locks in the requirement that quieting idle
+        // counters must never hide GC pressure (a real cross-service incident
+        // symptom). NOTE: GC *duration* rate (seconds/sec) is small-magnitude and
+        // a count-scale floor would mask it — that unit limitation is why the
+        // floor is opt-in, and the general case is tracked as Q13c.
+        let mut d = EwmaDetector::new(0.2, 4.0, 30).with_abs_stddev_floor(0.5);
+        for _ in 0..40 {
+            d.update(0.5); // steady ~0.5 GC collections/sec
+        }
+        let signal = d.update(8.0); // GC storm: 8 collections/sec
+        assert!(
+            signal.is_some(),
+            "heavy GC (count-scale rate spike) must still fire even with the abs floor"
+        );
     }
 }

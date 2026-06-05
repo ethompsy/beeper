@@ -81,6 +81,8 @@ pub struct MetricDetector {
     min_samples: u64,
     /// Metric-name prefixes that are never tracked/triggered (host/runtime noise).
     denylist_prefixes: Vec<String>,
+    /// Absolute floor on the per-detector effective stddev (Q13b). `0.0` = off.
+    abs_stddev_floor: f64,
 }
 
 impl MetricDetector {
@@ -99,7 +101,15 @@ impl MetricDetector {
             threshold,
             min_samples,
             denylist_prefixes,
+            abs_stddev_floor: 0.0,
         }
+    }
+
+    /// Set the absolute stddev floor (Q13b) applied to every per-metric EWMA
+    /// detector. Fluent so existing `new()` call sites are unchanged.
+    pub fn with_abs_stddev_floor(mut self, floor: f64) -> Self {
+        self.abs_stddev_floor = floor;
+        self
     }
 
     /// Returns true if the metric name matches a denylisted prefix.
@@ -150,8 +160,10 @@ impl MetricDetector {
         let alpha = self.alpha;
         let threshold = self.threshold;
         let min_samples = self.min_samples;
+        let abs_floor = self.abs_stddev_floor;
         let state = self.states.entry(key).or_insert_with(|| MetricState {
-            detector: EwmaDetector::new(alpha, threshold, min_samples),
+            detector: EwmaDetector::new(alpha, threshold, min_samples)
+                .with_abs_stddev_floor(abs_floor),
             last_updated: now,
             prev_value: None,
             prev_ts_ms: 0,
@@ -469,6 +481,55 @@ mod tests {
             vec![("service", "frontend")],
         ));
         assert!(ok.is_some(), "non-denylisted metric should still trigger");
+    }
+
+    #[test]
+    fn test_q13_denylist_filters_infra_static_keeps_gc_and_used() {
+        // Q13a policy: observability-stack infra (`otelcol_`) and *static* runtime
+        // config (`jvm_memory_limit`) are filtered as noise, but GC metrics (a
+        // real incident symptom — heavy GC → pauses → cascading errors) and
+        // dynamic heap *occupancy* (`jvm_memory_used`, a leak signal) are KEPT.
+        let denylist = vec!["otelcol_".to_string(), "jvm_memory_limit".to_string()];
+        let mut detector = MetricDetector::new(0.2, 3.0, 10, 10000, denylist);
+
+        for _ in 0..5 {
+            assert!(detector
+                .process(&make_sample(
+                    "otelcol_process_cpu_seconds_total",
+                    0.0,
+                    vec![("service", "collector")],
+                ))
+                .is_none());
+            assert!(detector
+                .process(&make_sample(
+                    "jvm_memory_limit_bytes",
+                    1.0,
+                    vec![("service", "ad")],
+                ))
+                .is_none());
+        }
+        assert_eq!(
+            detector.tracked_count(),
+            0,
+            "denylisted infra/static metrics must never be tracked"
+        );
+
+        // GC and dynamic heap-occupancy metrics are NOT denylisted → tracked.
+        detector.process(&make_sample(
+            "jvm_gc_duration_seconds_sum",
+            1.0,
+            vec![("service", "ad")],
+        ));
+        detector.process(&make_sample(
+            "jvm_memory_used_bytes",
+            5.0,
+            vec![("service", "ad")],
+        ));
+        assert_eq!(
+            detector.tracked_count(),
+            2,
+            "GC and dynamic heap-occupancy metrics must be kept (real signals)"
+        );
     }
 
     // --- Q12: rate-based detection for cumulative metrics ---
