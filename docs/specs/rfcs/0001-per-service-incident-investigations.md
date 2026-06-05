@@ -58,7 +58,7 @@ In `consumer.rs`, before creating an Investigation for service S:
 1. Query the K8s API for a non-terminal (Pending/Running) Investigation for S (via a new `beeper.dev/service: <normalized>` label selector; cache "active services" briefly in-memory to bound API calls).
 2. If one exists → **skip** (the running one already gathers S's signals).
 3. Else create it (apply the label; record namespace(s) — Q-D).
-4. Re-scope the cooldown to a **post-resolution re-open debounce** (clock starts when the investigation goes terminal, not at creation).
+4. Re-scope the cooldown to a **post-resolution re-open debounce** (clock starts when the investigation goes terminal, not at creation). **✅ Implemented + live-verified (2026-06-05, branch `fix/investigation-reopen-debounce`; plan Q14):** the guard now also skips when a service's most-recent *terminal* investigation's `completed_at` is within a re-open debounce window — **longer for `Failed` (default 1 h) than `Completed` (30 min)**, because a failed investigation on a persistent signal just fails again. The anchor is API state, so it survives operator restart (the original step-4 intent + closes Q11 for the creation path). This was prompted by a live finding: investigations failing on local qwen released the active-only guard and re-fired ~every 30 min/service, accumulating 14 → 104 over 2.5 h; with the debounce the count held flat (0 created, all anomalies guard-suppressed).
 
 Collapses per-signal→per-service-incident; fixes duration>cooldown overlap; survives restarts (state is in the API, not memory); makes max-concurrency = # failing services. **No CRD schema change.**
 

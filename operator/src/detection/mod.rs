@@ -69,6 +69,22 @@ pub struct DetectionConfig {
     /// sparse-near-zero-counter case is tracked as Q13c (per-metric significance
     /// thresholds / temporal persistence), not solvable by a single global floor.
     pub abs_stddev_floor: f64,
+    /// Re-open debounce (seconds) after a service's investigation goes terminal
+    /// as **Completed**: don't open a fresh investigation for that service until
+    /// this long after it resolved. Default 1800 (30 min).
+    ///
+    /// This is the durable, API-derived re-open debounce (RFC 0001 Phase 1 step
+    /// 4): the anchor is the Investigation's `completed_at` in the API, so it
+    /// survives operator restart (the in-memory cooldown does not — Q11).
+    pub reopen_debounce_secs: u64,
+    /// Re-open debounce (seconds) after a service's investigation goes terminal
+    /// as **Failed**. Default 3600 (1 h) — deliberately *longer* than the
+    /// Completed window: a failed investigation on a persistent (often
+    /// non-actionable) signal will just fail again, so we back off harder
+    /// instead of re-firing every ~investigation-duration. This breaks the
+    /// observed fail→re-fire accumulation (a service re-investigating every
+    /// ~30 min for hours).
+    pub failed_reopen_debounce_secs: u64,
 }
 
 impl DetectionConfig {
@@ -93,6 +109,11 @@ impl DetectionConfig {
                 DEFAULT_METRIC_DENYLIST,
             ),
             abs_stddev_floor: env_f64("BEEPER_DETECTION_ABS_STDDEV_FLOOR", 0.0),
+            reopen_debounce_secs: env_u64("BEEPER_DETECTION_REOPEN_DEBOUNCE_SECS", 1800),
+            failed_reopen_debounce_secs: env_u64(
+                "BEEPER_DETECTION_FAILED_REOPEN_DEBOUNCE_SECS",
+                3600,
+            ),
         }
     }
 }
@@ -117,6 +138,8 @@ impl Default for DetectionConfig {
                 .map(|s| s.to_string())
                 .collect(),
             abs_stddev_floor: 0.0,
+            reopen_debounce_secs: 1800,
+            failed_reopen_debounce_secs: 3600,
         }
     }
 }
@@ -278,6 +301,8 @@ mod tests {
             ]
         );
         assert_eq!(config.abs_stddev_floor, 0.0);
+        assert_eq!(config.reopen_debounce_secs, 1800);
+        assert_eq!(config.failed_reopen_debounce_secs, 3600);
     }
 
     #[test]
