@@ -45,6 +45,12 @@ class LlmConfig:
     cache_enabled: bool = True
     retry_enabled: bool = True
     retry_config: RetryConfig | None = None
+    # Disable reasoning-token generation (qwen3 `/no_think` soft switch). On a
+    # local reasoning model the <think> block is the bulk of generation time, so
+    # a 7-step pipeline overruns the investigator Job's 30-min deadline and is
+    # killed mid-final-step. Default on for `ollama` (the local demo path),
+    # overridable via BEEPER_LLM_DISABLE_THINKING.
+    disable_thinking: bool = False
 
     def validate_model(self) -> None:
         """Validate the model name format for the configured provider.
@@ -96,6 +102,12 @@ class LlmConfig:
         cache_ttl_seconds = int(os.environ.get("BEEPER_LLM_CACHE_TTL_SECONDS", "3600"))
         cache_max_entries = int(os.environ.get("BEEPER_LLM_CACHE_MAX_ENTRIES", "256"))
         retry_enabled = os.environ.get("BEEPER_LLM_RETRY_ENABLED", "true").lower() != "false"
+        # Default: disable reasoning tokens for local ollama (qwen3) so the
+        # pipeline completes within the Job deadline; opt out with =false.
+        _think_default = "true" if provider == "ollama" else "false"
+        disable_thinking = (
+            os.environ.get("BEEPER_LLM_DISABLE_THINKING", _think_default).lower() != "false"
+        )
         retry_config = RetryConfig.from_env() if retry_enabled else None
 
         if not provider:
@@ -134,6 +146,7 @@ class LlmConfig:
             cache_enabled=cache_enabled,
             retry_enabled=retry_enabled,
             retry_config=retry_config,
+            disable_thinking=disable_thinking,
         )
         config.validate_model()
         return config
@@ -292,6 +305,38 @@ class LlmClient:
         config = LlmConfig.from_env()
         return cls(config)
 
+    # qwen3 soft switch: when present in the prompt, the model emits an empty
+    # <think></think> and answers directly — cutting the dominant cost of
+    # reasoning-token generation on a local model.
+    _NO_THINK_DIRECTIVE = "/no_think"
+
+    def _apply_thinking_directive(
+        self, messages: list[dict[str, str]]
+    ) -> list[dict[str, str]]:
+        """Return `messages` with the `/no_think` directive appended to the last
+        user (or system) message when `disable_thinking` is set. Returns the
+        input unchanged otherwise, and never mutates the caller's list.
+        """
+        if not self.config.disable_thinking:
+            return messages
+        out = [dict(m) for m in messages]
+        idx = next(
+            (i for i in range(len(out) - 1, -1, -1) if out[i].get("role") == "user"),
+            None,
+        )
+        if idx is None:
+            idx = next(
+                (i for i in range(len(out) - 1, -1, -1) if out[i].get("role") == "system"),
+                None,
+            )
+        if idx is None:
+            return messages
+        content = out[idx].get("content", "") or ""
+        if self._NO_THINK_DIRECTIVE in content:
+            return messages
+        out[idx]["content"] = f"{content.rstrip()}\n\n{self._NO_THINK_DIRECTIVE}".strip()
+        return out
+
     async def complete(
         self,
         messages: list[dict[str, str]],
@@ -320,6 +365,10 @@ class LlmClient:
         # Cache keys, usage counters, and cost lookups use the bare model name
         # (no LiteLLM provider prefix); only the LiteLLM call uses the prefix.
         tracking_model = self.config._strip_provider_prefix(effective_model)
+
+        # Apply the reasoning-disable directive (qwen3 /no_think) up-front so the
+        # cache key reflects it and the call sends fewer tokens.
+        messages = self._apply_thinking_directive(messages)
 
         # Cache check (skip for non-deterministic temperature)
         if self.config.cache_enabled and temperature == 0.0:
@@ -399,6 +448,10 @@ class LlmClient:
         # Cache keys, usage counters, and cost lookups use the bare model name
         # (no LiteLLM provider prefix); only the LiteLLM call uses the prefix.
         tracking_model = self.config._strip_provider_prefix(effective_model)
+
+        # Apply the reasoning-disable directive (qwen3 /no_think) up-front so the
+        # cache key reflects it and the call sends fewer tokens.
+        messages = self._apply_thinking_directive(messages)
 
         # Cache check (skip for non-deterministic temperature)
         if self.config.cache_enabled and temperature == 0.0:

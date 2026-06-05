@@ -75,6 +75,35 @@ class TestLlmConfig:
             assert config.provider == "ollama"
             assert config.model == "llama3"
             assert config.api_key is None
+            # Local ollama disables reasoning tokens by default (Q4: keeps the
+            # pipeline inside the investigator Job deadline).
+            assert config.disable_thinking is True
+
+    def test_from_env_non_ollama_keeps_thinking(self) -> None:
+        """Cloud providers keep thinking enabled by default."""
+        with patch.dict(
+            os.environ,
+            {
+                "BEEPER_LLM_PROVIDER": "anthropic",
+                "BEEPER_LLM_MODEL": "claude-sonnet-4",
+                "BEEPER_LLM_API_KEY": "key",
+            },
+            clear=True,
+        ):
+            assert LlmConfig.from_env().disable_thinking is False
+
+    def test_from_env_disable_thinking_override(self) -> None:
+        """BEEPER_LLM_DISABLE_THINKING=false opts an ollama deployment back in."""
+        with patch.dict(
+            os.environ,
+            {
+                "BEEPER_LLM_PROVIDER": "ollama",
+                "BEEPER_LLM_MODEL": "qwen3:8b",
+                "BEEPER_LLM_DISABLE_THINKING": "false",
+            },
+            clear=True,
+        ):
+            assert LlmConfig.from_env().disable_thinking is False
 
     def test_from_env_missing_provider(self) -> None:
         """Test error when provider is missing."""
@@ -536,3 +565,44 @@ class TestIsRetryable:
         assert is_retryable(KeyError("missing key")) is False
         assert is_retryable(ValueError("bad value")) is False
 
+
+
+class TestThinkingDirective:
+    """Tests for the qwen3 /no_think reasoning-disable directive (Q4)."""
+
+    def _client(self, disable: bool) -> LlmClient:
+        return LlmClient(
+            LlmConfig(provider="ollama", model="qwen3:8b", disable_thinking=disable)
+        )
+
+    def test_appends_no_think_to_last_user_message(self) -> None:
+        client = self._client(disable=True)
+        messages = [
+            {"role": "system", "content": "You are an SRE."},
+            {"role": "user", "content": "Diagnose the outage."},
+        ]
+        out = client._apply_thinking_directive(messages)
+        assert out[-1]["content"].endswith("/no_think")
+        assert out[0]["content"] == "You are an SRE."
+        # Original list/dicts are not mutated.
+        assert messages[-1]["content"] == "Diagnose the outage."
+
+    def test_noop_when_thinking_enabled(self) -> None:
+        client = self._client(disable=False)
+        messages = [{"role": "user", "content": "Diagnose the outage."}]
+        out = client._apply_thinking_directive(messages)
+        assert out is messages
+        assert "/no_think" not in out[0]["content"]
+
+    def test_idempotent_when_directive_present(self) -> None:
+        client = self._client(disable=True)
+        messages = [{"role": "user", "content": "Diagnose. /no_think"}]
+        out = client._apply_thinking_directive(messages)
+        # Not appended twice.
+        assert out[0]["content"].count("/no_think") == 1
+
+    def test_falls_back_to_system_when_no_user_message(self) -> None:
+        client = self._client(disable=True)
+        messages = [{"role": "system", "content": "You are an SRE."}]
+        out = client._apply_thinking_directive(messages)
+        assert out[0]["content"].endswith("/no_think")
