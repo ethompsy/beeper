@@ -60,6 +60,11 @@ impl MetricKey {
 struct MetricState {
     detector: EwmaDetector,
     last_updated: Instant,
+    /// Previous raw sample value — used to compute the per-second rate for
+    /// cumulative (counter) series (Q12). `None` until the first sample.
+    prev_value: Option<f64>,
+    /// Timestamp (ms) of the previous sample, for the rate denominator.
+    prev_ts_ms: i64,
 }
 
 /// Detects anomalies in metric streams using per-metric EWMA tracking.
@@ -104,12 +109,32 @@ impl MetricDetector {
             .any(|p| name.starts_with(p.as_str()))
     }
 
+    /// Cumulative (monotonic) series — Prometheus counters and the cumulative
+    /// parts of histograms/summaries. Detection runs on their per-second RATE,
+    /// not the raw value (Q12).
+    fn is_cumulative(name: &str) -> bool {
+        name.ends_with("_total") || name.ends_with("_count") || name.ends_with("_sum")
+    }
+
+    /// Histogram bucket series. Skipped entirely: the `le` label is not part of
+    /// `MetricKey`, so every bucket of a histogram collapses into one stream
+    /// (a rate would mix buckets), and raw per-bucket counts are not a
+    /// service-health signal. These were the bulk of the observed false
+    /// anomalies (Q12).
+    fn is_histogram_bucket(name: &str) -> bool {
+        name.ends_with("_bucket")
+    }
+
     /// Process a metric sample, returning an anomaly event if detected.
     pub fn process(&mut self, sample: &MetricSample) -> Option<AnomalyEvent> {
         // Host/runtime telemetry (system_*, v8js_*, process_*, …) is not a
         // service-health signal — never track or investigate it. Filtering here
         // also keeps these high-cardinality series out of the EWMA state map.
         if self.is_denylisted(&sample.name) {
+            return None;
+        }
+        // Skip histogram buckets (mis-keyed without `le`; not a health signal — Q12).
+        if Self::is_histogram_bucket(&sample.name) {
             return None;
         }
 
@@ -121,13 +146,45 @@ impl MetricDetector {
             self.evict_oldest();
         }
 
+        let cumulative = Self::is_cumulative(&sample.name);
+        let alpha = self.alpha;
+        let threshold = self.threshold;
+        let min_samples = self.min_samples;
         let state = self.states.entry(key).or_insert_with(|| MetricState {
-            detector: EwmaDetector::new(self.alpha, self.threshold, self.min_samples),
+            detector: EwmaDetector::new(alpha, threshold, min_samples),
             last_updated: now,
+            prev_value: None,
+            prev_ts_ms: 0,
         });
         state.last_updated = now;
 
-        let signal = state.detector.update(sample.value)?;
+        // For cumulative (counter) series, detect on the per-second RATE of
+        // change, not the raw monotonic value (Q12). Raw counters only grow and
+        // reset to 0 on restart, so EWMA on raw values flags normal growth as
+        // spikes and restarts as drops.
+        let effective_value = if cumulative {
+            let prev = state.prev_value;
+            let prev_ts = state.prev_ts_ms;
+            state.prev_value = Some(sample.value);
+            state.prev_ts_ms = sample.timestamp_ms;
+            match prev {
+                None => return None, // need two points for a rate
+                Some(pv) => {
+                    if sample.value < pv {
+                        return None; // counter reset (e.g. pod restart) — not an anomaly
+                    }
+                    let dt_s = (sample.timestamp_ms - prev_ts) as f64 / 1000.0;
+                    if dt_s <= 0.0 {
+                        return None; // out-of-order / duplicate timestamp
+                    }
+                    (sample.value - pv) / dt_s
+                }
+            }
+        } else {
+            sample.value
+        };
+
+        let signal = state.detector.update(effective_value)?;
 
         let anomaly_type = if signal.observed > signal.expected {
             AnomalyType::MetricSpike
@@ -412,5 +469,91 @@ mod tests {
             vec![("service", "frontend")],
         ));
         assert!(ok.is_some(), "non-denylisted metric should still trigger");
+    }
+
+    // --- Q12: rate-based detection for cumulative metrics ---
+
+    fn cumulative_sample(name: &str, value: f64, ts_ms: i64) -> MetricSample {
+        MetricSample {
+            name: name.to_string(),
+            labels: [("service".to_string(), "payment".to_string())]
+                .into_iter()
+                .collect(),
+            value,
+            timestamp_ms: ts_ms,
+        }
+    }
+
+    #[test]
+    fn test_cumulative_steady_rate_no_false_positive() {
+        // A counter increasing at a CONSTANT rate (+100/s) must NOT fire — its
+        // raw value grows monotonically, but its RATE is steady. (Old behaviour:
+        // EWMA on the raw growing value flagged it as a perpetual spike → Q12.)
+        let mut detector = MetricDetector::new(0.2, 4.0, 10, 10000, vec![]);
+        let mut v = 0.0;
+        let mut fired = 0;
+        for i in 0..60 {
+            v += 100.0; // +100 every 1000ms = 100/s, constant
+            if detector
+                .process(&cumulative_sample("requests_total", v, i * 1000))
+                .is_some()
+            {
+                fired += 1;
+            }
+        }
+        assert_eq!(fired, 0, "a steady counter rate must not fire");
+    }
+
+    #[test]
+    fn test_cumulative_rate_spike_fires() {
+        let mut detector = MetricDetector::new(0.2, 4.0, 10, 10000, vec![]);
+        let mut v = 0.0;
+        let mut ts = 0i64;
+        for _ in 0..30 {
+            v += 100.0;
+            ts += 1000;
+            detector.process(&cumulative_sample("requests_total", v, ts));
+        }
+        // A sudden 50x jump in the per-interval increase = rate spike.
+        v += 5000.0;
+        ts += 1000;
+        let signal = detector.process(&cumulative_sample("requests_total", v, ts));
+        assert!(signal.is_some(), "a real rate spike on a counter must fire");
+    }
+
+    #[test]
+    fn test_counter_reset_no_false_positive() {
+        // A counter reset (value drops, e.g. pod restart) must NOT fire.
+        let mut detector = MetricDetector::new(0.2, 4.0, 10, 10000, vec![]);
+        let mut v = 0.0;
+        let mut ts = 0i64;
+        for _ in 0..40 {
+            v += 100.0;
+            ts += 1000;
+            detector.process(&cumulative_sample("requests_total", v, ts));
+        }
+        // Reset to a small value (counter restarted).
+        ts += 1000;
+        let signal = detector.process(&cumulative_sample("requests_total", 5.0, ts));
+        assert!(signal.is_none(), "a counter reset must not fire (Q12)");
+    }
+
+    #[test]
+    fn test_histogram_bucket_skipped() {
+        // _bucket series are skipped entirely (mis-keyed without `le`; noise).
+        let mut detector = MetricDetector::new(0.2, 4.0, 10, 10000, vec![]);
+        for i in 0..40 {
+            let s = cumulative_sample(
+                "http_server_duration_seconds_bucket",
+                (i as f64) * 7.0,
+                i * 1000,
+            );
+            assert!(detector.process(&s).is_none());
+        }
+        assert_eq!(
+            detector.tracked_count(),
+            0,
+            "histogram buckets must not be tracked or fire"
+        );
     }
 }
