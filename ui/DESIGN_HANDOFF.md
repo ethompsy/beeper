@@ -220,6 +220,18 @@ proposal as part of the work.
 
 ## 9. Working agreement
 
+- **Suggested starting point:** **Investigations** (list + detail) — the core
+  surface and the richest screens, so it's the highest-leverage place to begin.
+  Shared components in `components/` are the next-highest leverage (changes
+  propagate everywhere).
+- **Label/IA authority — confirm with the owner first.** Whether you may rename
+  user-facing labels and restructure the nav *directly* (with a glossary), or
+  must deliver a proposed terminology/IA map for sign-off *before* changing any
+  wording, is **not yet decided**. Confirm with the owner (e.thompsy@gmail.com)
+  before shipping renames.
+- **Prerequisites to do the full loop:** write access to this branch and the
+  ability to run `demo_ui.py` for visual iteration. Without code execution you
+  can still produce the glossary + nav proposal, but not the committed changes.
 - **Branch:** commit to `claude/handoff-design-lknw65`. Open small, reviewable
   draft PRs (per feature area or per cross-cutting concern) rather than one
   mega-PR.
