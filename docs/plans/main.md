@@ -8,7 +8,7 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 **Status legend:** `done` · `in progress` · `pending` · `blocked`. Synthex's `next-priority` executes the lowest-numbered actionable `pending` tasks within the current milestone and never crosses a phase boundary in one session.
 
-**Current resume point:** **All implementation tasks merged to `main` — only the Task 6.3 `[H]` 3/3 acceptance run remains.** Phases 1–5 done; Phase 6 Tasks 6.1 (PR #11), 6.2 (PR #12), and 6.3-`[T]` + every live-run blocker (PR #13, `ad2da02` — Finding H, Q4 parser+truncation, Q5 trigger filtering, Q6 RBAC, Q7 attribution dedup, 4σ) all merged. (Status-table rows reconciled 2026-06-01 — earlier passes left them "in progress" though the work had merged.) **The single remaining item is Task 6.3's `[H]` criterion: run the documented `demo/README.md` 3/3 script and witness 3 consecutive evidence-backed payment-failure investigations (NFR8; resolves Q1/`3-0c`).** It is NOT autonomously actionable — it needs (a) the **Anthropic LLM switch** (local qwen3:8b throughput is the only remaining limiter — every code blocker is fixed; see Q4) and (b) a witnessed acceptance session. No other task is actionable until then. NOTE: Phase 6 = live Docker/kind cluster + LLM, AD-8 manual verification.
+**Current resume point:** 🎉 **PLAN COMPLETE — every task is `done`, including the Task 6.3 `[H]` 3/3 acceptance run (witnessed 2026-06-15, NFR8 met).** The project definition of done is satisfied: a `payment-failure` fault injection produced an evidence-backed, payment-service root-cause investigation 3/3 consecutive times in the responsive UI, on local `ollama/qwen3:8b` (no Anthropic switch needed in the end — the pass-4 code fixes made qwen *complete* reliably). Phases 1–5 done; Phase 6 Tasks 6.1 (PR #11), 6.2 (PR #12), 6.3-`[T]` + every live-run blocker merged (Finding H, Q4 parser+truncation+`/no_think`, Q5/Q7/Q12/Q13a detection-noise, Q6 RBAC, Q14 debounce). Q1 and the blocked 3-0c are resolved by this run. Remaining open items (Q9/Q11 global work-queue + EWMA persistence, Q13c residual idle-counter noise / RFC 0002, the orphaned-`running` Job-GC gap) are **non-blocking polish**, not part of the committed plan scope.
 
 ## Decisions
 
@@ -31,10 +31,10 @@ Brownfield delivery across two workstreams: (1) restore the sequential pipeline 
 
 | # | Question | Impact | Status |
 |---|----------|--------|--------|
-| Q1 | `3-0c-full-demo-walkthrough` failed in the 2026-04-10 snapshot | Full E2E demo not yet proven; superseded/retested by Epic 6 (Task 6.3) | Open — blocked task carried forward |
+| Q1 | `3-0c-full-demo-walkthrough` failed in the 2026-04-10 snapshot | Full E2E demo not yet proven; superseded/retested by Epic 6 (Task 6.3) | **RESOLVED 2026-06-15** — Task 6.3's witnessed 3/3 run passed on local qwen (NFR8 met). Full E2E demo proven repeatable. |
 | Q2 | AD-5: does the `investigations` Qdrant collection reliably hold KBQueryStep results keyed by investigation ID? | Tasks 4.4 and 5.1 depend on this read pattern | Open — verify during Epic 2 KB work / before Task 4.4 |
 | Q3 | Are all `[T]` UI criteria automatable, given AD-8's manual-verification stance? | Some UI criteria are `[H]` (visual/UX judgment) rather than `[T]` | Resolved per-criterion below; revisit if a test harness for templates lands |
-| Q4 | Local `ollama/qwen3:8b` returns unparseable LLM output (6/6 investigators: "Failed to parse LLM response; using defaults") + is slow (~1–2.5 min/step) | RCA falls back to defaults → 6.3 `[H]` can't produce evidence-backed payment RCA; blocks 3/3 | **PARSING FIXED (2026-05-31); speed/truncation still open.** Root cause of the parse failures: `response_parser.parse_json_response` searched for a ```json code fence on the *raw* string BEFORE stripping `<think>`, so a draft fence the qwen3 reasoning block wrote was grabbed instead of the real post-`</think>` answer. Rewrote it as a priority-ordered multi-strategy parser (answer-after-last-`</think>` → raw-fence → think-stripped balanced-brace, string-aware) — `investigator/.../llm/response_parser.py`; 20 unit tests incl. the exact bug repro (`tests/test_response_parser.py::TestParseJsonResponse::test_draft_json_inside_think_is_ignored`), ruff clean, backward-compatible. NOT yet live-validated (needs an investigator image rebuild + a completed investigation; Ollama currently saturated). **Still open:** qwen3 thinking also burns the token budget (slow, can truncate before the JSON) — complementary fix is to disable thinking (`/no_think` / ollama `think:false`) or use a faster/cloud model; tracked with Q5 for the actual run. On `feature/6.3-e2e-demo-validation`. |
+| Q4 | Local `ollama/qwen3:8b` returns unparseable LLM output (6/6 investigators: "Failed to parse LLM response; using defaults") + is slow (~1–2.5 min/step) | RCA falls back to defaults → 6.3 `[H]` can't produce evidence-backed payment RCA; blocks 3/3 | **RESOLVED 2026-06-15 — qwen produced parseable, evidence-backed payment RCA across the witnessed 3/3 run (#24 `/no_think` + budget/deadline fixes live).** History: **PARSING FIXED (2026-05-31); speed/truncation then closed by #24.** Root cause of the parse failures: `response_parser.parse_json_response` searched for a ```json code fence on the *raw* string BEFORE stripping `<think>`, so a draft fence the qwen3 reasoning block wrote was grabbed instead of the real post-`</think>` answer. Rewrote it as a priority-ordered multi-strategy parser (answer-after-last-`</think>` → raw-fence → think-stripped balanced-brace, string-aware) — `investigator/.../llm/response_parser.py`; 20 unit tests incl. the exact bug repro (`tests/test_response_parser.py::TestParseJsonResponse::test_draft_json_inside_think_is_ignored`), ruff clean, backward-compatible. NOT yet live-validated (needs an investigator image rebuild + a completed investigation; Ollama currently saturated). **Still open:** qwen3 thinking also burns the token budget (slow, can truncate before the JSON) — complementary fix is to disable thinking (`/no_think` / ollama `think:false`) or use a faster/cloud model; tracked with Q5 for the actual run. On `feature/6.3-e2e-demo-validation`. |
 | Q5 | Detection over-sensitivity: fires on system/`unknown`-service metrics (e.g. `system_cpu_time_seconds_total`), creating a baseline investigation backlog even on a fresh cluster | Buries an injected fault; backlog + concurrency=2 makes 3/3 impractically slow; noisy demo | **FIX LANDED (2026-06-01); pending live validation.** Root cause: the operator fired an investigation for ANY metric crossing 3σ with no service/metric filtering. Added (operator `src/detection/`): (1) skip anomalies with `service==unknown` (not actionable; `BEEPER_DETECTION_SKIP_UNKNOWN_SERVICE`, default on); (2) configurable metric-name denylist filtering host/runtime telemetry (`system_*`,`v8js_*`,`process_*`,`runtime_*`; `BEEPER_DETECTION_METRIC_DENYLIST`) so only service-health signals trigger. `cargo test` 46 pass (incl. new denylist/env tests), fmt+clippy clean. On `feature/6.3-e2e-demo-validation`. Per user direction, did NOT cap token budgets (limiting reasoning is the wrong lever — tune triggers instead). |
 | Q6 | Investigator SA `beeper-investigator` cannot `list investigations.beeper.dev` (403 in topology step; confirmed via `kubectl auth can-i`) | Topology step degraded; recurring 403s | **RESOLVED 2026-05-31** — added `list` to the investigations verbs in `helm/beeper/templates/investigator-rbac.yaml` (was `get,patch` → `get,list,patch`); applied live, `kubectl auth can-i` → yes; guarded by `test_demo_automation.py::TestInvestigatorRbac`. On `feature/6.3-e2e-demo-validation`. |
 | Q7 | Service attribution is inconsistent: the same service appears as both `otel-demo/payment` and `payment` (different metrics carry different service-identifying labels → `extract_service` returns different values) | Splits the per-service cooldown fingerprint, so a service can open ~2× the investigations; also clutters the list | **FIX LANDED (2026-06-01).** Added `detection::normalize_service` (strips any `namespace/` prefix → last path segment) applied in both `metrics.rs` + `logs.rs` `extract_service`, so `otel-demo/payment` and `payment` collapse to one identity/fingerprint. Same increment also raised the default deviation threshold 3σ→4σ (`metric/log_threshold`) to quiet per-service baseline self-triggers. `cargo test` 47 pass, fmt+clippy clean. On `feature/6.3-e2e-demo-validation`; pending operator rebuild + live re-observe. |
@@ -125,7 +125,7 @@ Collapsible left sidebar (Observe/Learn/Manage), responsive 768px–1920px+, inv
 |---|------|-----------|--------------|--------|
 | 3-0a | Fix SLO engine memory leak | M | Phase 2 | done |
 | 3-0b | Full pipeline E2E verification | M | Phase 2 | done |
-| 3-0c | Full demo walkthrough | M | 3-0b | blocked |
+| 3-0c | Full demo walkthrough | M | 3-0b | done |
 | 3-0d | UI test baseline | S | None | done |
 | 3-0e | Fix investigation startup flood | M | 3-0b | done |
 | 3-0f | Fix UI investigation detail "not found" | S | 3-0d | done |
@@ -134,7 +134,7 @@ Collapsible left sidebar (Observe/Learn/Manage), responsive 768px–1920px+, inv
 
 **Tasks 3-0a, 3-0b, 3-0d–3-0h — done.** Stabilization/verification tasks. Detail in `_bmad-output/implementation-artifacts/3-0*.md`.
 
-**Task 3-0c — BLOCKED.** Full demo walkthrough failed in the 2026-04-10 snapshot (see Q1). `[H]` A clean end-to-end demo walkthrough completes without manual intervention. Superseded by Task 6.3 (3/3 repeatability) — revisit there rather than in isolation; do not let it block Milestone 3.1 UI work.
+**Task 3-0c — done (2026-06-15).** Resolved via Task 6.3's witnessed 3/3 acceptance run (see Q1). `[H]` A clean end-to-end demo walkthrough completes without manual intervention — satisfied 3/3 consecutive on local qwen.
 
 ### Milestone 3.1: Layout Shell & Sidebar
 
@@ -221,7 +221,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - D4/doctrine guards → `::TestTokenDisciplineAndMigration::*` (no arbitrary color values; migrated header drops legacy classes)
 - **Review notes:** (a) `affected_services` is derived (`inv.service` + `service_topology.downstream`, deduped) since findings lacks the field; (b) remaining legacy detail partials (`_findings`, `_unified_timeline`, `_evidence_panel`, `_recommendations`, urgency/remediation/gate/feedback/resolution/KB) intentionally NOT migrated — scoped to header+timeline+conclusion; (c) pre-existing duplicate `id="main-content"` (layout `<main>` + detail div) left as-is (it's the 4.3 SSE/htmx hook).
 
-**Task 4.3 — in progress.** _(branch `feature/4.3-sse-streaming`; build-for-review, not auto-merged)_
+**Task 4.3 — done.** _(merged via PR #6, branch `feature/4.3-sse-streaming`)_
 - `[T]` Running investigation opens `EventSource` from `static/js/sse.js`; steps append on arrival; list view receives `investigation_created`/`investigation_status` (FR24).
 - `[T]` Steps inserted at correct position by `order` field; UI updates ≤2s of event (NFR4).
 - `[T]` On drop, reconnect fetches `GET /api/v1/investigations/{id}` and diffs/inserts missed steps by `order` (AD-4 REST backfill).
@@ -239,7 +239,7 @@ List/filter investigations, watch them unfold step-by-step via SSE with inline e
 - Updated existing tests to the `data-sse-url`/`data-sse-swap` contract (intent preserved): `test_investigation_detail_view.py::test_sse_hook_preserved_for_task_4_3`, `test_investigation_list_view.py::test_list_sse_container_preserved`.
 - **Review note:** all 12 detail SSE panels migrated to native-ES dispatch; lazy `hx-get` panels keep their initial HTMX load and also receive SSE updates. The new backfill endpoint derives steps from the same operator status source (`_get_step_states`/`PIPELINE_STEPS`) as the server-rendered timeline, so REST and SSE stay consistent.
 
-**Task 4.4 — in progress.** _(branch `feature/4.4-related-kb-panel`; build-for-review, not auto-merged)_ *(verify Q2 / AD-5 against a live backend before relying on the read path)*
+**Task 4.4 — done.** _(merged via PR #7, branch `feature/4.4-related-kb-panel`)_ *(verify Q2 / AD-5 against a live backend before relying on the read path)*
 - `[T]` Viewport >1200px: fixed bottom bar "N Related KB Entries" via `kb_panel(entries, expanded)` (`kb.html`); click expands upward (FR26).
 - `[T]` Viewport ≤1200px: panel renders inline below the timeline.
 - `[T]` Panel reads KBQueryStep results from the `investigations` Qdrant collection (AD-5); shows titles with relevance context.
@@ -273,7 +273,7 @@ Browse/search KB, view pipeline diagnostics (ingestion + detection stats, EWMA w
 | 5.2 | Pipeline diagnostic dashboard (ingestion + detection stats) | M | 3.2, 1.4 | done |
 | 5.3 | Source connection status & LLM spending views | M | 3.2 | done |
 
-**Task 5.1 — in progress.** _(branch `feature/5.1-kb-views`; build-for-review, not auto-merged)_
+**Task 5.1 — done.** _(merged via PR #8, branch `feature/5.1-kb-views`)_
 - `[T]` Learn > Knowledge Base lists entries with service/title/date (FR28).
 - `[T]` Search by keyword or service filters to matches (FR29).
 - `[T]` Entry detail shows past root cause, resolution, affected services, source investigation ref (FR31).
@@ -286,7 +286,7 @@ Browse/search KB, view pipeline diagnostics (ingestion + detection stats, EWMA w
 - `[T]` AC4 explanatory empty state → `::TestAC4EmptyState::test_empty_kb_renders_explanatory_empty_state`
 - **Review note:** service-layer change (`KBEntry` fields + Qdrant parsing); `knowledge/_related.html` left legacy (out of scope). Structured fields populate only when the authoring/resolution pipeline writes them; older entries fall back to markdown.
 
-**Task 5.2 — in progress.** _(branch `feature/5.2-diagnostic-dashboard`; build-for-review, not auto-merged)_ *(gated on Task 1.4 detection stats API — done)*
+**Task 5.2 — done.** _(merged via PR #9, branch `feature/5.2-diagnostic-dashboard`)_ *(gated on Task 1.4 detection stats API — done)*
 - `[T]` Observe > Ingestion Stats shows `metrics_received`/`logs_received` via `metric_tile(label, value, status, trend)` (`diagnostic.html`) (FR32).
 - `[T]` Adds `anomalies_detected`, `anomalies_suppressed`, `active_metric_detectors` tiles (FR33).
 - `[T]` Warming up (`samples < minimum`): `ewma_progress(percentage, status)` bar + amber "Warming Up" chip; percentage = `samples / minimum * 100`.
@@ -303,7 +303,7 @@ Browse/search KB, view pipeline diagnostics (ingestion + detection stats, EWMA w
 - `[T]` AC6 auto-refresh → `::TestAC6AutoRefresh` (+ `::TestSidebarNavEntry`)
 - **Review note:** real numbers + HTMX swap-on-state-change need live-operator verification (AD-8); legacy `health/status.html` buffer card left unmigrated (out of scope).
 
-**Task 5.3 — in progress.** _(branch `feature/5.3-sources-spending`; build-for-review, not auto-merged)_
+**Task 5.3 — done.** _(merged via PR #10, branch `feature/5.3-sources-spending`)_
 - `[T]` Observe > Sources shows Prometheus/Loki connection status with indicators (FR34).
 - `[T]` Connected → green "Connected" + last-seen; disconnected → red "Disconnected".
 - `[T]` Manage > Spending shows LLM provider config + spending metrics (FR35).
@@ -332,9 +332,9 @@ Full demo lifecycle — deploy, verify, inject fault, watch, recover, repeat —
 |---|------|-----------|--------------|--------|
 | 6.1 | Fix demo deployment & port-forward automation | M | Phase 1 | done |
 | 6.2 | Fix fault injection & recovery automation | M | 6.1 | done |
-| 6.3 | End-to-end demo validation — 3/3 repeatability | L | 6.1, 6.2, Phases 1–5 | in progress |
+| 6.3 | End-to-end demo validation — 3/3 repeatability | L | 6.1, 6.2, Phases 1–5 | done |
 
-**Task 6.1 — in progress.** _(branch `feature/6.1-demo-deploy-automation`; build-for-review, not auto-merged. Driven LIVE against the `beeper-demo` kind cluster.)_
+**Task 6.1 — done.** _(merged via PR #11, branch `feature/6.1-demo-deploy-automation`. Driven LIVE against the `beeper-demo` kind cluster.)_
 - `[T]` `make demo-deploy` deploys OTEL Astronomy Shop (16+ services), configures Collector → Beeper ingestion, applies ServiceLevel CRDs (FR36).
 - `[T]` `make demo-ui` establishes port-forwards (Beeper UI :8080, operator API, OTEL frontend); UI opens in browser (FR39).
 - `[T]` Helm-deployed Qdrant runs v1.15.0 (D2).
@@ -355,7 +355,7 @@ Test linkage (`demo/tests/test_demo_automation.py`, 13 static tests — pure pyy
 - `[T]` kind port mappings correct → `TestKindNodePortConsistency::{test_kind_maps_5050_to_30050,test_ui_service_nodeport_is_pinned_to_30050,test_kind_and_values_nodeport_agree,test_ui_template_supports_nodeport,test_kind_config_valid_two_node_cluster}`
 - **Review/verify-on-fresh-cluster notes:** (a) kind `extraPortMappings` apply only at `kind create cluster`, so the 5050→30050 direct-access path is fully proven only after `make demo-down && make demo-up`; (b) OTel frontend-proxy/Jaeger direct kind access needs NodePort exposure in `otel-demo-values.yaml` (left as a documented TODO, not a blind edit — they work today via `demo-ui` port-forward); (c) the AC text "Beeper UI :8080" is a typo — convention is Beeper UI :5050, OTel Shop :8080 (kept); (d) **out of scope:** a pile of stale `inv-anomaly-*` pods stuck Terminating/Unknown (15d old, finalizer issue) — noise, not demo-automation; flag for cleanup.
 
-**Task 6.2 — in progress.** _(branch `feature/6.2-fault-injection`; build-for-review, not auto-merged. Driven LIVE against the `beeper-demo` kind cluster.)_
+**Task 6.2 — done.** _(merged via PR #12, branch `feature/6.2-fault-injection`. Driven LIVE against the `beeper-demo` kind cluster.)_
 - `[T]` `make demo-fault FAULT=payment-failure` injects fault; anomalous behavior begins (FR37).
 - `[T]` `make demo-recover` removes fault; demo returns to normal (FR38).
 - `[T]` Multiple fault names (`payment-failure`, `cart-failure`, `high-cpu`) each produce distinct anomalies/investigations.
@@ -372,8 +372,9 @@ Test linkage (`demo/tests/test_demo_automation.py`, +9 tests; pure-parse, no clu
 - `[T]` distinct faults → `test_every_fault_uses_a_valid_nonoff_variant` (each maps to a distinct valid flag/variant). The runtime *"each produces a distinct investigation"* outcome needs ~10-min EWMA warmup per fault → verified during the **6.3 manual demo run** (AD-8), not automatable here.
 - **Notes:** (a) minor — two `make demo-fault` calls within ~1s hit flagd's rollout-restart rate limit (`please wait before attempting to trigger another`); the configmap still updates, only the restart is skipped — normal single-fault usage is unaffected, flagged as a possible future `--wait`/retry hardening; (b) the new `demo/tests` run in the `demo-config` CI job added in 6.1.
 
-**Task 6.3 — in progress.** _(branch `feature/6.3-e2e-demo-validation`; resolves Q1 / the blocked 3-0c)_
-- `[H]` Run the full demo sequence (deploy → verify stats → await EWMA warmup → `demo-fault payment-failure` → investigation appears & completes → verify root cause references "payment service"/"error rate" → verify real Prometheus + Loki evidence → `demo-recover`) **3 consecutive times without cluster restart**, all succeeding (NFR8).
+**Task 6.3 — done (2026-06-15).** ✅ **3/3 ACHIEVED ON LOCAL QWEN — project definition of done met (NFR8).** _(branch `feature/6.3-e2e-demo-validation`; resolves Q1 and the blocked 3-0c.)_
+- `[H]` **PASSED — witnessed by the user 2026-06-15.** Ran the full demo sequence 3 consecutive times without cluster restart on the recovered `beeper-demo` kind cluster (local `ollama/qwen3:8b`, `maxConcurrentInvestigations: 2`), all three producing evidence-backed payment-failure investigations that completed with a payment-service root cause and real Prometheus/Loki evidence. Cluster posture for the run: 8σ thresholds + Q14 durable re-open debounce + Q5/Q7/Q12/Q13a denylist/normalization → settled warmup baseline of ~3 (postgresql/valkey-cart/otelcol-contrib), against which the injected fault stood out cleanly. Every code blocker from passes 1–4 (Finding H, Q4 parser+truncation+`/no_think`, Q5 filtering, Q6 RBAC, Q7 dedup, Q12 rate-based, Q13a denylist, Q14 debounce) was merged to `main` and live in the rebuilt images.
+- `[H]` (original) Run the full demo sequence (deploy → verify stats → await EWMA warmup → `demo-fault payment-failure` → investigation appears & completes → verify root cause references "payment service"/"error rate" → verify real Prometheus + Loki evidence → `demo-recover`) **3 consecutive times without cluster restart**, all succeeding (NFR8).
 - `[T]` Zero "insufficient data" results while faults are active.
 - `[T]` `demo/README.md` documents the full script with timing (2–3 min warmup; 5–10 min investigation).
 
@@ -401,4 +402,4 @@ Test linkage (`demo/tests/test_demo_automation.py`, +9 tests; pure-parse, no clu
 
 **Parallelizable:** 6.1→6.2 sequential; 6.3 is the final gate after all prior phases. Task 6.3 has an `[H]` criterion (manual demo run) — schedule the user review session explicitly. _(max 8 concurrent per config)_
 **Milestone Value:** Eric joins investor calls confident the demo works repeatably — the project definition of done.
-**Observational Outcomes:** `[O]` `payment-failure` completes E2E 3/3 consecutive runs without cluster restart (NFR8).
+**Observational Outcomes:** `[O]` `payment-failure` completes E2E 3/3 consecutive runs without cluster restart (NFR8) — ✅ **CONFIRMED 2026-06-15** (witnessed 3/3 on local qwen).
