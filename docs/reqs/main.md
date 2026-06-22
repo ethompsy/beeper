@@ -78,6 +78,12 @@ Pipeline diagnostic checkpoints (each must pass independently) and UI targets ar
 | UI responsive | Usable at 768px–1920px+, no breakage at 768px tablet |
 | Navigation grouped | Observe / Learn / Manage sidebar categories with collapsible hamburger |
 
+**Timing reference (two clocks):** "within 5 min of deploy" (ingestion) and "within 5 min of `make demo-fault`" (detection) are measured from *different* t=0 events. The demo sequence is: deploy → wait 2–3 min for EWMA warmup (NFR6) → inject fault → detect within 5 min (NFR1) → full investigation within 10 min p95 (NFR3).
+
+**"Evidence-backed" pass condition (resolves "zero vague investigations"):** an investigation passes only if its findings contain ≥1 real Prometheus metric value **AND** ≥1 real Loki log excerpt **AND** name the fault-affected service (`paymentservice` for payment-failure). It fails if it contains the literal "insufficient data" or omits any of the three. This is the operational test behind the 0% "insufficient data" and "3/3 consecutive runs" gates.
+
+**3/3 run protocol:** each run is `make demo-fault FAULT=payment-failure` → observe evidence-backed completion → `make demo-recover`, spaced beyond the FR8 cooldown so suppression does not mask a run; no cluster restart between runs (NFR8).
+
 ## Product Scope
 
 ### MVP Strategy & Philosophy
@@ -85,6 +91,8 @@ Pipeline diagnostic checkpoints (each must pass independently) and UI targets ar
 **MVP Approach:** Problem-Solving MVP — restore the existing design to working state
 **Resource:** Solo developer (Eric)
 **Definition of Done:** `payment-failure` fault scenario completes 3/3 reliably with evidence-backed root cause in a responsive, sidebar-navigated UI
+
+**Scope boundary (diagnostic-first):** Workstream 1 items are framed "verify/fix" — the binding deliverable is the measurable outcome (payment-failure 3/3, evidence-backed), not a predetermined code change. If a single fix is assessed as larger than a config/calibration change or requires a net-new subsystem, it is escalated as an Open Question before proceeding rather than silently absorbed.
 
 ### MVP Feature Set (Phase 1) — This PRD
 
@@ -118,6 +126,7 @@ Pipeline diagnostic checkpoints (each must pass independently) and UI targets ar
 
 - Full v0.2.0 feature set per `prd-v0.2.0.md`
 - Full investor demo script with detect → investigate → fix → prove lifecycle
+- **SRE-centric React UI overhaul** — convert the UI to React for a focused, first-seconds incident-triage experience and a Claude Design pass (see [SRE-Centric React UI Overhaul](#sre-centric-react-ui-overhaul-next-ui-workstream) below)
 
 ### Risk Mitigation Strategy
 
@@ -238,6 +247,8 @@ No authentication or authorization layer in this PRD scope. The UI and operator 
 2. Beeper → Prometheus/Loki (outbound from investigator Jobs): verify cross-namespace DNS resolution and correct endpoint configuration in Source CRDs
 3. All others: verify connectivity, fix if broken
 
+**Real-time (SSE):** Two SSE endpoints — investigation **list** updates and investigation **detail** streaming — emitted by the operator (`:8080`) and consumed by the UI (`:5000`, which may proxy). Reconnection backfill uses `GET /api/v1/investigations/{id}` returning steps in order (idempotent re-fetch); see FR24/FR27 and NFR9.
+
 ### Compliance
 
 None required. No HIPAA, PCI-DSS, SOC2, or GDPR obligations for this open-source demo deployment.
@@ -253,18 +264,22 @@ None required. No HIPAA, PCI-DSS, SOC2, or GDPR obligations for this open-source
 
 ### Anomaly Detection
 
-- FR5: Operator can run EWMA-based anomaly detection on buffered metric streams
+- FR5: Operator can run EWMA-based anomaly detection on buffered metric streams. Detection calibration requirements:
+  - FR5a: Detect on per-second **rates** for cumulative counters (`*_total`/`*_count`/`*_sum`), not raw cumulative values; treat a counter drop-to-lower as a reset, not an anomaly
+  - FR5b: Skip histogram bucket series (`*_bucket`) and host/runtime/infra telemetry (e.g. `system_*`, `process_*`, `otelcol_*`, `jvm_memory_limit/init`) via a configurable metric-name denylist; skip anomalies on the `unknown` service
+  - FR5c: Normalize service identity (strip any `namespace/` prefix) so one service maps to one detection fingerprint
+  - FR5d: Default deviation threshold tuned to produce zero false-positive investigations on a quiescent OTEL demo cluster (4σ baseline; optional minimum-absolute-deviation floor for near-zero-variance streams)
 - FR6: Operator can run pattern-based anomaly detection on buffered log streams
 - FR7: Operator can create Investigation CRDs when anomaly thresholds are crossed
-- FR8: Operator can suppress duplicate investigations for the same service within a cooldown window
-- FR9: Operator can expose detection status metrics (anomalies_detected, anomalies_suppressed, active_metric_detectors, ewma_warmup_samples) via ingestion stats API
+- FR8: Operator can suppress duplicate investigations for the same service within a configurable cooldown window. The window is anchored on investigation state derived from the API (survives operator restart) and is longer after a Failed investigation than a Completed one (defaults: 30 min after Completed, 60 min after Failed), so a persistently-failing signal does not re-fire every few minutes
+- FR9: Operator can expose detection status metrics via ingestion stats API: `anomalies_detected`, `anomalies_suppressed`, `active_metric_detectors`, and `ewma_warmup_samples` (the minimum sample count across active metric detectors; detectors are operationally warm once this reaches the configured warmup minimum, default 10)
 
 ### Investigation Lifecycle
 
 - FR10: Operator can transition investigations through defined lifecycle states (Pending → Running → Completed/Failed)
-- FR11: Operator can spawn investigator Jobs for new investigations
+- FR11: Operator can spawn investigator Jobs for new investigations, enforcing a configurable cap on concurrent investigator Jobs (`maxConcurrentInvestigations`; default low for single-node/local-LLM, e.g. 2). Investigations beyond the cap are deferred via a work queue and fire when a slot frees — never dropped
 - FR12: Operator can track and surface investigator Job failures in the investigation status
-- FR13: Operator can clean up completed investigator Jobs after investigation completion
+- FR13: Operator can clean up completed investigator Jobs after investigation completion, and reconcile orphaned `Running` investigations whose Job no longer exists by transitioning them to `Failed` within one reconciliation interval
 
 ### Investigation Execution
 
@@ -282,12 +297,12 @@ None required. No HIPAA, PCI-DSS, SOC2, or GDPR obligations for this open-source
 
 ### Investigation Display
 
-- FR22: Users can view a list of investigations filterable by status groups (active: Pending/Running, resolved: Completed, failed: Failed)
-- FR23: Users can view investigation detail with step-by-step execution progress
-- FR24: Users can view real-time investigation updates via SSE without page refresh
+- FR22: Users can view a list of investigations filterable by status groups (active: Pending/Running, resolved: Completed, failed: Failed). The list defaults to the **active** group on load; when a group is empty it shows an explanatory waiting state (never blank); returning from detail restores the previous scroll position
+- FR23: Users can view investigation detail with step-by-step execution progress. A Failed investigation renders the steps completed before failure followed by a visually distinct failure notice (no conclusion block)
+- FR24: Users can view real-time investigation updates via SSE without page refresh (separate list and detail streams; see Integration Requirements → Real-time)
 - FR25: Users can view evidence inline (Prometheus metric values, Loki log excerpts) within investigation steps
-- FR26: Users can view related Knowledge Base entries inline on investigation detail page
-- FR27: UI can automatically reconnect SSE streams after network interruption
+- FR26: Users can view related Knowledge Base entries inline on investigation detail page, read from the KBQueryStep results already stored in the investigation record (no new semantic query at display time); when results are absent or unparseable, show "0 Related KB Entries" without error
+- FR27: UI can automatically reconnect SSE streams after network interruption (EventSource 4-state lifecycle: Connected/Disconnected/Reconnected/Failed). During reconnect it shows a subtle "Reconnecting…" indicator below the last step and backfills missed steps via REST (`GET /api/v1/investigations/{id}`, ordered/idempotent); after repeated failures it shows a "Live updates unavailable — refresh to sync" fallback. Detail remains viewable in all states
 
 ### Knowledge Base
 
@@ -298,25 +313,25 @@ None required. No HIPAA, PCI-DSS, SOC2, or GDPR obligations for this open-source
 
 ### System Health & Diagnostics
 
-- FR32: Users can view ingestion statistics showing metrics_received and logs_received counts
+- FR32: Users can view ingestion statistics showing metrics_received and logs_received counts, auto-refreshing without manual reload so EWMA warmup progress (FR33) is observable in real time
 - FR33: Users can view detection statistics (anomalies_detected, anomalies_suppressed, active_metric_detectors, ewma_warmup_samples)
 - FR34: Users can view data source connection status (Prometheus, Loki connected/disconnected)
-- FR35: Users can view LLM provider configuration and spending metrics
+- FR35: Users can view LLM provider configuration and spending metrics (existing capability surfaced under Manage → Spending — verify-only, not new work in this PRD)
 
 ### Demo Environment
 
 - FR36: Demo operator can deploy the full demo environment via single Makefile target
-- FR37: Demo operator can inject named fault scenarios via Makefile target
+- FR37: Demo operator can inject named fault scenarios via Makefile target. `payment-failure` is the only scenario gated by NFR8 (3/3 reliability); `cart-failure` and `high-cpu` (shown illustratively in Journeys 1–2) are supported best-effort and are not held to the 3/3 evidence bar
 - FR38: Demo operator can recover from fault scenarios via Makefile target
 - FR39: Demo operator can set up port-forwards for all demo services via Makefile target
 
 ### Navigation & Layout
 
 - FR40: Users can navigate via a left sidebar organized into Observe, Learn, and Manage groups
-- FR41: Users can collapse/expand the sidebar via a hamburger icon
-- FR42: Sidebar defaults to expanded on screens 1200px wide or wider
-- FR43: UI layout is responsive between 768px and 1920px+ without horizontal scrolling
-- FR44: Investigation detail view maximizes screen real estate by auto-collapsing sidebar during active view
+- FR41: Users can collapse/expand the sidebar via a hamburger icon. Collapsed, the sidebar is a 64px icon rail (one icon per group, tooltip label on hover) — never a bare hamburger. Below 1200px, manually expanding overlays the content (does not push/shrink it)
+- FR42: Sidebar defaults to expanded on screens ≥1200px and collapsed to the icon rail below 1200px
+- FR43: UI layout is responsive between 768px and 1920px+ without horizontal scrolling. Below 768px (true mobile, out of scope) the UI shows a minimum-width notice rather than a broken layout
+- FR44: Investigation detail view maximizes screen real estate by auto-collapsing the sidebar while it is the active route, regardless of viewport. Navigating back to the list restores the viewport-appropriate default (expanded ≥1200px, icon rail below); the user can always manually override via the hamburger
 
 ## Non-Functional Requirements
 
@@ -336,7 +351,7 @@ None required. No HIPAA, PCI-DSS, SOC2, or GDPR obligations for this open-source
 - **NFR9 — SSE stability:** SSE connection maintains for duration of a typical investigation (10 min); auto-reconnects within 5 seconds of network interruption (verified by integration test simulating disconnect)
 - **NFR10 — Investigator Job resilience:** Job failures surface in investigation status within 30 seconds; failed investigations do not leave orphaned Jobs running
 - **NFR11 — Ingestion continuity:** Operator continues accepting telemetry during investigation processing — ingestion and detection are not blocked by active investigator Jobs
-- **NFR12 — Operator restart recovery:** Operator resumes processing existing Investigation CRDs after pod restart without re-triggering duplicate investigations or spawning duplicate Jobs
+- **NFR12 — Operator restart recovery:** Operator resumes processing existing Investigation CRDs after pod restart without re-triggering duplicate investigations or spawning duplicate Jobs. Restart must not cause a burst of false-positive investigations: the duplicate-suppression anchor (FR8) is persisted/API-derived so it survives restart. Warm-starting EWMA baselines or a startup grace period that suppresses firing until baselines restabilize is the intended mechanism for the detection path (see Open Questions Q1)
 
 ### Integration
 
@@ -348,3 +363,96 @@ None required. No HIPAA, PCI-DSS, SOC2, or GDPR obligations for this open-source
 ### UI Quality
 
 - **NFR17 — Sidebar transition smoothness:** Sidebar collapse/expand CSS transitions render without layout reflow or jank at 60fps; no disruption to user's reading context in the main content area
+- **NFR18 — Accessibility:** New components and pages meet WCAG 2.1 AA contrast (4.5:1 normal text, 3:1 large text); all interactive elements are keyboard-focusable with a visible `focus-visible` ring; all transitions and animations respect `prefers-reduced-motion` (instant state change when requested), including the NFR17 sidebar animation
+
+## SRE-Centric React UI Overhaul (Next UI Workstream)
+
+**Status:** Proposed — forward-looking scope, sequenced **after** the Phase 1 `payment-failure` DoD; filed under Expansion (Phase 3 — v0.2.0), not part of the committed MVP. Supersedes the server-rendered Jinja UI **incrementally**; the two coexist during migration.
+
+**Problem:** The current UI (Flask/Jinja + HTMX) is feature-complete but information-dense and confusing under pressure. In the first seconds of an incident an on-call SRE must answer a fixed set of questions — *which service, which component, what is wrong, how bad, since when* — and today's layout makes them hunt. The UI should lead with those answers, in tightened standardized language, with non-essential chrome removed.
+
+**Approach (incremental, incident-triage first):**
+1. Rebuild the incident-triage hero surface (investigation list + detail) in React first, against the existing operator REST + SSE API (`:8080`), served via the Flask BFF (R2) so no operator CORS/auth change is required for parity. The BFF serves the React shell on **migrated React deep paths** — a low-priority catch-all that leaves `/api/*`, the SSE endpoints, and not-yet-migrated Jinja routes untouched — which is what makes every migrated view deep-linkable (FR53).
+2. Extract a reusable React component library from that surface, built on the existing dark-first Tailwind tokens (FR51); this library is the input to the Claude Design workflow (`/design-sync`), enabling on-brand design iteration that maps 1:1 to shippable components. (This is the React component layer whose absence currently blocks a Claude Design pass — the UI is server-rendered Jinja today.)
+3. Migrate the inventory routes view-by-view; React and Jinja coexist without functional regression until the inventory is fully migrated, after which the Jinja templates and Flask render path are retired.
+
+**Routes to migrate (inventory):** the routes surfaced in the Observe/Learn/Manage navigation — Investigations (list + detail), Sources, Ingestion/Detection Stats, Knowledge Base (browse/search + entry detail), Metrics, Spending. Confirm against the live route table before planning; v0.2.0-only views (e.g. topology, trust, SLO) are out of this workstream unless added to the nav.
+
+**"First-seconds" information model** — the triage glance, answerable without interaction. Each fact names its data source so the list row and detail header are designable:
+
+| Priority | Fact | Source (data origin) | Example |
+|----------|------|----------------------|---------|
+| 1 | Affected service / app (+ namespace) | Investigation CRD `service` (normalized, FR5c) | `otel-demo/paymentservice` |
+| 2 | Affected component | Anomalous signal subsystem (metric family / endpoint / container) from the triggering anomaly — a dedicated field may need investigator output (see R5) | payment gateway call path |
+| 3 | Problem state (plain language) | Triggering anomaly signal via the FR47 mapping | "HTTP 5xx error rate elevated — 34%" |
+| 4 | Severity | Investigation severity | High |
+| 4b | Customer impact / blast radius | **Gated on RFC 0001 Phase 3** (cross-service correlation) — not in the first increment; see FR48 | checkout unavailable; upstream: frontend, checkout |
+| 5 | Elapsed time (since creation) | Investigation `created_at` | started 2m ago |
+| 6 | Investigation status | Investigation CRD status + step progress | Running — step 4/7 |
+
+### Functional Requirements (React UI)
+
+**First increment (incident-triage surface):**
+
+- FR45: Incident-triage views surface the first-seconds facts (service, component, problem state, severity, elapsed time, status) at a glance — visible without clicks or expansion
+- FR46: The investigation list orders active, high-severity incidents first; each row communicates service, component, problem state, severity, and age without horizontal scrolling
+- FR47: Problem state is rendered in standardized plain language. The first increment uses a per-metric **heuristic mapping** in the frontend (`{metric pattern → template}`, e.g. `http_*_5xx*` → "HTTP {code} error rate elevated ({value}%)") covering at least the demo fault scenarios; when no pattern matches it falls back to the raw anomaly description from the investigation record. A canonical symptom taxonomy is deferred (R4)
+- FR49: The UI is a React frontend consuming the existing operator REST + SSE API via the Flask BFF (R2). **Parity bar** — the React list + detail must implement every capability of the Jinja views they replace: SSE 4-state lifecycle + REST backfill (FR24/FR27), inline evidence (FR25), Related KB including the "0 entries" state (FR26), status-group filter + empty/waiting state + scroll restore (FR22), Failed-investigation rendering (FR23), and sidebar state rules (FR41–FR44). No capability regresses
+- FR50: The incident-triage surface (list + detail) ships first; remaining inventory routes migrate view-by-view; React and Jinja coexist without functional regression until the inventory is fully migrated, after which the Jinja templates and Flask render path are retired
+- FR51: A reusable React component library is extracted, **built on the existing dark-first Tailwind design tokens** (color palette, spacing, motion, typography per the UX design specification — no hardcoded color/spacing/motion values), and structured for export to Claude Design via `/design-sync` (compiled, renderable components) so design iteration maps directly to shippable code
+- FR52: A language/simplification pass produces two reviewable artifacts before each view's React implementation: (1) a **terminology glossary** mapping current labels → standardized SRE labels (statuses, step names, evidence summaries); (2) a **visual-density audit** naming the specific elements to remove or de-emphasize per view. Not a subjective "tidy-up"
+- FR53: **Every migrated view is a shareable permalink.** The URL encodes all *content/navigation* state needed to reproduce the view, as path + query params (or hash) — **not** in `sessionStorage`/`localStorage`. Per surface:
+  - **Investigation list:** the selected status-group filter (and any future list filters), mapped to a backing list query (see R6)
+  - **Investigation detail:** the investigation id (path) and the anchored step (`#step-<id>`), so a shared link lands on the step under discussion
+  - **KB browse/search:** the search query (keyword / service, FR29). *(The inline Related KB panel on detail (FR26) is driven by stored KBQueryStep results, not a user query — nothing to encode beyond the investigation id.)*
+
+  Opening a URL cold (hard refresh, or a different person) reconstructs the identical view: the BFF serves the React shell for migrated React paths, and each view hydrates its data from the URL params via the operator API. **Every encoded state must have a backing reload path** (an API query or an addressable resource); state with no backing API is not permalink-eligible. *Ephemeral chrome* — sidebar collapsed/expanded and pixel scroll offset — stays local and is NOT in the permalink; a detail permalink still auto-collapses the sidebar per FR44 (which fires on the detail route regardless of how the user arrived). This supersedes FR22's storage-scoped filter/selection for migrated views; not-yet-migrated Jinja routes remain governed by FR22 and are inherently URL-addressable, so they sit outside the FR53/NFR24 bar. (Holds under the current no-auth model — everyone with access sees the same view; if auth is added (R3), permalinks must stay access-consistent.)
+
+**Later increments (out of scope for the first React increment):**
+
+- FR48: Incident detail shows blast radius — the upstream/downstream services correlated to the incident. **Gated on RFC 0001 Phase 3** (cross-service correlation), which is not yet delivered (the operator produces no `correlatedServices`/`downstream[]` fields today). Until it ships, the detail view shows single-service triage facts with an "impact: not yet correlated" placeholder
+
+### Non-Functional Requirements (React UI)
+
+- **NFR19 — Triage glance:** the "first-seconds" facts (FR45) are visible above the fold on incident detail and within each list row, without interaction, at 768px–1920px+
+- **NFR20 — Functional parity gate:** each React view reaches parity with the Jinja view it replaces — measured against the FR49 parity bar (and the equivalent capability set for non-incident routes) — before that Jinja route is retired
+- **NFR21 — Responsiveness:** React incident views are interactive within 3 s of load; SSE-driven updates render within 2 s of event receipt (carries NFR4)
+- **NFR22 — Accessibility parity:** React components meet the same bar as NFR18 (WCAG 2.1 AA contrast, keyboard `focus-visible` rings, `prefers-reduced-motion`)
+- **NFR23 — Design-sync compatibility:** the component library builds to a compiled component bundle — the artifact `/design-sync` ingests (a `dist/` bundle, plus Storybook stories if the chosen kit provides them). The exact expected format is confirmed by a trial `/design-sync` run before FR51 is finalized (see R1)
+- **NFR24 — Permalink integrity:** a URL copied from any migrated view, opened cold by another user, renders the same view and data — no view state is reachable only through in-app navigation (under the R3 no-auth model). Verified by a test that loads representative deep links directly (filtered list; a **Completed** investigation detail — avoids SSE-update flakiness; KB query) with no prior navigation
+
+### Definition of Done — first increment
+
+- React incident list + detail reach the FR49 parity bar (all listed states), verified by porting the existing UI test scenarios (UI test suite under `ui/tests/`)
+- **Triage-glance test:** two reviewers who did not build the feature and have not seen the UI, shown a running investigation's detail cold and asked "what is wrong and how bad is it?", each correctly name the service, problem state, and severity within 5 seconds, across ≥3 distinct recorded incidents; any miss triggers a language/layout iteration. ("Component" joins the unassisted bar once R5 defines its source.)
+- The extracted component library builds to a bundle that a trial `/design-sync` run ingests without error, enabling a Claude Design pass
+- **Permalink check:** URLs for a filtered list, a Completed investigation detail (anchored to a step), and a KB search, opened cold with no prior navigation, render the same view — proven by a test that loads them directly (NFR24)
+
+### Definition of Done — workstream (Jinja retirement)
+
+- Every route in the migration inventory has a React view at functional parity (NFR20) and accessibility parity (NFR22); the Jinja templates and Flask render path are deleted; no route is served by Jinja
+
+### Success Metrics (observational, post-rollout)
+
+- Reduced time-to-triage and fewer "where do I find X?" moments — measured by a post-rollout SRE survey against the current Jinja baseline (not a build-time gate)
+
+### Open Questions (React UI)
+
+| # | Question | Impact | Status |
+|---|----------|--------|--------|
+| R1 | Component library — build bespoke vs. adopt an existing React/Tailwind kit (must be skinnable to the dark-first tokens, FR51)? | Effort + design-sync fidelity | Open |
+| R2 | Hosting — **resolved: Flask BFF** (reuses the existing SSE proxy; no operator CORS/auth change — this is the FR49 / Approach contract). A later move to a static bundle calling `:8080` directly would re-open operator CORS + the auth surface (R3) and the FR49 "no operator change" claim, and requires PRD escalation. | CORS, auth surface, deploy shape, SSE latency hop | **Resolved — Flask BFF** |
+| R3 | Does retiring Jinja change the permission model? PRD currently scopes no auth (network-level only). | Security surface of a static SPA | Open |
+| R4 | Problem-state plain language (FR47) — canonical symptom taxonomy vs. the first-increment per-metric heuristic? | Consistency/scale of triage language | Open — heuristic-first for the increment |
+| R5 | "Affected component" (model row 2) — is there a CRD/investigator field for it, or is it derived from the anomalous signal? | Whether the list row needs new investigator output | Open |
+| R6 | Does the operator list endpoint (`GET /api/v1/investigations`) accept a status filter for filtered-list permalinks (FR53), or does the client filter the full list? | Backing API for list permalinks | Open — verify API contract |
+
+## Open Questions
+
+These items are resolved by clarifications above where context allowed; the following remain genuinely open. All are **non-blocking** for the committed payment-failure DoD — they are detection-quality and lifecycle hardening for broader/production use.
+
+| # | Question | Impact | Status |
+|---|----------|--------|--------|
+| Q1 | Should EWMA detector baselines persist across operator restarts (vs. a startup grace period)? (NFR12, FR5) | Avoids a re-warmup false-positive burst on every restart | Open — non-blocking; FR8's persisted suppression anchor covers the creation path in the interim |
+| Q2 | Should the global concurrent-investigation work-queue (FR11) default **on** for single-node/local-LLM deployments? | Prevents RAM starvation under wide outages; currently the per-service guard is the primary bound | Open — config-gated, default off; recommended on for local/single-node |
+| Q3 | Orphaned `Running` investigations whose Job was garbage-collected (FR13) — reconcile to `Failed` on a timer? | Stuck `Running` rows after Job GC | Open — reconciliation requirement stated in FR13; residual timing gap tracked for follow-up |
