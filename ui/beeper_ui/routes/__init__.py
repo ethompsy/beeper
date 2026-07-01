@@ -11,6 +11,7 @@ def register_blueprints(app: Flask) -> None:
     """
     from beeper_ui.routes.analytics import analytics_bp
     from beeper_ui.routes.confidence_gates import confidence_gates_bp
+    from beeper_ui.routes.react_shell import react_shell_bp
     from beeper_ui.routes.handoff import handoff_bp
     from beeper_ui.routes.health import health_bp
     from beeper_ui.routes.investigations import (
@@ -48,3 +49,5 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(topology_bp)
     app.register_blueprint(services_bp)
     app.register_blueprint(analytics_bp)
+    # Task 1.1: React SPA shell (served at /app/*; full dispatch registry is Task 1.3)
+    app.register_blueprint(react_shell_bp)
