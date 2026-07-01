@@ -44,7 +44,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
 | 1.1 | Scaffold Vite + React + TS (`ui/frontend/`); add a **Node build stage** to `ui/Dockerfile` (multi-stage: build `dist/` → copy into runtime); Flask serves `index.html` + hashed assets | L | None | done |
-| 1.2 | Tailwind config porting the dark-first tokens (palette, spacing, motion, typography) as the single source of truth; no-hardcoded-values + reduced-motion lint | M | 1.1 | in progress |
+| 1.2 | Tailwind config porting the dark-first tokens (palette, spacing, motion, typography) as the single source of truth; no-hardcoded-values + reduced-motion lint | M | 1.1 | done |
 | 1.3 | BFF **route-dispatch registry** — explicit React-owned path prefixes served the shell with deterministic precedence; `/api/*`, SSE, and unmigrated Jinja routes untouched | M | 1.1 | pending |
 | 1.4 | Component-library + Storybook scaffold (shadcn-style); **define the library API / extraction boundary**; one skeleton story per planned component; trial `/design-sync` ingest | L | 1.2 | pending |
 | 1.5 | Local dev inner loop — Vite dev server + HMR with `server.proxy` forwarding `/api/*` and the event endpoint to `:5000` (SSE buffering off); two-terminal workflow documented | S | 1.1 | pending |
@@ -67,6 +67,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 **Completed:**
 - **1.1** (merged `a38690b`) — Vite 8 + React 19 + TS at `ui/frontend/`; `ui/Dockerfile` `node-builder` stage; `react_shell_bp` serves the SPA at `/app/*` (registered last, no Jinja shadowing). `[T]` build → `dist/` proven by `ui/frontend/scripts/verify-build.mjs` (8/8); `[T]` Flask serving proven by `ui/tests/test_react_shell.py` (5/5); 48/48 existing UI tests still green. `[H]` repo location `ui/frontend/` approved (Q4). Docker multi-stage inspected, not `docker build`-run in-worktree.
 - **1.8** (merged `0f0730e`) — `docs/design/terminology-glossary.md`. `[H]` approved by user 2026-06-23: keep `Condition`; job-phase `Failed` → **"Analysis Failed"** (OD-1); OD-2/3/5 defaults applied (see §13).
+- **1.2** (merged `28f395a`) — Tailwind v4 + `ui/frontend/src/theme/tokens.css` (single source of truth; surfaces/brand/status/text/step-border/spacing/motion/typography + breakpoints sm 768 / lg 1200). `[T]` tokens resolve → `src/test/token-resolution.test.tsx` (39); `[T]` lint fails on hardcoded/motion-reduce violations → `src/test/lint-enforcement.test.ts` (2) via `eslint-plugin-tailwindcss`. 41/41 green. **Note:** Vitest is now wired here, so Task 1.7 shrinks to Playwright + CI. `no-custom-classname` is `warn` until the scaffold `App.tsx` migrates.
 
 ### Milestone 1.2: Incident-Triage Surface (list + detail at parity)
 
