@@ -33,7 +33,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 | Q2 | (R5) Is best-effort `component` derivation enough, or add a dedicated CRD/investigator field? | Triage-glance "component" quality | Open — evaluate after Task 2.3 |
 | Q3 | Exact `/design-sync` input format for the chosen library | Library build/export shape (NFR23) | Open — resolved by the Task 1.4 trial sync |
 | Q4 | React app location (`ui/frontend/`) + Docker/static wiring | Build/deploy; blocks all later tasks | Open — **settle in Task 1.1 (hard gate)** |
-| Q5 | NFR21 "SSE render ≤2 s" vs the BFF's 3 s operator-poll floor | Detail-stream latency target | Open — lower the poll interval for the JSON stream, or amend NFR21 (decide in Task 1.6) |
+| Q5 | NFR21 "SSE render ≤2 s" vs the BFF's 3 s operator-poll floor | Detail-stream latency target | **Resolved (Task 1.6)** — lowered JSON stream poll to 1 s via `_DEFAULT_JSON_SSE_POLL_INTERVAL = 1` in `investigations.py`; NFR21 is met. HTML SSE stays at 3 s. Interval is configurable via `JSON_SSE_POLL_INTERVAL` Flask config key. |
 | Q6 | Is the SocketIO collaboration surface (annotations/approvals/redirections) in or out of the React migration? | Phase 2 scope | Open — inventory in Task 6.1 |
 | Q7 | Correct `docs/specs/architecture.md` baseline (no native operator SSE; RBAC + WebSocket exist) | Doc accuracy for downstream agents | Open — doc fix outside this plan |
 

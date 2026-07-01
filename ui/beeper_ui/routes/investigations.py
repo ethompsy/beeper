@@ -1,5 +1,6 @@
 """Investigation routes for Beeper UI."""
 
+import json
 import logging
 import os
 import re
@@ -124,8 +125,19 @@ FEEDBACK_TYPE_LABELS = {
     "not_an_issue": "Not an Issue",
 }
 
-# SSE polling interval in seconds
+# SSE polling interval in seconds (HTML/HTMX stream — unchanged)
 SSE_POLL_INTERVAL = 3
+
+# Q5 decision (Task 1.6): NFR21 requires ≤2s render latency for the JSON event
+# stream consumed by React.  The legacy HTML SSE uses a 3 s poll floor which
+# violates that target.  Decision: lower the JSON stream poll interval to 1 s so
+# every React client sees step updates within ≤2s from the time the operator
+# records them (allowing up to 1 s poll + network round-trip).  This value is
+# configurable via the JSON_SSE_POLL_INTERVAL Flask config key so operators can
+# tune it without a code change (e.g. set to 2 s in high-load environments).
+# NFR21 is met at the default; raising the floor above 2 s would require an
+# explicit NFR21 amendment recorded in the plan.
+_DEFAULT_JSON_SSE_POLL_INTERVAL = 1
 
 
 def validate_status(status: str | None) -> str | None:
@@ -1652,16 +1664,69 @@ def _generate_sse_events(
         time.sleep(SSE_POLL_INTERVAL)
 
 
+@investigations_api_bp.route("/")
+def investigations_list_json() -> tuple[Response, int] | Response:
+    """JSON list of investigations for the React UI (Task 1.6 / FR24).
+
+    Accepts the same ``status``, ``service``, and ``severity`` query filters as
+    the Jinja list view, delegating directly to
+    ``InvestigationService.list_investigations()``.  All other Jinja-only
+    concerns (urgency scoring, workflow-state grouping, date-range filtering,
+    HTMX partials) are intentionally excluded — React computes them client-side
+    or via separate requests.
+
+    Returns a JSON array where each element contains the core Investigation
+    fields React needs for the triage list (id, status, service, severity,
+    condition, started_at, triggered_at, completed_at, workflow_state).
+    """
+    status = validate_status(request.args.get("status"))
+    service = validate_service(request.args.get("service"))
+    severity = validate_severity(request.args.get("severity"))
+
+    svc = get_investigation_service()
+    try:
+        investigations = svc.list_investigations(
+            status=status,
+            service=service,
+            severity=severity,
+        )
+        return jsonify([
+            {
+                "id": inv.id,
+                "status": inv.status,
+                "service": inv.service,
+                "severity": inv.severity,
+                "condition": inv.condition,
+                "started_at": inv.started_at,
+                "triggered_at": inv.triggered_at,
+                "completed_at": inv.completed_at,
+                "workflow_state": inv.workflow_state,
+                "workflow_state_changed_at": inv.workflow_state_changed_at,
+            }
+            for inv in investigations
+        ])
+    except InvestigationServiceError:
+        return jsonify({"error": "operator_unavailable"}), 503
+    finally:
+        svc.close()
+
+
 @investigations_api_bp.route("/<investigation_id>")
 def investigation_detail_json(
     investigation_id: str,
 ) -> tuple[Response, int] | Response:
-    """JSON view of an investigation's current steps for SSE REST backfill.
+    """JSON detail of an investigation: full metadata + ordered steps (Task 1.6).
 
-    AD-4: after the EventSource reconnects, the client fetches this endpoint and
-    diffs/inserts any steps it missed while disconnected, keyed by `order`. The
-    `order` here mirrors the 1-based ordinal the step timeline template assigns
-    (loop.index), so the client can position missed steps deterministically.
+    Used by two consumers:
+    - **React detail view**: renders the summary header (service, severity,
+      status, signal_count, timestamps) immediately from the ``metadata`` block,
+      then renders the ordered ``steps`` list for the pipeline timeline.
+    - **SSE reconnect backfill** (AD-4): on EventSource reconnect the client
+      fetches this endpoint and diffs/inserts any steps it missed, keyed by
+      ``order`` (1-based, mirrors ``loop.index`` in the Jinja timeline macro).
+
+    The response shape is intentionally stable: all React triage-detail fields
+    live in ``metadata``; the ``steps`` array is the backfill contract.
     """
     if not SERVICE_NAME_PATTERN.match(investigation_id):
         abort(404)
@@ -1685,10 +1750,28 @@ def investigation_detail_json(
         ]
         return jsonify(
             {
+                # Top-level shorthand kept for backward-compat with existing backfill
+                # client (sse.js) — do not remove without updating sse.js.
                 "id": detail.id,
                 "status": detail.status,
                 "service": detail.service,
                 "message": detail.message,
+                # Full metadata block for the React detail view (Task 1.6 AC).
+                "metadata": {
+                    "id": detail.id,
+                    "status": detail.status,
+                    "service": detail.service,
+                    "severity": detail.severity,
+                    "condition": detail.condition,
+                    "message": detail.message,
+                    "started_at": detail.started_at,
+                    "triggered_at": detail.triggered_at,
+                    "completed_at": detail.completed_at,
+                    "workflow_state": detail.workflow_state,
+                    "workflow_state_changed_at": detail.workflow_state_changed_at,
+                    "signal_count": detail.signal_count,
+                    "job_name": detail.job_name,
+                },
                 "steps": steps,
             }
         )
@@ -1696,6 +1779,127 @@ def investigation_detail_json(
         return jsonify({"error": "operator_unavailable"}), 503
     finally:
         svc.close()
+
+
+def _generate_json_sse_events(
+    operator_url: str,
+    operator_timeout: float,
+    investigation_id: str,
+    poll_interval: float,
+) -> Generator[str, None, None]:
+    """Generate JSON SSE events for a single investigation's progress (Task 1.6).
+
+    Reuses the operator-polling loop from ``_generate_detail_sse_events`` but
+    emits JSON ``data:`` payloads instead of rendered HTML, so the React client
+    can process step updates without parsing HTML fragments.
+
+    Q5 / NFR21: ``poll_interval`` defaults to 1 s (see
+    ``_DEFAULT_JSON_SSE_POLL_INTERVAL``), which keeps end-to-end latency well
+    within NFR21's ≤2 s render target.  The legacy HTML SSE runs at 3 s; this
+    stream intentionally uses a lower floor.
+
+    Events emitted:
+    - ``step`` — one event per step state transition, payload:
+        ``{"order": int, "key": str, "label": str, "state": str, "type": str}``
+    - ``complete`` — terminal event on investigation completion or not-found,
+        payload: ``{"status": "done" | "not_found"}``
+
+    Each step in the ordered pipeline is emitted individually so the client can
+    apply updates incrementally and position them by ``order`` without receiving
+    the full list on every poll.
+    """
+    svc = InvestigationService(
+        operator_url=operator_url,
+        timeout=operator_timeout,
+    )
+    last_step_states: list[dict] = []
+
+    def _format_event(event_name: str, payload: dict) -> str:
+        """Format a single SSE event with a JSON data line."""
+        return f"event: {event_name}\ndata: {json.dumps(payload)}\n\n"
+
+    while True:
+        try:
+            detail = svc.get_investigation(investigation_id)
+            if detail is None:
+                yield _format_event("complete", {"status": "not_found"})
+                svc.close()
+                return
+
+            current_step_states = _get_step_states(detail.message, detail.status)
+
+            # Emit step events for any changed steps (or all steps on first poll).
+            for idx, step in enumerate(current_step_states, start=1):
+                prev = last_step_states[idx - 1] if idx <= len(last_step_states) else {}
+                if step.get("state") != prev.get("state"):
+                    yield _format_event(
+                        "step",
+                        {
+                            "order": idx,
+                            "key": step.get("key"),
+                            "label": step.get("label"),
+                            "state": step.get("state"),
+                            "type": step.get("type"),
+                        },
+                    )
+
+            last_step_states = list(current_step_states)
+
+            # Send terminal event on completion.
+            if detail.status == "completed":
+                yield _format_event("complete", {"status": "done"})
+                svc.close()
+                return
+
+        except InvestigationServiceError:
+            logger.warning(
+                "JSON SSE: Failed to poll operator for investigation %s",
+                investigation_id,
+            )
+        except GeneratorExit:
+            svc.close()
+            return
+
+        time.sleep(poll_interval)
+
+
+@investigations_api_bp.route("/<investigation_id>/events")
+def investigation_events_json(investigation_id: str) -> Response:
+    """JSON SSE event stream for a single investigation's step progress (Task 1.6).
+
+    Reuses the operator-polling loop but emits ``text/event-stream`` with JSON
+    ``data:`` payloads (one ``step`` event per changed step, a terminal
+    ``complete`` event on finish).  React consumes this instead of the HTML SSE
+    at ``/investigations/<id>/stream`` which emits rendered Jinja partials.
+
+    Poll interval is configurable via the ``JSON_SSE_POLL_INTERVAL`` Flask config
+    key (float, seconds).  Default: 1 s (see ``_DEFAULT_JSON_SSE_POLL_INTERVAL``
+    and the Q5 decision comment above).
+    """
+    if not SERVICE_NAME_PATTERN.match(investigation_id):
+        abort(404)
+
+    operator_url: str = current_app.config["OPERATOR_URL"]
+    operator_timeout: float = current_app.config["OPERATOR_TIMEOUT"]
+    poll_interval: float = float(
+        current_app.config.get("JSON_SSE_POLL_INTERVAL", _DEFAULT_JSON_SSE_POLL_INTERVAL)
+    )
+    return Response(
+        stream_with_context(
+            _generate_json_sse_events(
+                operator_url,
+                operator_timeout,
+                investigation_id,
+                poll_interval,
+            )
+        ),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @investigations_bp.route("/stream")
