@@ -1,0 +1,180 @@
+# Implementation Plan: Beeper — SRE-Centric React UI Overhaul
+
+## Overview
+
+Incremental React overhaul of the Beeper UI, incident-triage surface first, delivering a first-seconds triage glance, full permalinks, and a `/design-sync`-ready component library — without a big-bang rewrite. Traces to the "SRE-Centric React UI Overhaul" section of [docs/reqs/main.md](../reqs/main.md) (FR45–FR53, NFR19–NFR24, R1–R6). The completed pipeline/UI plan ([docs/plans/main.md](main.md)) is untouched; this is a separate, forward-looking workstream (Expansion / v0.2.0).
+
+**Definition of Done (first increment):** the investigation list + detail run in React at parity with their Jinja equivalents, are deep-linkable permalinks, and the extracted component library passes a trial `/design-sync` run — with a witnessed triage-glance test passing.
+
+> **Baseline corrections (found in planning review, verified against code):** (1) the operator exposes **no native SSE** — the current `investigations/<id>/stream` endpoint is a **BFF-side** loop that polls the operator REST every 3 s and yields **rendered HTML** for HTMX swap ([investigations.py](../../ui/beeper_ui/routes/investigations.py)); React needs a JSON stream (D10). (2) The UI is **not** unauthenticated — `ui/beeper_ui/middleware/permissions.py` implements a two-tier RBAC and `ui/beeper_ui/websocket/` runs a Flask-SocketIO collaboration layer (D12). `docs/specs/architecture.md`'s "no auth / SSE only" is inaccurate and should be corrected (Q7).
+
+## Decisions
+
+| # | Decision | Context | Rationale |
+|---|----------|---------|-----------|
+| D1 | New plan file `docs/plans/react-ui.md`; scope = React workstream (FR45–53, NFR19–24) | Completed `main.md` is delivered | Preserve history; plan only net-new work |
+| D2 | Vite + React + TypeScript | Need a static bundle the Flask BFF serves | Simplest fit for a BFF-served SPA bundle; pairs with Vitest/Playwright/Storybook (Next.js rejected — own server conflicts with BFF) |
+| D3 | shadcn-style library (Radix + Tailwind, copied in), skinned to the dark-first tokens | R1 — user wants flexible + Claude-Design-friendly | Headless/accessible, no lock-in, token-skinnable, clean `dist` bundle for `/design-sync` |
+| D4 | Flask BFF hosting; React shell served on React-owned paths | R2 resolved | Reuses the existing proxy process; no operator CORS/auth change |
+| D5 | Incremental migration, incident-triage first; coexist; retire Jinja per inventory | Atomic rewrite is highest-risk | Fast path to value + design-sync; bounded risk |
+| D6 | Permalinks encode content state in URL; list filter maps to `list_investigations(status=…)` | R6 — service+operator already accept `status`/`service`/`severity` ([investigation_service.py](../../ui/beeper_ui/services/investigation_service.py)) | No operator change (filter is post-list at demo scale) |
+| D7 | "Affected component" derived best-effort from `condition`/anomaly signal; NOT in the 5-s triage bar yet | R5 — Investigation CRD has no `component` field ([investigation.rs](../../operator/src/crds/investigation.rs)) | Unblocks the glance; dedicated field is a later operator change (Q2) |
+| D8 | Tests: Vitest + RTL (unit/component), Playwright (e2e: permalinks, triage, scroll, reduced-motion), Storybook (design-sync source) | Net-new frontend | Standard, CI-friendly |
+| D9 | Blast radius (FR48) out of first increment | Gated on RFC 0001 Phase 3 (not delivered) | Operator emits no correlation fields; Phase 3 below |
+| D10 | React consumes a **new BFF JSON event endpoint** (`/api/v1/investigations/{id}/events`) that reuses the existing operator-polling loop but emits JSON `{order, step, status}` | Existing stream emits HTML-for-HTMX; operator has no native SSE | React cannot render HTML partials; "reuse the SSE proxy" = reuse the **polling loop**, not the wire format |
+| D11 | Coexistence dispatch via an **explicit registry of React-owned path prefixes** (not a blind catch-all), deterministic precedence over Jinja blueprints | 18 Jinja blueprints exist; `/investigations` exists in both worlds | Same URL must deterministically resolve to React once migrated |
+| D12 | RBAC + SocketIO are in-scope concerns for Phase 2 retirement (preserve/port/drop) | `permissions.py` + `websocket/` exist today | Deleting the Jinja path would orphan authz and collaboration features |
+
+## Open Questions
+
+| # | Question | Impact | Status |
+|---|----------|--------|--------|
+| Q1 | (R3) Permission model for the migrated UI — preserve the two-tier RBAC (`require_role`) in React/BFF? | Security surface at Jinja retirement | Open — **investigate in Phase 1 (decision task), resolve before Phase 2 M2.2** |
+| Q2 | (R5) Is best-effort `component` derivation enough, or add a dedicated CRD/investigator field? | Triage-glance "component" quality | Open — evaluate after Task 2.3 |
+| Q3 | Exact `/design-sync` input format for the chosen library | Library build/export shape (NFR23) | Open — resolved by the Task 1.4 trial sync |
+| Q4 | React app location (`ui/frontend/`) + Docker/static wiring | Build/deploy; blocks all later tasks | Open — **settle in Task 1.1 (hard gate)** |
+| Q5 | NFR21 "SSE render ≤2 s" vs the BFF's 3 s operator-poll floor | Detail-stream latency target | Open — lower the poll interval for the JSON stream, or amend NFR21 (decide in Task 1.6) |
+| Q6 | Is the SocketIO collaboration surface (annotations/approvals/redirections) in or out of the React migration? | Phase 2 scope | Open — inventory in Task 6.1 |
+| Q7 | Correct `docs/specs/architecture.md` baseline (no native operator SSE; RBAC + WebSocket exist) | Doc accuracy for downstream agents | Open — doc fix outside this plan |
+
+## Phase 1: React Foundation & Incident-Triage Surface (First Increment)
+
+### Milestone 1.1: Foundation & Tooling
+
+| # | Task | Complexity | Dependencies | Status |
+|---|------|-----------|--------------|--------|
+| 1.1 | Scaffold Vite + React + TS (`ui/frontend/`); add a **Node build stage** to `ui/Dockerfile` (multi-stage: build `dist/` → copy into runtime); Flask serves `index.html` + hashed assets | L | None | pending |
+| 1.2 | Tailwind config porting the dark-first tokens (palette, spacing, motion, typography) as the single source of truth; no-hardcoded-values + reduced-motion lint | M | 1.1 | pending |
+| 1.3 | BFF **route-dispatch registry** — explicit React-owned path prefixes served the shell with deterministic precedence; `/api/*`, SSE, and unmigrated Jinja routes untouched | M | 1.1 | pending |
+| 1.4 | Component-library + Storybook scaffold (shadcn-style); **define the library API / extraction boundary**; one skeleton story per planned component; trial `/design-sync` ingest | L | 1.2 | pending |
+| 1.5 | Local dev inner loop — Vite dev server + HMR with `server.proxy` forwarding `/api/*` and the event endpoint to `:5000` (SSE buffering off); two-terminal workflow documented | S | 1.1 | pending |
+| 1.6 | **BFF JSON API for React** — `GET /api/v1/investigations` (list; `status`/`service`/`severity` filters → `list_investigations`), `GET /api/v1/investigations/{id}` (detail metadata + ordered steps), and `/{id}/events` (JSON event stream reusing the operator-polling loop, emitting `{order, step, status}`); decide poll interval vs NFR21 (Q5) | L | 1.1 | pending |
+| 1.7 | Test harness — Vitest + RTL + Playwright in CI | S | 1.1 | pending |
+| 1.8 | Draft terminology glossary (investigation-list + detail labels) so views are built against standardized copy (FR52 "before each view") | S | None | pending |
+
+**Task 1.1 AC:** `[T]` `npm run build` emits a static `dist/`; CI typecheck+lint clean · `[T]` UI Docker image builds the bundle via the Node stage and serves `index.html` + hashed assets (smoke test) · `[H]` repo location/build wiring approved (Q4)
+**Task 1.2 AC:** `[T]` Tailwind theme exposes the dark-first tokens; a sample component resolves them · `[T]` lint fails the build on hardcoded color/spacing/motion values (FR51) and on animated elements lacking a `motion-reduce:` path
+**Task 1.3 AC:** `[T]` a React-owned prefix returns the shell; an unmigrated route still renders Jinja · `[T]` collision test: `/investigations` resolves to React once registered, Jinja before (deterministic precedence)
+**Task 1.4 AC:** `[T]` `dist/` exports ≥1 named component importable by an external consumer (ESM/`require` check) — not just "Storybook builds" · `[H]` a trial `/design-sync` run ingests the bundle and documents the expected format (resolves Q3); formal NFR23 gate is Task 4.4
+**Task 1.5 AC:** `[T]` `vite dev` proxies `/api/*` + the event endpoint to the BFF; an SSE/event response streams through the proxy without buffering
+**Task 1.6 AC:** `[T]` list + detail endpoints return **JSON** (not HTML); detail includes metadata + ordered steps · `[T]` the events stream emits ordered JSON events + a terminal event on completion · `[T]` poll interval is configurable; Q5 decision recorded (interval ≤ target, or NFR21 amended)
+**Task 1.7 AC:** `[T]` a sample Vitest test and a Playwright e2e run green in CI
+**Task 1.8 AC:** `[H]` draft glossary committed to `docs/` (self-reviewed against ≥2 current screenshots) before Tasks 2.2/2.5 finalize copy
+
+**Parallelizable:** 1.1 and 1.8 first (1.1 is the hard gate, Q4); then {1.2, 1.3, 1.5, 1.6, 1.7} concurrently; 1.4 after 1.2. Up to 8 concurrent.
+**Milestone Value:** a building, tested, BFF-served React app — tokens wired, route dispatch defined, a JSON event stream, fast local dev, and a design-sync-ready library scaffold. The platform every later task builds **into**.
+
+### Milestone 1.2: Incident-Triage Surface (list + detail at parity)
+
+> Components are authored **as library primitives from the start** (extract-as-you-go, D3/1.4), each with a Storybook story — not page-local JSX refactored later.
+
+| # | Task | Complexity | Dependencies | Status |
+|---|------|-----------|--------------|--------|
+| 2.1 | Layout shell + sidebar (icon rail; expand ≥1200 push / collapse <1200 overlay; auto-collapse on detail route; 60fps + reduced-motion; **focus management** on route change) | L | 1.2, 1.4 | pending |
+| 2.2 | Investigation **list** — first-seconds row facts; active/high-severity-first; status-group filter; empty/waiting + **Pending** states; **skeleton** load; **scroll restoration**; error boundary | L | 1.4, 1.6, 2.1, 1.8 | pending |
+| 2.3 | "Affected component" derivation from `condition`/anomaly signal (best-effort) | M | 2.2 | pending |
+| 2.4 | Problem-state plain-language heuristic mapping + raw-`condition` fallback | M | 2.2 | pending |
+| 2.5 | Investigation **detail** — immediate summary header; step progress + inline evidence; first-evidence emphasis; Related KB panel; Failed + Pending + KB-"0 entries" + FR48 placeholder; skeleton; "not found" error boundary | L | 1.4, 1.6, 2.1, 1.8 | pending |
+| 2.6a | SSE/event consume — 4-state lifecycle, "Reconnecting…" indicator, **auto-scroll rule** (only if within 100px of bottom) | M | 2.5, 1.6 | pending |
+| 2.6b | Reconnect **backfill** — ordered/idempotent re-fetch via `GET /api/v1/investigations/{id}`; "Live updates unavailable" fallback | M | 2.6a | pending |
+
+**Task 2.1 AC:** `[T]` collapsed = 64px icon rail (tooltips); ≥1200 expand **pushes** content, <1200 expand **overlays** (no width shift); detail route auto-collapses regardless of viewport (FR41/42/44) · `[T]` on detail entry incl. **cold permalink load**, focus moves to summary `<h1>`; on back, to the active nav item (WCAG 2.4.3) · `[T]` sidebar transitions honor `prefers-reduced-motion` (0ms under reduce)
+**Task 2.2 AC:** `[T]` each row shows service/component/problem-state/severity/age, no horizontal scroll (FR45/46) · `[T]` active+high-severity first; status-group filter correct; **Pending** rows visually distinct from Running · `[T]` empty group → waiting state, never blank (FR22) · `[T]` cold load shows a list **skeleton**, never a blank frame (NFR19) · `[T]` back from detail restores list scroll position
+**Task 2.3 AC:** `[T]` component derived from representative demo `condition` strings; unknown input degrades gracefully
+**Task 2.4 AC:** `[T]` plain language for payment/cart/cpu signals (`http_*_5xx*` → "HTTP 5xx error rate elevated (N%)") · `[T]` no-match → raw anomaly description (FR47)
+**Task 2.5 AC:** `[T]` summary header (service/severity/signal-count/status) renders from metadata **immediately, before any event arrives** (NFR19) · `[T]` steps render ordered with inline Prom values + Loki excerpts (FR25); first evidence step gets the emphasis treatment (reduced-motion instant) · `[T]` Related KB panel renders as an anchored bar showing "N Related KB Entries", expands upward ≥1200px / stacks inline <1200px (FR26) · `[T]` Failed → completed steps + distinct failure notice, no conclusion (FR23); Pending → "waiting to start" placeholder; absent/unparseable KB → "0 Related KB Entries" without error; absent correlation → "impact: not yet correlated" (FR48 placeholder) · `[T]` invalid id → "Investigation not found" in the shell (sidebar visible), not a generic 404 · `[T]` cold load shows a detail skeleton
+**Task 2.6a AC:** `[T]` simulated disconnect shows "Reconnecting…" and transitions the 4 states (FR27) · `[T]` new events auto-scroll only when the user is within 100px of the bottom; otherwise append without scrolling · `[T]` first paint interactive ≤3s; event renders ≤ the Q5-decided latency (NFR21)
+**Task 2.6b AC:** `[T]` on reconnect, missed steps backfill in order via `GET /api/v1/investigations/{id}` (idempotent, deduped) · `[T]` after repeated failures the "Live updates unavailable — refresh to sync" fallback shows; detail stays viewable
+
+**Parallelizable:** after 2.1, run {2.2, 2.5} concurrently; 2.3+2.4 follow 2.2; 2.6a→2.6b follow 2.5 (one chain — 2.5 owns the `investigations/{id}` REST client). 2.1's 60fps check is the only `[H]`-ish gate — start 2.1 first. Up to 8 concurrent.
+**Milestone Value:** the incident-triage hero (list + detail) runs in React at full parity — SSE, evidence, focus, skeletons, all lifecycle states.
+
+### Milestone 1.3: Permalinks (cross-cutting on the triage surface)
+
+| # | Task | Complexity | Dependencies | Status |
+|---|------|-----------|--------------|--------|
+| 3.1 | URL-encode **list** state — status-group filter (+ future filters) in query params → `list_investigations(status=…)` | M | 2.2 | pending |
+| 3.2 | URL-encode **detail** state — investigation id (path) + anchored step (`#step-<id>`); cold load auto-collapses sidebar (FR44) + focuses header | M | 2.5 | pending |
+| 3.3 | Content-vs-chrome boundary — assert sidebar/scroll are **local**, not encoded; reload hydrates from URL params only | S | 3.1, 3.2 | pending |
+| 3.4 | Permalink-integrity e2e suite — cold-load deep links reproduce the same view | M | 3.1, 3.2 | pending |
+
+**Task 3.1 AC:** `[T]` selecting a filter updates the URL; cold-loading it reproduces the filtered list (FR53) · `[T]` maps to the existing `status` query, no operator change (R6/D6)
+**Task 3.2 AC:** `[T]` a detail URL with `#step-<id>` cold-loads anchored to that step · `[T]` cold load auto-collapses the sidebar (FR44) and focuses the summary header
+**Task 3.3 AC:** `[T]` **negative test** — encoding a filtered-list URL with the sidebar manually expanded <1200px, then cold-loading it, does **not** restore the expanded sidebar or prior scroll offset (resets to viewport default) · `[T]` cold load hydrates entirely from URL params via the operator API
+**Task 3.4 AC:** `[T]` Playwright cold-loads a filtered-list URL and a **Completed**-investigation detail URL (anchored to a step) and asserts identical rendered view; includes the scroll-restoration assertion (NFR24)
+
+**Parallelizable:** 3.1 + 3.2 concurrent; 3.3 then 3.4. Up to 8 concurrent.
+**Milestone Value:** any triage view is a shareable link — copy the URL, a colleague opens the identical view. The session's headline requirement, proven by test.
+
+### Milestone 1.4: Design-sync, language pass & first-increment acceptance
+
+| # | Task | Complexity | Dependencies | Status |
+|---|------|-----------|--------------|--------|
+| 4.1 | Full terminology glossary + per-view visual-density audit (extends the 1.8 draft) | M | 1.8, 2.2, 2.5 | pending |
+| 4.2 | Finalize/polish the component library (extracted as-you-go in 1.2); enforce token-only styling; complete Storybook stories | M | 2.1, 2.2, 2.5 | pending |
+| 4.3 | Triage-glance acceptance test with 2 non-builder reviewers | S | 2.2, 2.4 | pending |
+| 4.4 | Full `/design-sync` pass on the finalized library | M | 4.2 | pending |
+
+**Task 4.1 AC:** `[H]` glossary + density audit completed and self-reviewed against ≥2 screenshots, committed; a second pass runs with the 4.3 reviewers (FR52) · `[T]` migrated views contain no stray legacy labels (lint against the glossary)
+**Task 4.2 AC:** `[T]` library builds to the `dist` bundle; no-hardcoded-values lint passes (FR51); every first-increment component has a Storybook story
+**Task 4.3 AC:** `[H]` two reviewers who did not build it, shown a running investigation cold, each name **service + problem state + severity** within 5s across ≥3 recorded incidents. **Component is NOT in the 5-s bar this increment** (D7/Q2); naming it is a bonus (NFR19)
+**Task 4.4 AC:** `[H]` `/design-sync` ingests the finalized library without error and a Claude Design pass renders at least `InvestigationCard` (active/completed/failed), `StatusBadge` (all variants), `InvestigationStep`, `SummaryHeader`, and `RelatedKbPanel` correctly (NFR23, FR51)
+
+**Parallelizable:** 4.1 starts when 2.2 lands; 4.2 when 2.1/2.2/2.5 land; 4.3 after 2.4; 4.4 after 4.2. Both `[H]`-bearing (4.1, 4.4) overlap with Milestone 1.3 work. Up to 8 concurrent.
+**Milestone Value:** the first increment is accepted — tightened language, a design-sync-ready library, a witnessed triage-glance pass.
+**Observational Outcomes:** `[O]` reduced time-to-triage and fewer "where do I find X?" moments, via a post-rollout SRE survey vs. the Jinja baseline.
+
+## Phase 2: Route Migration & Jinja Retirement (Later Increment)
+
+Migrate remaining inventory routes view-by-view at parity (NFR20), each permalinked and a11y-parity (NFR22), then retire Jinja — **including** the RBAC and SocketIO decisions (D12).
+
+### Milestone 2.1: Remaining route migration
+
+| # | Task | Complexity | Dependencies | Status |
+|---|------|-----------|--------------|--------|
+| 5.0 | Confirm the live route inventory; pin each route's parity target (FR or named Jinja template) | S | Phase 1 | pending |
+| 5.1 | KB browse/search + entry detail (search query URL-encoded — permalink) | L | 5.0 | pending |
+| 5.2 | Ingestion/Detection Stats view (auto-refresh, FR32) | M | 5.0 | pending |
+| 5.3 | Sources + LLM Spending views | M | 5.0 | pending |
+| 5.4 | Metrics view — parity target pinned by 5.0 | M | 5.0 | pending |
+| 5.5 | Accessibility-parity audit across all migrated views (axe, keyboard, focus, reduced-motion) | M | 5.1–5.4 | pending |
+
+**Task 5.0 AC:** `[T]` each migrated route has a written parity target (FR id or `templates/<name>.html`) before its task starts — no "parity with what?" gaps
+**Task 5.1 AC:** `[T]` KB browse/search at parity; search query URL-encoded + cold-loads (FR53/FR29) · `[T]` entry detail at parity
+**Task 5.2 AC:** `[T]` detection/ingestion fields render and auto-refresh without manual reload (FR32)
+**Task 5.3 AC:** `[T]` Sources status + Spending render at parity (FR34/FR35)
+**Task 5.4 AC:** `[T]` Metrics view renders the parity target pinned in 5.0
+**Task 5.5 AC:** `[T]` axe passes on every migrated view; keyboard nav + visible focus verified (NFR22)
+
+**Parallelizable:** 5.0 first; then 5.1–5.4 concurrent; 5.5 after. Up to 8 concurrent.
+**Milestone Value:** every navigation route runs in React at parity.
+
+### Milestone 2.2: Auth, collaboration & Jinja retirement
+
+| # | Task | Complexity | Dependencies | Status |
+|---|------|-----------|--------------|--------|
+| 6.1 | Inventory `require_role()` gates + the SocketIO collaboration surface; decide preserve/port/drop for React (R3/Q1, Q6) | M | — (start in Phase 1) | pending |
+| 6.2 | Port the chosen RBAC enforcement to the React/BFF path; implement any required access guard | M | 6.1, 5.5 | pending |
+| 6.3 | Delete Jinja templates + the Flask render path; BFF serves React for all routes | M | 6.2 | pending |
+
+**Task 6.1 AC:** `[H]` decision recorded for (a) the two-tier RBAC and (b) the SocketIO collaboration features (annotations/approvals/redirections) — preserved, ported, or explicitly dropped with rationale
+**Task 6.2 AC:** `[T]` role-gated routes enforce the decided policy in React/BFF (admin/user test) · `[T]` any dropped feature returns a defined response, not a 500
+**Task 6.3 AC:** `[T]` no route is served by Jinja (grep + route test); templates and the Flask render path removed; all routes return the React shell
+
+**Parallelizable:** **6.1 is a decision task — start it during Phase 1 (overlaps, off the critical path)**; 6.2 after 6.1+5.5; 6.3 last (sequential).
+**Milestone Value:** the React overhaul is complete — Jinja retired, RBAC/collaboration resolved, every route React-served (workstream DoD).
+**Observational Outcomes:** `[O]` no increase in client-side error rate vs. the Jinja baseline after full cutover.
+
+## Phase 3: Blast Radius (Gated — out of scope until RFC 0001 Phase 3)
+
+### Milestone 3.1: Cross-service impact
+
+| # | Task | Complexity | Dependencies | Status |
+|---|------|-----------|--------------|--------|
+| 7.1 | Incident-detail blast-radius (upstream/downstream correlated services), replacing the placeholder | L | RFC 0001 Phase 3 (external) | blocked |
+
+**Task 7.1 AC:** `[T]` detail renders correlated upstream/downstream services once the operator exposes correlation fields, replacing the "not yet correlated" placeholder shipped in Task 2.5 (FR48)
+
+**Parallelizable:** none — blocked on RFC 0001 Phase 3 (D9).
+**Milestone Value:** SREs see incident scope (blast radius) at a glance.
+**Observational Outcomes:** `[O]` faster scoping of multi-service incidents.
