@@ -25,7 +25,7 @@ The CRD defines `InvestigationPhase` as the low-level Kubernetes Job phase: `Pen
 | **Awaiting** | **Awaiting Confirmation** | `components/status.html` status_badge | Truncated in the badge macro but the filter dropdown already shows the full form. Standardize to the full phrase so the badge is self-explanatory without tooltip. |
 | **Awaiting Confirmation** | **Awaiting Confirmation** | `_filter_panel.html` status dropdown | KEEP — already the full form. |
 | **Completed** | **Completed** | `components/status.html`; `_filter_panel.html`; `_list_content.html` | KEEP — clear and terminal; matches the CRD enum. |
-| **Failed** | **Failed** | `components/status.html`; `_list_content.html`; `_filter_panel.html` | KEEP — accurate and conventional SRE language. |
+| **Failed** *(phase)* | **Analysis Failed** | `components/status.html`; `_list_content.html`; `_filter_panel.html` | RENAME (user, OD-1) — the investigator job errored; distinguishes the job-phase failure from the workflow-state "Failed". |
 | **Pending** *(shown as started_at fallback)* | **Pending** | `components/cards.html`, `_list_content.html`: `inv.started_at or 'Pending'` in the timestamp slot | KEEP — correct job-phase name when the investigator pod has not yet started. |
 
 ---
@@ -58,7 +58,7 @@ Extracted from the `investigations_table` macro in `_list_content.html` (the leg
 | **Remediation** | **Remediation** | Table `<th>` | KEEP — describes the active remediation pipeline column. |
 | **ID** | **ID** | Table `<th>` | KEEP — CRD resource identifier. |
 | **Service** | **Service** | Table `<th>`; card body; filter label | KEEP — matches the CRD `service` field (FR5c normalization). |
-| **Condition** | **Problem** | Table `<th>`; card body `inv.condition` | "Condition" is the CRD field name (`spec.condition`), a technical term that leaks into the UI. The SRE user is looking for "what is the problem." Rename the display label to "Problem" (or "Problem State" where more space is available) per the FR47 first-seconds model (row 3). The CRD field name `condition` is unchanged; only the display label changes. |
+| **Condition** | **Condition** *(KEEP)* | Table `<th>`; card body `inv.condition` | KEEP (user, OD-4) — retained as-is. FR47's "Problem state" wording was considered but the team prefers the exact existing term; not renamed. |
 | **Started** | **Started** | Table `<th>`; card timestamp | KEEP — conventional column name for incident start time. |
 
 ---
@@ -205,17 +205,15 @@ Extracted from `_filter_panel.html`.
 
 ---
 
-## 13. Open Decisions (User Review Required)
+## 13. Open Decisions — RESOLVED (user review 2026-06-23)
 
-These items have two or more defensible choices. They are flagged here rather than resolved unilaterally because they involve tradeoffs in SRE vocabulary that the user is best positioned to judge.
-
-| # | Term / Location | Options | Why it's unclear |
-|---|---|---|---|
-| OD-1 | **"Failed" — phase vs. workflow state** | (a) keep "Failed" for both, rely on context. (b) rename phase-Failed to "Error" or "Analysis Failed" to distinguish from workflow-Failed. | `InvestigationPhase::Failed` and `WorkflowState::Failed` both render as "Failed" today. In the React view, when both badges appear on the same card (e.g., a stalled investigation), an SRE might not know whether the investigator job errored or the business resolution failed. A disambiguating label would help but requires a CRD-level or API-level semantic decision about what each failure means. |
-| OD-2 | **"Workflow State" vs. "State"** in the filter panel | (a) shorten everywhere to "State". (b) keep "Workflow State" in the expanded filter panel, use "State" only in chips and column headers. | The filter panel has both a "Status" filter (job phase) and a "Workflow State" filter (business lifecycle). Renaming both to shorter forms risks users conflating them. The two-length approach (§12) is a compromise that may feel inconsistent. |
-| OD-3 | **"Correlated Signals" vs. "Signals Correlated"** in the Conclusion block | (a) "Correlated Signals" (current). (b) "Signals Correlated" (reads as a count stat). | Minor wording; both are clear. Decide based on the React layout — if the number is displayed prominently as a stat, "Signals Correlated" reads as a stat label. If it's in a section context, "Correlated Signals" reads as a heading. |
-| OD-4 | **"Problem" vs. "Condition" vs. "Problem State"** as the renamed column / field label | (a) "Problem" (shortest, informal). (b) "Problem State" (matches FR47 spec language). (c) "Condition" (keep current). | FR47 uses "Problem state" in the first-seconds model table. "Problem" alone is shorter and more scannable in a list column. "Condition" is the CRD field name and has the advantage of being exact, but it leaks infrastructure terminology into the UI. |
-| OD-5 | **Status badge label for `investigating` phase — "Investigating" vs. "Running"** | (a) "Investigating" (recommended above; matches WorkflowState and SRE intent). (b) "Running" (matches the CRD `InvestigationPhase::Running` value for the job-level state when the pod is active). | The template currently shows "In Progress" which corresponds to `inv.status == 'investigating'`, not `phase == Running`. The Rust CRD has `Running` as the phase name for when the pod is executing. If "Investigating" is adopted for the phase badge, care is needed to ensure it is derived from `workflow_state == investigating` OR from `status == investigating` (the pipeline-level enum), not from `phase == Running` — the phase fires first. The React implementation should clarify which field drives which badge. |
+| # | Term / Location | Resolution |
+|---|---|---|
+| OD-1 | **"Failed" — phase vs. workflow state** | **RESOLVED (user):** rename the job-**phase** failure to **"Analysis Failed"**; the **workflow-state** failure stays **"Failed"**. Removes the same-card collision. |
+| OD-2 | **"Workflow State" vs. "State"** in the filter panel | **DEFAULT (applied):** keep **"Workflow State"** in the expanded filter panel (to disambiguate from the "Status" filter); use **"State"** only in chips and column headers. |
+| OD-3 | **"Correlated Signals" vs. "Signals Correlated"** | **DEFAULT (applied):** keep **"Correlated Signals"** (heading context). Revisit only if the React layout renders the count as a prominent stat. |
+| OD-4 | **"Problem" vs. "Condition" vs. "Problem State"** | **RESOLVED (user):** **keep "Condition"** as-is (no rename). |
+| OD-5 | **`investigating` badge — "Investigating" vs. "Running"** | **DEFAULT (applied):** badge reads **"Investigating"**, derived from the workflow/pipeline `investigating` state — **not** from `phase == Running` (which fires first while the pod spins up). Tasks 2.2/2.5 must key the badge off the correct field. |
 
 ---
 
