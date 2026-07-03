@@ -9,8 +9,16 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-lib
 dist-ssr
 *.local
+storybook-static
+
+# The root repo .gitignore has a Python-venv-oriented `lib/` rule that
+# otherwise shadows our React component library at src/lib/ — un-ignore it
+# explicitly (Task 1.4).
+!src/lib/
+!src/lib/**
 
 # Editor directories and files
 .vscode/*
