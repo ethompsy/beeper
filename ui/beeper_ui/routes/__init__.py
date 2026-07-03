@@ -11,7 +11,6 @@ def register_blueprints(app: Flask) -> None:
     """
     from beeper_ui.routes.analytics import analytics_bp
     from beeper_ui.routes.confidence_gates import confidence_gates_bp
-    from beeper_ui.routes.react_shell import react_shell_bp
     from beeper_ui.routes.handoff import handoff_bp
     from beeper_ui.routes.health import health_bp
     from beeper_ui.routes.investigations import (
@@ -22,6 +21,8 @@ def register_blueprints(app: Flask) -> None:
     from beeper_ui.routes.metrics import metrics_bp
     from beeper_ui.routes.notification_config import notification_config_bp
     from beeper_ui.routes.notifications import notifications_bp
+    from beeper_ui.routes.react_registry import init_react_dispatch
+    from beeper_ui.routes.react_shell import react_shell_bp
     from beeper_ui.routes.reports import reports_bp
     from beeper_ui.routes.services import services_bp
     from beeper_ui.routes.slo import slo_bp
@@ -49,5 +50,11 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(topology_bp)
     app.register_blueprint(services_bp)
     app.register_blueprint(analytics_bp)
-    # Task 1.1: React SPA shell (served at /app/*; full dispatch registry is Task 1.3)
+    # Task 1.1: React SPA shell (served at /app/*)
     app.register_blueprint(react_shell_bp)
+
+    # Task 1.3: explicit React-owned path-prefix dispatch registry.
+    # Installs a before_request hook so a registered prefix deterministically
+    # wins over any Jinja blueprint for the same path, regardless of the
+    # blueprint registration order above. See react_registry.py for details.
+    init_react_dispatch(app)
