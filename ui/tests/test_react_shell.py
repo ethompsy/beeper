@@ -56,7 +56,8 @@ def _find_hashed_asset(prefix: str = "index", ext: str = "js") -> str | None:
     assets = _DIST / "assets"
     if not assets.is_dir():
         return None
-    pattern = re.compile(rf"^{re.escape(prefix)}-[A-Za-z0-9]{{8,}}\.{re.escape(ext)}$")
+    # Vite emits base64url content hashes, which may contain '-' and '_' (e.g. index-CipiD-gB.js)
+    pattern = re.compile(rf"^{re.escape(prefix)}-[A-Za-z0-9_-]{{8,}}\.{re.escape(ext)}$")
     for name in os.listdir(assets):
         if pattern.match(name):
             return name
