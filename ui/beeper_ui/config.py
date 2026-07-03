@@ -23,6 +23,14 @@ class Config:
     # File upload settings
     MAX_CONTENT_LENGTH = 2 * 1024 * 1024  # 2MB max upload size
 
+    # React-owned path-prefix dispatch registry (Task 1.3 / D11).
+    # Explicit list of path prefixes (e.g. "/investigations") that should be
+    # served by the React SPA shell instead of their Jinja equivalent, with
+    # deterministic precedence over Jinja blueprints. Starts empty — real
+    # view migrations populate this per-milestone (see docs/plans/react-ui.md).
+    # `/api/*` and `/app/*` are always excluded regardless of this list.
+    REACT_OWNED_PREFIXES: tuple[str, ...] = ()
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""
