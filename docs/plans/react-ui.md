@@ -47,9 +47,9 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 | 1.2 | Tailwind config porting the dark-first tokens (palette, spacing, motion, typography) as the single source of truth; no-hardcoded-values + reduced-motion lint | M | 1.1 | done |
 | 1.3 | BFF **route-dispatch registry** — explicit React-owned path prefixes served the shell with deterministic precedence; `/api/*`, SSE, and unmigrated Jinja routes untouched | M | 1.1 | done |
 | 1.4 | Component-library + Storybook scaffold (shadcn-style); **define the library API / extraction boundary**; one skeleton story per planned component; trial `/design-sync` ingest | L | 1.2 | done* |
-| 1.5 | Local dev inner loop — Vite dev server + HMR with `server.proxy` forwarding `/api/*` and the event endpoint to `:5000` (SSE buffering off); two-terminal workflow documented | S | 1.1 | pending |
+| 1.5 | Local dev inner loop — Vite dev server + HMR with `server.proxy` forwarding `/api/*` and the event endpoint to `:5000` (SSE buffering off); two-terminal workflow documented | S | 1.1 | in progress |
 | 1.6 | **BFF JSON API for React** — `GET /api/v1/investigations` (list; `status`/`service`/`severity` filters → `list_investigations`), `GET /api/v1/investigations/{id}` (detail metadata + ordered steps), and `/{id}/events` (JSON event stream reusing the operator-polling loop, emitting `{order, step, status}`); decide poll interval vs NFR21 (Q5) | L | 1.1 | done |
-| 1.7 | Test harness — Vitest + RTL + Playwright in CI | S | 1.1 | pending |
+| 1.7 | Test harness — Vitest + RTL + Playwright in CI | S | 1.1 | in progress |
 | 1.8 | Draft terminology glossary (investigation-list + detail labels) so views are built against standardized copy (FR52 "before each view") | S | None | done |
 
 **Task 1.1 AC:** `[T]` `npm run build` emits a static `dist/`; CI typecheck+lint clean · `[T]` UI Docker image builds the bundle via the Node stage and serves `index.html` + hashed assets (smoke test) · `[H]` repo location/build wiring approved (Q4)
