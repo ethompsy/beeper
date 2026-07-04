@@ -21,7 +21,6 @@ The blueprint resolves the dist path relative to this file at import time so
 it works in both environments without environment variables.
 """
 
-import os
 from pathlib import Path
 
 from flask import Blueprint, send_file, send_from_directory

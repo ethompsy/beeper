@@ -21,7 +21,7 @@ Acceptance criteria (each [T] maps to a clearly-named test class):
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import respx
@@ -32,11 +32,9 @@ from httpx import Response
 from beeper_ui.app import create_app
 from beeper_ui.config import TestingConfig
 from beeper_ui.services.investigation_service import (
-    Investigation,
     InvestigationDetail,
     InvestigationServiceError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
