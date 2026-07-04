@@ -212,13 +212,15 @@ class TestInvestigationsCollisionPrecedence:
             return_value=Response(200, json=MOCK_INVESTIGATIONS)
         )
         jinja_app = _app_with_registry(())
-        react_app = _app_with_registry(("/investigations",))
-
         jinja_response = jinja_app.test_client().get("/investigations/")
-        react_response = react_app.test_client().get("/investigations/")
-
         assert b"inv-abc123" in jinja_response.data
+
+        # The React half actually serves the built shell (reads dist/index.html),
+        # so the request itself only runs when the frontend has been built —
+        # skipped in the Python-only CI job. The Jinja half above always runs.
         if _dist_available():
+            react_app = _app_with_registry(("/investigations",))
+            react_response = react_app.test_client().get("/investigations/")
             react_data = react_response.get_data(as_text=True)
             assert b"inv-abc123" not in react_response.data
             assert (
