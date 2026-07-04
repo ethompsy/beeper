@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -15,6 +16,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     css: true,
+    // Playwright e2e specs (Task 1.7) live under e2e/ and use their own
+    // test.describe/test runner — exclude them from Vitest's default
+    // include glob so they aren't double-collected.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     typecheck: {
       tsconfig: './tsconfig.test.json',
     },

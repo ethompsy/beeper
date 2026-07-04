@@ -14,6 +14,12 @@ dist-ssr
 *.local
 storybook-static
 
+# Playwright (Task 1.7)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # The root repo .gitignore has a Python-venv-oriented `lib/` rule that
 # otherwise shadows our React component library at src/lib/ — un-ignore it
 # explicitly (Task 1.4).

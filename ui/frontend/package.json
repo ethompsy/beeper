@@ -15,7 +15,8 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test": "vitest run --config vitest.config.ts",
-    "test:watch": "vitest --config vitest.config.ts"
+    "test:watch": "vitest --config vitest.config.ts",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.15",
@@ -26,6 +27,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@storybook/addon-docs": "^10.4.6",
     "@storybook/react-vite": "^10.4.6",
     "@tailwindcss/vite": "^4.3.2",
