@@ -15,6 +15,22 @@ single barrel `src/lib/index.ts`.
   (`src/lib/components/*/*.stories.tsx`).
 - `npm run build-storybook` — static Storybook export → `storybook-static/`.
 
+## Testing
+
+- `npm test` — Vitest + React Testing Library (unit/component; `src/**/*.test.{ts,tsx}`).
+  Some suites (e.g. `src/lib/test/dist-import.test.ts`) assert against the
+  built `dist-lib/` artifact — run `npm run build:lib` first if testing
+  locally outside CI.
+- `npm run e2e` — Playwright e2e (`e2e/**/*.spec.ts`), driven by
+  `playwright.config.ts`. Its `webServer` serves the *production build* via
+  `vite preview`, so run `npm run build` first:
+
+  ```sh
+  npm run build && npm run e2e
+  ```
+
+  First-time setup needs the browser binary: `npx playwright install --with-deps chromium`.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
