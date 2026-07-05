@@ -85,10 +85,10 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
 | 2.1 | Layout shell + sidebar (icon rail; expand ≥1200 push / collapse <1200 overlay; auto-collapse on detail route; 60fps + reduced-motion; **focus management** on route change) | L | 1.2, 1.4 | done |
-| 2.2 | Investigation **list** — first-seconds row facts; active/high-severity-first; status-group filter; empty/waiting + **Pending** states; **skeleton** load; **scroll restoration**; error boundary | L | 1.4, 1.6, 2.1, 1.8 | pending |
+| 2.2 | Investigation **list** — first-seconds row facts; active/high-severity-first; status-group filter; empty/waiting + **Pending** states; **skeleton** load; **scroll restoration**; error boundary | L | 1.4, 1.6, 2.1, 1.8 | in progress |
 | 2.3 | "Affected component" derivation from `condition`/anomaly signal (best-effort) | M | 2.2 | pending |
 | 2.4 | Problem-state plain-language heuristic mapping + raw-`condition` fallback | M | 2.2 | pending |
-| 2.5 | Investigation **detail** — immediate summary header; step progress + inline evidence; first-evidence emphasis; Related KB panel; Failed + Pending + KB-"0 entries" + FR48 placeholder; skeleton; "not found" error boundary | L | 1.4, 1.6, 2.1, 1.8 | pending |
+| 2.5 | Investigation **detail** — immediate summary header; step progress + inline evidence; first-evidence emphasis; Related KB panel; Failed + Pending + KB-"0 entries" + FR48 placeholder; skeleton; "not found" error boundary | L | 1.4, 1.6, 2.1, 1.8 | in progress |
 | 2.6a | SSE/event consume — 4-state lifecycle, "Reconnecting…" indicator, **auto-scroll rule** (only if within 100px of bottom) | M | 2.5, 1.6 | pending |
 | 2.6b | Reconnect **backfill** — ordered/idempotent re-fetch via `GET /api/v1/investigations/{id}`; "Live updates unavailable" fallback | M | 2.6a | pending |
 
