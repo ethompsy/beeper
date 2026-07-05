@@ -7,9 +7,10 @@ import { StatusBadge, type StatusBadgeVariant } from '../StatusBadge'
  * from metadata with no SSE dependency (docs/specs/ux-design-specification.md
  * §4 `summary_header` macro; NFR19 first-seconds triage glance).
  *
- * SKELETON (Task 1.4): correct props + token-based styling + Storybook
- * story. Focus-management on route change (autofocus to this `<h1>`) is
- * wired by the view in Task 2.1/2.5 (Milestone 1.2), not by this primitive.
+ * Task 2.5 wires this up as the real detail-view header: `headingId`
+ * carries `useRouteFocusManagement`'s (Task 2.1) `#detail-summary-heading`
+ * contract onto the actual `<h1>` below (WCAG 2.4.3 — the hook focuses this
+ * id on every detail-route mount, including a cold permalink load).
  */
 export interface SummaryHeaderProps extends HTMLAttributes<HTMLElement> {
   /** Service name — rendered as the page `<h1>` (text-lg, font-semibold per spec). */
@@ -28,6 +29,14 @@ export interface SummaryHeaderProps extends HTMLAttributes<HTMLElement> {
    * name. Left optional here — Task 2.4 owns the heuristic mapping.
    */
   problemState?: string
+  /**
+   * `id` for the `<h1>` (not the `<header>` wrapper — `...rest` still sets
+   * attributes on the wrapper). Pass `"detail-summary-heading"` so
+   * `useRouteFocusManagement` can focus it on route entry. Also sets
+   * `tabIndex={-1}` on the `<h1>` so it's programmatically focusable
+   * (headings aren't focusable by default).
+   */
+  headingId?: string
 }
 
 export function SummaryHeader({
@@ -37,6 +46,7 @@ export function SummaryHeader({
   statusVariant,
   timestamp,
   problemState,
+  headingId,
   className,
   ...rest
 }: SummaryHeaderProps) {
@@ -47,8 +57,13 @@ export function SummaryHeader({
       {...rest}
     >
       <div className="flex flex-wrap items-center gap-2">
-        {/* autofocus/tabIndex wiring for WCAG 2.4.3 focus management is a view concern (Task 2.1) */}
-        <h1 className="text-lg font-semibold text-text-primary">{serviceName}</h1>
+        <h1
+          id={headingId}
+          tabIndex={headingId != null ? -1 : undefined}
+          className="text-lg font-semibold text-text-primary"
+        >
+          {serviceName}
+        </h1>
         <span
           data-field="severity"
           className="rounded-full bg-status-warning/10 px-2 py-0.5 text-xs font-medium text-status-warning"

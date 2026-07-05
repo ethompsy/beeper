@@ -8,7 +8,10 @@
     "src/test/**/*.tsx",
     "src/components/**/*.tsx",
     "src/lib/**/*.ts",
-    "src/lib/**/*.tsx"
+    "src/lib/**/*.tsx",
+    "src/routes/**/*.ts",
+    "src/routes/**/*.tsx",
+    "src/api/**/*.ts"
   ],
   "exclude": []
 }
