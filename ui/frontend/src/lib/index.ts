@@ -43,3 +43,19 @@ export type {
   RelatedKbPanelProps,
   RelatedKbPanelState,
 } from './components/RelatedKbPanel'
+
+export { Sidebar } from './components/Sidebar'
+export type {
+  SidebarProps,
+  SidebarGroupData,
+  SidebarNavItem,
+  SidebarLinkProps,
+} from './components/Sidebar'
+
+export { AppShell } from './components/AppShell'
+export type { AppShellProps } from './components/AppShell'
+
+export { useSidebarState } from './hooks/useSidebarState'
+export type { SidebarState, SidebarRouteMode } from './hooks/useSidebarState'
+
+export { useRouteFocusManagement } from './hooks/useRouteFocusManagement'
