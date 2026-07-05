@@ -84,7 +84,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 2.1 | Layout shell + sidebar (icon rail; expand ≥1200 push / collapse <1200 overlay; auto-collapse on detail route; 60fps + reduced-motion; **focus management** on route change) | L | 1.2, 1.4 | pending |
+| 2.1 | Layout shell + sidebar (icon rail; expand ≥1200 push / collapse <1200 overlay; auto-collapse on detail route; 60fps + reduced-motion; **focus management** on route change) | L | 1.2, 1.4 | in progress |
 | 2.2 | Investigation **list** — first-seconds row facts; active/high-severity-first; status-group filter; empty/waiting + **Pending** states; **skeleton** load; **scroll restoration**; error boundary | L | 1.4, 1.6, 2.1, 1.8 | pending |
 | 2.3 | "Affected component" derivation from `condition`/anomaly signal (best-effort) | M | 2.2 | pending |
 | 2.4 | Problem-state plain-language heuristic mapping + raw-`condition` fallback | M | 2.2 | pending |
