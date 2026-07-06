@@ -44,6 +44,18 @@ export type {
   RelatedKbPanelState,
 } from './components/RelatedKbPanel'
 
+export { StepEvidence } from './components/StepEvidence'
+export type { StepEvidenceProps } from './components/StepEvidence'
+
+export { FailureNotice } from './components/FailureNotice'
+export type { FailureNoticeProps } from './components/FailureNotice'
+
+export { NotFoundMessage } from './components/NotFoundMessage'
+export type { NotFoundMessageProps } from './components/NotFoundMessage'
+
+export { DetailSkeleton } from './components/DetailSkeleton'
+export type { DetailSkeletonProps } from './components/DetailSkeleton'
+
 export { Sidebar } from './components/Sidebar'
 export type {
   SidebarProps,
@@ -59,3 +71,5 @@ export { useSidebarState } from './hooks/useSidebarState'
 export type { SidebarState, SidebarRouteMode } from './hooks/useSidebarState'
 
 export { useRouteFocusManagement } from './hooks/useRouteFocusManagement'
+
+export { useIsNarrowViewport } from './hooks/useIsNarrowViewport'

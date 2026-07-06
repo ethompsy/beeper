@@ -10,9 +10,14 @@ import { cn } from '../../utils/cn'
  * SKELETON (Task 1.4): correct props + token-based styling + Storybook
  * story per state. Built on Radix `Collapsible` for accessible
  * expand/collapse (`aria-expanded`, keyboard support) — this is the one
- * Radix primitive this component needs; the anchored-bottom-bar vs.
- * inline-below-content responsive behavior (>=1200px vs <1200px) is a
- * layout-shell concern wired in Task 2.1/2.5, not this primitive.
+ * Radix primitive this component needs.
+ *
+ * Task 2.5 wires the anchored-bottom-bar (>=1200px) vs. inline-below-content
+ * (<1200px) responsive behavior (FR26) via the `className` escape hatch
+ * below — the positioning itself (`fixed inset-x-0 bottom-0` vs. normal
+ * flow) is a layout-shell concern the view decides per breakpoint, merged
+ * onto this component's own token classes via `cn` (last-wins), matching
+ * every other primitive in this library.
  *
  * "Loading" vs "0 entries" is an intentional distinct state (spec
  * rationale): loading = "still looking" (trust), zero = "checked, found
@@ -31,6 +36,8 @@ export interface RelatedKbPanelProps {
   onExpandedChange?: (expanded: boolean) => void
   /** Panel content shown when expanded (KB entry list) — rendering left to the caller. */
   children?: ReactNode
+  /** Merged onto the root's token classes (`cn`, last-wins) — e.g. the view's responsive anchored-bar-vs-inline positioning. */
+  className?: string
 }
 
 export function RelatedKbPanel({
@@ -39,6 +46,7 @@ export function RelatedKbPanel({
   expanded = false,
   onExpandedChange,
   children,
+  className,
 }: RelatedKbPanelProps) {
   const label =
     state === 'loading'
@@ -51,7 +59,7 @@ export function RelatedKbPanel({
       data-state={state}
       open={expanded}
       onOpenChange={onExpandedChange}
-      className="border-t border-surface-overlay bg-surface-raised"
+      className={cn('border-t border-surface-overlay bg-surface-raised', className)}
     >
       <section aria-label="Related knowledge base entries">
         <Collapsible.Trigger
