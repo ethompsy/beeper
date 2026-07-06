@@ -113,7 +113,7 @@ const PROBLEM_STATE_RULES: ReadonlyArray<ProblemStateRule> = [
   // covers the `high-cpu` demo fault scenario (see derive-component.ts).
   {
     name: 'cpu',
-    pattern: /\bcpu[_\s]/i,
+    pattern: /cpu[_\s]|cpu$/i,
     template: (_match, condition) => {
       const observedMatch = /:\s*([\d.]+),\s*expected/i.exec(condition)
       return observedMatch

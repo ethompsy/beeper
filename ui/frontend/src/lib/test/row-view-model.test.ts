@@ -160,4 +160,19 @@ describe('toRowViewModel', () => {
     const row = toRowViewModel(makeItem({ condition: null }))
     expect(row.component).toBeNull()
   })
+
+  it('derives a plain-language `problemState` from a recognizable condition string (Task 2.4)', () => {
+    const row = toRowViewModel(makeItem({ condition: 'Memory usage above 90% on catalog pods' }))
+    expect(row.problemState).toBe('High memory usage (90%)')
+  })
+
+  it('falls back `problemState` to the raw condition text when unparseable, never blank (Task 2.4, FR47)', () => {
+    const row = toRowViewModel(makeItem({ condition: 'some free-text condition' }))
+    expect(row.problemState).toBe('some free-text condition')
+  })
+
+  it('gives `problemState` a non-blank placeholder when condition is null (Task 2.4, FR47)', () => {
+    const row = toRowViewModel(makeItem({ condition: null }))
+    expect(row.problemState).toBeTruthy()
+  })
 })
