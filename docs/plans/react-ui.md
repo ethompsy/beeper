@@ -88,10 +88,10 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 | 2.1 | Layout shell + sidebar (icon rail; expand ≥1200 push / collapse <1200 overlay; auto-collapse on detail route; 60fps + reduced-motion; **focus management** on route change) | L | 1.2, 1.4 | done |
 | 2.2 | Investigation **list** — first-seconds row facts; active/high-severity-first; status-group filter; empty/waiting + **Pending** states; **skeleton** load; **scroll restoration**; error boundary | L | 1.4, 1.6, 2.1, 1.8 | done |
 | 2.3 | "Affected component" derivation from `condition`/anomaly signal (best-effort) | M | 2.2 | done |
-| 2.4 | Problem-state plain-language heuristic mapping + raw-`condition` fallback | M | 2.2 | pending |
+| 2.4 | Problem-state plain-language heuristic mapping + raw-`condition` fallback | M | 2.2 | in progress |
 | 2.5 | Investigation **detail** — immediate summary header; step progress + inline evidence; first-evidence emphasis; Related KB panel; Failed + Pending + KB-"0 entries" + FR48 placeholder; skeleton; "not found" error boundary | L | 1.4, 1.6, 2.1, 1.8 | done |
 | 2.6a | SSE/event consume — 4-state lifecycle, "Reconnecting…" indicator, **auto-scroll rule** (only if within 100px of bottom) | M | 2.5, 1.6 | done |
-| 2.6b | Reconnect **backfill** — ordered/idempotent re-fetch via `GET /api/v1/investigations/{id}`; "Live updates unavailable" fallback | M | 2.6a | pending |
+| 2.6b | Reconnect **backfill** — ordered/idempotent re-fetch via `GET /api/v1/investigations/{id}`; "Live updates unavailable" fallback | M | 2.6a | in progress |
 
 **Task 2.1 AC:** `[T]` collapsed = 64px icon rail (tooltips); ≥1200 expand **pushes** content, <1200 expand **overlays** (no width shift); detail route auto-collapses regardless of viewport (FR41/42/44) · `[T]` on detail entry incl. **cold permalink load**, focus moves to summary `<h1>`; on back, to the active nav item (WCAG 2.4.3) · `[T]` sidebar transitions honor `prefers-reduced-motion` (0ms under reduce)
 **Task 2.2 AC:** `[T]` each row shows service/component/problem-state/severity/age, no horizontal scroll (FR45/46) · `[T]` active+high-severity first; status-group filter correct; **Pending** rows visually distinct from Running · `[T]` empty group → waiting state, never blank (FR22) · `[T]` cold load shows a list **skeleton**, never a blank frame (NFR19) · `[T]` back from detail restores list scroll position
