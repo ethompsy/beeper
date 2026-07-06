@@ -103,13 +103,15 @@ describe('InvestigationListPage — cold load skeleton (NFR19)', () => {
 })
 
 describe('InvestigationListPage — row facts + ordering (FR45/46)', () => {
-  it('renders service, component/condition, severity, age, and status for each row', async () => {
+  it('renders service, derived component, severity, age, and status for each row', async () => {
     mockFetchImmediate([
       makeItem({
         id: 'inv-1',
         service: 'checkout-service',
         severity: 'high',
-        condition: 'elevated p99 latency',
+        // Recognizable detector shape (operator/src/detection/metrics.rs) so
+        // the row's derived-component slot (Task 2.3) has something to show.
+        condition: 'Metric http_server_request_duration_seconds spike: 900.0, expected 100.0 ± 10.0',
         started_at: new Date(Date.now() - 5 * 60_000).toISOString(),
       }),
     ])
@@ -118,7 +120,7 @@ describe('InvestigationListPage — row facts + ordering (FR45/46)', () => {
     const card = await screen.findByRole('link', { name: /checkout-service investigation/i })
     expect(within(card).getByText('checkout-service')).toBeInTheDocument()
     expect(within(card).getByText('High')).toBeInTheDocument()
-    expect(within(card).getByText('elevated p99 latency')).toBeInTheDocument()
+    expect(within(card).getByText('HTTP/RPC request handling')).toBeInTheDocument()
     expect(within(card).getByText(/ago|Just now/)).toBeInTheDocument()
   })
 

@@ -55,11 +55,11 @@ function InvestigationCardRouterLink({ href, children, ...rest }: InvestigationC
  * functions (`status-group.ts`) so that migration is a matter of swapping
  * the state source, not rewriting the filter logic.
  *
- * "Affected component" / problem-state: Task 2.3/2.4 own deriving these from
- * the raw `condition` field. This page passes the raw `condition` straight
- * through to `InvestigationCard`'s `component` slot for now (see
- * `row-view-model.ts`), keeping the row layout ready for the real
- * derivation to drop in later without a layout change.
+ * "Affected component" (Task 2.3) is derived from the raw `condition` field
+ * by `toRowViewModel`/`deriveComponent` (see `row-view-model.ts` /
+ * `derive-component.ts`) and passed straight through to `InvestigationCard`'s
+ * `component` slot. Problem-state plain-language mapping (Task 2.4) is a
+ * separate, not-yet-wired concern on the same raw field.
  */
 export function InvestigationListPage() {
   const [investigations, setInvestigations] = useState<InvestigationListItem[] | null>(null)
@@ -137,7 +137,7 @@ export function InvestigationListPage() {
                 severity={row.severity}
                 statusVariant={row.statusVariant}
                 timestamp={row.timestamp}
-                component={row.condition}
+                component={row.component}
                 href={row.href}
                 linkComponent={InvestigationCardRouterLink}
               />
