@@ -161,7 +161,11 @@ test.describe('investigation list — real browser (FR22/FR45/FR46/NFR19)', () =
     await targetCard.click()
     await expect(page).toHaveURL(/\/app\/investigations\/inv-20$/)
 
-    await page.getByRole('link', { name: 'Investigations' }).click()
+    // Back-navigation from a detail route: per FR44 the sidebar auto-collapses
+    // to the group-level icon rail (Observe/Learn/Manage), so there is no
+    // per-item "Investigations" link to click there. Use the browser Back
+    // button — the canonical trigger the scroll-restoration feature targets.
+    await page.goBack()
     await expect(page).toHaveURL(/\/app\/investigations$/)
     await expect(page.getByRole('link', { name: /svc-0 investigation/i })).toBeVisible()
 
