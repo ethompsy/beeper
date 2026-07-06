@@ -21,6 +21,7 @@ import {
   mergeLiveStepEvents,
   statusToBadgeVariant,
 } from './investigation-detail-mappers'
+import { deriveProblemState } from '../lib/investigations/problem-state'
 import type { InvestigationDetailMetadata, InvestigationStepDto } from '../api/investigation-detail'
 
 /** Stable empty-array reference so `useMemo`'s dep doesn't change identity every render while loading/erroring. */
@@ -96,7 +97,13 @@ export function InvestigationDetailPage() {
   const severity = metadata?.severity ?? '—'
   const signalCount = metadata?.signal_count ?? 0
   const statusVariant = metadata != null ? statusToBadgeVariant(metadata.status) : 'pending'
-  const problemState = metadata?.condition ?? undefined
+  // Task 2.4 (FR47): standardized plain-language problem-state, derived from
+  // the raw `condition` field via `deriveProblemState` — falls back to the
+  // raw condition text verbatim when no heuristic pattern matches, and to
+  // `undefined` only when there is no metadata at all yet (so the header
+  // doesn't render a premature "No problem state available" placeholder
+  // before the fetch resolves).
+  const problemState = metadata?.condition != null ? deriveProblemState(metadata.condition) : undefined
   const timestamp = formatTimestamp(metadata)
 
   const kbStep = steps.find((step) => step.type === 'kb')

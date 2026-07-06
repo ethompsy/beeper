@@ -10,13 +10,21 @@ import { StatusBadge, type StatusBadgeVariant } from '../StatusBadge'
  * story per variant. Real data wiring, hover/highlight/entrance animation,
  * and scroll-restoration integration land with Task 2.2 (Milestone 1.2).
  *
- * `component` (Task 2.2): an optional subtitle slot rendering the
- * affected-component / problem-state text (the legacy Jinja
- * `investigation_card` macro renders `inv.condition` here). This slot
- * intentionally accepts a pre-derived string — deriving "affected component"
- * from the raw `condition`/anomaly signal is Task 2.3's job and problem-state
- * plain-language mapping is Task 2.4's; this component stays a dumb
- * presentational primitive that renders whatever string it's given.
+ * `component` (Task 2.2/2.3): an optional subtitle slot rendering the
+ * affected-component text (the legacy Jinja `investigation_card` macro
+ * renders `inv.condition` here; Task 2.3's `deriveComponent` now feeds this
+ * slot). This slot intentionally accepts a pre-derived string — deriving
+ * "affected component" from the raw `condition`/anomaly signal is Task 2.3's
+ * job; this component stays a dumb presentational primitive that renders
+ * whatever string it's given.
+ *
+ * `problemState` (Task 2.4): a second, separate subtitle line rendering the
+ * FR47 plain-language problem-state text (`deriveProblemState`,
+ * `src/lib/investigations/problem-state.ts`). FR45/46 list "component" and
+ * "problem state" as two distinct first-seconds facts the row must
+ * communicate, so this is an additive sibling slot to `component`, not a
+ * replacement — both may render at once (e.g. "CPU / compute resources" as
+ * the component, "High CPU usage (92.0)" as the problem state).
  *
  * `linkComponent` (Task 2.2): mirrors the `Sidebar`/`AppShell` injectable-link
  * pattern (Task 2.1) so this primitive stays router-agnostic while still
@@ -61,11 +69,20 @@ export interface InvestigationCardProps
   /** href for the underlying link — the whole card is the click target (a11y: single link, not nested interactive elements). */
   href: string
   /**
-   * Affected component / problem-state subtitle line (raw or derived —
-   * caller's choice). Optional and omitted entirely from the DOM when unset,
-   * so callers that have nothing to show yet don't render an empty line.
+   * Affected component subtitle line (raw or derived — caller's choice).
+   * Optional and omitted entirely from the DOM when unset, so callers that
+   * have nothing to show yet don't render an empty line.
    */
   component?: string | null
+  /**
+   * Plain-language problem-state subtitle line (Task 2.4, FR47) — a separate
+   * fact from `component` (see class doc above). Optional and omitted
+   * entirely from the DOM when unset (matches `component`'s convention), but
+   * callers using `toRowViewModel` always have a non-null value to pass
+   * (FR47's fallback-to-raw-condition rule means it's never blank in
+   * practice).
+   */
+  problemState?: string | null
   /**
    * Render-prop-free link component injection — pass `Link` from
    * `react-router-dom` for client-side navigation, or omit for a plain
@@ -103,6 +120,7 @@ export function InvestigationCard({
   statusVariant,
   href,
   component,
+  problemState,
   linkComponent: LinkComponent = DefaultLink,
   className,
   ...rest
@@ -142,6 +160,11 @@ export function InvestigationCard({
         <span aria-hidden="true">&middot;</span>
         <span data-field="timestamp">{timestamp}</span>
       </div>
+      {problemState ? (
+        <div className="truncate text-sm text-text-primary" data-field="problem-state">
+          {problemState}
+        </div>
+      ) : null}
       {component ? (
         <div className="truncate text-sm text-text-secondary" data-field="component">
           {component}
