@@ -1,8 +1,9 @@
-import type { StatusBadgeVariant } from '../lib'
+import type { StatusBadgeVariant, InvestigationStepEventPayload } from '../lib'
 import type {
   InvestigationDetailStatus,
   InvestigationStepApiType,
   InvestigationStepDto,
+  InvestigationStepState,
 } from '../api/investigation-detail'
 import type { InvestigationStepType } from '../lib'
 
@@ -84,4 +85,50 @@ export function findFirstEvidenceStepOrder(steps: InvestigationStepDto[]): numbe
     (step) => EVIDENCE_STEP_TYPES.has(step.type) && step.state === 'completed',
   )
   return firstEvidence?.order ?? null
+}
+
+/**
+ * Merge live SSE `step` events (Task 2.6a, `useInvestigationEvents`) into the
+ * initial one-shot fetch's ordered step list (Task 2.5, `InvestigationStepDto[]`).
+ *
+ * Both sides are keyed by `order`, but their shapes differ slightly: the
+ * REST DTO carries the forward-compatible `evidence`/`kbEntries` fields
+ * (Q8 — not yet populated by the backend; see `src/api/investigation-detail.ts`),
+ * while the SSE payload only ever carries `{order, key, label, state, type}`
+ * (Task 1.6's `_generate_json_sse_events` doc). So a live update to a step
+ * that already exists from the initial fetch REPLACES only the fields the
+ * event actually carries (label/state/type) and preserves any `evidence`/
+ * `kbEntries` already present — a live update must never regress a step back
+ * to "no evidence" just because the stream payload doesn't carry that field.
+ *
+ * A live event for an `order` not present in the initial fetch (a step that
+ * appeared after the initial page load) is inserted at the correct sorted
+ * position, never blindly appended — matching the spec's out-of-order-insert
+ * rule for the timeline (`docs/specs/ux-design-specification.md` §5,
+ * "checks if the order is sequential... inserts at the correct position").
+ */
+export function mergeLiveStepEvents(
+  initialSteps: InvestigationStepDto[],
+  liveEvents: InvestigationStepEventPayload[],
+): InvestigationStepDto[] {
+  if (liveEvents.length === 0) return initialSteps
+
+  const byOrder = new Map<number, InvestigationStepDto>(
+    initialSteps.map((step) => [step.order, step]),
+  )
+
+  for (const event of liveEvents) {
+    const existing = byOrder.get(event.order)
+    byOrder.set(event.order, {
+      order: event.order,
+      key: event.key,
+      label: event.label,
+      state: event.state as InvestigationStepState,
+      type: event.type,
+      evidence: existing?.evidence,
+      kbEntries: existing?.kbEntries,
+    })
+  }
+
+  return Array.from(byOrder.values()).sort((a, b) => a.order - b.order)
 }

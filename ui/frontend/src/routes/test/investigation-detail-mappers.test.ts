@@ -13,9 +13,11 @@ import { describe, it, expect } from 'vitest'
 import {
   apiStepTypeToStepType,
   findFirstEvidenceStepOrder,
+  mergeLiveStepEvents,
   statusToBadgeVariant,
 } from '../investigation-detail-mappers'
 import type { InvestigationStepDto } from '../../api/investigation-detail'
+import type { InvestigationStepEventPayload } from '../../lib'
 
 describe('statusToBadgeVariant', () => {
   it('maps job-phase "failed" to the "analysis-failed" variant (glossary OD-1)', () => {
