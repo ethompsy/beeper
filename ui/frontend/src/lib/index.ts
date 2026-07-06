@@ -24,6 +24,7 @@ export { InvestigationCard } from './components/InvestigationCard'
 export type {
   InvestigationCardProps,
   InvestigationCardVariant,
+  InvestigationCardLinkProps,
 } from './components/InvestigationCard'
 
 export { StatusBadge } from './components/StatusBadge'
@@ -44,6 +45,15 @@ export type {
   RelatedKbPanelState,
 } from './components/RelatedKbPanel'
 
+export { InvestigationListSkeleton } from './components/InvestigationListSkeleton'
+export type { InvestigationListSkeletonProps } from './components/InvestigationListSkeleton'
+
+export { StatusGroupFilter } from './components/StatusGroupFilter'
+export type { StatusGroupFilterProps, StatusGroupFilterOption } from './components/StatusGroupFilter'
+
+export { EmptyGroupState } from './components/EmptyGroupState'
+export type { EmptyGroupStateProps } from './components/EmptyGroupState'
+
 export { Sidebar } from './components/Sidebar'
 export type {
   SidebarProps,
@@ -59,3 +69,5 @@ export { useSidebarState } from './hooks/useSidebarState'
 export type { SidebarState, SidebarRouteMode } from './hooks/useSidebarState'
 
 export { useRouteFocusManagement } from './hooks/useRouteFocusManagement'
+
+export { useScrollRestoration } from './hooks/useScrollRestoration'
