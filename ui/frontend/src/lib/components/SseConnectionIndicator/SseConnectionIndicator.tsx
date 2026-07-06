@@ -6,14 +6,15 @@ import type { InvestigationEventsConnectionState } from '../../hooks/useInvestig
  * investigation step reflecting the SSE 4-state lifecycle (Task 2.6a, FR27;
  * spec "SSE Lifecycle State Pattern" + "12. SSE Reconnecting Indicator").
  *
- * | State          | Visual                                                     |
- * |----------------|-------------------------------------------------------------|
- * | connected      | nothing (spec: "No indicator (default)")                    |
- * | disconnected   | "Reconnecting…" in `text-secondary`, pulsing ellipsis        |
- * | reconnected    | nothing — transient, the hook settles back to connected     |
- * | failed         | plain "Live updates unavailable" notice (Task 2.6b owns the |
- * |                | full "— refresh to sync" copy + reload link; this task only |
- * |                | needs the lifecycle to be observably reachable)             |
+ * | State          | Visual                                                        |
+ * |----------------|------------------------------------------------------------------|
+ * | connected      | nothing (spec: "No indicator (default)")                         |
+ * | disconnected   | "Reconnecting…" in `text-secondary`, pulsing ellipsis             |
+ * | reconnected    | nothing — transient, the hook settles back to connected          |
+ * | failed         | "Live updates unavailable — refresh to sync" (Task 2.6b, spec    |
+ * |                | "SSE Lifecycle State Pattern" Failed row) with a manual reload   |
+ * |                | link — the detail already rendered stays fully viewable; this   |
+ * |                | is purely an additive notice, never a replacement for content   |
  *
  * `prefers-reduced-motion`: `animate-pulse` → `motion-reduce:animate-none`,
  * the same pattern used by `RelatedKbPanel`/skeletons — text still reads
@@ -37,7 +38,22 @@ export function SseConnectionIndicator({ connectionState, className }: SseConnec
         role="status"
         className={cn('text-sm text-status-critical', className)}
       >
-        Live updates unavailable
+        Live updates unavailable — refresh to sync
+        {/*
+          Spec ("SSE Lifecycle State Pattern", Failed row): "show static
+          message with manual location.reload() link". A full reload (not
+          client-side navigation) re-runs both the Task 2.5 one-shot fetch
+          and re-opens the Task 2.6a stream from scratch — the simplest,
+          most reliable way to fully resync once the lifecycle has locked
+          into `failed`.
+        */}
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="ml-1 text-primary underline hover:no-underline"
+        >
+          Refresh
+        </button>
       </p>
     )
   }
