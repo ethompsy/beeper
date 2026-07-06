@@ -310,3 +310,192 @@ describe('InvestigationDetailPage — network/error state', () => {
     expect(screen.getByRole('heading', { name: 'INV-0042' })).toBeVisible()
   })
 })
+
+/**
+ * Task 2.6b — SSE reconnect backfill + failure fallback.
+ *
+ * These tests drive the page's live `EventSource` lifecycle end-to-end by
+ * stubbing `globalThis.EventSource` with a controllable fake (the same
+ * technique `src/lib/test/useInvestigationEvents.test.ts` uses at the hook
+ * level, applied here at the page level since `InvestigationDetailPage`
+ * does not accept an injectable factory prop). `fetch` is stubbed to
+ * distinguish the initial one-shot Task 2.5 fetch from the Task 2.6b
+ * reconnect backfill re-fetch — both hit the exact same
+ * `GET /api/v1/investigations/{id}` endpoint, so call order is what
+ * distinguishes them.
+ */
+class FakePageEventSource {
+  static instances: FakePageEventSource[] = []
+  url: string
+  onopen: (() => void) | null = null
+  onerror: (() => void) | null = null
+  closed = false
+  private listeners = new Map<string, ((event: MessageEvent<string>) => void)[]>()
+
+  constructor(url: string) {
+    this.url = url
+    FakePageEventSource.instances.push(this)
+  }
+
+  addEventListener(type: string, listener: (event: MessageEvent<string>) => void): void {
+    const existing = this.listeners.get(type) ?? []
+    existing.push(listener)
+    this.listeners.set(type, existing)
+  }
+
+  removeEventListener(): void {}
+
+  close(): void {
+    this.closed = true
+  }
+
+  open(): void {
+    this.onopen?.()
+  }
+
+  error(): void {
+    this.onerror?.()
+  }
+}
+
+function stubEventSource(): void {
+  FakePageEventSource.instances = []
+  vi.stubGlobal('EventSource', FakePageEventSource)
+}
+
+function currentEventSource(): FakePageEventSource {
+  const instance = FakePageEventSource.instances.at(-1)
+  if (instance == null) throw new Error('No FakePageEventSource instance was created')
+  return instance
+}
+
+describe('InvestigationDetailPage — reconnect backfill (Task 2.6b)', () => {
+  it('re-fetches GET /api/v1/investigations/{id} on reconnect and renders a step that arrived while disconnected, in order', async () => {
+    stubEventSource()
+    const fetchMock = vi
+      .fn()
+      // Initial one-shot fetch (Task 2.5).
+      .mockResolvedValueOnce(
+        jsonResponse(
+          detailDto({
+            steps: [
+              { order: 1, key: 'customer_impact', label: 'Customer Impact Assessment', state: 'completed', type: 'summary' },
+              { order: 3, key: 'rca_hypothesis', label: 'Root Cause Hypothesis', state: 'active', type: 'metric' },
+            ],
+          }),
+        ),
+      )
+      // Reconnect backfill re-fetch — the server filled in order 2 while
+      // the client was disconnected.
+      .mockResolvedValueOnce(
+        jsonResponse(
+          detailDto({
+            steps: [
+              { order: 1, key: 'customer_impact', label: 'Customer Impact Assessment', state: 'completed', type: 'summary' },
+              { order: 2, key: 'kb_query', label: 'Knowledge Base Query', state: 'completed', type: 'kb' },
+              { order: 3, key: 'rca_hypothesis', label: 'Root Cause Hypothesis', state: 'active', type: 'metric' },
+            ],
+          }),
+        ),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDetailPage('INV-0042')
+
+    await screen.findByText('Root Cause Hypothesis')
+    expect(screen.queryByText('Knowledge Base Query')).not.toBeInTheDocument()
+
+    const source = currentEventSource()
+    // Simulate a drop then a successful reopen — the `disconnected` ->
+    // `reconnected` transition the backfill hangs off.
+    source.error()
+    source.open()
+
+    // The missed step (order 2) backfills in, in the correct position
+    // between orders 1 and 3 — not appended at the end.
+    await screen.findByText('Knowledge Base Query')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    const list = document.querySelector('[data-slot="investigation-steps"]') as HTMLElement
+    const items = within(list).getAllByRole('listitem')
+    expect(items[0]).toHaveTextContent('Customer Impact Assessment')
+    expect(items[1]).toHaveTextContent('Knowledge Base Query')
+    expect(items[2]).toHaveTextContent('Root Cause Hypothesis')
+
+    // Nothing already shown regressed or disappeared.
+    expect(screen.getByText('Customer Impact Assessment')).toBeVisible()
+    expect(screen.getByText('Root Cause Hypothesis')).toBeVisible()
+  })
+
+  it('does not duplicate a step already shown when the backfill re-fetch returns it again (idempotent/deduped)', async () => {
+    stubEventSource()
+    const dto = detailDto({
+      steps: [
+        { order: 1, key: 'customer_impact', label: 'Customer Impact Assessment', state: 'completed', type: 'summary' },
+      ],
+    })
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(dto))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDetailPage('INV-0042')
+
+    await screen.findByText('Customer Impact Assessment')
+
+    const source = currentEventSource()
+    // Two consecutive reconnects, both backfilling the exact same snapshot.
+    source.error()
+    source.open()
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    source.error()
+    source.open()
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+
+    const list = document.querySelector('[data-slot="investigation-steps"]') as HTMLElement
+    expect(within(list).getAllByText('Customer Impact Assessment')).toHaveLength(1)
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1)
+  })
+})
+
+describe('InvestigationDetailPage — failure fallback (Task 2.6b)', () => {
+  it('shows the "Live updates unavailable — refresh to sync" fallback after repeated failures, keeping the header and steps viewable', async () => {
+    stubEventSource()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(detailDto())))
+
+    renderDetailPage('INV-0042')
+
+    await screen.findByText('Root Cause Hypothesis')
+    expect(screen.queryByText(/live updates unavailable/i)).not.toBeInTheDocument()
+
+    const source = currentEventSource()
+    // 5 consecutive errors with no intervening open == the hook's `failed`
+    // terminal state (useInvestigationEvents' MAX_CONSECUTIVE_ERRORS).
+    for (let i = 0; i < 5; i++) {
+      source.error()
+    }
+
+    const fallback = await screen.findByText(/live updates unavailable — refresh to sync/i)
+    expect(fallback).toBeVisible()
+
+    // The detail already loaded stays fully viewable — not blanked.
+    expect(screen.getByRole('heading', { name: 'checkout-service' })).toBeVisible()
+    expect(screen.getByText('Customer Impact Assessment')).toBeVisible()
+    expect(screen.getByText('Knowledge Base Query')).toBeVisible()
+    expect(screen.getByText('Root Cause Hypothesis')).toBeVisible()
+  })
+
+  it('offers a manual refresh action in the failed-state fallback', async () => {
+    stubEventSource()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(detailDto())))
+
+    renderDetailPage('INV-0042')
+    await screen.findByText('Root Cause Hypothesis')
+
+    const source = currentEventSource()
+    for (let i = 0; i < 5; i++) {
+      source.error()
+    }
+    await screen.findByText(/live updates unavailable/i)
+
+    expect(screen.getByRole('button', { name: /refresh/i })).toBeVisible()
+  })
+})
