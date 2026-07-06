@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes } from 'react'
+import type { AnchorHTMLAttributes, ComponentType, ReactNode } from 'react'
 import { cn } from '../../utils/cn'
 import { StatusBadge, type StatusBadgeVariant } from '../StatusBadge'
 
@@ -9,8 +9,35 @@ import { StatusBadge, type StatusBadgeVariant } from '../StatusBadge'
  * SKELETON (Task 1.4): correct props + token-based styling + Storybook
  * story per variant. Real data wiring, hover/highlight/entrance animation,
  * and scroll-restoration integration land with Task 2.2 (Milestone 1.2).
+ *
+ * `component` (Task 2.2): an optional subtitle slot rendering the
+ * affected-component / problem-state text (the legacy Jinja
+ * `investigation_card` macro renders `inv.condition` here). This slot
+ * intentionally accepts a pre-derived string — deriving "affected component"
+ * from the raw `condition`/anomaly signal is Task 2.3's job and problem-state
+ * plain-language mapping is Task 2.4's; this component stays a dumb
+ * presentational primitive that renders whatever string it's given.
+ *
+ * `linkComponent` (Task 2.2): mirrors the `Sidebar`/`AppShell` injectable-link
+ * pattern (Task 2.1) so this primitive stays router-agnostic while still
+ * supporting real client-side navigation. Without it, the card renders a
+ * plain `<a>` (Storybook-safe, matches the original Task 1.4 skeleton).
+ * `src/routes/InvestigationListPage.tsx` passes React Router's `Link` so
+ * clicking a row is a client-side transition (required for the "flipping
+ * pages in a book" list<->detail feel and scroll-position restoration —
+ * a plain `<a>` would force a full page reload, discarding SPA state).
  */
 export type InvestigationCardVariant = 'active' | 'completed' | 'failed'
+
+export interface InvestigationCardLinkProps {
+  href: string
+  className?: string
+  'aria-label'?: string
+  'data-slot'?: string
+  'data-variant'?: string
+  children?: ReactNode
+  [key: string]: unknown
+}
 
 export interface InvestigationCardProps
   extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> {
@@ -20,14 +47,31 @@ export interface InvestigationCardProps
   serviceName: string
   /** Severity label (Low/Medium/High/Critical) rendered as a badge. */
   severity: string
-  /** Number of correlated signals. */
-  signalCount: number
+  /**
+   * Number of correlated signals. Optional — the Task 1.6 list JSON API
+   * doesn't return a signal count (only the detail endpoint does), so the
+   * list row (Task 2.2) omits this prop entirely rather than showing a
+   * fabricated "0 signals".
+   */
+  signalCount?: number
   /** Pre-formatted relative timestamp string (e.g. "3m ago"). Formatting is a view concern. */
   timestamp: string
   /** Status badge variant for the job-phase status indicator (see StatusBadge). */
   statusVariant: StatusBadgeVariant
-  /** href for the underlying `<a>` — the whole card is the click target (a11y: single link, not nested interactive elements). */
+  /** href for the underlying link — the whole card is the click target (a11y: single link, not nested interactive elements). */
   href: string
+  /**
+   * Affected component / problem-state subtitle line (raw or derived —
+   * caller's choice). Optional and omitted entirely from the DOM when unset,
+   * so callers that have nothing to show yet don't render an empty line.
+   */
+  component?: string | null
+  /**
+   * Render-prop-free link component injection — pass `Link` from
+   * `react-router-dom` for client-side navigation, or omit for a plain
+   * `<a>` (default; Storybook-safe).
+   */
+  linkComponent?: ComponentType<InvestigationCardLinkProps>
 }
 
 const VARIANT_BORDER: Record<InvestigationCardVariant, string> = {
@@ -42,6 +86,14 @@ const VARIANT_OPACITY: Record<InvestigationCardVariant, string> = {
   failed: 'opacity-100',
 }
 
+function DefaultLink({ href, children, ...rest }: InvestigationCardLinkProps) {
+  return (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  )
+}
+
 export function InvestigationCard({
   variant,
   serviceName,
@@ -50,11 +102,13 @@ export function InvestigationCard({
   timestamp,
   statusVariant,
   href,
+  component,
+  linkComponent: LinkComponent = DefaultLink,
   className,
   ...rest
 }: InvestigationCardProps) {
   return (
-    <a
+    <LinkComponent
       data-slot="investigation-card"
       data-variant={variant}
       href={href}
@@ -79,11 +133,20 @@ export function InvestigationCard({
       </div>
       <div className="flex items-center gap-2 text-sm text-text-secondary">
         <span data-field="severity">{severity}</span>
-        <span aria-hidden="true">&middot;</span>
-        <span data-field="signal-count">{signalCount} signals</span>
+        {signalCount != null ? (
+          <>
+            <span aria-hidden="true">&middot;</span>
+            <span data-field="signal-count">{signalCount} signals</span>
+          </>
+        ) : null}
         <span aria-hidden="true">&middot;</span>
         <span data-field="timestamp">{timestamp}</span>
       </div>
-    </a>
+      {component ? (
+        <div className="truncate text-sm text-text-secondary" data-field="component">
+          {component}
+        </div>
+      ) : null}
+    </LinkComponent>
   )
 }

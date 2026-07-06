@@ -24,6 +24,7 @@ export { InvestigationCard } from './components/InvestigationCard'
 export type {
   InvestigationCardProps,
   InvestigationCardVariant,
+  InvestigationCardLinkProps,
 } from './components/InvestigationCard'
 
 export { StatusBadge } from './components/StatusBadge'
@@ -44,6 +45,7 @@ export type {
   RelatedKbPanelState,
 } from './components/RelatedKbPanel'
 
+// Detail-view primitives (Task 2.5)
 export { StepEvidence } from './components/StepEvidence'
 export type { StepEvidenceProps } from './components/StepEvidence'
 
@@ -55,6 +57,16 @@ export type { NotFoundMessageProps } from './components/NotFoundMessage'
 
 export { DetailSkeleton } from './components/DetailSkeleton'
 export type { DetailSkeletonProps } from './components/DetailSkeleton'
+
+// List-view primitives (Task 2.2)
+export { InvestigationListSkeleton } from './components/InvestigationListSkeleton'
+export type { InvestigationListSkeletonProps } from './components/InvestigationListSkeleton'
+
+export { StatusGroupFilter } from './components/StatusGroupFilter'
+export type { StatusGroupFilterProps, StatusGroupFilterOption } from './components/StatusGroupFilter'
+
+export { EmptyGroupState } from './components/EmptyGroupState'
+export type { EmptyGroupStateProps } from './components/EmptyGroupState'
 
 export { Sidebar } from './components/Sidebar'
 export type {
@@ -73,3 +85,4 @@ export type { SidebarState, SidebarRouteMode } from './hooks/useSidebarState'
 export { useRouteFocusManagement } from './hooks/useRouteFocusManagement'
 
 export { useIsNarrowViewport } from './hooks/useIsNarrowViewport'
+export { useScrollRestoration } from './hooks/useScrollRestoration'

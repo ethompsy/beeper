@@ -21,6 +21,19 @@ import { useEffect, useRef } from 'react'
  * `routeKey` should change on every navigation (e.g. the matched pathname)
  * so the effect re-runs even when `isDetailRoute` stays the same value
  * across two different detail ids (e.g. detail → detail via a related-link).
+ *
+ * `{ preventScroll: true }` (Task 2.2 fix): both `.focus()` calls below pass
+ * this option. Without it, a native `.focus()` call scrolls the focused
+ * element into view by default — harmless for the detail `<h1>` (top of a
+ * fresh page anyway), but actively wrong for the sidebar nav item on
+ * return-to-list: the sidebar is `position: fixed` (always visible
+ * regardless of window scroll), so scrolling it into view has no visual
+ * purpose and instead resets the window's scroll position to ~0. That
+ * silently defeated Task 2.2's scroll-position restoration (FR22) — this
+ * effect runs as a passive effect, strictly after the list page's own
+ * layout-timed scroll restore, so its default scroll-into-view was always
+ * the last word on scroll position. `preventScroll` keeps this hook's
+ * effect purely about focus, matching its documented contract.
  */
 export function useRouteFocusManagement(isDetailRoute: boolean, routeKey: string): void {
   const wasDetailRoute = useRef<boolean | null>(null)
@@ -35,7 +48,7 @@ export function useRouteFocusManagement(isDetailRoute: boolean, routeKey: string
         if (!heading.hasAttribute('tabindex')) {
           heading.setAttribute('tabindex', '-1')
         }
-        heading.focus()
+        heading.focus({ preventScroll: true })
       }
       return
     }
@@ -47,7 +60,7 @@ export function useRouteFocusManagement(isDetailRoute: boolean, routeKey: string
       const activeNavItem = document.querySelector<HTMLElement>(
         '[data-sidebar-nav-active="true"]',
       )
-      activeNavItem?.focus()
+      activeNavItem?.focus({ preventScroll: true })
     }
   }, [isDetailRoute, routeKey])
 }
