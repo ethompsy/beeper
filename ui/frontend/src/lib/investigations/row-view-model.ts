@@ -2,6 +2,7 @@ import type { InvestigationCardVariant } from '../components/InvestigationCard'
 import type { StatusBadgeVariant } from '../components/StatusBadge'
 import type { InvestigationListItem } from '../../api/investigations-list'
 import { deriveComponent } from './derive-component'
+import { deriveProblemState } from './problem-state'
 
 /**
  * row-view-model.ts — pure mapping from the Task 1.6 JSON API shape to the
@@ -136,10 +137,10 @@ export interface InvestigationRowViewModel {
   statusVariant: StatusBadgeVariant
   timestamp: string
   /**
-   * Raw `condition` field, unprocessed. Task 2.4 derives a plain-language
-   * problem-state from this same raw field — this view-model intentionally
-   * does NOT interpret it for that purpose, per Task 2.2's scope discipline
-   * note (row layout ready for it, logic lives elsewhere).
+   * Raw `condition` field, unprocessed. Kept alongside the derived
+   * `problemState`/`component` fields below per the glossary (OD-4): the RAW
+   * field stays labeled "Condition" and the DERIVED plain-language
+   * `problemState` (Task 2.4) coexists with it rather than replacing it.
    */
   condition: string | null
   /**
@@ -149,6 +150,14 @@ export interface InvestigationRowViewModel {
    * card's `component` slot omits the line entirely in that case.
    */
   component: string | null
+  /**
+   * Standardized plain-language "problem state" (Task 2.4, FR47), derived
+   * from `condition` via `deriveProblemState`
+   * (src/lib/investigations/problem-state.ts). Unlike `component`, this is
+   * never null/blank — when no heuristic pattern matches, it falls back to
+   * the raw `condition` text verbatim (FR47's explicit fallback rule).
+   */
+  problemState: string
 }
 
 /** Map one API item to the props the list row needs. Pure — no signal count from this endpoint (list-only field; detail view Task 2.5 has it). */
@@ -164,5 +173,6 @@ export function toRowViewModel(item: InvestigationListItem, now?: Date): Investi
     timestamp: formatAge(ageSource, now),
     condition: item.condition,
     component: deriveComponent(item.condition),
+    problemState: deriveProblemState(item.condition),
   }
 }

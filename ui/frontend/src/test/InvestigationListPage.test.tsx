@@ -124,6 +124,36 @@ describe('InvestigationListPage — row facts + ordering (FR45/46)', () => {
     expect(within(card).getByText(/ago|Just now/)).toBeInTheDocument()
   })
 
+  it('renders the plain-language problem-state fact for each row, alongside (not instead of) the derived component (Task 2.4, FR45/46)', async () => {
+    mockFetchImmediate([
+      makeItem({
+        id: 'inv-2',
+        service: 'catalog',
+        severity: 'medium',
+        condition: 'Memory usage above 90% on catalog pods',
+      }),
+    ])
+    renderListPage()
+
+    const card = await screen.findByRole('link', { name: /catalog investigation/i })
+    expect(within(card).getByText('High memory usage (90%)')).toBeInTheDocument()
+  })
+
+  it('falls back the row problem-state to the raw condition text when no heuristic pattern matches, never blank (Task 2.4, FR47)', async () => {
+    mockFetchImmediate([
+      makeItem({
+        id: 'inv-3',
+        service: 'billing',
+        severity: 'low',
+        condition: 'Unexpected checkout conversion ratio drift',
+      }),
+    ])
+    renderListPage()
+
+    const card = await screen.findByRole('link', { name: /billing investigation/i })
+    expect(within(card).getByText('Unexpected checkout conversion ratio drift')).toBeInTheDocument()
+  })
+
   it('orders active + high-severity investigations first', async () => {
     mockFetchImmediate([
       makeItem({ id: 'low-active', service: 'svc-low', severity: 'low', status: 'investigating' }),
