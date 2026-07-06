@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   SummaryHeader,
@@ -18,9 +18,11 @@ import { useInvestigationDetail } from './useInvestigationDetail'
 import {
   apiStepTypeToStepType,
   findFirstEvidenceStepOrder,
+  mergeBackfilledSteps,
   mergeLiveStepEvents,
   statusToBadgeVariant,
 } from './investigation-detail-mappers'
+import { fetchInvestigationDetail } from '../api/investigation-detail'
 import type { InvestigationDetailMetadata, InvestigationStepDto } from '../api/investigation-detail'
 
 /** Stable empty-array reference so `useMemo`'s dep doesn't change identity every render while loading/erroring. */
@@ -52,15 +54,27 @@ const EMPTY_STEPS: InvestigationStepDto[] = []
  * visible without interaction; also required so focus management doesn't
  * race the fetch on a cold load).
  *
- * ── The seam left for Task 2.6b (reconnect backfill) ──
+ * ── Reconnect backfill (Task 2.6b, FR27/NFR9) ──
  *
- * `useInvestigationEvents` exposes `onReconnect`/`onFailed` callbacks fired
- * exactly once per lifecycle transition. This page does not use them today
- * (2.6a's scope stops at the 4-state indicator) — 2.6b hangs its ordered/
- * idempotent REST re-fetch (reusing `fetchInvestigationDetail`) off
- * `onReconnect`, and its "Live updates unavailable — refresh to sync"
- * fallback copy off `onFailed` / `connectionState === 'failed'`, without
- * touching this hook's internals.
+ * `useInvestigationEvents` fires `onReconnect` exactly once per `disconnected`
+ * → reconnect-succeeded transition. This page hangs its backfill off that
+ * callback: re-fetch `GET /api/v1/investigations/{id}` (reusing the Task 2.5
+ * `fetchInvestigationDetail` client — no new endpoint/client needed) and
+ * store the result's `steps` as the new backfill baseline. `mergeBackfilledSteps`
+ * (`investigation-detail-mappers.ts`) folds that baseline together with the
+ * original one-shot fetch's steps, keyed by `order` via a `Map` — so it is
+ * naturally idempotent (re-running with the same snapshot is a no-op) and
+ * deduped (one entry per `order`, never a duplicate step). The backfill
+ * baseline then flows through the SAME `mergeLiveStepEvents` merge already
+ * used for live SSE steps, so a step the backfill returns can never regress
+ * one already showing more progress from a live event received in the
+ * interim (that function already merges by `order` without dropping fields).
+ *
+ * The `failed` terminal state (after `MAX_CONSECUTIVE_ERRORS`) needs no page
+ * state at all — `SseConnectionIndicator` already renders the "Live updates
+ * unavailable — refresh to sync" fallback purely from `connectionState`, and
+ * every other block on this page renders unconditionally regardless of
+ * `connectionState`, so the header/steps/KB panel stay fully viewable.
  */
 export function InvestigationDetailPage() {
   const { investigationId } = useParams<{ investigationId: string }>()
@@ -69,12 +83,42 @@ export function InvestigationDetailPage() {
   const [kbExpanded, setKbExpanded] = useState(false)
   const timelineEndRef = useRef<HTMLLIElement | null>(null)
 
+  // Task 2.6b: the most recent ordered step list re-fetched on reconnect.
+  // `null` until the first successful reconnect backfill; once set, it
+  // supersedes the original one-shot fetch's steps as the merge baseline
+  // (see `mergeBackfilledSteps` below).
+  const [backfilledSteps, setBackfilledSteps] = useState<InvestigationStepDto[] | null>(null)
+
   // `undefined` while not-found/no id — disables the stream entirely rather
   // than opening an EventSource against a route that will never emit steps.
   const streamId = query.status === 'not-found' ? undefined : investigationId
-  const { connectionState, steps: liveStepEvents } = useInvestigationEvents(streamId)
 
-  const initialSteps: InvestigationStepDto[] = query.status === 'ok' ? query.data.steps : EMPTY_STEPS
+  const handleReconnect = useCallback(() => {
+    if (investigationId == null) return
+    // Fire-and-forget: a failed backfill fetch simply leaves the previous
+    // baseline in place (steps already rendered are never blanked) — the
+    // live stream that just reconnected will keep filling in from here
+    // regardless, and the next reconnect gets another chance to backfill.
+    void fetchInvestigationDetail(investigationId).then((result) => {
+      if (result.kind === 'ok') {
+        setBackfilledSteps(result.data.steps)
+      }
+    })
+  }, [investigationId])
+
+  const { connectionState, steps: liveStepEvents } = useInvestigationEvents(streamId, {
+    onReconnect: handleReconnect,
+  })
+
+  const fetchedSteps: InvestigationStepDto[] = query.status === 'ok' ? query.data.steps : EMPTY_STEPS
+  // The backfill baseline (once present) supersedes the original fetch's
+  // steps, deduped/merged by `order` — never a blind replace, so a step the
+  // original fetch already rendered with richer data (e.g. evidence) is
+  // preserved if the backfill snapshot happens to omit it.
+  const initialSteps = useMemo(
+    () => mergeBackfilledSteps(fetchedSteps, backfilledSteps),
+    [fetchedSteps, backfilledSteps],
+  )
   const steps = useMemo(
     () => mergeLiveStepEvents(initialSteps, liveStepEvents),
     [initialSteps, liveStepEvents],

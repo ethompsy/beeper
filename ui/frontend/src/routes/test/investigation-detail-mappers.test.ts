@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest'
 import {
   apiStepTypeToStepType,
   findFirstEvidenceStepOrder,
+  mergeBackfilledSteps,
   mergeLiveStepEvents,
   statusToBadgeVariant,
 } from '../investigation-detail-mappers'
@@ -101,5 +102,133 @@ describe('findFirstEvidenceStepOrder', () => {
 
   it('returns null for an empty step list', () => {
     expect(findFirstEvidenceStepOrder([])).toBeNull()
+  })
+})
+
+/**
+ * mergeBackfilledSteps — Task 2.6b's reconnect-backfill AC:
+ * "[T] On reconnect, missed steps backfill in order via
+ * GET /api/v1/investigations/{id} ... merged idempotently and deduped by
+ * order (no duplicate steps, no regression of already-shown steps)."
+ */
+describe('mergeBackfilledSteps', () => {
+  it('passes the current steps through unchanged when backfill is null (no reconnect yet)', () => {
+    const current = [step({ order: 1, label: 'Customer Impact' })]
+    expect(mergeBackfilledSteps(current, null)).toBe(current)
+  })
+
+  it('passes the current steps through unchanged when the backfill snapshot is empty', () => {
+    const current = [step({ order: 1, label: 'Customer Impact' })]
+    expect(mergeBackfilledSteps(current, [])).toBe(current)
+  })
+
+  it('backfills a step that arrived while disconnected (missing from current steps), inserted in order', () => {
+    const current = [
+      step({ order: 1, label: 'Customer Impact', state: 'completed' }),
+      step({ order: 3, label: 'Root Cause', state: 'active' }),
+    ]
+    const backfill = [
+      step({ order: 1, label: 'Customer Impact', state: 'completed' }),
+      step({ order: 2, label: 'Metric Query', state: 'completed', type: 'metric' }),
+      step({ order: 3, label: 'Root Cause', state: 'active' }),
+    ]
+
+    const merged = mergeBackfilledSteps(current, backfill)
+
+    expect(merged.map((s) => s.order)).toEqual([1, 2, 3])
+    expect(merged[1].label).toBe('Metric Query')
+  })
+
+  it('is deduped: a step present on both sides at the same order never appears twice', () => {
+    const current = [step({ order: 1, label: 'Customer Impact', state: 'completed' })]
+    const backfill = [step({ order: 1, label: 'Customer Impact', state: 'completed' })]
+
+    const merged = mergeBackfilledSteps(current, backfill)
+
+    expect(merged).toHaveLength(1)
+    expect(merged.filter((s) => s.order === 1)).toHaveLength(1)
+  })
+
+  it('is idempotent: applying the same backfill snapshot twice yields the same result both times', () => {
+    const current = [step({ order: 1, label: 'Customer Impact', state: 'active' })]
+    const backfill = [step({ order: 1, label: 'Customer Impact', state: 'completed' })]
+
+    const once = mergeBackfilledSteps(current, backfill)
+    const twice = mergeBackfilledSteps(once, backfill)
+
+    expect(twice).toEqual(once)
+  })
+
+  it('does not regress an already-shown step: a stale (less-advanced) backfill state loses to the more-advanced current state', () => {
+    // Simulates: a live SSE event already advanced this step to "completed"
+    // before the reconnect backfill's slightly-earlier snapshot arrives
+    // still showing "active" — the already-shown progress must not be undone.
+    const current = [step({ order: 1, label: 'Metric Query', state: 'completed', type: 'metric' })]
+    const backfill = [step({ order: 1, label: 'Metric Query', state: 'active', type: 'metric' })]
+
+    const merged = mergeBackfilledSteps(current, backfill)
+
+    expect(merged[0].state).toBe('completed')
+  })
+
+  it('applies real forward progress from the backfill (active -> completed)', () => {
+    const current = [step({ order: 1, label: 'Metric Query', state: 'active', type: 'metric' })]
+    const backfill = [step({ order: 1, label: 'Metric Query', state: 'completed', type: 'metric' })]
+
+    const merged = mergeBackfilledSteps(current, backfill)
+
+    expect(merged[0].state).toBe('completed')
+  })
+
+  it('preserves evidence/kbEntries already shown even when the winning side does not carry them', () => {
+    const current: InvestigationStepDto[] = [
+      {
+        order: 1,
+        key: 'k',
+        label: 'Signal Correlation',
+        state: 'completed',
+        type: 'correlation',
+        evidence: [{ kind: 'metric', query: 'http_requests_total', value: '412/min' }],
+      },
+    ]
+    // Backfill wins on rank (completed >= completed) but its DTO in this
+    // test simulates a snapshot without evidence populated — the value
+    // already shown must not be dropped.
+    const backfill: InvestigationStepDto[] = [
+      { order: 1, key: 'k', label: 'Signal Correlation', state: 'completed', type: 'correlation' },
+    ]
+
+    const merged = mergeBackfilledSteps(current, backfill)
+
+    expect(merged[0].evidence).toEqual([
+      { kind: 'metric', query: 'http_requests_total', value: '412/min' },
+    ])
+  })
+
+  it('carries evidence/kbEntries newly introduced by the backfill snapshot', () => {
+    const current: InvestigationStepDto[] = [step({ order: 1, label: 'KB Query', type: 'kb' })]
+    const backfill: InvestigationStepDto[] = [
+      {
+        order: 1,
+        key: 'k',
+        label: 'KB Query',
+        state: 'completed',
+        type: 'kb',
+        kbEntries: [{ id: 'KB-1', title: 'runbook' }],
+      },
+    ]
+
+    const merged = mergeBackfilledSteps(current, backfill)
+
+    expect(merged[0].kbEntries).toEqual([{ id: 'KB-1', title: 'runbook' }])
+  })
+
+  it('sorts the merged result by order even when the backfill snapshot arrives out of order', () => {
+    const current = [step({ order: 1 })]
+    const backfill = [step({ order: 3 }), step({ order: 1 }), step({ order: 2 })]
+
+    const merged = mergeBackfilledSteps(current, backfill)
+
+    expect(merged.map((s) => s.order)).toEqual([1, 2, 3])
   })
 })

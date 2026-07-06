@@ -132,3 +132,84 @@ export function mergeLiveStepEvents(
 
   return Array.from(byOrder.values()).sort((a, b) => a.order - b.order)
 }
+
+/**
+ * Terminal step states, ordered from "no progress yet" to "done" — used by
+ * `mergeBackfilledSteps` to decide which side of a merge represents more
+ * progress on a given step, per Task 2.6b's "no regression of already-shown
+ * steps" AC.
+ */
+const STEP_STATE_RANK: Record<string, number> = {
+  pending: 0,
+  active: 1,
+  error: 2,
+  completed: 2,
+}
+
+/**
+ * Merge a Task 2.6b reconnect-backfill fetch (a fresh
+ * `GET /api/v1/investigations/{id}` ordered step list) into the steps
+ * already rendered, keyed by `order`.
+ *
+ * This is the REST side of the reconnect backfill: `mergeLiveStepEvents`
+ * (Task 2.6a, above) already merges live SSE `step` events into the initial
+ * fetch by `order`; this function merges a full re-fetched snapshot the
+ * same way, so both merges share one dedupe/ordering rule for the whole
+ * page (`InvestigationDetailPage.tsx` layers this UNDER `mergeLiveStepEvents`
+ * — the backfill becomes the new baseline, live events still apply on top).
+ *
+ * Two properties the AC requires, both structural rather than incidental:
+ *   - **Deduped / no duplicates**: `byOrder` is a `Map` keyed by `order` —
+ *     it is structurally impossible to end up with two entries for the same
+ *     step, regardless of how many times a backfill snapshot is applied.
+ *   - **Idempotent**: applying the exact same backfill snapshot twice (e.g.
+ *     two reconnects in a row before any new live event arrives) yields the
+ *     same result both times — merging is keyed purely by `order` from the
+ *     two inputs, with no mutable/incremental state carried between calls.
+ *   - **No regression of already-shown steps**: for a given `order` present
+ *     on both sides, the step with the further-along `state` wins (a
+ *     backfill snapshot requested slightly before a fast-moving live event
+ *     landed could otherwise appear to "undo" that step back to `pending`).
+ *     Whichever side wins, `evidence`/`kbEntries` are preserved from
+ *     whichever side actually carries them (matching `mergeLiveStepEvents`'s
+ *     same rule) since the backfill's REST payload is the only side that
+ *     ever carries those forward-compatible fields (Q8).
+ *
+ * @param currentSteps The steps already rendered (initial fetch, merged with
+ *   whatever's already been backfilled/streamed so far).
+ * @param backfill The freshly re-fetched ordered step list, or `null` before
+ *   the first reconnect has completed (in which case `currentSteps` passes
+ *   through unchanged).
+ */
+export function mergeBackfilledSteps(
+  currentSteps: InvestigationStepDto[],
+  backfill: InvestigationStepDto[] | null,
+): InvestigationStepDto[] {
+  if (backfill == null) return currentSteps
+  if (backfill.length === 0) return currentSteps
+
+  const byOrder = new Map<number, InvestigationStepDto>(
+    currentSteps.map((step) => [step.order, step]),
+  )
+
+  for (const incoming of backfill) {
+    const existing = byOrder.get(incoming.order)
+    if (existing == null) {
+      byOrder.set(incoming.order, incoming)
+      continue
+    }
+
+    const incomingRank = STEP_STATE_RANK[incoming.state] ?? 0
+    const existingRank = STEP_STATE_RANK[existing.state] ?? 0
+    const winner = incomingRank >= existingRank ? incoming : existing
+    const loser = winner === incoming ? existing : incoming
+
+    byOrder.set(incoming.order, {
+      ...winner,
+      evidence: winner.evidence ?? loser.evidence,
+      kbEntries: winner.kbEntries ?? loser.kbEntries,
+    })
+  }
+
+  return Array.from(byOrder.values()).sort((a, b) => a.order - b.order)
+}
