@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   SummaryHeader,
@@ -8,13 +8,17 @@ import {
   FailureNotice,
   NotFoundMessage,
   DetailSkeleton,
+  SseConnectionIndicator,
   useIsNarrowViewport,
+  useInvestigationEvents,
+  useAutoScrollOnAppend,
   type RelatedKbPanelState,
 } from '../lib'
 import { useInvestigationDetail } from './useInvestigationDetail'
 import {
   apiStepTypeToStepType,
   findFirstEvidenceStepOrder,
+  mergeLiveStepEvents,
   statusToBadgeVariant,
 } from './investigation-detail-mappers'
 import type { InvestigationDetailMetadata, InvestigationStepDto } from '../api/investigation-detail'
@@ -23,12 +27,19 @@ import type { InvestigationDetailMetadata, InvestigationStepDto } from '../api/i
 const EMPTY_STEPS: InvestigationStepDto[] = []
 
 /**
- * InvestigationDetailPage — the investigation-detail "incident hero" (Task 2.5).
+ * InvestigationDetailPage — the investigation-detail "incident hero" (Task 2.5,
+ * live-streaming layered on top by Task 2.6a).
  *
  * Renders the INITIAL state from the Task 1.6 one-shot detail fetch
  * (`GET /api/v1/investigations/{id}`, via `useInvestigationDetail` /
- * `src/api/investigation-detail.ts`, which Task 2.5 owns). LIVE streaming
- * (SSE) is Task 2.6 — nothing here subscribes to the events stream.
+ * `src/api/investigation-detail.ts`, which Task 2.5 owns), then layers LIVE
+ * updates on top via `useInvestigationEvents` (Task 2.6a), which opens
+ * `GET /api/v1/investigations/{id}/events` (Task 1.6 JSON SSE) and streams
+ * `{order, key, label, state, type}` step updates. Incoming events are
+ * merged into the initial step list by `order` (`mergeLiveStepEvents`,
+ * `investigation-detail-mappers.ts`) — a live update never drops the
+ * `evidence`/`kbEntries` fields the initial fetch may have populated, since
+ * the stream payload doesn't carry those (Q8).
  *
  * The `SummaryHeader`'s `<h1>` carries `headingId="detail-summary-heading"`
  * — the contract `useRouteFocusManagement` (Task 2.1) targets on every
@@ -40,15 +51,41 @@ const EMPTY_STEPS: InvestigationStepDto[] = []
  * never waits on the network request to paint (NFR19: first-seconds facts
  * visible without interaction; also required so focus management doesn't
  * race the fetch on a cold load).
+ *
+ * ── The seam left for Task 2.6b (reconnect backfill) ──
+ *
+ * `useInvestigationEvents` exposes `onReconnect`/`onFailed` callbacks fired
+ * exactly once per lifecycle transition. This page does not use them today
+ * (2.6a's scope stops at the 4-state indicator) — 2.6b hangs its ordered/
+ * idempotent REST re-fetch (reusing `fetchInvestigationDetail`) off
+ * `onReconnect`, and its "Live updates unavailable — refresh to sync"
+ * fallback copy off `onFailed` / `connectionState === 'failed'`, without
+ * touching this hook's internals.
  */
 export function InvestigationDetailPage() {
   const { investigationId } = useParams<{ investigationId: string }>()
   const query = useInvestigationDetail(investigationId)
   const isNarrowViewport = useIsNarrowViewport()
   const [kbExpanded, setKbExpanded] = useState(false)
+  const timelineEndRef = useRef<HTMLLIElement | null>(null)
 
-  const steps: InvestigationStepDto[] = query.status === 'ok' ? query.data.steps : EMPTY_STEPS
+  // `undefined` while not-found/no id — disables the stream entirely rather
+  // than opening an EventSource against a route that will never emit steps.
+  const streamId = query.status === 'not-found' ? undefined : investigationId
+  const { connectionState, steps: liveStepEvents } = useInvestigationEvents(streamId)
+
+  const initialSteps: InvestigationStepDto[] = query.status === 'ok' ? query.data.steps : EMPTY_STEPS
+  const steps = useMemo(
+    () => mergeLiveStepEvents(initialSteps, liveStepEvents),
+    [initialSteps, liveStepEvents],
+  )
   const firstEvidenceOrder = useMemo(() => findFirstEvidenceStepOrder(steps), [steps])
+
+  // Auto-scroll rule (UX spec "Real-Time Feedback Patterns"): only scroll to
+  // a newly-appended step when the user was already within 100px of the
+  // timeline bottom; if they've scrolled up to read earlier evidence, new
+  // steps append silently without stealing their scroll position.
+  useAutoScrollOnAppend(timelineEndRef, steps.length)
 
   if (query.status === 'not-found') {
     return <NotFoundMessage investigationId={investigationId ?? ''} />
@@ -114,8 +151,20 @@ export function InvestigationDetailPage() {
               }
             />
           ))}
+          {/*
+            Zero-height sentinel — the auto-scroll target (`useAutoScrollOnAppend`,
+            Task 2.6a). `InvestigationStep` (Task 1.4 primitive) doesn't forward a
+            `ref`, so rather than change that shared library component just for
+            this, the timeline carries its own dedicated scroll anchor as the
+            list's last child (still valid inside <ol> — a plain <li>).
+          */}
+          <li ref={timelineEndRef} aria-hidden="true" className="h-0 list-none" />
         </ol>
       )}
+
+      {query.status === 'ok' ? (
+        <SseConnectionIndicator connectionState={connectionState} />
+      ) : null}
 
       {query.status === 'ok' && isFailed ? <FailureNotice message={metadata?.message} /> : null}
 

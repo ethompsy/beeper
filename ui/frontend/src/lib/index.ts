@@ -58,6 +58,10 @@ export type { NotFoundMessageProps } from './components/NotFoundMessage'
 export { DetailSkeleton } from './components/DetailSkeleton'
 export type { DetailSkeletonProps } from './components/DetailSkeleton'
 
+// SSE live-consume primitives (Task 2.6a)
+export { SseConnectionIndicator } from './components/SseConnectionIndicator'
+export type { SseConnectionIndicatorProps } from './components/SseConnectionIndicator'
+
 // List-view primitives (Task 2.2)
 export { InvestigationListSkeleton } from './components/InvestigationListSkeleton'
 export type { InvestigationListSkeletonProps } from './components/InvestigationListSkeleton'
@@ -86,3 +90,14 @@ export { useRouteFocusManagement } from './hooks/useRouteFocusManagement'
 
 export { useIsNarrowViewport } from './hooks/useIsNarrowViewport'
 export { useScrollRestoration } from './hooks/useScrollRestoration'
+
+export { useInvestigationEvents } from './hooks/useInvestigationEvents'
+export type {
+  InvestigationEventsConnectionState,
+  InvestigationStepEventPayload,
+  UseInvestigationEventsOptions,
+  UseInvestigationEventsResult,
+  EventSourceFactory,
+} from './hooks/useInvestigationEvents'
+
+export { useAutoScrollOnAppend } from './hooks/useAutoScrollOnAppend'
