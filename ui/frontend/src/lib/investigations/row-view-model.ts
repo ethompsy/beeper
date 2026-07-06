@@ -1,6 +1,7 @@
 import type { InvestigationCardVariant } from '../components/InvestigationCard'
 import type { StatusBadgeVariant } from '../components/StatusBadge'
 import type { InvestigationListItem } from '../../api/investigations-list'
+import { deriveComponent } from './derive-component'
 
 /**
  * row-view-model.ts — pure mapping from the Task 1.6 JSON API shape to the
@@ -135,13 +136,19 @@ export interface InvestigationRowViewModel {
   statusVariant: StatusBadgeVariant
   timestamp: string
   /**
-   * Raw `condition` field, unprocessed. Task 2.3 derives "affected component"
-   * and Task 2.4 derives a plain-language problem-state from this same raw
-   * field — this view-model intentionally does NOT interpret it, per Task
-   * 2.2's scope discipline note (row layout ready for it, logic lives
-   * elsewhere).
+   * Raw `condition` field, unprocessed. Task 2.4 derives a plain-language
+   * problem-state from this same raw field — this view-model intentionally
+   * does NOT interpret it for that purpose, per Task 2.2's scope discipline
+   * note (row layout ready for it, logic lives elsewhere).
    */
   condition: string | null
+  /**
+   * Best-effort "affected component" (Task 2.3), derived from `condition` via
+   * `deriveComponent` (src/lib/investigations/derive-component.ts). `null`
+   * when the condition text doesn't match any known detector shape — the
+   * card's `component` slot omits the line entirely in that case.
+   */
+  component: string | null
 }
 
 /** Map one API item to the props the list row needs. Pure — no signal count from this endpoint (list-only field; detail view Task 2.5 has it). */
@@ -156,5 +163,6 @@ export function toRowViewModel(item: InvestigationListItem, now?: Date): Investi
     statusVariant: resolveStatusBadgeVariant(item),
     timestamp: formatAge(ageSource, now),
     condition: item.condition,
+    component: deriveComponent(item.condition),
   }
 }

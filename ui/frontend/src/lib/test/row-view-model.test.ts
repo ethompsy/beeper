@@ -143,4 +143,21 @@ describe('toRowViewModel', () => {
     const row = toRowViewModel(makeItem({ status: 'failed' }))
     expect(row.variant).toBe('failed')
   })
+
+  it('derives `component` from a recognizable condition string (Task 2.3)', () => {
+    const row = toRowViewModel(
+      makeItem({ condition: 'Metric cpu_usage spike: 92.0, expected 15.0 ± 3.0' }),
+    )
+    expect(row.component).toBe('CPU / compute resources')
+  })
+
+  it('falls back to a null `component` when condition is unparseable, without crashing (Task 2.3)', () => {
+    const row = toRowViewModel(makeItem({ condition: 'some free-text condition' }))
+    expect(row.component).toBeNull()
+  })
+
+  it('falls back to a null `component` when condition is null (Task 2.3)', () => {
+    const row = toRowViewModel(makeItem({ condition: null }))
+    expect(row.component).toBeNull()
+  })
 })
