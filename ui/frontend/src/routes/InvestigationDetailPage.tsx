@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import {
   SummaryHeader,
   InvestigationStep,
@@ -12,6 +12,7 @@ import {
   useIsNarrowViewport,
   useInvestigationEvents,
   useAutoScrollOnAppend,
+  useStepAnchorScroll,
   type RelatedKbPanelState,
 } from '../lib'
 import { useInvestigationDetail } from './useInvestigationDetail'
@@ -76,9 +77,20 @@ const EMPTY_STEPS: InvestigationStepDto[] = []
  * unavailable — refresh to sync" fallback purely from `connectionState`, and
  * every other block on this page renders unconditionally regardless of
  * `connectionState`, so the header/steps/KB panel stay fully viewable.
+ *
+ * ── Step-anchor permalink (Task 3.2, FR53) ──
+ *
+ * Every rendered `InvestigationStep` carries `id="step-<order>"`. On mount
+ * (including a cold `/investigations/<id>#step-<order>` load) and again
+ * every time the merged step list grows, `useStepAnchorScroll` checks
+ * `useLocation().hash` against the DOM and scrolls the matching step into
+ * view once it exists — see that hook's doc comment for the full
+ * async-timing rationale and why this never competes with
+ * `useRouteFocusManagement`'s header focus (Task 2.1).
  */
 export function InvestigationDetailPage() {
   const { investigationId } = useParams<{ investigationId: string }>()
+  const location = useLocation()
   const query = useInvestigationDetail(investigationId)
   const isNarrowViewport = useIsNarrowViewport()
   const [kbExpanded, setKbExpanded] = useState(false)
@@ -131,6 +143,14 @@ export function InvestigationDetailPage() {
   // timeline bottom; if they've scrolled up to read earlier evidence, new
   // steps append silently without stealing their scroll position.
   useAutoScrollOnAppend(timelineEndRef, steps.length)
+
+  // Task 3.2 (FR53): resolve a `#step-<order>` permalink hash once the
+  // target step exists in the DOM. Called after `useAutoScrollOnAppend`
+  // above so that on the very first data arrival (0 -> N steps in one
+  // jump), if both effects fire in the same commit, this one runs second
+  // and its explicit anchor position wins over that hook's generic
+  // scroll-to-bottom-on-append behavior.
+  useStepAnchorScroll(location.hash, steps.length)
 
   if (query.status === 'not-found') {
     return <NotFoundMessage investigationId={investigationId ?? ''} />
@@ -191,6 +211,12 @@ export function InvestigationDetailPage() {
           {steps.map((step) => (
             <InvestigationStep
               key={step.order}
+              // Stable permalink anchor target (Task 3.2, FR53): `#step-<order>`.
+              // `order` (not `key`, which can be `null` — see
+              // `src/api/investigation-detail.ts`) is the one field every
+              // step is guaranteed to carry, and it's already the identity
+              // the merge helpers key off of.
+              id={`step-${step.order}`}
               type={apiStepTypeToStepType(step.type)}
               order={step.order}
               description={step.label ?? ''}

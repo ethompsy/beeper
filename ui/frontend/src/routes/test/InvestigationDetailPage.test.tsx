@@ -25,9 +25,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { InvestigationDetailPage } from '../InvestigationDetailPage'
 import type { InvestigationDetailDto } from '../../api/investigation-detail'
 
-function renderDetailPage(investigationId: string) {
+function renderDetailPage(investigationId: string, hash = '') {
   return render(
-    <MemoryRouter initialEntries={[`/investigations/${investigationId}`]}>
+    <MemoryRouter initialEntries={[`/investigations/${investigationId}${hash}`]}>
       <Routes>
         <Route path="/investigations/:investigationId" element={<InvestigationDetailPage />} />
       </Routes>
@@ -95,6 +95,7 @@ function detailDto(overrides: Partial<InvestigationDetailDto> = {}): Investigati
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('InvestigationDetailPage — summary header (NFR19)', () => {
@@ -497,5 +498,77 @@ describe('InvestigationDetailPage — failure fallback (Task 2.6b)', () => {
     await screen.findByText(/live updates unavailable/i)
 
     expect(screen.getByRole('button', { name: /refresh/i })).toBeVisible()
+  })
+})
+
+/**
+ * Task 3.2 (FR53) — detail-permalink step anchor.
+ *
+ * The Playwright cold-load half (real browser navigation + scroll-into-view
+ * + the sidebar-collapse/header-focus reconciliation) lives in
+ * `e2e/detail-permalink.spec.ts`. This RTL half proves the piece a memory
+ * router *can* prove: that a `#step-<order>` hash present at first render
+ * resolves to the matching `InvestigationStep` DOM node once the async
+ * fetch's steps actually render, using the exact `id="step-<order>"` scheme
+ * `InvestigationDetailPage` assigns.
+ */
+describe('InvestigationDetailPage — step-anchor permalink (Task 3.2, FR53)', () => {
+  it('assigns each rendered step a stable id="step-<order>"', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(detailDto())))
+
+    renderDetailPage('INV-0042')
+
+    await screen.findByText('Root Cause Hypothesis')
+    expect(document.getElementById('step-1')).toHaveTextContent('Customer Impact Assessment')
+    expect(document.getElementById('step-2')).toHaveTextContent('Knowledge Base Query')
+    expect(document.getElementById('step-3')).toHaveTextContent('Signal Correlation')
+    expect(document.getElementById('step-4')).toHaveTextContent('Root Cause Hypothesis')
+  })
+
+  it('scrolls the step named by a #step-<order> hash into view once steps render, on a cold load', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(detailDto())))
+
+    renderDetailPage('INV-0042', '#step-3')
+
+    await screen.findByText('Root Cause Hypothesis')
+
+    // The pre-existing Task 2.6a `useAutoScrollOnAppend` also calls
+    // `scrollIntoView` (on the timeline's bottom sentinel, `{ block: 'end'
+    // }`) the instant steps first arrive — unrelated to this anchor
+    // feature, out of this task's scope, and not something this test
+    // should regress on. `useStepAnchorScroll` is wired to run AFTER it
+    // (see `InvestigationDetailPage.tsx`), so the anchor's own call is
+    // always the *last* one and therefore wins the final scroll position —
+    // assert on that last call specifically rather than the total count.
+    const target = document.getElementById('step-3')
+    expect(target).not.toBeNull()
+    expect(scrollIntoView.mock.instances.at(-1)).toBe(target)
+    expect(scrollIntoView.mock.calls.at(-1)?.[0]).toMatchObject({ block: 'center' })
+  })
+
+  it('does not scroll the anchor target when the detail URL carries no hash', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(detailDto())))
+
+    renderDetailPage('INV-0042')
+
+    await screen.findByText('Root Cause Hypothesis')
+
+    // Only the unrelated auto-scroll-on-append sentinel call (`block: 'end'`)
+    // may fire — never a `block: 'center'` anchor call, which is
+    // `useStepAnchorScroll`'s distinguishing signature.
+    expect(scrollIntoView.mock.calls.every((call) => call[0]?.block !== 'center')).toBe(true)
+  })
+
+  it('is a silent no-op for a stale/invalid step anchor (no matching step)', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(detailDto())))
+
+    renderDetailPage('INV-0042', '#step-999')
+
+    await screen.findByText('Root Cause Hypothesis')
+
+    expect(scrollIntoView.mock.calls.every((call) => call[0]?.block !== 'center')).toBe(true)
   })
 })

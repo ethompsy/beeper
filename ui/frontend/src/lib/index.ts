@@ -101,3 +101,6 @@ export type {
 } from './hooks/useInvestigationEvents'
 
 export { useAutoScrollOnAppend } from './hooks/useAutoScrollOnAppend'
+
+// Detail-permalink step anchor (Task 3.2, FR53)
+export { useStepAnchorScroll } from './hooks/useStepAnchorScroll'
