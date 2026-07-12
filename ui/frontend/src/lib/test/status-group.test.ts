@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   filterByStatusGroup,
+  isStatusGroup,
   orderInvestigations,
   selectAndOrder,
   severityRank,
@@ -123,6 +124,29 @@ describe('status-group', () => {
       ]
       const result = selectAndOrder(items, 'active')
       expect(result.map((i) => i.id)).toEqual(['a-critical', 'a-low'])
+    })
+  })
+
+  describe('isStatusGroup (Task 3.1: URL query param → StatusGroup guard, FR53)', () => {
+    it('accepts every known status group', () => {
+      for (const group of STATUS_GROUPS) {
+        expect(isStatusGroup(group)).toBe(true)
+      }
+    })
+
+    it('rejects an unrecognized value', () => {
+      expect(isStatusGroup('bogus')).toBe(false)
+      expect(isStatusGroup('Active')).toBe(false) // case-sensitive — no silent normalization
+      expect(isStatusGroup('investigating')).toBe(false) // raw job-phase status, not a group
+    })
+
+    it('rejects null/undefined (the absent-param case)', () => {
+      expect(isStatusGroup(null)).toBe(false)
+      expect(isStatusGroup(undefined)).toBe(false)
+    })
+
+    it('rejects the empty string', () => {
+      expect(isStatusGroup('')).toBe(false)
     })
   })
 })

@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route, Link } from 'react-router-dom'
+import { MemoryRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { InvestigationListPage } from '../routes/InvestigationListPage'
 
 type Item = Record<string, unknown>
@@ -61,9 +61,16 @@ function mockFetchGated(data: unknown, opts: { ok?: boolean; status?: number } =
   return { fetchMock, release: resolveFn }
 }
 
-function renderListPage() {
+/** Renders the current route's `search` string so tests can assert on the URL (Task 3.1, FR53). */
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location-search">{location.search}</div>
+}
+
+function renderListPage(initialEntries: string[] = ['/investigations']) {
   return render(
-    <MemoryRouter initialEntries={['/investigations']}>
+    <MemoryRouter initialEntries={initialEntries}>
+      <LocationProbe />
       <Routes>
         <Route path="/investigations" element={<InvestigationListPage />} />
         <Route
@@ -240,6 +247,117 @@ describe('InvestigationListPage — status-group filter + Pending distinctness (
 
     expect(pendingBadge.closest('[data-slot="status-badge"]')).toHaveAttribute('data-variant', 'pending')
     expect(runningBadge.closest('[data-slot="status-badge"]')).toHaveAttribute('data-variant', 'investigating')
+  })
+})
+
+describe('InvestigationListPage — status-group filter is a URL permalink (Task 3.1, FR53)', () => {
+  it('selecting a filter updates the URL query param', async () => {
+    const user = userEvent.setup()
+    mockFetchImmediate([
+      makeItem({ id: 'active-1', service: 'svc-active', status: 'investigating' }),
+      makeItem({ id: 'completed-1', service: 'svc-completed', status: 'completed' }),
+    ])
+    renderListPage()
+
+    expect(screen.getByTestId('location-search').textContent).toBe('')
+
+    await screen.findByRole('link', { name: /svc-active investigation/i })
+    await user.click(screen.getByRole('tab', { name: /Resolved/ }))
+
+    await waitFor(() => expect(screen.getByTestId('location-search')).toHaveTextContent('?status=resolved'))
+
+    await user.click(screen.getByRole('tab', { name: /Failed/ }))
+    await waitFor(() => expect(screen.getByTestId('location-search')).toHaveTextContent('?status=failed'))
+
+    await user.click(screen.getByRole('tab', { name: /Active/ }))
+    await waitFor(() => expect(screen.getByTestId('location-search')).toHaveTextContent('?status=active'))
+  })
+
+  it('cold-loading a URL seeded with ?status=resolved (no prior in-app state) reproduces the Resolved-filtered list and tab selection (FR53)', async () => {
+    mockFetchImmediate([
+      makeItem({ id: 'active-1', service: 'svc-active', status: 'investigating' }),
+      makeItem({ id: 'completed-1', service: 'svc-completed', status: 'completed' }),
+    ])
+    // Seed the router directly at the query-string URL — never touches the
+    // "active" default or clicks any tab first, simulating a pasted link.
+    renderListPage(['/investigations?status=resolved'])
+
+    expect(await screen.findByRole('link', { name: /svc-completed investigation/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /svc-active investigation/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Resolved/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('cold-loading a URL seeded with ?status=failed reproduces the Failed-filtered list (FR53)', async () => {
+    mockFetchImmediate([
+      makeItem({ id: 'active-1', service: 'svc-active', status: 'investigating' }),
+      makeItem({ id: 'failed-1', service: 'svc-failed', status: 'failed' }),
+    ])
+    renderListPage(['/investigations?status=failed'])
+
+    expect(await screen.findByRole('link', { name: /svc-failed investigation/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /svc-active investigation/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Failed/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('an invalid/unknown ?status= value falls back to the default "active" group instead of crashing', async () => {
+    mockFetchImmediate([
+      makeItem({ id: 'active-1', service: 'svc-active', status: 'investigating' }),
+      makeItem({ id: 'completed-1', service: 'svc-completed', status: 'completed' }),
+    ])
+    renderListPage(['/investigations?status=bogus'])
+
+    expect(await screen.findByRole('link', { name: /svc-active investigation/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Active/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('an absent ?status= param defaults to "active" (unchanged default behavior)', async () => {
+    mockFetchImmediate([makeItem({ id: 'active-1', status: 'investigating' })])
+    renderListPage(['/investigations'])
+
+    await screen.findByRole('link', { name: /investigation,/ })
+    expect(screen.getByRole('tab', { name: /Active/ })).toHaveAttribute('aria-selected', 'true')
+  })
+})
+
+describe('InvestigationListPage — status-group filter maps to the existing `status` fetch param, no operator change (Task 3.1 AC, R6/D6)', () => {
+  it('fetches the investigation list with no `status` filter regardless of the URL status group (post-list filtering, R6/D6)', async () => {
+    // `active` genuinely can't narrow (spans 2 job-phase statuses), but this
+    // also guards a specific pitfall: `failed` is spelled identically in
+    // both the status-*group* vocabulary and the API's raw `status`
+    // vocabulary, so a naive `{ status: statusGroup }` pass-through would
+    // silently narrow the fetch (and break the sibling groups' counts) the
+    // moment the URL says `?status=failed`. Assert it never does, for any
+    // of the three groups.
+    for (const group of ['active', 'resolved', 'failed']) {
+      const fetchMock = mockFetchImmediate([
+        makeItem({ id: 'active-1', status: 'investigating' }),
+        makeItem({ id: 'failed-1', status: 'failed' }),
+      ])
+      const { unmount } = renderListPage([`/investigations?status=${group}`])
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/v1/investigations/')
+      expect(init.signal).toBeInstanceOf(AbortSignal)
+
+      unmount()
+    }
+  })
+
+  it('the group-count badges reflect the full cross-group dataset even when a non-active group is selected via cold URL load', async () => {
+    mockFetchImmediate([
+      makeItem({ id: 'a1', status: 'investigating' }),
+      makeItem({ id: 'a2', status: 'awaiting_confirmation' }),
+      makeItem({ id: 'r1', status: 'completed' }),
+      makeItem({ id: 'f1', status: 'failed' }),
+    ])
+    renderListPage(['/investigations?status=failed'])
+
+    // Wait for the fetch to resolve and rows/counts to settle.
+    await screen.findByRole('link', { name: /investigation,/ })
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Failed/ })).toHaveTextContent('(1)'))
+    expect(screen.getByRole('tab', { name: /^Active/ })).toHaveTextContent('(2)')
+    expect(screen.getByRole('tab', { name: /Resolved/ })).toHaveTextContent('(1)')
   })
 })
 
