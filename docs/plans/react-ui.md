@@ -122,8 +122,8 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 |---|------|-----------|--------------|--------|
 | 3.1 | URL-encode **list** state — status-group filter (+ future filters) in query params → `list_investigations(status=…)` | M | 2.2 | done |
 | 3.2 | URL-encode **detail** state — investigation id (path) + anchored step (`#step-<id>`); cold load auto-collapses sidebar (FR44) + focuses header | M | 2.5 | done |
-| 3.3 | Content-vs-chrome boundary — assert sidebar/scroll are **local**, not encoded; reload hydrates from URL params only | S | 3.1, 3.2 | pending |
-| 3.4 | Permalink-integrity e2e suite — cold-load deep links reproduce the same view | M | 3.1, 3.2 | pending |
+| 3.3 | Content-vs-chrome boundary — assert sidebar/scroll are **local**, not encoded; reload hydrates from URL params only | S | 3.1, 3.2 | in progress |
+| 3.4 | Permalink-integrity e2e suite — cold-load deep links reproduce the same view | M | 3.1, 3.2 | in progress |
 
 **Task 3.1 AC:** `[T]` selecting a filter updates the URL; cold-loading it reproduces the filtered list (FR53) · `[T]` maps to the existing `status` query, no operator change (R6/D6)
 **Task 3.2 AC:** `[T]` a detail URL with `#step-<id>` cold-loads anchored to that step · `[T]` cold load auto-collapses the sidebar (FR44) and focuses the summary header
