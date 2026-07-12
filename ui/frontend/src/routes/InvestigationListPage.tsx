@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   InvestigationCard,
   InvestigationListSkeleton,
@@ -14,6 +14,7 @@ import {
   STATUS_GROUPS,
   STATUS_GROUP_LABELS,
   filterByStatusGroup,
+  isStatusGroup,
   selectAndOrder,
   type StatusGroup,
 } from '../lib/investigations/status-group'
@@ -36,6 +37,30 @@ function InvestigationCardRouterLink({ href, children, ...rest }: InvestigationC
   )
 }
 
+/** The list permalink's status-group query param name (Task 3.1, FR53). */
+const STATUS_GROUP_PARAM = 'status'
+
+/**
+ * Derive the JSON list endpoint's `status` fetch param from the URL's status
+ * *group* (Task 3.1 AC: "maps to the existing status query the API already
+ * accepts ... no operator change", R6/D6). Always resolves to `undefined` —
+ * deliberately, not a stub: `list_investigations(status=…)` only accepts a
+ * single job-phase status, but `active` spans two (`investigating` +
+ * `awaiting_confirmation`), and even the single-status groups (`resolved` →
+ * `completed`, `failed` → `failed`) can't be pushed down to the fetch
+ * without breaking the group-count badges below, which need the *other*
+ * groups' rows too. Kept as an explicit, named, tested function (not
+ * inlined as a bare `undefined`) as a guard against a specific pitfall:
+ * `failed` happens to be spelled identically in both the status-*group*
+ * vocabulary and the API's raw `status` vocabulary, so a naive
+ * `{ status: statusGroup }` pass-through would silently start narrowing the
+ * fetch — and breaking the sibling groups' counts — the moment someone
+ * selects the Failed tab.
+ */
+function deriveListFetchStatus(_group: StatusGroup): InvestigationListItem['status'] | undefined {
+  return undefined
+}
+
 /**
  * InvestigationListPage — the "first-seconds" triage list (Task 2.2).
  *
@@ -50,10 +75,28 @@ function InvestigationCardRouterLink({ href, children, ...rest }: InvestigationC
  *     (FR22), and
  *   - restores scroll position when returning from the detail route (FR22).
  *
- * Filter state is local `useState` for now (Task 3.1 lifts it into the URL
- * query string) — kept as a single `StatusGroup` value passed through pure
- * functions (`status-group.ts`) so that migration is a matter of swapping
- * the state source, not rewriting the filter logic.
+ * Filter state lives in the `?status=` URL query param (Task 3.1, FR53) via
+ * `useSearchParams` — not local `useState` and not `sessionStorage` — so the
+ * selected status group is a shareable permalink: copying the URL and
+ * cold-loading it (no prior in-app state) reproduces the same filtered
+ * list. The group value is still just a `StatusGroup` passed through the
+ * same pure functions as before (`status-group.ts`'s `filterByStatusGroup`/
+ * `selectAndOrder`), which remain router-agnostic by design (see that
+ * module's doc comment) — this page is the only thing that knows about the
+ * URL.
+ *
+ * The underlying fetch (`fetchInvestigations`) is deliberately called
+ * *unfiltered* (no `status` query param) regardless of which group is
+ * selected: the status-group filter is a UI grouping, not a single
+ * job-phase `status` value the JSON API accepts (`active` spans two
+ * statuses — `investigating` + `awaiting_confirmation` — which the API's
+ * single-value `status` param can't express without an operator change,
+ * R6/D6), and the group-count badges in the filter control need full,
+ * cross-group data to stay accurate no matter which group is currently
+ * selected. So the "existing `status` query the API already accepts"
+ * (R6/D6) stays exactly as it was pre-Task-3.1 — untouched, no operator
+ * change — and the status-group filter/order continues to be applied
+ * client-side (`selectAndOrder`) post-fetch, same as before this task.
  *
  * "Affected component" (Task 2.3) and plain-language "problem state" (Task
  * 2.4, FR47) are both derived from the same raw `condition` field by
@@ -65,7 +108,27 @@ function InvestigationCardRouterLink({ href, children, ...rest }: InvestigationC
 export function InvestigationListPage() {
   const [investigations, setInvestigations] = useState<InvestigationListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [statusGroup, setStatusGroup] = useState<StatusGroup>(DEFAULT_STATUS_GROUP)
+
+  // Status-group filter lives in the URL (Task 3.1, FR53) — not local state.
+  // Absent or unrecognized values fall back to the active-first default
+  // (`isStatusGroup` guards the raw string; see status-group.ts).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawStatusGroup = searchParams.get(STATUS_GROUP_PARAM)
+  const statusGroup: StatusGroup = isStatusGroup(rawStatusGroup) ? rawStatusGroup : DEFAULT_STATUS_GROUP
+
+  function handleSelectStatusGroup(group: StatusGroup) {
+    // `replace: true` — switching filter tabs updates the address bar (so
+    // the resulting URL is always a valid permalink) without pushing a new
+    // browser-history entry per click, matching typical faceted-filter UX.
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set(STATUS_GROUP_PARAM, group)
+        return next
+      },
+      { replace: true },
+    )
+  }
 
   const isLoading = investigations === null && error === null
   // Scroll restoration must wait until the real content (not the loading
@@ -74,8 +137,9 @@ export function InvestigationListPage() {
 
   useEffect(() => {
     const controller = new AbortController()
+    const status = deriveListFetchStatus(statusGroup)
 
-    fetchInvestigations(undefined, controller.signal)
+    fetchInvestigations(status ? { status } : undefined, controller.signal)
       .then((data) => {
         setInvestigations(data)
         setError(null)
@@ -86,6 +150,11 @@ export function InvestigationListPage() {
       })
 
     return () => controller.abort()
+    // Deliberately `[]`, not `[statusGroup]`: `deriveListFetchStatus` always
+    // resolves to `undefined` regardless of `statusGroup` (see its doc
+    // comment above), so re-running this fetch on group change would be a
+    // wasted round-trip, not a correctness fix. Group filtering/ordering of
+    // the already-fetched `investigations` happens in the `rows` memo below.
   }, [])
 
   const groupCounts = useMemo(() => {
@@ -112,7 +181,11 @@ export function InvestigationListPage() {
     <div data-testid="investigation-list-page" className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold text-text-primary">Investigations</h1>
-        <StatusGroupFilter options={filterOptions} selectedId={statusGroup} onSelect={(id) => setStatusGroup(id as StatusGroup)} />
+        <StatusGroupFilter
+          options={filterOptions}
+          selectedId={statusGroup}
+          onSelect={(id) => handleSelectStatusGroup(id as StatusGroup)}
+        />
       </div>
 
       {error ? (

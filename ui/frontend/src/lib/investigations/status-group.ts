@@ -25,6 +25,18 @@ const STATUS_GROUP_MEMBERSHIP: Record<StatusGroup, ReadonlySet<InvestigationList
 
 export const DEFAULT_STATUS_GROUP: StatusGroup = 'active'
 
+/**
+ * Type guard for parsing the list page's `?status=` permalink query param
+ * (Task 3.1, FR53) back into a `StatusGroup`. Deliberately just a guard (not
+ * a parse-with-default helper) so this pure module stays agnostic about
+ * where the raw string comes from (`URLSearchParams` today) and how the
+ * caller wants to handle an absent/invalid value — `InvestigationListPage`
+ * falls back to `DEFAULT_STATUS_GROUP` when this returns `false`.
+ */
+export function isStatusGroup(value: string | null | undefined): value is StatusGroup {
+  return value != null && (STATUS_GROUPS as readonly string[]).includes(value)
+}
+
 /** Human-readable labels for the filter control. */
 export const STATUS_GROUP_LABELS: Record<StatusGroup, string> = {
   active: 'Active',

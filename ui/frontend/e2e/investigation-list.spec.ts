@@ -129,6 +129,43 @@ test.describe('investigation list — real browser (FR22/FR45/FR46/NFR19)', () =
     await expect(runningCard.locator('[data-slot="status-badge"]')).toHaveAttribute('data-variant', 'investigating')
   })
 
+  test('selecting a filter updates the URL, and cold-loading that URL directly reproduces the filtered list (Task 3.1 AC, FR53)', async ({ page }) => {
+    await mockInvestigationsApi(page, [
+      makeInvestigation({ id: 'active-1', service: 'svc-active', status: 'investigating' }),
+      makeInvestigation({ id: 'completed-1', service: 'svc-completed', status: 'completed' }),
+      makeInvestigation({ id: 'failed-1', service: 'svc-failed', status: 'failed' }),
+    ])
+
+    // Part 1: selecting a filter in-app updates the address bar.
+    await page.goto('/app/investigations')
+    await expect(page.getByRole('link', { name: /svc-active investigation/i })).toBeVisible()
+
+    await page.getByRole('tab', { name: /Resolved/ }).click()
+    await expect(page).toHaveURL(/[?&]status=resolved(&|$)/)
+
+    // Part 2: a fresh, cold navigation straight to that URL — no prior
+    // in-app click, no prior page in this browsing context — reproduces the
+    // identical filtered view. `page.goto` (rather than continuing from the
+    // click above) is the point: this is what happens when a teammate pastes
+    // the copied link into a new tab.
+    await page.goto('/app/investigations?status=resolved')
+    await expect(page.getByRole('link', { name: /svc-completed investigation/i })).toBeVisible()
+    await expect(page.getByRole('link', { name: /svc-active investigation/i })).toHaveCount(0)
+    await expect(page.getByRole('tab', { name: /Resolved/ })).toHaveAttribute('aria-selected', 'true')
+
+    // Cold-loading the Failed permalink reproduces that filtered view too.
+    await page.goto('/app/investigations?status=failed')
+    await expect(page.getByRole('link', { name: /svc-failed investigation/i })).toBeVisible()
+    await expect(page.getByRole('link', { name: /svc-active investigation/i })).toHaveCount(0)
+    await expect(page.getByRole('tab', { name: /Failed/ })).toHaveAttribute('aria-selected', 'true')
+
+    // An unrecognized status value falls back to the default "active" group
+    // instead of crashing or showing a blank frame.
+    await page.goto('/app/investigations?status=bogus')
+    await expect(page.getByRole('link', { name: /svc-active investigation/i })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /Active/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
   test('restores list scroll position after navigating to detail and back', async ({ page }) => {
     const many = Array.from({ length: 40 }, (_, i) =>
       makeInvestigation({ id: `inv-${i}`, service: `svc-${i}`, status: 'investigating' }),
