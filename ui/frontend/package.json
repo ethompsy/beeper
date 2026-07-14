@@ -10,6 +10,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint src",
     "lint:tw": "eslint --config eslint.config.mjs 'src/**/*.{ts,tsx}'",
+    "lint:terms": "node scripts/check-legacy-labels.mjs",
     "preview": "vite preview",
     "verify-build": "node scripts/verify-build.mjs",
     "storybook": "storybook dev -p 6006",
