@@ -135,6 +135,10 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 - **3.3 (done, merged `01d2385`)** — negative test only (no source change; `useSidebarState` keeps manual override in memory / cleared on route change, `useScrollRestoration` uses `sessionStorage` — chrome never touches the URL). `e2e/permalink-chrome-boundary.spec.ts`: at <1200px, manual sidebar expand + scroll do NOT survive a **`browser.newContext()`** cold-load of the same `?status=` URL (sidebar resets to collapsed, scrollY=0), while the filter reproduces from the URL; and a fresh-context `page.goto` hydrates the filtered list purely from URL+API. (`newContext` proves URL-only hydration vs. leftover `sessionStorage`.)
 - **3.4 (done, merged `4f9ffa3`)** — the NFR24 integrity gate, no source change (3.1/3.2 already correct). `e2e/permalink-integrity.spec.ts`: cold-load a filtered-list permalink → identical filtered/ordered list + restored scroll; cold-load a **Completed** investigation detail `#step-<order>` → identical detail + anchored step scrolled into view (closes the 3.2 follow-up: the completed-status × step-anchor combo).
 
+**Milestone 1.4 progress:**
+- **4.2 (done, merged `6ab7dff`)** — library finalized for design-sync: all 15 components have complete stories (gaps closed: `InvestigationStep` deploy type; `InvestigationCard` component/problem-state slots), enforced by a new **story-coverage test** (`src/lib/test/story-coverage.test.ts`, 32) so no component graduates without a story; `dist-import.test.ts` widened to the full barrel (15 components + 7 hooks); token lint clean (FR51); `DESIGN_SYNC.md` refreshed to the real inventory for 4.4. Q3's three open items (execution vs static analysis, d.ts bundling, dist-lib package.json) remain for the actual 4.4 run.
+- **4.1 (done, merged; `[H]` APPROVED by user 2026-07-13)** — full FR52 glossary + §15 density audit (`docs/design/terminology-glossary.md`): §9 step labels reconciled to shipped code ("Metric Query"/"Log Query"/"KB Query", `correlation` documented), §14 lint coverage (16 rules + 4 justified exclusions) enforced via `npm run lint:terms` + `src/test/legacy-label-lint.test.ts` (`[T]`). Density resolutions (user 2026-07-13): **D1 FIXED** — impact line renders only with real `correlated_services` (supersedes the 2.5 FR48-placeholder AC); **D2 FIXED** — no type badge on `summary` steps (per approved 1.8 decision) → `InvestigationStep.test.tsx`; **L1 DEFERRED** (severity chip re-emphasis; revisit after 4.4). SummaryHeader severity-color bug spawned as a separate follow-up chip. Combined base after fixes: **345 vitest + 28 e2e**, `lint:terms` clean.
+
 **Milestone 1.3 COMPLETE (4/4) — permalinks shipped.** Any triage view is a shareable link: list filter in `?status=`, detail step in `#step-<id>`, cold-load reproduces the identical view, chrome stays local — all proven by e2e. Combined base: **307 vitest + 28 e2e**. **Phase 1 Milestones 1.1–1.3 done; only Milestone 1.4 remains** (design-sync trial, language-pass, first-increment triage-glance acceptance — the `[H]` gates).
 
 **Parallelizable:** 3.1 + 3.2 concurrent; 3.3 then 3.4. Up to 8 concurrent.
@@ -144,7 +148,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 4.1 | Full terminology glossary + per-view visual-density audit (extends the 1.8 draft) | M | 1.8, 2.2, 2.5 | in progress |
+| 4.1 | Full terminology glossary + per-view visual-density audit (extends the 1.8 draft) | M | 1.8, 2.2, 2.5 | done |
 | 4.2 | Finalize/polish the component library (extracted as-you-go in 1.2); enforce token-only styling; complete Storybook stories | M | 2.1, 2.2, 2.5 | done |
 | 4.3 | Triage-glance acceptance test with 2 non-builder reviewers | S | 2.2, 2.4 | pending |
 | 4.4 | Full `/design-sync` pass on the finalized library | M | 4.2 | pending |

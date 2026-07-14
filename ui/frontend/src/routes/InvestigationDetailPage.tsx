@@ -245,11 +245,17 @@ export function InvestigationDetailPage() {
 
       {query.status === 'ok' && isFailed ? <FailureNotice message={metadata?.message} /> : null}
 
-      {query.status === 'ok' ? (
-        <p data-field="correlation-placeholder" className="text-sm text-text-secondary">
-          {metadata?.correlated_services != null && metadata.correlated_services.length > 0
-            ? `Impact: ${metadata.correlated_services.join(', ')}`
-            : 'Impact: not yet correlated'}
+      {/* D1 (density audit §15, user-approved): the impact line renders ONLY
+          when the backend actually supplies correlated services (FR48 /
+          RFC 0001 Phase 3). The former unconditional "Impact: not yet
+          correlated" placeholder was noise on every investigation while
+          correlation isn't shipped; suppressing it until real data exists
+          supersedes the original FR48-placeholder AC (Task 2.5). */}
+      {query.status === 'ok' &&
+      metadata?.correlated_services != null &&
+      metadata.correlated_services.length > 0 ? (
+        <p data-field="correlation-impact" className="text-sm text-text-secondary">
+          {`Impact: ${metadata.correlated_services.join(', ')}`}
         </p>
       ) : null}
 

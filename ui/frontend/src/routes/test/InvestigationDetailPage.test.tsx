@@ -279,13 +279,26 @@ describe('InvestigationDetailPage — Related KB panel (FR26)', () => {
   })
 })
 
-describe('InvestigationDetailPage — FR48 correlation placeholder', () => {
-  it('shows "impact: not yet correlated" when correlated_services is absent', async () => {
+describe('InvestigationDetailPage — FR48 correlation impact line (D1, density audit)', () => {
+  it('renders NO impact line when correlated_services is absent (D1: placeholder suppressed until real data ships)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(detailDto())))
 
     renderDetailPage('INV-0042')
 
-    expect(await screen.findByText(/impact: not yet correlated/i)).toBeVisible()
+    // Wait for the page to settle on real content first, then assert absence.
+    expect(await screen.findByText('HTTP 5xx error rate elevated (12%)')).toBeVisible()
+    expect(screen.queryByText(/not yet correlated/i)).not.toBeInTheDocument()
+    expect(document.querySelector('[data-field="correlation-impact"]')).not.toBeInTheDocument()
+  })
+
+  it('renders the impact line once the backend supplies correlated services (FR48 forward-compat)', async () => {
+    const dto = detailDto()
+    dto.metadata.correlated_services = ['frontend', 'checkout']
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(dto)))
+
+    renderDetailPage('INV-0042')
+
+    expect(await screen.findByText('Impact: frontend, checkout')).toBeVisible()
   })
 })
 

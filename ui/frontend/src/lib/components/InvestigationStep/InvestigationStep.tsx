@@ -82,7 +82,13 @@ export function InvestigationStep({
       )}
       {...rest}
     >
-      <span className="text-xs text-text-secondary">{STEP_TYPE_LABEL[type]}</span>
+      {/* D2 (density audit §15, user-approved): summary steps carry no type
+          badge — the approved glossary says the summary IS the content, a
+          "Summary" label above it is redundant chrome. All other types keep
+          their evidence-type badge. */}
+      {type !== 'summary' ? (
+        <span className="text-xs text-text-secondary">{STEP_TYPE_LABEL[type]}</span>
+      ) : null}
       <p className="text-base text-text-primary">{description}</p>
       {evidence != null ? <div data-slot="step-evidence">{evidence}</div> : null}
     </li>

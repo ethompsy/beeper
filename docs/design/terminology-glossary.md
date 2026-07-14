@@ -255,7 +255,7 @@ The `[T]` legacy-label lint (`ui/frontend/scripts/legacy-label-rules.mjs`, prove
 
 ### Investigation List view (`InvestigationListPage.tsx` + `InvestigationCard.tsx`)
 
-**Finding L1 — re-emphasize (not remove): Severity renders as plain secondary-colored text, not a colored chip.**
+**Finding L1 — re-emphasize (not remove): Severity renders as plain secondary-colored text, not a colored chip.** *(DEFERRED — revisit after Task 4.4)*
 `InvestigationCard.tsx`'s metadata line renders severity as `<span data-field="severity">{severity}</span>` inside a `flex items-center gap-2 text-sm text-text-secondary` row — identical visual weight to the signal count and timestamp next to it. This is the single most safety-critical list fact (FR46: "high-severity first") yet it carries no color coding, unlike the job-phase `StatusBadge` on the same row (which IS a colored pill) and unlike the original Jinja "card severity tag" this glossary's §3 documents. `StatusBadge.tsx` already reserves a `severity-critical` variant alias for exactly this purpose (its variant-taxonomy doc comment: "only its `critical` value maps onto the shared critical color... `low`/`medium`/`high` map to `muted`/warning-adjacent/`warning`"), but `InvestigationCard` never uses it. **Recommended for 4.2:** render severity as a small colored chip (reusing `StatusBadge`'s color mapping) instead of plain text, so severity reads via color during a scan, not just position in a bullet-separated line.
 
 **Reviewed, confirmed NOT a finding:**
@@ -266,10 +266,12 @@ The `[T]` legacy-label lint (`ui/frontend/scripts/legacy-label-rules.mjs`, prove
 
 ### Investigation Detail view (`InvestigationDetailPage.tsx` + `SummaryHeader`/`InvestigationStep`/etc.)
 
-**Finding D1 — remove: the unconditional "Impact: not yet correlated" placeholder line.**
+> **Resolutions (user review 2026-07-13):** glossary + audit **approved** `[H]`. **D1 and D2 FIXED** in the same increment (see `InvestigationDetailPage.tsx` — impact line renders only with real `correlated_services`; `InvestigationStep.tsx` — no type badge on `summary` steps; tests updated). **L1 DEFERRED** by user decision — the severity-chip re-emphasis is a visual design call to revisit after the design-sync pass (Task 4.4).
+
+**Finding D1 — remove: the unconditional "Impact: not yet correlated" placeholder line.** *(FIXED)*
 `InvestigationDetailPage.tsx` always renders a `data-field="correlation-placeholder"` paragraph reading either `Impact: {services}` or, when there's nothing to show, the literal placeholder **"Impact: not yet correlated"**. Per the component's own doc comments and `docs/specs/ux-design-specification.md`'s first-seconds table (row 4b), cross-service correlation is **gated on RFC 0001 Phase 3 (FR48) and not in the first increment** — meaning, in practice, essentially every investigation today renders this permanent "we don't have this yet" line. This is exactly the kind of non-essential chrome FR52 asks the density audit to name: an always-on disclosure of an unshipped feature's absence, on every single detail view. **Recommended for 4.2:** suppress the line entirely when `correlated_services` is empty (rather than rendering a placeholder sentence), matching the pattern the codebase already uses elsewhere (e.g. `InvestigationCard`'s `component` slot, which omits its line rather than showing an empty one) — restore the paragraph once FR48 ships real data.
 
-**Finding D2 — remove/de-emphasize: `summary`-type steps render a "Summary" type-label, contradicting the glossary's own 1.8 decision.**
+**Finding D2 — remove/de-emphasize: `summary`-type steps render a "Summary" type-label, contradicting the glossary's own 1.8 decision.** *(FIXED)*
 See §9 above: the 1.8 draft explicitly resolved that summary steps should render "no badge... summary steps are prose-labeled by the investigator." The shipped `InvestigationStep.tsx` renders `STEP_TYPE_LABEL[type]` unconditionally for every step type, including `summary`, so a small "Summary" label currently appears above every summary step's prose body — an extra, always-on line of chrome the team already decided wasn't needed. **Recommended for 4.2:** suppress the type-label specifically for `type === 'summary'`, restoring the previously-agreed density decision (the border-color accent can stay; only the redundant text label goes).
 
 **Reviewed, confirmed NOT a finding:**
