@@ -1,8 +1,9 @@
-# Terminology Glossary — Investigation List & Detail Views
+# Terminology Glossary & Visual-Density Audit — Investigation List & Detail Views
 
-**Status: DRAFT — awaiting human review (`[H]` criterion, FR52)**
-**Scope:** Investigation list view + investigation detail view only.
-**Purpose:** Produce the terminology standardization artifact required by FR52 before the React implementations of the list (Task 2.2) and detail (Task 2.5) views are built. Every entry is derived from the literal label strings in the Jinja templates (the authoritative source of current copy) and cross-checked against the Rust CRD enums in `operator/src/crds/investigation.rs`.
+**Status: FULL (Task 4.1) — extends the Task 1.8 draft now that the real list/detail React views exist. `[H]` sign-off is PENDING USER APPROVAL** (FR52). Task 1.8's decisions — including the OD-1..OD-5 resolutions and the "Condition"/job-phase-vs-workflow-"Failed" treatment — are preserved verbatim below; nothing in this pass reopens them.
+**Scope:** Investigation list view + investigation detail view only (same scope as 1.8).
+**Purpose (1.8, unchanged):** Produce the terminology standardization artifact required by FR52 before the React implementations of the list (Task 2.2) and detail (Task 2.5) views were built. Every §1–§13 entry is derived from the literal label strings in the Jinja templates (the authoritative source of *pre-migration* copy) and cross-checked against the Rust CRD enums in `operator/src/crds/investigation.rs`.
+**Purpose (4.1, this pass):** Now that the list (`InvestigationListPage`) and detail (`InvestigationDetailPage`) React views + their `src/lib/components/*` primitives are actually built and merged (Milestones 1.1–1.3), this pass (1) self-reviews every 1.8 entry against the *shipped* component source — reading the rendered JSX/props/label tables directly (this codebase's established verification convention: Tailwind classes and literal label strings **are** the contract, per the client-side test doctrine already in force for this repo) rather than against the pre-implementation Jinja-only prediction; (2) reconciles the handful of places where shipped reality has moved past the 1.8 draft (§9 step types); (3) adds §14 documenting exactly which renames are lexically enforced by the new legacy-label lint and which are deliberately excluded (with rationale); and (4) adds §15, the FR52 visual-density audit, naming the specific elements to remove/de-emphasize per view — or confirming none — grounded in the same shipped source. No 4.2 restyling happens in this task; density findings are recorded for that follow-up.
 
 ---
 
@@ -146,6 +147,8 @@ Extracted from `_evidence_panel.html` (inside the collapsible "Evidence & Raw Da
 
 Step types determine the visual accent color of each timeline step. The `.label` field on each step object is already free-text from the investigator pipeline and not templated as a static string. The standardization here is for the step-type identifiers that appear as evidence-type badges in the unified timeline.
 
+**Original (1.8, Jinja-era prediction) table — kept for provenance, superseded by the "Task 4.1 — shipped reality" table immediately below:**
+
 | Current label | Standardized label | Where it appears | Rationale |
 |---|---|---|---|
 | **metric** | **Metric** | `_unified_timeline.html` evidence type badge; step border color | KEEP — capitalize for display only; the value `metric` remains in the DOM. |
@@ -154,6 +157,18 @@ Step types determine the visual accent color of each timeline step. The `.label`
 | **KB** | **KB** | `_unified_timeline.html` evidence type badge | KEEP — already uppercase in the template. |
 | **config** | **Config Change** | `_unified_timeline.html` evidence type badge (maps from `config_change`) | Expand the badge text. "config" is ambiguous (is it a config file? a Kubernetes ConfigMap? a feature flag?). "Config Change" matches the section heading "Change Events" and clarifies this is a change event, not a configuration reading. |
 | *(no label — `summary` step type)* | *(summary steps render only the step.label text)* | `components/investigation.html` step macro | KEEP — summary steps are prose-labeled by the investigator; no badge needed. |
+
+**Task 4.1 — shipped reality** (`ui/frontend/src/lib/components/InvestigationStep/InvestigationStep.tsx`, `STEP_TYPE_LABEL`/`InvestigationStepType`):
+
+| `InvestigationStepType` value | Rendered label | vs. the 1.8 prediction | Status |
+|---|---|---|---|
+| `metric` | **Metric Query** | 1.8 predicted bare "Metric" | Reality is clearer (names the pipeline action, not just the data kind) — **adopt as the new standardized label**, no fix needed. |
+| `log` | **Log Query** | 1.8 predicted bare "Log" | Same reasoning — **adopt as standardized**. |
+| `deploy` | **Deploy** | Matches 1.8 exactly | KEEP. |
+| `kb` | **KB Query** | 1.8 predicted bare "KB" | Same reasoning as metric/log — **adopt as standardized**. Distinct from the Related-KB-panel's own "N Related KB Entries" wording (§ summary header context), which is unaffected. |
+| `correlation` | **Correlation** | Not present in the 1.8 draft at all (the pipeline gained a dedicated correlation step type during Milestone 1.1/1.2 build-out) | New — documented here for the first time; "Correlation" matches §6's "Signals Correlated" business concept. No rename needed. |
+| `summary` | **Summary** | 1.8 says summary steps should render **no type-label at all** ("summary steps are prose-labeled by the investigator; no badge needed") | **DISCREPANCY, confirmed during this pass's self-review** — `InvestigationStep.tsx` unconditionally renders `STEP_TYPE_LABEL[type]` for every step, including `summary`, so a "Summary" label currently appears above summary steps' prose. This is recorded as a density finding in §15 (Detail Finding D2) rather than fixed here (scope discipline — no restyling in Task 4.1). |
+| *(no `config`/`config_change` value yet)* | — | 1.8's "config" → "Config Change" row | **Not yet implemented.** `InvestigationStepType` has no `config`/`config_change` member today, so there is nothing to rename yet. When this step type ships, the label MUST be **"Config Change"** (never bare "config") per the original 1.8 rationale — carried forward unchanged, and see §14 for why this can't be lint-enforced pre-emptively. |
 
 ---
 
@@ -217,7 +232,60 @@ Extracted from `_filter_panel.html`.
 
 ---
 
+## 14. Lint Coverage (Task 4.1) — enforced vs. documented-only terms
+
+The `[T]` legacy-label lint (`ui/frontend/scripts/legacy-label-rules.mjs`, proven by `ui/frontend/src/test/legacy-label-lint.test.ts`) scans the migrated view source — `src/routes/**`, `src/lib/components/**`, `src/lib/investigations/**` (test files, Storybook stories, and this doc's own fixtures excluded) — for every "current → standardized" **rename** row above (current ≠ standardized) and fails the build if the legacy string reappears. Rows marked **KEEP** (current = standardized) need no rule — there is nothing to forbid.
+
+**Enforced (16 rules, one per rename row):** §1 "In Progress" → Investigating, §1 truncated "Awaiting" → Awaiting Confirmation, §3 "Escalation Urgency" → Urgency, §4 "Investigation Timeline" → Evidence Timeline, §4 "Change Event Correlation" → Change Events, §4 "Investigation Feedback" → Feedback, §4 "Investigation Resolution" → Resolution, §7 "Knowledge Base Matches" → KB Matches, §7 "Resolution Recommendations" → Recommendations, §8 "Raw Signals (N collected)" → Raw Signals (N), §8 "Correlation & Supporting Evidence" → Supporting Evidence, §8 "Investigation Documentation" → Documentation, §12 "Sort by" → Sort, §12 "Urgency (highest)" → Urgency ↓, §12 "All statuses" → All, §12 "All states" → All.
+
+**Deliberately excluded from lexical enforcement** (a plain-text scan cannot safely resolve these without false-positiving on the correct label itself):
+
+| Term | Why it's excluded | How it's actually guarded |
+|---|---|---|
+| **"Failed"** (job-phase) | Same word as the intentionally-unrenamed workflow-state "Failed" (OD-1 KEEP) — banning the string would ban the correct term too. | Structural, not lexical: `StatusBadge.tsx` encodes them as two separate variants (`analysis-failed` vs. `failed`) with their own label constants, so the two axes can never share a DOM string by construction. |
+| **"Workflow State"** (full phrase) | Stays valid verbatim in the *expanded filter panel* per OD-2; only chip/column-header contexts should shorten to "State". A text scan can't tell which context a match is in. | Left as a documented convention; the filter panel doesn't exist yet in the shipped code (nothing to check today) — revisit if a future task adds one and this needs a context-aware rule. |
+| **"config"** (bare step-type identifier) | Too common/ambiguous a word in source (`vite.config.ts`, "configuration", etc.) to lex safely. | The `config`/`config_change` `InvestigationStepType` value doesn't exist in the shipped enum yet (§9) — nothing to guard today. Recorded as a build-time reminder: when it ships, the label must be "Config Change", never bare "config". |
+| **"Correlated Signals"** | OD-3 keeps this as the default; it's not a rename. | N/A — not a violation to guard against. |
+
+---
+
+## 15. Visual-Density Audit (Task 4.1, FR52)
+
+**Method:** self-review of the actual shipped view source — `InvestigationListPage.tsx` / `InvestigationDetailPage.tsx` and every `src/lib/components/*` primitive they compose — reading the rendered JSX tree, prop tables, and Tailwind utility classes directly (this repo's established convention: token/utility-class strings **are** the contract). Per-element findings are graded against the UX spec's density doctrine ("information density through typography and spacing, not visual noise"; "alert fatigue through visual noise... status colors inform, they don't shout"; "weight communicates hierarchy, not size alone"). Each finding below names a specific element and a specific action; nothing is fixed in this task (scope discipline — 4.2 owns any restyling). `[H]` — this audit's findings are PENDING USER APPROVAL/sign-off, same as the glossary above.
+
+### Investigation List view (`InvestigationListPage.tsx` + `InvestigationCard.tsx`)
+
+**Finding L1 — re-emphasize (not remove): Severity renders as plain secondary-colored text, not a colored chip.**
+`InvestigationCard.tsx`'s metadata line renders severity as `<span data-field="severity">{severity}</span>` inside a `flex items-center gap-2 text-sm text-text-secondary` row — identical visual weight to the signal count and timestamp next to it. This is the single most safety-critical list fact (FR46: "high-severity first") yet it carries no color coding, unlike the job-phase `StatusBadge` on the same row (which IS a colored pill) and unlike the original Jinja "card severity tag" this glossary's §3 documents. `StatusBadge.tsx` already reserves a `severity-critical` variant alias for exactly this purpose (its variant-taxonomy doc comment: "only its `critical` value maps onto the shared critical color... `low`/`medium`/`high` map to `muted`/warning-adjacent/`warning`"), but `InvestigationCard` never uses it. **Recommended for 4.2:** render severity as a small colored chip (reusing `StatusBadge`'s color mapping) instead of plain text, so severity reads via color during a scan, not just position in a bullet-separated line.
+
+**Reviewed, confirmed NOT a finding:**
+- *Card border color + opacity (`variant`) alongside the `StatusBadge` pill* — two channels encoding the same job-phase state, but this is the UX spec's deliberate "triple-channel status (color + text + icon)" accessibility pattern, not redundant noise. No action.
+- *`component` and `problemState` subtitle lines* — both derived from the same raw `condition` field (FR45/46 require them as two distinct first-seconds facts) and already weight-differentiated (`problemState` is `text-text-primary`, `component` is `text-text-secondary`), matching the spec's "weight communicates hierarchy" rule. No action.
+- *Signal count in the metadata line* — `InvestigationListPage` never passes `signalCount` to `InvestigationCard` today (the list JSON endpoint doesn't return one; see the component's own doc comment), so the shipped metadata line is only "severity · timestamp" — already lean, not three items.
+- *`EmptyGroupState`'s decorative SVG icon* — low-traffic surface (a genuinely empty group), not part of the busy triage scan path; not worth flagging.
+
+### Investigation Detail view (`InvestigationDetailPage.tsx` + `SummaryHeader`/`InvestigationStep`/etc.)
+
+**Finding D1 — remove: the unconditional "Impact: not yet correlated" placeholder line.**
+`InvestigationDetailPage.tsx` always renders a `data-field="correlation-placeholder"` paragraph reading either `Impact: {services}` or, when there's nothing to show, the literal placeholder **"Impact: not yet correlated"**. Per the component's own doc comments and `docs/specs/ux-design-specification.md`'s first-seconds table (row 4b), cross-service correlation is **gated on RFC 0001 Phase 3 (FR48) and not in the first increment** — meaning, in practice, essentially every investigation today renders this permanent "we don't have this yet" line. This is exactly the kind of non-essential chrome FR52 asks the density audit to name: an always-on disclosure of an unshipped feature's absence, on every single detail view. **Recommended for 4.2:** suppress the line entirely when `correlated_services` is empty (rather than rendering a placeholder sentence), matching the pattern the codebase already uses elsewhere (e.g. `InvestigationCard`'s `component` slot, which omits its line rather than showing an empty one) — restore the paragraph once FR48 ships real data.
+
+**Finding D2 — remove/de-emphasize: `summary`-type steps render a "Summary" type-label, contradicting the glossary's own 1.8 decision.**
+See §9 above: the 1.8 draft explicitly resolved that summary steps should render "no badge... summary steps are prose-labeled by the investigator." The shipped `InvestigationStep.tsx` renders `STEP_TYPE_LABEL[type]` unconditionally for every step type, including `summary`, so a small "Summary" label currently appears above every summary step's prose body — an extra, always-on line of chrome the team already decided wasn't needed. **Recommended for 4.2:** suppress the type-label specifically for `type === 'summary'`, restoring the previously-agreed density decision (the border-color accent can stay; only the redundant text label goes).
+
+**Reviewed, confirmed NOT a finding:**
+- *`SseConnectionIndicator` renders nothing while `connected`* — a positive existing example of the density principle done right (no indicator is the spec's own "default" state); called out here so it isn't mistaken for an oversight.
+- *`StatusBadge` "Analysis Failed" (header) + `FailureNotice`'s bold "Analysis Failed" heading (timeline end) both appearing on a failed investigation* — these serve two different scan points (header glance vs. end-of-timeline confirmation after reading the evidence), not a duplicate of the same fact in the same place. No action.
+- *`InvestigationStep`'s small step-type label for non-summary types (`Metric Query`, `Log Query`, etc.)* — already de-emphasized (`text-xs text-text-secondary`, one short line above the body) and load-bearing (identifies the evidence kind at a glance); not excessive.
+
+### Out-of-scope observation (flagged separately, not a density item)
+
+While reviewing `SummaryHeader.tsx` for this audit, the severity chip (`data-field="severity"`) was found to be hardcoded to `bg-status-warning/10 text-status-warning` regardless of the actual `severity` value passed in — a Low, Medium, High, or Critical investigation all render the identical amber chip. This is a color-mapping **defect**, not a density/chrome-removal question, so it is out of this task's scope to fix or formally record as a §15 finding; it has been raised to the caller as a follow-up (see the session's spawned-task list) rather than silently left unmentioned.
+
+---
+
 ## Source files consulted
+
+**Task 1.8 (Jinja-era, pre-implementation prediction — §1–§13 base content):**
 
 - `ui/beeper_ui/templates/investigations/_list_content.html`
 - `ui/beeper_ui/templates/investigations/_detail_content.html`
@@ -233,5 +301,16 @@ Extracted from `_filter_panel.html`.
 - `ui/beeper_ui/templates/components/investigation.html`
 - `ui/beeper_ui/templates/components/cards.html`
 - `ui/beeper_ui/templates/components/status.html`
-- `operator/src/crds/investigation.rs` (Severity, InvestigationPhase, WorkflowState enums)
+- `operator/src/crds/investigation.rs` (Severity, InvestigationPhase, WorkflowState enums — re-verified unchanged for this pass)
 - `docs/reqs/main.md` FR47, FR52, and the SRE-Centric React UI Overhaul section
+
+**Task 4.1 (this pass — shipped React source, §9/§14/§15 content):**
+
+- `ui/frontend/src/routes/InvestigationListPage.tsx`, `InvestigationDetailPage.tsx`, `investigation-detail-mappers.ts`, `useInvestigationDetail.ts`
+- `ui/frontend/src/lib/components/{StatusBadge,InvestigationCard,InvestigationStep,SummaryHeader,RelatedKbPanel,StepEvidence,FailureNotice,NotFoundMessage,SseConnectionIndicator,EmptyGroupState,StatusGroupFilter,InvestigationListSkeleton,DetailSkeleton,Sidebar,AppShell}/*.tsx`
+- `ui/frontend/src/lib/investigations/{status-group,row-view-model,problem-state,derive-component}.ts`
+- `ui/frontend/src/theme/tokens.css`
+- `ui/frontend/src/api/investigations-list.ts`, `investigation-detail.ts`
+- `docs/specs/ux-design-specification.md` (density/visual-hierarchy guidance: Color System, "Weight communicates hierarchy," "Alert fatigue through visual noise," first-seconds information model)
+- `docs/plans/react-ui.md` Task 4.1 entry (Milestone 1.4)
+- Lint implementation: `ui/frontend/scripts/legacy-label-rules.mjs`, `ui/frontend/scripts/check-legacy-labels.mjs`, `ui/frontend/src/test/legacy-label-lint.test.ts`, `ui/frontend/src/test/fixtures/legacy-labels-violating.tsx`
