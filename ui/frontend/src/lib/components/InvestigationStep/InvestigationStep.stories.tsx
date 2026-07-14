@@ -44,10 +44,18 @@ export const KbQuery: Story = {
   },
 }
 
+export const Deploy: Story = {
+  args: {
+    type: 'deploy',
+    order: 4,
+    description: 'Detected deploy abc123 (checkout-service) 3 minutes before the anomaly',
+  },
+}
+
 export const Correlation: Story = {
   args: {
     type: 'correlation',
-    order: 4,
+    order: 5,
     description: 'Correlated metric spike with a recent deploy event',
   },
 }
@@ -55,7 +63,7 @@ export const Correlation: Story = {
 export const Summary: Story = {
   args: {
     type: 'summary',
-    order: 5,
+    order: 6,
     description: 'Investigation concluded: elevated latency traced to deploy abc123.',
   },
 }
