@@ -1,6 +1,8 @@
 # DESIGN_SYNC — `/design-sync` input contract for the Beeper component library
 
-**Status:** produced by Task 1.4. The trial `/design-sync` ingest run itself is
+**Status:** produced by Task 1.4; finalized/polished for the trial run by
+Task 4.2 (token-only styling confirmed, full story coverage proven — see §5).
+The trial `/design-sync` ingest run itself is
 **`[H]` PENDING** — it requires the main session's `/design-sync` tooling,
 which is not available inside this worktree/agent. This document describes
 what to feed it and what to expect, so the parent session can run the trial
@@ -40,29 +42,51 @@ compiled bundle.
 
 ## 2. `dist-lib/` layout
 
+**Updated Task 4.2** — the tree below now lists the FULL current output (15
+components + 7 hooks + 4 investigation-derivation utils + `cn`), superseding
+the Task 1.4 skeleton snapshot (which only showed the first 5 components).
+
 ```
 dist-lib/
-├── index.js                                    # single ESM bundle, all components + cn
+├── index.js                                    # single ESM bundle, all components + hooks + cn
 ├── index.d.ts                                   # barrel type declarations (re-exports below)
 ├── utils/
 │   └── cn.d.ts
+├── investigations/                              # derivation helpers (not React components)
+│   ├── derive-component.d.ts
+│   ├── problem-state.d.ts
+│   ├── row-view-model.d.ts
+│   └── status-group.d.ts
+├── hooks/
+│   ├── useSidebarState.d.ts
+│   ├── useRouteFocusManagement.d.ts
+│   ├── useIsNarrowViewport.d.ts
+│   ├── useScrollRestoration.d.ts
+│   ├── useInvestigationEvents.d.ts
+│   ├── useAutoScrollOnAppend.d.ts
+│   └── useStepAnchorScroll.d.ts
 └── components/
-    ├── InvestigationCard/
-    │   ├── InvestigationCard.d.ts
-    │   └── index.d.ts
-    ├── StatusBadge/
-    │   ├── StatusBadge.d.ts
-    │   └── index.d.ts
-    ├── InvestigationStep/
-    │   ├── InvestigationStep.d.ts
-    │   └── index.d.ts
-    ├── SummaryHeader/
-    │   ├── SummaryHeader.d.ts
-    │   └── index.d.ts
-    └── RelatedKbPanel/
-        ├── RelatedKbPanel.d.ts
-        └── index.d.ts
+    ├── InvestigationCard/       {InvestigationCard,index}.d.ts
+    ├── StatusBadge/             {StatusBadge,index}.d.ts
+    ├── InvestigationStep/       {InvestigationStep,index}.d.ts
+    ├── SummaryHeader/           {SummaryHeader,index}.d.ts
+    ├── RelatedKbPanel/          {RelatedKbPanel,index}.d.ts
+    ├── StepEvidence/            {StepEvidence,index}.d.ts             # Task 2.5
+    ├── FailureNotice/           {FailureNotice,index}.d.ts            # Task 2.5
+    ├── NotFoundMessage/         {NotFoundMessage,index}.d.ts          # Task 2.5
+    ├── DetailSkeleton/          {DetailSkeleton,index}.d.ts           # Task 2.5
+    ├── SseConnectionIndicator/  {SseConnectionIndicator,index}.d.ts   # Task 2.6a
+    ├── InvestigationListSkeleton/ {InvestigationListSkeleton,index}.d.ts # Task 2.2
+    ├── StatusGroupFilter/       {StatusGroupFilter,index}.d.ts        # Task 2.2
+    ├── EmptyGroupState/         {EmptyGroupState,index}.d.ts          # Task 2.2
+    ├── Sidebar/                 {Sidebar,icons,index}.d.ts            # Task 2.1
+    └── AppShell/                {AppShell,index}.d.ts                 # Task 2.1
 ```
+
+`src/lib/test/dist-import.test.ts` asserts every one of the 15 components +
+7 hooks + `cn` is a real, importable, `typeof === 'function'` export from
+the built `dist-lib/index.js` (Task 4.2 expanded this from the original
+Task 1.4 subset of 5 to the full current barrel).
 
 Notes on the shape:
 
@@ -71,7 +95,7 @@ Notes on the shape:
   individually at the JS level — always import from the package root). The
   `.d.ts` tree mirrors the source `src/lib/` structure because
   `bundleTypes: false` is set (declaration bundling via API Extractor was
-  evaluated and skipped — see §5); this does not change the *import* contract
+  evaluated and skipped — see §6); this does not change the *import* contract
   (still import from the root), it only affects how the types are laid out on
   disk.
 - **No CSS file.** Every component is styled with Tailwind utility classes
@@ -83,7 +107,7 @@ Notes on the shape:
   external tool ingesting only `dist-lib/`) will see the component tree
   structure and class names but unstyled output, unless it also has access
   to `src/theme/tokens.css` (Task 1.2) to compile the same utility classes.
-  **This is the crux of Q3** — see §5 for what "ingest" likely means for
+  **This is the crux of Q3** — see §6 for what "ingest" likely means for
   `/design-sync` in practice.
 - **No public assets.** `dist-lib/` intentionally excludes the app's
   `public/` directory (favicon, sidebar icon sprite) — those are app-shell
@@ -105,14 +129,42 @@ consumer does:
 import { InvestigationCard, StatusBadge, InvestigationStep, SummaryHeader, RelatedKbPanel, cn } from '<path-to>/dist-lib/index.js'
 ```
 
+**Task 4.4's formal NFR23 gate targets the 5 components below** (the
+original Task 1.4 set); the full current library (15 components total) is
+also listed for completeness, since the design-sync pass may find it useful
+to render more than the minimum.
+
 | Export | Kind | Props (summary) | Notes |
 |---|---|---|---|
-| `InvestigationCard` | Component | `variant: 'active' \| 'completed' \| 'failed'`, `serviceName`, `severity`, `signalCount`, `timestamp`, `statusVariant`, `href`, ...`<a>` attrs | List-item primitive. One story per variant. |
+| `InvestigationCard` | Component | `variant: 'active' \| 'completed' \| 'failed'`, `serviceName`, `severity`, `signalCount`, `timestamp`, `statusVariant`, `href`, `component?`, `problemState?`, ...`<a>` attrs | List-item primitive. One story per variant, plus `WithComponentAndProblemState` covering the `component` (Task 2.3) / `problemState` (Task 2.4) subtitle slots. |
 | `StatusBadge` | Component | `variant: StatusBadgeVariant` (14-value union spanning job-phase / workflow-state / pipeline-health), `label?`, ...`<span>` attrs | Single component covers all status/phase/workflow variants per `docs/design/terminology-glossary.md`. Job-phase `Failed` → variant `analysis-failed` → label **"Analysis Failed"**; workflow-state `Failed` → variant `failed` → label **"Failed"** (glossary OD-1: two distinct variants, same underlying word, disambiguated by axis). |
-| `InvestigationStep` | Component | `type: 'metric' \| 'log' \| 'deploy' \| 'kb' \| 'correlation' \| 'summary'`, `order`, `description`, `evidence?`, `isFirstEvidence?`, ...`<li>` attrs | Evidence-timeline primitive; `evidence` is a free-form `ReactNode` slot (rendering of monospace values/log excerpts is the caller's concern). |
+| `InvestigationStep` | Component | `type: 'metric' \| 'log' \| 'deploy' \| 'kb' \| 'correlation' \| 'summary'`, `order`, `description`, `evidence?`, `isFirstEvidence?`, ...`<li>` attrs | Evidence-timeline primitive; `evidence` is a free-form `ReactNode` slot (rendering of monospace values/log excerpts is the caller's concern). One story per step type (incl. `Deploy`, added Task 4.2) plus `FirstEvidence`. |
 | `SummaryHeader` | Component | `serviceName`, `severity`, `signalCount`, `statusVariant`, `timestamp?`, `problemState?`, ...`<header>` attrs | Investigation-detail hero; renders the page `<h1>`. No SSE dependency (renders from metadata). |
 | `RelatedKbPanel` | Component | `state: 'loading' \| 'populated' \| 'zero'`, `entryCount`, `expanded?`, `onExpandedChange?`, `children?` | Built on `@radix-ui/react-collapsible` for accessible expand/collapse. Anchored-bar vs. inline-stack responsive placement is a layout concern (Milestone 1.2), not internal to this component. |
 | `cn` | Utility function | `(...inputs: ClassValue[]) => string` | `clsx` + `tailwind-merge` composition helper — the one shared utility every component (and consumers extending them) is built on. |
+
+**Additional library components (Milestone 1.2, Tasks 2.1/2.2/2.5/2.6a) —
+outside Task 4.4's formal gate but built to the same token/Storybook bar:**
+
+| Export | Kind | Notes |
+|---|---|---|
+| `Sidebar` | Component | Observe/Learn/Manage nav — expanded (256px) / collapsed icon-rail (64px) / overlay states. |
+| `AppShell` | Component | Layout shell composing top bar + `Sidebar` + content slot; pushing vs. overlay expand behavior. |
+| `StepEvidence` | Component | Inline metric/log evidence rendering under an `InvestigationStep` (FR25). |
+| `FailureNotice` | Component | FR23 — the distinct "investigation failed" notice (never a conclusion block). |
+| `NotFoundMessage` | Component | Invalid investigation id → "Investigation not found" inside the shell. |
+| `DetailSkeleton` | Component | Cold-load skeleton for the detail view (NFR19). |
+| `SseConnectionIndicator` | Component | FR27 — 4-state SSE lifecycle indicator (`connected`/`reconnected` render nothing by design). |
+| `InvestigationListSkeleton` | Component | Cold-load skeleton for the list view. |
+| `StatusGroupFilter` | Component | Active/Resolved/Failed list filter control. |
+| `EmptyGroupState` | Component | Empty-group placeholder ("No active/resolved/failed investigations"). |
+
+Plus 7 hooks (`useSidebarState`, `useRouteFocusManagement`,
+`useIsNarrowViewport`, `useScrollRestoration`, `useInvestigationEvents`,
+`useAutoScrollOnAppend`, `useStepAnchorScroll`) and 4 investigation-derivation
+utilities under `investigations/` (not re-exported through the barrel as
+top-level names in every case — see `src/lib/index.ts` for the authoritative
+export list).
 
 Every component above also exports its **props type** (e.g.
 `InvestigationCardProps`, `StatusBadgeVariant`) from the same root — these
@@ -121,7 +173,8 @@ type-aware tool.
 
 ### Full variant/state inventory (for a renderer that wants to enumerate every visual state)
 
-- **`InvestigationCard.variant`:** `active`, `completed`, `failed`
+- **`InvestigationCard.variant`:** `active`, `completed`, `failed` (plus the
+  optional `component`/`problemState` subtitle slots)
 - **`StatusBadge.variant`:** `investigating`, `awaiting-confirmation`,
   `completed`, `analysis-failed`, `pending`, `detected`, `resolved`,
   `verified`, `failed`, `healthy`, `warning`, `critical`, `warming-up`,
@@ -130,25 +183,73 @@ type-aware tool.
   `correlation`, `summary` (plus the boolean `isFirstEvidence` emphasis state)
 - **`RelatedKbPanel.state`:** `loading`, `populated`, `zero` (plus the
   boolean `expanded`)
+- **`SseConnectionIndicator.connectionState`:** `connected`, `disconnected`,
+  `reconnected`, `failed`
+- **`Sidebar`/`AppShell`:** `expanded` × `isOverlay` (pushing vs. overlay)
 
 This matches the Task 4.4 design-sync inventory target: `InvestigationCard`
 (active/completed/failed), `StatusBadge` (all variants), `InvestigationStep`,
-`SummaryHeader`, `RelatedKbPanel`.
+`SummaryHeader`, `RelatedKbPanel`. The remaining 10 components are available
+in the same bundle/Storybook build if the reviewer wants a fuller pass.
 
 ## 4. Storybook story map
 
-One skeleton story file per component under
-`src/lib/components/<Name>/<Name>.stories.tsx`:
+**Updated Task 4.2** — one story file per component under
+`src/lib/components/<Name>/<Name>.stories.tsx`, now covering all 15
+first-increment components (the Task 1.4 table below only listed the first
+5). `src/lib/test/story-coverage.test.ts` (Task 4.2) enforces this
+automatically: it parses the `src/lib/index.ts` barrel for every exported
+component and asserts a `<Name>.stories.tsx` exists, wires its Storybook
+`Meta` to the real component, and exports ≥1 story — plus a defense-in-depth
+pass over every directory under `src/lib/components/` directly. A future
+component that graduates into the barrel without a story fails this test
+immediately, so this table (and the tree in §2) can't silently drift out of
+sync with reality the way the original skeleton version did.
 
 | Component | Stories |
 |---|---|
-| `InvestigationCard` | `Active`, `Completed`, `Failed` |
-| `StatusBadge` | `Default`, `JobPhaseVariants`, `WorkflowStateVariants`, `PipelineHealthVariants` |
-| `InvestigationStep` | `MetricQuery`, `LogQuery`, `KbQuery`, `Correlation`, `Summary`, `FirstEvidence` |
+| `InvestigationCard` | `Active`, `Completed`, `Failed`, `WithComponentAndProblemState` |
+| `StatusBadge` | `Default`, `JobPhaseVariants`, `WorkflowStateVariants`, `PipelineHealthVariants` (all 14 variants across the 3 axes, incl. `analysis-failed` vs. `failed`) |
+| `InvestigationStep` | `MetricQuery`, `LogQuery`, `KbQuery`, `Deploy`, `Correlation`, `Summary`, `FirstEvidence` |
 | `SummaryHeader` | `Investigating`, `Completed`, `AnalysisFailed` |
 | `RelatedKbPanel` | `Loading`, `Populated`, `PopulatedExpanded`, `ZeroEntries` |
+| `Sidebar` | `Expanded`, `Collapsed`, `ExpandedOverlay` |
+| `AppShell` | `ExpandedPushing`, `CollapsedIconRail`, `ExpandedOverlay`, `DetailBreadcrumb` |
+| `StepEvidence` | `MetricValue`, `LogExcerpt`, `Mixed`, `Empty` |
+| `FailureNotice` | `Default`, `WithMessage` |
+| `NotFoundMessage` | `Default` |
+| `DetailSkeleton` | `Default` |
+| `SseConnectionIndicator` | `Connected`, `Disconnected`, `Reconnected`, `Failed` |
+| `InvestigationListSkeleton` | `Default`, `FewRows` |
+| `StatusGroupFilter` | `Active`, `Interactive` |
+| `EmptyGroupState` | `NoActive`, `NoResolved`, `NoFailed` |
 
-## 5. Open items for the trial run (resolving Q3)
+## 5. Token enforcement status (Task 4.2, FR51)
+
+`npx eslint --config eslint.config.mjs 'src/lib/**/*.{ts,tsx}'` — the
+`tailwindcss/no-arbitrary-value` rule (FR51's "no hardcoded color/spacing/
+motion values" gate) reports **0 errors** across all of `src/lib`. (The
+whole-`src` `lint:tw` script also includes a deliberately-violating fixture
+at `src/test/fixtures/violating.tsx` used by `lint-enforcement.test.ts` to
+prove the rule fires — that fixture lives outside `src/lib` and is not part
+of the library.) The only lint output inside `src/lib` is 4 pre-existing
+`no-custom-classname` **warnings** (not errors) for class names that
+resolve to real `tokens.css` `@theme` entries the plugin's default class
+list doesn't recognize (`transition-sidebar`, `duration-emphasis`, and a
+false-positive match on a variable literally named `inputs` in `cn.ts`) —
+these are token-safe, not hardcoded values.
+
+The two known gaps noted in the Task 1.4 plan bullet are both already
+resolved token-safely:
+- `InvestigationCard`/`InvestigationStep`'s left border uses `border-l-2`
+  (not an arbitrary `border-l-[3px]`) — the spec's 3px is approximated by
+  the nearest built-in border-width step; see the inline comment in each
+  component.
+- `RelatedKbPanel`'s expanded-content max-height uses `max-h-96` (24rem),
+  not an arbitrary `max-h-[50vh]` — see the inline comment in
+  `RelatedKbPanel.tsx`.
+
+## 6. Open items for the trial run (resolving Q3)
 
 The trial `/design-sync` run should establish, concretely:
 
