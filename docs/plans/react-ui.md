@@ -144,8 +144,8 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 4.1 | Full terminology glossary + per-view visual-density audit (extends the 1.8 draft) | M | 1.8, 2.2, 2.5 | pending |
-| 4.2 | Finalize/polish the component library (extracted as-you-go in 1.2); enforce token-only styling; complete Storybook stories | M | 2.1, 2.2, 2.5 | pending |
+| 4.1 | Full terminology glossary + per-view visual-density audit (extends the 1.8 draft) | M | 1.8, 2.2, 2.5 | in progress |
+| 4.2 | Finalize/polish the component library (extracted as-you-go in 1.2); enforce token-only styling; complete Storybook stories | M | 2.1, 2.2, 2.5 | in progress |
 | 4.3 | Triage-glance acceptance test with 2 non-builder reviewers | S | 2.2, 2.4 | pending |
 | 4.4 | Full `/design-sync` pass on the finalized library | M | 4.2 | pending |
 
