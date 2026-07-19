@@ -43,8 +43,8 @@ The frontend must be built first: `cd ui/frontend && npm run build`.
 | 2 (auth-service) | | |
 | 3 (catalog) | | |
 
-**Reviewers (names/roles):** _________________
-**Date/witness:** _________________
-**Verdict:** ☐ PASS (all facts, all incidents, both reviewers ≤5 s) ☐ FAIL → iteration notes below
+**Reviewers (names/roles):** two non-builder reviewers (recruited by Eric)
+**Date/witness:** 2026-07-19, witnessed by Eric
+**Verdict:** ☑ **PASS** — all facts (service / problem state / severity), all 3 incidents, both reviewers ≤5 s. Reported by Eric 2026-07-19.
 
 **Iteration notes (if any miss):**
