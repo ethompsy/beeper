@@ -9,6 +9,11 @@ const BFF_ORIGIN = process.env.BFF_ORIGIN ?? 'http://localhost:5000'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // The Flask BFF serves the built app under /app/* (react_shell_bp), so the
+  // built index.html must reference assets as /app/assets/* — matching the
+  // router's `basename: '/app'`. Without this, assets 404 when Flask serves
+  // the bundle (vite preview masks it by SPA-falling-back from the root).
+  base: '/app/',
   plugins: [
     tailwindcss(),
     react(),
