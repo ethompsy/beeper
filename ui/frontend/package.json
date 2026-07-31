@@ -2,6 +2,7 @@
   "name": "frontend",
   "private": true,
   "version": "0.0.0",
+  "types": "dist-lib/index.d.ts",
   "type": "module",
   "scripts": {
     "dev": "vite",

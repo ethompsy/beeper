@@ -31,7 +31,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 |---|----------|--------|--------|
 | Q1 | (R3) Permission model for the migrated UI — preserve the two-tier RBAC (`require_role`) in React/BFF? | Security surface at Jinja retirement | Open — **investigate in Phase 1 (decision task), resolve before Phase 2 M2.2** |
 | Q2 | (R5) Is best-effort `component` derivation enough, or add a dedicated CRD/investigator field? | Triage-glance "component" quality | Open — evaluate after Task 2.3 |
-| Q3 | Exact `/design-sync` input format for the chosen library | Library build/export shape (NFR23) | Open — trial deferred to **Task 4.4** (user chose Option A); `ui/frontend/DESIGN_SYNC.md` documents the current `dist-lib/` shape + open questions for the run |
+| Q3 | Exact `/design-sync` input format for the chosen library | Library build/export shape (NFR23) | **Resolved (Task 4.4, 2026-07-30)** — full sync ran: converter consumes `dist-lib/index.js` + `dist-lib/index.d.ts` (via a `types` field in package.json) + the Storybook build as fidelity oracle. All 15 components uploaded to Claude Design project 616ba082 ("Beeper Design System"); sync state in `.design-sync/`. |
 | Q4 | React app location (`ui/frontend/`) + Docker/static wiring | Build/deploy; blocks all later tasks | Open — **settle in Task 1.1 (hard gate)** |
 | Q5 | NFR21 "SSE render ≤2 s" vs the BFF's 3 s operator-poll floor | Detail-stream latency target | **Resolved (Task 1.6)** — lowered JSON stream poll to 1 s via `_DEFAULT_JSON_SSE_POLL_INTERVAL = 1` in `investigations.py`; NFR21 is met. HTML SSE stays at 3 s. Interval is configurable via `JSON_SSE_POLL_INTERVAL` Flask config key. |
 | Q6 | Is the SocketIO collaboration surface (annotations/approvals/redirections) in or out of the React migration? | Phase 2 scope | Open — inventory in Task 6.1 |
@@ -47,7 +47,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 | 1.1 | Scaffold Vite + React + TS (`ui/frontend/`); add a **Node build stage** to `ui/Dockerfile` (multi-stage: build `dist/` → copy into runtime); Flask serves `index.html` + hashed assets | L | None | done |
 | 1.2 | Tailwind config porting the dark-first tokens (palette, spacing, motion, typography) as the single source of truth; no-hardcoded-values + reduced-motion lint | M | 1.1 | done |
 | 1.3 | BFF **route-dispatch registry** — explicit React-owned path prefixes served the shell with deterministic precedence; `/api/*`, SSE, and unmigrated Jinja routes untouched | M | 1.1 | done |
-| 1.4 | Component-library + Storybook scaffold (shadcn-style); **define the library API / extraction boundary**; one skeleton story per planned component; trial `/design-sync` ingest | L | 1.2 | done* |
+| 1.4 | Component-library + Storybook scaffold (shadcn-style); **define the library API / extraction boundary**; one skeleton story per planned component; trial `/design-sync` ingest | L | 1.2 | done |
 | 1.5 | Local dev inner loop — Vite dev server + HMR with `server.proxy` forwarding `/api/*` and the event endpoint to `:5000` (SSE buffering off); two-terminal workflow documented | S | 1.1 | done |
 | 1.6 | **BFF JSON API for React** — `GET /api/v1/investigations` (list; `status`/`service`/`severity` filters → `list_investigations`), `GET /api/v1/investigations/{id}` (detail metadata + ordered steps), and `/{id}/events` (JSON event stream reusing the operator-polling loop, emitting `{order, step, status}`); decide poll interval vs NFR21 (Q5) | L | 1.1 | done |
 | 1.7 | Test harness — Vitest + RTL + Playwright in CI | S | 1.1 | done |
@@ -77,7 +77,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 
 **Milestone 1.1 COMPLETE (8/8).** Foundation ready: scaffold + Docker/serve, dark-first tokens, route-dispatch registry, component library, BFF JSON API, dev-proxy, CI test harness, glossary. Next: **Milestone 1.2** (list + detail views).
 
-*`done*` = code + `[T]` complete and merged; the `[H]` trial `/design-sync` is deferred to Task 4.4 (the formal NFR23 gate), where Q3 is resolved.
+*(1.4's deferred `[H]` trial `/design-sync` was satisfied by Task 4.4's full sync on 2026-07-30 — status lifted from `done*` to `done`.)*
 
 ### Milestone 1.2: Incident-Triage Surface (list + detail at parity)
 
@@ -152,7 +152,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 | 4.1 | Full terminology glossary + per-view visual-density audit (extends the 1.8 draft) | M | 1.8, 2.2, 2.5 | done |
 | 4.2 | Finalize/polish the component library (extracted as-you-go in 1.2); enforce token-only styling; complete Storybook stories | M | 2.1, 2.2, 2.5 | done |
 | 4.3 | Triage-glance acceptance test with 2 non-builder reviewers | S | 2.2, 2.4 | done |
-| 4.4 | Full `/design-sync` pass on the finalized library | M | 4.2 | pending |
+| 4.4 | Full `/design-sync` pass on the finalized library | M | 4.2 | done |
 
 **Task 4.1 AC:** `[H]` glossary + density audit completed and self-reviewed against ≥2 screenshots, committed; a second pass runs with the 4.3 reviewers (FR52) · `[T]` migrated views contain no stray legacy labels (lint against the glossary)
 **Task 4.2 AC:** `[T]` library builds to the `dist` bundle; no-hardcoded-values lint passes (FR51); every first-increment component has a Storybook story

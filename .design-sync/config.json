@@ -1,0 +1,39 @@
+{
+  "projectId": "616ba082-ca5d-41b0-a272-5d015a613885",
+  "shape": "storybook",
+  "storybookConfigDir": "ui/frontend/.storybook",
+  "storybookStatic": ".design-sync/sb-reference",
+  "pkg": "frontend",
+  "globalName": "BeeperDS",
+  "entry": "ui/frontend/dist-lib/index.js",
+  "buildCmd": "cd ui/frontend && npm ci && npm run build:lib",
+  "overrides": {
+    "AppShell": {
+      "cardMode": "single",
+      "primaryStory": "ExpandedPushing"
+    },
+    "Sidebar": {
+      "cardMode": "single",
+      "primaryStory": "Expanded"
+    },
+    "StepEvidence": {
+      "cardMode": "column",
+      "skip": [
+        "library-stepevidence--empty"
+      ]
+    },
+    "SseConnectionIndicator": {
+      "skip": [
+        "library-sseconnectionindicator--connected",
+        "library-sseconnectionindicator--reconnected"
+      ]
+    }
+  },
+  "extraEntries": [
+    "./src/lib/preview/DarkCanvas.tsx"
+  ],
+  "provider": {
+    "component": "DarkCanvas"
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}
