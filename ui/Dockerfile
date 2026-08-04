@@ -1,3 +1,23 @@
+# ── Node build stage ─────────────────────────────────────────────────────────
+# Task 1.1: build the Vite + React + TS bundle from ui/frontend/
+# Produces /build/dist/ which is copied into the runtime image at /app/frontend/dist/
+FROM node:24-slim AS node-builder
+
+WORKDIR /build
+
+# Copy package manifests first for layer-cache efficiency
+COPY frontend/package.json frontend/package-lock.json ./
+
+# Install deps (ci is faster + reproducible)
+RUN npm ci
+
+# Copy source
+COPY frontend/ ./
+
+# Build the production bundle; hashed assets land in dist/
+RUN npm run build
+
+# ── Python builder stage ─────────────────────────────────────────────────────
 # Build stage
 FROM python:3.11-slim-bookworm AS builder
 
@@ -61,6 +81,10 @@ COPY beeper_ui ./beeper_ui
 
 # Copy generated Tailwind CSS from build stage
 COPY --from=tailwind /build/tailwind.css ./beeper_ui/static/css/tailwind.css
+
+# Copy React bundle from node build stage (Task 1.1)
+# Served by Flask at /app/* via beeper_ui/routes/react_shell.py
+COPY --from=node-builder /build/dist ./frontend/dist
 
 # Use non-root user
 USER beeper

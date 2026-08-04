@@ -102,8 +102,69 @@ jobs:
       - name: Lint with ruff
         run: poetry run ruff check .
 
+      # The react-shell serving tests (test_react_shell.py, parts of
+      # test_react_route_registry.py) skip when ui/frontend/dist is absent —
+      # build it so the Flask-serves-React contract is actually exercised.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      - name: Build frontend for shell-serving tests
+        working-directory: ui/frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Run tests
         run: poetry run pytest
+
+  frontend-ui:
+    name: Frontend UI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build component library (dist-lib fixture for Vitest)
+        run: npm run build:lib
+
+      - name: Run unit/component tests (Vitest)
+        run: npm test
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build app
+        run: npm run build
+
+      - name: Run e2e tests (Playwright)
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: ui/frontend/playwright-report/
+          retention-days: 7
 
   helm:
     name: Helm Lint

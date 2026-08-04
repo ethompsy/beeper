@@ -1,0 +1,163 @@
+/*
+ * Beeper Design System — Dark-First Tokens
+ * Single source of truth for all Tailwind utilities and component code.
+ *
+ * Authoritative source: docs/specs/ux-design-specification.md §Visual Design Foundation
+ *
+ * DO NOT add hardcoded color/spacing/motion values in component code.
+ * All values live here and are consumed via Tailwind token classes:
+ *   bg-surface-base, text-primary, transition-sidebar, etc.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  /* ─────────────────────────────────────────────────────────────────
+   * COLORS — Surface elevation (depth through color, not shadow)
+   * ───────────────────────────────────────────────────────────────── */
+  --color-surface-base:    #0f0f1a; /* Ground: page bg, sidebar bg */
+  --color-surface-raised:  #1a1a2e; /* Raised: cards, panels, sidebar active item */
+  --color-surface-overlay: #252540; /* Floating: expanded KB panel, tooltips, dropdowns */
+
+  /* ─────────────────────────────────────────────────────────────────
+   * COLORS — Brand / interactive
+   * ───────────────────────────────────────────────────────────────── */
+  --color-primary:       #6366f1; /* Indigo: active nav, links, buttons, focus rings */
+  --color-primary-hover: #818cf8; /* Hover state for primary elements */
+
+  /* ─────────────────────────────────────────────────────────────────
+   * COLORS — Status (appears only to communicate state)
+   * ───────────────────────────────────────────────────────────────── */
+  --color-status-healthy:  #22c55e; /* Active investigation border, healthy pipeline chip */
+  --color-status-warning:  #f59e0b; /* Warning severity, EWMA warming-up chip */
+  --color-status-critical: #ef4444; /* Failed investigation, unhealthy pipeline */
+  --color-status-muted:    #6b7280; /* Completed investigation border, disabled elements */
+
+  /* ─────────────────────────────────────────────────────────────────
+   * COLORS — Text hierarchy
+   * ───────────────────────────────────────────────────────────────── */
+  --color-text-primary:   #f8fafc; /* Headings, primary content, evidence values (17.4:1 AAA) */
+  --color-text-secondary: #94a3b8; /* Labels, timestamps, metadata (7.1:1 AAA) */
+  --color-text-muted:     #64748b; /* Placeholder, tertiary information (4.5:1 AA) */
+
+  /* ─────────────────────────────────────────────────────────────────
+   * COLORS — Investigation step type borders (reuse surface tokens)
+   * ───────────────────────────────────────────────────────────────── */
+  --color-step-metric:      #6366f1; /* MetricQueryStep → primary */
+  --color-step-log:         #22c55e; /* LogQueryStep    → status-healthy */
+  --color-step-kb:          #f59e0b; /* KBQueryStep     → status-warning */
+  --color-step-correlation: #818cf8; /* Correlation     → primary-hover */
+  --color-step-summary:     #64748b; /* Summary         → text-muted */
+
+  /* ─────────────────────────────────────────────────────────────────
+   * SPACING — 4px base unit scale
+   * Token names mirror CSS variable convention used in component code.
+   * Tailwind default scale covers space-1→space-16 already;
+   * we pin the semantic aliases used in the spec so they're explicit.
+   * ───────────────────────────────────────────────────────────────── */
+  --spacing-1:  4px;   /* Inline spacing, icon-to-label gaps */
+  --spacing-2:  8px;   /* Tight element spacing, badge padding */
+  --spacing-3:  12px;  /* Card internal padding (compact), list item gap */
+  --spacing-4:  16px;  /* Standard element spacing, card internal padding */
+  --spacing-6:  24px;  /* Content area padding, section gaps */
+  --spacing-8:  32px;  /* Major section separation */
+  --spacing-12: 48px;  /* Top bar height (h-12) */
+  --spacing-16: 64px;  /* Sidebar collapsed width (w-16) */
+  --spacing-64: 256px; /* Sidebar expanded width (w-64) */
+
+  /* ─────────────────────────────────────────────────────────────────
+   * LAYOUT — Named dimension tokens
+   * ───────────────────────────────────────────────────────────────── */
+  --width-sidebar-collapsed: 64px;  /* Icon rail width (w-16) */
+  --width-sidebar-expanded:  256px; /* Full sidebar width (w-64) */
+  --height-topbar:           48px;  /* Top bar height (h-12) */
+
+  /* ─────────────────────────────────────────────────────────────────
+   * BREAKPOINTS
+   * ───────────────────────────────────────────────────────────────── */
+  --breakpoint-sm: 768px;  /* Tablet minimum — hamburger below this */
+  --breakpoint-lg: 1200px; /* Desktop — sidebar expands by default above this */
+
+  /* ─────────────────────────────────────────────────────────────────
+   * TYPOGRAPHY — System font stacks (zero external dependencies)
+   * ───────────────────────────────────────────────────────────────── */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code',
+               'Ubuntu Mono', 'DejaVu Sans Mono', monospace;
+
+  /* ─────────────────────────────────────────────────────────────────
+   * TYPOGRAPHY — Type scale (16px base, 1.25 ratio)
+   * ───────────────────────────────────────────────────────────────── */
+  --text-xs-size:   0.75rem;   /* 12px — status badges, tooltip labels, icon rail tooltips */
+  --text-xs-lh:     1.4;
+  --text-sm-size:   0.875rem;  /* 14px — timestamps, metadata, sidebar nav items */
+  --text-sm-lh:     1.5;
+  --text-base-size: 1rem;      /* 16px — body text, investigation step descriptions */
+  --text-base-lh:   1.5;
+  --text-lg-size:   1.125rem;  /* 18px — investigation summary header service name */
+  --text-lg-lh:     1.4;
+  --text-xl-size:   1.25rem;   /* 20px — section headings, sidebar group labels */
+  --text-xl-lh:     1.3;
+  --text-2xl-size:  1.5rem;    /* 24px — page titles */
+  --text-2xl-lh:    1.3;
+
+  /* ─────────────────────────────────────────────────────────────────
+   * MOTION — Functional, reduced-motion-safe
+   * NFR22 / FR51: all animated elements must carry motion-reduce: path.
+   * Reference: Grafana sidebar = 200ms ease-in-out
+   * ───────────────────────────────────────────────────────────────── */
+  --duration-sidebar:   200ms; /* Sidebar expand/collapse (width + margin-left) */
+  --duration-highlight: 5000ms; /* New-detection highlight fade */
+  --duration-emphasis:  2000ms; /* First-evidence trust-ignition settle */
+  --ease-sidebar:       ease-in-out;
+
+  --transition-sidebar: width var(--duration-sidebar) var(--ease-sidebar),
+                        margin-left var(--duration-sidebar) var(--ease-sidebar);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * BASE RESET — Dark-first defaults
+ * ───────────────────────────────────────────────────────────────── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-surface-base);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--text-base-size);
+    line-height: var(--text-base-lh);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  /*
+   * Global reduced-motion override (NFR22 / FR51).
+   * Component-level classes (motion-reduce:transition-none) are preferred
+   * for precision — this global ensures nothing is missed.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0ms !important;
+      animation-duration: 0ms !important;
+    }
+  }
+}

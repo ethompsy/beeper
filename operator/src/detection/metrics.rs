@@ -179,19 +179,15 @@ impl MetricDetector {
             let prev_ts = state.prev_ts_ms;
             state.prev_value = Some(sample.value);
             state.prev_ts_ms = sample.timestamp_ms;
-            match prev {
-                None => return None, // need two points for a rate
-                Some(pv) => {
-                    if sample.value < pv {
-                        return None; // counter reset (e.g. pod restart) — not an anomaly
-                    }
-                    let dt_s = (sample.timestamp_ms - prev_ts) as f64 / 1000.0;
-                    if dt_s <= 0.0 {
-                        return None; // out-of-order / duplicate timestamp
-                    }
-                    (sample.value - pv) / dt_s
-                }
+            let pv = prev?; // need two points for a rate
+            if sample.value < pv {
+                return None; // counter reset (e.g. pod restart) — not an anomaly
             }
+            let dt_s = (sample.timestamp_ms - prev_ts) as f64 / 1000.0;
+            if dt_s <= 0.0 {
+                return None; // out-of-order / duplicate timestamp
+            }
+            (sample.value - pv) / dt_s
         } else {
             sample.value
         };
