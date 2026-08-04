@@ -12,7 +12,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? [['line']] : [['html', { open: 'never' }]],
+  // html always runs (it's what CI's playwright-report artifact uploads —
+  // without it that upload is an empty no-op); line is added for CI logs.
+  reporter: process.env.CI
+    ? [['line'], ['html', { open: 'never' }]]
+    : [['html', { open: 'never' }]],
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'on-first-retry',

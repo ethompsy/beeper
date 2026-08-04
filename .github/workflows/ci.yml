@@ -102,6 +102,22 @@ jobs:
       - name: Lint with ruff
         run: poetry run ruff check .
 
+      # The react-shell serving tests (test_react_shell.py, parts of
+      # test_react_route_registry.py) skip when ui/frontend/dist is absent —
+      # build it so the Flask-serves-React contract is actually exercised.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      - name: Build frontend for shell-serving tests
+        working-directory: ui/frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Run tests
         run: poetry run pytest
 
