@@ -2,9 +2,15 @@ import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import { AppLayout } from './routes/AppLayout'
 import { InvestigationListPage } from './routes/InvestigationListPage'
 import { InvestigationDetailPage } from './routes/InvestigationDetailPage'
+import { KnowledgeBasePage } from './routes/KnowledgeBasePage'
+import { KnowledgeEntryPage } from './routes/KnowledgeEntryPage'
+import { IngestionStatsPage } from './routes/IngestionStatsPage'
+import { SourcesPage } from './routes/SourcesPage'
+import { SpendingPage } from './routes/SpendingPage'
+import { MetricsPage } from './routes/MetricsPage'
 
 /**
- * App — router root (Task 2.1).
+ * App — router root (Task 2.1, extended by Task 5.0b).
  *
  * `basename: '/app'` matches the Flask BFF's React-shell mount
  * (`ui/beeper_ui/routes/react_shell.py`, `url_prefix="/app"` — "serve
@@ -13,10 +19,21 @@ import { InvestigationDetailPage } from './routes/InvestigationDetailPage'
  * already assume `/app/investigations/<id>` hrefs (Task 1.4), so this
  * mirrors that convention.
  *
- * Route placeholders only (list/detail) — Tasks 2.2/2.5 build the real
- * views. The catch-all "not found" route still renders inside `AppLayout`
- * (sidebar visible), matching Task 2.5's contract that an invalid
- * investigation id degrades to an in-shell message, not a bare 404 page.
+ * Task 5.0b registers every Milestone 2.1 destination up front — one route
+ * per downstream task (5.1 Knowledge Base browse+detail, 5.2 Ingestion
+ * Stats, 5.3 Sources + Spending, 5.4 Metrics) — as scaffolding so those four
+ * tasks, which run concurrently in separate worktrees, only ever need to
+ * rewrite their own page file(s) rather than all touching this router.
+ * Route paths mirror the canonical React URLs pinned in
+ * `docs/design/route-parity-targets.md` (§2–§5) exactly. Every route below
+ * except investigations list/detail is still a placeholder — Tasks 5.1–5.4
+ * replace their own page component's implementation in place, without
+ * editing this file.
+ *
+ * The catch-all "not found" route still renders inside `AppLayout` (sidebar
+ * visible), matching Task 2.5's contract that an invalid investigation id
+ * degrades to an in-shell message, not a bare 404 page — and now applies to
+ * any unrecognized path, not just investigation ids.
  */
 const router = createBrowserRouter(
   [
@@ -26,6 +43,12 @@ const router = createBrowserRouter(
         { index: true, element: <Navigate to="/investigations" replace /> },
         { path: 'investigations', element: <InvestigationListPage /> },
         { path: 'investigations/:investigationId', element: <InvestigationDetailPage /> },
+        { path: 'knowledge', element: <KnowledgeBasePage /> },
+        { path: 'knowledge/:entryId', element: <KnowledgeEntryPage /> },
+        { path: 'ingestion-stats', element: <IngestionStatsPage /> },
+        { path: 'sources', element: <SourcesPage /> },
+        { path: 'spending', element: <SpendingPage /> },
+        { path: 'metrics', element: <MetricsPage /> },
         {
           path: '*',
           element: (
