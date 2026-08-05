@@ -173,11 +173,11 @@ Migrate remaining inventory routes view-by-view at parity (NFR20), each permalin
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
 | 5.0 | Confirm the live route inventory; pin each route's parity target (FR or named Jinja template) | S | Phase 1 | done |
-| 5.0b | **Shared nav scaffolding** — route-derived `activeItemId`/breadcrumb; canonical hrefs; one placeholder page file per 5.1–5.4 route so the four tasks never touch `App.tsx`/`AppLayout.tsx` concurrently | S | 5.0 | in progress |
-| 5.1 | KB browse/search + entry detail (search query URL-encoded — permalink) | L | 5.0, 5.0b | pending |
-| 5.2 | Ingestion/Detection Stats view (auto-refresh, FR32) | M | 5.0, 5.0b | pending |
-| 5.3 | Sources + LLM Spending views | M | 5.0, 5.0b | pending |
-| 5.4 | Metrics view — parity target pinned by 5.0 | M | 5.0, 5.0b | pending |
+| 5.0b | **Shared nav scaffolding** — route-derived `activeItemId`/breadcrumb; canonical hrefs; one placeholder page file per 5.1–5.4 route so the four tasks never touch `App.tsx`/`AppLayout.tsx` concurrently | S | 5.0 | done |
+| 5.1 | KB browse/search + entry detail (search query URL-encoded — permalink) | L | 5.0, 5.0b | in progress |
+| 5.2 | Ingestion/Detection Stats view (auto-refresh, FR32) | M | 5.0, 5.0b | in progress |
+| 5.3 | Sources + LLM Spending views | M | 5.0, 5.0b | in progress |
+| 5.4 | Metrics view — parity target pinned by 5.0 | M | 5.0, 5.0b | in progress |
 | 5.5 | Accessibility-parity audit across all migrated views (axe, keyboard, focus, reduced-motion) | M | 5.1–5.4 | pending |
 
 **Task 5.0 AC:** `[T]` each migrated route has a written parity target (FR id or `templates/<name>.html`) before its task starts — no "parity with what?" gaps
