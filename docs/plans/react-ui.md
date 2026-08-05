@@ -171,7 +171,7 @@ Migrate remaining inventory routes view-by-view at parity (NFR20), each permalin
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 5.0 | Confirm the live route inventory; pin each route's parity target (FR or named Jinja template) | S | Phase 1 | pending |
+| 5.0 | Confirm the live route inventory; pin each route's parity target (FR or named Jinja template) | S | Phase 1 | in progress |
 | 5.1 | KB browse/search + entry detail (search query URL-encoded — permalink) | L | 5.0 | pending |
 | 5.2 | Ingestion/Detection Stats view (auto-refresh, FR32) | M | 5.0 | pending |
 | 5.3 | Sources + LLM Spending views | M | 5.0 | pending |
@@ -192,7 +192,7 @@ Migrate remaining inventory routes view-by-view at parity (NFR20), each permalin
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 6.1 | Inventory `require_role()` gates + the SocketIO collaboration surface; decide preserve/port/drop for React (R3/Q1, Q6) | M | — (start in Phase 1) | pending |
+| 6.1 | Inventory `require_role()` gates + the SocketIO collaboration surface; decide preserve/port/drop for React (R3/Q1, Q6) | M | — (start in Phase 1) | in progress |
 | 6.2 | Port the chosen RBAC enforcement to the React/BFF path; implement any required access guard | M | 6.1, 5.5 | pending |
 | 6.3 | Delete Jinja templates + the Flask render path; BFF serves React for all routes | M | 6.2 | pending |
 
