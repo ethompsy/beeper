@@ -36,6 +36,7 @@ Incremental React overhaul of the Beeper UI, incident-triage surface first, deli
 | Q5 | NFR21 "SSE render ≤2 s" vs the BFF's 3 s operator-poll floor | Detail-stream latency target | **Resolved (Task 1.6)** — lowered JSON stream poll to 1 s via `_DEFAULT_JSON_SSE_POLL_INTERVAL = 1` in `investigations.py`; NFR21 is met. HTML SSE stays at 3 s. Interval is configurable via `JSON_SSE_POLL_INTERVAL` Flask config key. |
 | Q6 | Is the SocketIO collaboration surface (annotations/approvals/redirections) in or out of the React migration? | Phase 2 scope | Open — inventory in Task 6.1 |
 | Q7 | Correct `docs/specs/architecture.md` baseline (no native operator SSE; RBAC + WebSocket exist) | Doc accuracy for downstream agents | Open — doc fix outside this plan |
+| Q9 | **The `REACT_OWNED_PREFIXES` cutover is not wired end-to-end for non-`/app` URLs.** `serve_react_shell` serves `dist/index.html` verbatim at whatever bare Jinja path matched (e.g. `/knowledge`), but the bundle is built with Vite `base: '/app/'` and React Router `basename: '/app'` — so at a bare path the router matches no route. Untested today because `REACT_OWNED_PREFIXES` defaults to `()`. | **Blocks the actual Jinja→React cutover (Task 6.3), not the 5.1–5.4 builds** (those target `/app/*`). | Open — found in Task 5.0 (2026-08-04). Fix options: drop `basename` at cutover, serve a per-prefix rewritten `index.html`, or redirect bare→`/app`. Decide before Task 6.3. See [route-parity-targets.md](../design/route-parity-targets.md) §6.5. |
 | Q8 | Task 1.6's `GET /api/v1/investigations/{id}` returns **no per-step evidence values or embedded KB entries** — that data lives only in the Jinja-only `evidence_service`/`kb_service` paths | 2.5 renders the spec's "absent" states correctly today, but **real** Prometheus/Loki evidence + KB entries (FR25/FR26) need a backend extension to the 1.6 detail endpoint before 2.6/3.x show live data | Open — found in Task 2.5; **backend follow-up on the 1.6 endpoint** (frontend types are forward-compatible) |
 
 ## Phase 1: React Foundation & Incident-Triage Surface (First Increment)
@@ -171,11 +172,12 @@ Migrate remaining inventory routes view-by-view at parity (NFR20), each permalin
 
 | # | Task | Complexity | Dependencies | Status |
 |---|------|-----------|--------------|--------|
-| 5.0 | Confirm the live route inventory; pin each route's parity target (FR or named Jinja template) | S | Phase 1 | in progress |
-| 5.1 | KB browse/search + entry detail (search query URL-encoded — permalink) | L | 5.0 | pending |
-| 5.2 | Ingestion/Detection Stats view (auto-refresh, FR32) | M | 5.0 | pending |
-| 5.3 | Sources + LLM Spending views | M | 5.0 | pending |
-| 5.4 | Metrics view — parity target pinned by 5.0 | M | 5.0 | pending |
+| 5.0 | Confirm the live route inventory; pin each route's parity target (FR or named Jinja template) | S | Phase 1 | done |
+| 5.0b | **Shared nav scaffolding** — route-derived `activeItemId`/breadcrumb; canonical hrefs; one placeholder page file per 5.1–5.4 route so the four tasks never touch `App.tsx`/`AppLayout.tsx` concurrently | S | 5.0 | in progress |
+| 5.1 | KB browse/search + entry detail (search query URL-encoded — permalink) | L | 5.0, 5.0b | pending |
+| 5.2 | Ingestion/Detection Stats view (auto-refresh, FR32) | M | 5.0, 5.0b | pending |
+| 5.3 | Sources + LLM Spending views | M | 5.0, 5.0b | pending |
+| 5.4 | Metrics view — parity target pinned by 5.0 | M | 5.0, 5.0b | pending |
 | 5.5 | Accessibility-parity audit across all migrated views (axe, keyboard, focus, reduced-motion) | M | 5.1–5.4 | pending |
 
 **Task 5.0 AC:** `[T]` each migrated route has a written parity target (FR id or `templates/<name>.html`) before its task starts — no "parity with what?" gaps
