@@ -169,7 +169,11 @@ export function KnowledgeBasePage() {
           value={inputValue}
           onChange={(event) => setInputValue(event.target.value)}
           placeholder="Search knowledge base..."
-          className="w-full rounded-lg border border-surface-overlay bg-surface-raised px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+          // Task 5.5 a11y-audit finding: aligned to the app's established
+          // focus-visible convention (Sidebar/AppShell/MetricsFilterBar) —
+          // was `focus:ring` (fires on any focus, incl. mouse click) with no
+          // `ring-offset-2`.
+          className="w-full rounded-lg border border-surface-overlay bg-surface-raised px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         />
       </div>
 

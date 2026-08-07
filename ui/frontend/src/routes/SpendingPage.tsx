@@ -89,6 +89,22 @@ export function SpendingPage() {
         </p>
       </div>
 
+      {/*
+        Task 5.5 a11y-audit finding — same narrow-live-region pattern as
+        `SourcesPage.tsx`: the skeleton -> data/error transition wasn't
+        announced (errors already are, via the `role="alert"` block below,
+        which is an implicit assertive live region). This sr-only status
+        only changes text — and therefore only re-announces — when the
+        underlying summary actually changes (a genuine spend update at the
+        30s refetch cadence, `REFRESH_INTERVAL_MS`), not on every identical
+        poll.
+      */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {!isLoading && !error && data
+          ? `Spending data loaded. Daily spend $${formatUsd(data.summary.daily_cost_usd)}, monthly spend $${formatUsd(data.summary.monthly_cost_usd)}.`
+          : ''}
+      </p>
+
       {error ? (
         <div role="alert" className="rounded-lg border border-status-critical/30 bg-surface-raised p-4">
           <p className="text-sm text-status-critical">{error}</p>
@@ -312,12 +328,41 @@ function SpendTrendChart({ chart }: { chart: SpendChartData }) {
   return (
     <div className="rounded-lg border border-surface-overlay bg-surface-raised p-4">
       <h2 className="mb-3 text-base font-semibold text-text-primary">Daily Spend Trend</h2>
+      {/*
+        Task 5.5 a11y-audit finding: `role="img"` + a single `aria-label`
+        summarized the chart as one opaque image with no per-point data —
+        assistive tech had no way to learn the actual daily amounts (WCAG
+        1.1.1 Non-text Content). Fixed with the standard accessible-chart
+        pattern: an sr-only data table carries the real information (one row
+        per point, exactly what the SVG plots) and the SVG itself becomes
+        `aria-hidden` decoration layered visually alongside it — rather than
+        stacking per-point `aria-label`s on the `<circle>` elements, which
+        NVDA/VoiceOver do not reliably expose as descendants of a `role=img`
+        ancestor (an `img` role collapses its subtree to a single accessible
+        node per the ARIA spec).
+      */}
+      <table className="sr-only">
+        <caption>Daily spend trend — one row per day</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Spend (USD)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {chart.dataPoints.map((point) => (
+            <tr key={point.period}>
+              <td>{point.period}</td>
+              <td>${point.costUsd.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <svg
         className="h-72 w-full"
         viewBox={`0 0 ${chart.chartWidth} ${chart.chartHeight}`}
         preserveAspectRatio="none"
-        role="img"
-        aria-label="Daily spend trend chart"
+        aria-hidden="true"
       >
         {chart.yGridLines.map((line) => (
           <g key={line.y}>

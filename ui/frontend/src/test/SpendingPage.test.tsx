@@ -275,7 +275,14 @@ describe('SpendingPage — daily spend trend chart', () => {
     render(<SpendingPage />)
 
     await screen.findByText('Daily Spend Trend')
-    expect(screen.getByRole('img', { name: 'Daily spend trend chart' })).toBeInTheDocument()
+    // Task 5.5 a11y-audit fix: the chart's accessible representation is now
+    // an sr-only data table (one row per point) rather than a single
+    // role="img" + one-line aria-label on the decorative SVG (which gave
+    // assistive tech no way to learn the actual per-day amounts — WCAG
+    // 1.1.1). See `SpendingPage.tsx`'s `SpendTrendChart` doc comment.
+    expect(screen.getByRole('table', { name: /Daily spend trend/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Date' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Spend (USD)' })).toBeInTheDocument()
   })
 
   it('omits the chart when there is no trend data', async () => {

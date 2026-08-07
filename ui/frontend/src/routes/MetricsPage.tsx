@@ -327,8 +327,14 @@ function MetricsFilterBar({
   onSeverityChange,
   exportHref,
 }: MetricsFilterBarProps) {
+  // Task 5.5 a11y-audit finding: aligned to the app's established
+  // focus-visible convention (`Sidebar`/`AppShell` — `focus-visible:ring-2
+  // focus-visible:ring-primary focus-visible:ring-offset-2`, with
+  // `outline-none` also gated on `focus-visible:` rather than unconditional
+  // `focus:`); this previously had no `ring-offset-2` and removed the
+  // default outline on every focus, not just keyboard focus.
   const selectClassName =
-    'rounded-md border border-surface-overlay bg-surface-base px-2 py-1.5 text-sm text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+    'rounded-md border border-surface-overlay bg-surface-base px-2 py-1.5 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2'
   const labelClassName = 'text-sm text-text-secondary'
 
   return (

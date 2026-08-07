@@ -76,6 +76,28 @@ export function SourcesPage() {
         </p>
       </div>
 
+      {/*
+        Task 5.5 a11y-audit finding: the skeleton -> data/error transition
+        (a 5s `setInterval` refetch, `REFRESH_INTERVAL_MS`) wasn't announced
+        to assistive tech at all — the error block below has `role="alert"`
+        (implicit assertive live region, so failures already announce), and
+        the skeleton has `role="status"` (implicit polite region, so "start
+        of loading" announces), but nothing announced when a refresh
+        actually finished successfully. This sr-only status text is the
+        narrow fix: it only changes text (and therefore only re-announces)
+        on a genuine state transition — first load, or a status flip for one
+        of the sources (e.g. `connected` -> `disconnected` between polls) —
+        not on every identical 5s poll, since unchanged text triggers no DOM
+        mutation for the live region to pick up.
+      */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {!isLoading && !error && sources
+          ? `${sources.length} source${sources.length === 1 ? '' : 's'} loaded, ${
+              sources.filter((s) => s.status === 'connected').length
+            } connected.`
+          : ''}
+      </p>
+
       {error ? (
         <div role="alert" className="rounded-lg border border-status-critical/30 bg-surface-raised p-4">
           <h2 className="text-base font-semibold text-status-critical">Unable to fetch sources</h2>
@@ -119,6 +141,8 @@ function SourcesTable({ sources }: { sources: SourceListItem[] }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-surface-overlay bg-surface-raised">
       <table className="w-full border-collapse text-sm">
+        {/* Task 5.5 a11y-audit finding: no accessible name for the table (WCAG 1.3.1 / axe `table-fake-caption` context). sr-only — the visible `<h1>` above already names the view. */}
+        <caption className="sr-only">Configured data sources and their live connection status</caption>
         <thead>
           <tr className="border-b border-surface-overlay text-left">
             <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">

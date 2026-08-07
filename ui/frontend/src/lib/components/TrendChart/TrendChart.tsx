@@ -123,7 +123,19 @@ export function TrendChart({
       <svg
         viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
         preserveAspectRatio="xMidYMid meet"
-        role="img"
+        // Task 5.5 a11y-audit finding (axe `nested-interactive` /
+        // `no-focusable-content`, serious): `role="img"` declares the whole
+        // subtree a single atomic image, which is incompatible with the
+        // focusable `role="button"` <circle> points rendered below when
+        // `onSelectPoint` is supplied — axe (correctly) flags a role="img"
+        // container with focusable descendants, since AT is not guaranteed
+        // to expose or reach them. `role="group"` is the correct container
+        // role for an interactive chart (an accessible-name-bearing region
+        // whose descendants remain independently focusable); the
+        // non-interactive rendering path (no `onSelectPoint`, e.g. a
+        // read-only preview) keeps `role="img"` since it has no focusable
+        // content to conflict with.
+        role={onSelectPoint ? 'group' : 'img'}
         aria-label={ariaLabel}
         className="h-auto w-full"
       >
@@ -184,6 +196,30 @@ export function TrendChart({
                   onSelectPoint && 'cursor-pointer',
                   'transition-opacity motion-reduce:transition-none',
                   isSelected ? 'opacity-100' : 'opacity-85 hover:opacity-100',
+                  // Task 5.5 a11y-audit finding: these points are
+                  // keyboard-operable (role="button"/tabIndex/Enter+Space
+                  // below) but were relying on the browser's default focus
+                  // outline on an SVG <circle> — inconsistent across
+                  // browsers and, in Chromium/dark theme, thin enough
+                  // against the token background to be hard to see. `ring-*`
+                  // (box-shadow-based) doesn't render reliably on SVG shape
+                  // elements, so this uses `outline`, which does — same
+                  // `primary` token and offset as the app's
+                  // focus-visible:ring convention elsewhere (Sidebar/
+                  // AppShell), just via a CSS property SVG actually supports.
+                  //
+                  // Deliberately NOT paired with an unconditional
+                  // `outline-none`: Tailwind v4's outline utilities share a
+                  // single `--tw-outline-style` custom property, and
+                  // `outline-none` sets it to `none` unconditionally
+                  // (outside any `focus-visible:` gate) — that value then
+                  // persists and is read back by `focus-visible:outline`'s
+                  // own `outline-style: var(--tw-outline-style)`, silently
+                  // cancelling it even while focused. Omitting it here
+                  // simply leaves the SVG's outline unset until
+                  // `:focus-visible` applies it.
+                  onSelectPoint &&
+                    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
                 )}
                 role={onSelectPoint ? 'button' : undefined}
                 tabIndex={onSelectPoint ? 0 : undefined}

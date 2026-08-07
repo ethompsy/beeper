@@ -117,12 +117,21 @@ export function IngestionStatsPage() {
       ) : null}
 
       {!isInitialLoad && stats ? (
-        // aria-live="polite" mirrors the Jinja container's own
-        // `aria-live="polite"` (`health/ingestion.html`) — auto-refresh
-        // content updates are announced to assistive tech without requiring
-        // a role="status" on every individual tile/chip.
-        <div aria-live="polite" className="flex flex-col gap-6">
-          <div className="flex items-center gap-3">
+        // Task 5.5 a11y-audit finding: the Jinja container wraps its whole
+        // body in `aria-live="polite"` (`health/ingestion.html`), which this
+        // view initially mirrored 1:1 — but the tiles poll every 5s
+        // (`REFRESH_INTERVAL_MS`) and their throughput counters change on
+        // nearly every poll, so a page-wide live region re-announces the
+        // entire dashboard on a 5s cadence (screen-reader "chattiness" the
+        // Task 5.2 follow-up flagged for review). The pipeline chip's
+        // three-state transition (No Data -> Warming Up -> Active) is the
+        // one meaningful, infrequent change worth announcing — so the live
+        // region is scoped to just that chip's wrapper, not the tiles/
+        // progress bar below. `role="status"` is a belt-and-suspenders
+        // match for `aria-live="polite"` (same implicit semantics, makes the
+        // live-region intent explicit for tooling like axe).
+        <div className="flex flex-col gap-6">
+          <div role="status" aria-live="polite" className="flex items-center gap-3">
             <span className="text-sm text-text-secondary">Pipeline status</span>
             <StatusBadge variant={chip.variant} label={chip.label} />
           </div>

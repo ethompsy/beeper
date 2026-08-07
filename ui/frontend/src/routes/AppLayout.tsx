@@ -92,8 +92,20 @@ export function AppLayout() {
   const knowledgeDetailMatch = useMatch('/knowledge/:entryId')
   const isDetailRoute = investigationDetailMatch !== null
 
+  // Task 5.5 a11y-audit finding: WCAG 2.4.3 focus management (moving focus
+  // to the detail `<h1>` on entry, incl. cold permalink load, and back to
+  // the active sidebar item on return-to-list) was only wired for the
+  // investigation detail route. `KnowledgeEntryPage` is a detail route too
+  // (`#detail-summary-heading` on its own `<h1>`, added alongside this fix)
+  // and needs the same treatment. Deliberately a SEPARATE boolean from
+  // `isDetailRoute` above — that one also drives `useSidebarState`'s
+  // force-collapse behavior, which is a Task 2.1 AC scoped to investigation
+  // detail specifically (FR41/42/44); extending it to Knowledge Base would
+  // be an unrequested layout/behavior change, not an accessibility fix.
+  const isFocusManagedDetailRoute = isDetailRoute || knowledgeDetailMatch !== null
+
   const sidebarState = useSidebarState(isDetailRoute ? 'collapsed' : 'auto', pathname)
-  useRouteFocusManagement(isDetailRoute, pathname)
+  useRouteFocusManagement(isFocusManagedDetailRoute, pathname)
 
   const activeNavItem = matchActiveNavItem(pathname)
 
