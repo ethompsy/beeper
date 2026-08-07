@@ -104,3 +104,13 @@ export { useAutoScrollOnAppend } from './hooks/useAutoScrollOnAppend'
 
 // Detail-permalink step anchor (Task 3.2, FR53)
 export { useStepAnchorScroll } from './hooks/useStepAnchorScroll'
+
+// Knowledge Base browse/search + entry-detail primitives (Task 5.1)
+export { KbEntryCard } from './components/KbEntryCard'
+export type { KbEntryCardProps, KbEntryCardLinkProps } from './components/KbEntryCard'
+
+export { KbListSkeleton } from './components/KbListSkeleton'
+export type { KbListSkeletonProps } from './components/KbListSkeleton'
+
+export { KbEntryNotFound } from './components/KbEntryNotFound'
+export type { KbEntryNotFoundProps } from './components/KbEntryNotFound'
