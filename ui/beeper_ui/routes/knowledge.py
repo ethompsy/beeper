@@ -5,7 +5,7 @@ import os
 import re
 from typing import Any
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 from werkzeug.utils import secure_filename
 
 from beeper_ui.services.correction_service import (
@@ -30,10 +30,17 @@ from beeper_ui.services.learning_service import (
     LearningServiceError,
     get_learning_service,
 )
+from beeper_ui.utils.markdown_utils import render_markdown, strip_markdown
 
 logger = logging.getLogger(__name__)
 
 knowledge_bp = Blueprint("knowledge", __name__, url_prefix="/knowledge")
+
+# JSON API blueprint (Task 5.1). Kept separate from the HTML `knowledge_bp`
+# so it can live under the /api/v1 prefix the React KB browse/search +
+# entry-detail views fetch — mirrors the investigations_api_bp pattern in
+# `ui/beeper_ui/routes/investigations.py` (Task 1.6).
+knowledge_api_bp = Blueprint("knowledge_api", __name__, url_prefix="/api/v1/knowledge")
 
 # Maximum query length (OpenAI embedding models have ~8k token limit, ~4 chars/token average)
 MAX_QUERY_LENGTH = 500
@@ -76,7 +83,7 @@ def sanitize_query(query: str) -> str:
     cleaned = query.strip()
 
     # Remove HTML/script tags
-    cleaned = re.sub(r'<[^>]+>', '', cleaned)
+    cleaned = re.sub(r"<[^>]+>", "", cleaned)
 
     # Limit length
     if len(cleaned) > MAX_QUERY_LENGTH:
@@ -599,9 +606,7 @@ def kb_history(entry_id: str) -> tuple[str, int] | str:
 
     # Merge: add is_current=False to snapshot versions, filter out duplicates
     snapshot_versions = [
-        {**v, "is_current": False}
-        for v in versions
-        if v["version"] != entry.version
+        {**v, "is_current": False} for v in versions if v["version"] != entry.version
     ]
     all_versions = [current_version] + snapshot_versions
 
@@ -976,9 +981,8 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
     # Detect content changes to set validation_status="corrected"
     new_validation_status = None
     if current_entry:
-        content_changed = (
-            title != (current_entry.title or "")
-            or content != (current_entry.content or "")
+        content_changed = title != (current_entry.title or "") or content != (
+            current_entry.content or ""
         )
         if content_changed:
             new_validation_status = "corrected"
@@ -1015,9 +1019,7 @@ def kb_edit(entry_id: str) -> tuple[str, int] | str:
                 )
             except KBServiceError:
                 # Don't fail the edit if correction recording fails
-                logger.warning(
-                    "Failed to record correction for edit on entry %s", entry_id
-                )
+                logger.warning("Failed to record correction for edit on entry %s", entry_id)
 
         return render_template(
             "knowledge/_edit_result.html",
@@ -1165,9 +1167,7 @@ def kb_corrections_history(entry_id: str) -> tuple[str, int] | str:
     try:
         entry = service_client.get_entry(entry_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_correction_history.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_correction_history.html", error_message=str(e)), 500
 
     if not entry:
         return render_template(
@@ -1202,9 +1202,7 @@ def kb_submit_correction(entry_id: str) -> tuple[str, int] | str:
     try:
         entry = service_client.get_entry(entry_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_correction_response.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_correction_response.html", error_message=str(e)), 500
 
     if not entry:
         return render_template(
@@ -1271,9 +1269,7 @@ def kb_correction_reply(entry_id: str, correction_id: str) -> tuple[str, int] | 
     try:
         entry = service_client.get_entry(entry_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_correction_response.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_correction_response.html", error_message=str(e)), 500
 
     if not entry:
         return render_template(
@@ -1284,9 +1280,7 @@ def kb_correction_reply(entry_id: str, correction_id: str) -> tuple[str, int] | 
     try:
         correction = service_client.get_correction(correction_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_correction_response.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_correction_response.html", error_message=str(e)), 500
 
     if not correction:
         return render_template(
@@ -1303,8 +1297,7 @@ def kb_correction_reply(entry_id: str, correction_id: str) -> tuple[str, int] | 
 
     # Build conversation history from correction messages
     conversation_history = [
-        {"role": msg.role, "content": msg.content}
-        for msg in correction.messages
+        {"role": msg.role, "content": msg.content} for msg in correction.messages
     ]
 
     # Process reply via LLM
@@ -1348,12 +1341,8 @@ def kb_correction_reply(entry_id: str, correction_id: str) -> tuple[str, int] | 
     )
 
 
-@knowledge_bp.route(
-    "/<entry_id>/corrections/<correction_id>/revision", methods=["POST"]
-)
-def kb_generate_revision(
-    entry_id: str, correction_id: str
-) -> tuple[str, int] | str:
+@knowledge_bp.route("/<entry_id>/corrections/<correction_id>/revision", methods=["POST"])
+def kb_generate_revision(entry_id: str, correction_id: str) -> tuple[str, int] | str:
     """Generate a revision of a KB entry based on a correction conversation.
 
     Args:
@@ -1368,9 +1357,7 @@ def kb_generate_revision(
     try:
         entry = service_client.get_entry(entry_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_revision_panel.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_revision_panel.html", error_message=str(e)), 500
 
     if not entry:
         return render_template(
@@ -1381,9 +1368,7 @@ def kb_generate_revision(
     try:
         correction = service_client.get_correction(correction_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_revision_panel.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_revision_panel.html", error_message=str(e)), 500
 
     if not correction:
         return render_template(
@@ -1405,8 +1390,7 @@ def kb_generate_revision(
 
     # Build conversation messages
     conversation_messages = [
-        {"role": msg.role, "content": msg.content}
-        for msg in correction.messages
+        {"role": msg.role, "content": msg.content} for msg in correction.messages
     ]
 
     # Generate revision via LLM
@@ -1435,12 +1419,8 @@ def kb_generate_revision(
     )
 
 
-@knowledge_bp.route(
-    "/<entry_id>/corrections/<correction_id>/apply", methods=["POST"]
-)
-def kb_apply_revision(
-    entry_id: str, correction_id: str
-) -> tuple[str, int] | str:
+@knowledge_bp.route("/<entry_id>/corrections/<correction_id>/apply", methods=["POST"])
+def kb_apply_revision(entry_id: str, correction_id: str) -> tuple[str, int] | str:
     """Apply a revision to a KB entry and mark correction as applied.
 
     Args:
@@ -1455,9 +1435,7 @@ def kb_apply_revision(
     try:
         entry = service_client.get_entry(entry_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_revision_result.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_revision_result.html", error_message=str(e)), 500
 
     if not entry:
         return render_template(
@@ -1468,9 +1446,7 @@ def kb_apply_revision(
     try:
         correction = service_client.get_correction(correction_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_revision_result.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_revision_result.html", error_message=str(e)), 500
 
     if not correction:
         return render_template(
@@ -1527,8 +1503,7 @@ def kb_apply_revision(
         if correction:
             learn_service = get_learning_service()
             conversation_messages = [
-                {"role": msg.role, "content": msg.content}
-                for msg in correction.messages
+                {"role": msg.role, "content": msg.content} for msg in correction.messages
             ]
             service_name = entry.service or "general"
             learned_patterns = learn_service.analyze_correction(
@@ -1570,12 +1545,8 @@ def kb_apply_revision(
     )
 
 
-@knowledge_bp.route(
-    "/<entry_id>/corrections/<correction_id>/revision/refine", methods=["POST"]
-)
-def kb_refine_revision(
-    entry_id: str, correction_id: str
-) -> tuple[str, int] | str:
+@knowledge_bp.route("/<entry_id>/corrections/<correction_id>/revision/refine", methods=["POST"])
+def kb_refine_revision(entry_id: str, correction_id: str) -> tuple[str, int] | str:
     """Refine a previously generated revision based on user feedback.
 
     Args:
@@ -1590,9 +1561,7 @@ def kb_refine_revision(
     try:
         entry = service_client.get_entry(entry_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_revision_panel.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_revision_panel.html", error_message=str(e)), 500
 
     if not entry:
         return render_template(
@@ -1603,9 +1572,7 @@ def kb_refine_revision(
     try:
         correction = service_client.get_correction(correction_id)
     except KBServiceError as e:
-        return render_template(
-            "knowledge/_revision_panel.html", error_message=str(e)
-        ), 500
+        return render_template("knowledge/_revision_panel.html", error_message=str(e)), 500
 
     if not correction:
         return render_template(
@@ -1644,13 +1611,8 @@ def kb_refine_revision(
         updated_correction = None
 
     # Build conversation messages from updated correction (includes feedback history)
-    source_messages = (
-        updated_correction.messages if updated_correction else correction.messages
-    )
-    conversation_messages = [
-        {"role": msg.role, "content": msg.content}
-        for msg in source_messages
-    ]
+    source_messages = updated_correction.messages if updated_correction else correction.messages
+    conversation_messages = [{"role": msg.role, "content": msg.content} for msg in source_messages]
 
     # Refine revision via LLM
     try:
@@ -1718,9 +1680,7 @@ def kb_learning_adjustments() -> tuple[str, int] | str:
     service_client = get_kb_service()
 
     try:
-        patterns = service_client.get_learning_patterns(
-            service_name=service_name
-        )
+        patterns = service_client.get_learning_patterns(service_name=service_name)
     except KBServiceError as e:
         return render_template(
             "knowledge/_learning_adjustments.html",
@@ -1746,9 +1706,7 @@ def kb_learning_adjustments() -> tuple[str, int] | str:
 
     try:
         learn_service = get_learning_service()
-        adjustments = learn_service.generate_prompt_adjustments(
-            pattern_dicts, service_name
-        )
+        adjustments = learn_service.generate_prompt_adjustments(pattern_dicts, service_name)
     except LearningServiceError as e:
         return render_template(
             "knowledge/_learning_adjustments.html",
@@ -1802,15 +1760,11 @@ def kb_learning_prompt_context(service_name: str) -> tuple[dict[str, Any], int]:
 
     try:
         learn_service = get_learning_service()
-        adjustments = learn_service.generate_prompt_adjustments(
-            pattern_dicts, service_name
-        )
+        adjustments = learn_service.generate_prompt_adjustments(pattern_dicts, service_name)
         # Build context string from adjustments (avoids second LLM call)
         if adjustments:
             scope = f" for {service_name}" if service_name else ""
-            context_lines = [
-                f"Based on past corrections{scope}, keep these in mind:"
-            ]
+            context_lines = [f"Based on past corrections{scope}, keep these in mind:"]
             for adj in adjustments:
                 context_lines.append(f"- {adj}")
             prompt_context = "\n".join(context_lines)
@@ -1856,9 +1810,7 @@ def kb_trust_settings() -> tuple[str, int] | str:
     )
 
 
-@knowledge_bp.route(
-    "/trust-settings/<service_name>/override", methods=["POST"]
-)
+@knowledge_bp.route("/trust-settings/<service_name>/override", methods=["POST"])
 def kb_trust_override(
     service_name: str,
 ) -> tuple[str, int] | str:
@@ -1871,8 +1823,10 @@ def kb_trust_override(
         Rendered override result partial.
     """
     # Validate service_name (alphanumeric, hyphens, underscores, max 100)
-    if not service_name or len(service_name) > 100 or not re.match(
-        r"^[a-zA-Z0-9_-]+$", service_name
+    if (
+        not service_name
+        or len(service_name) > 100
+        or not re.match(r"^[a-zA-Z0-9_-]+$", service_name)
     ):
         return render_template(
             "knowledge/_trust_override_result.html",
@@ -2075,4 +2029,205 @@ def kb_related(entry_id: str) -> str:
         "knowledge/_related.html",
         related_entries=related_entries,
         current_entry_id=entry_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# JSON API (Task 5.1) — /api/v1/knowledge/*
+#
+# Consumed by the React KB browse/search + entry-detail views
+# (`docs/design/route-parity-targets.md` §2: `/app/knowledge`,
+# `/app/knowledge/:entryId`). These handlers are thin JSON adapters over the
+# exact same `KBService`/`EmbeddingService` calls `kb_index()`/`kb_search()`/
+# `kb_entry()` above already make — no KB logic is reimplemented here, and
+# none of the existing Jinja routes' behavior changes.
+# ---------------------------------------------------------------------------
+
+# Preview/snippet length for list & search results — mirrors the Jinja
+# `_entry_card.html` (`preview[:200]`) / `_search_results.html`
+# (`truncate(200)`) 200-char convention.
+SNIPPET_LENGTH = 200
+
+
+def _snippet(content: str | None) -> str:
+    """Plain-text preview of markdown content, truncated to SNIPPET_LENGTH."""
+    plain = strip_markdown(content or "")
+    if len(plain) > SNIPPET_LENGTH:
+        return plain[:SNIPPET_LENGTH] + "…"
+    return plain
+
+
+def _kb_entry_summary(entry: "KBEntry") -> dict[str, Any]:
+    """Serialize a KBEntry for list/search/related-entries JSON responses."""
+    return {
+        "id": entry.id,
+        "entry_id": entry.entry_id,
+        "entry_type": entry.entry_type,
+        "title": entry.title,
+        "service": entry.service,
+        "created_at": entry.created_at.isoformat() if entry.created_at else None,
+        "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
+        "author": entry.author,
+        "version": entry.version,
+        "tags": entry.tags,
+        "validation_status": entry.validation_status,
+        "auto_published": entry.auto_published,
+        "relevance_score": entry.relevance_score,
+        "snippet": _snippet(entry.content),
+    }
+
+
+def _kb_entry_detail(entry: "KBEntry") -> dict[str, Any]:
+    """Serialize a KBEntry for the entry-detail JSON response (FR31).
+
+    `content_html` reuses the existing sanitized markdown renderer
+    (`render_markdown`, the same function the Jinja `entry.content|markdown`
+    filter calls) so the React view never needs its own markdown
+    parser/sanitizer — the server stays the single source of sanitization.
+    `root_cause`/`resolution`/`affected_services` are the FR31 structured
+    incident-detail fields `KBEntry` already carries (with the markdown
+    content remaining the source-of-truth fallback) — reused verbatim, not
+    re-derived.
+    """
+    summary = _kb_entry_summary(entry)
+    del summary["snippet"]
+    return {
+        **summary,
+        "content_html": render_markdown(entry.content or ""),
+        "root_cause": entry.root_cause,
+        "resolution": entry.resolution,
+        "affected_services": entry.affected_services,
+    }
+
+
+@knowledge_api_bp.route("/")
+def knowledge_list_json() -> tuple[Response, int] | Response:
+    """JSON browse/search endpoint for the React KB view (Task 5.1, FR28/FR29).
+
+    Query parameters mirror `kb_index()`/`kb_search()` above exactly:
+    - q: search query (optional). When present, performs the same semantic
+      search `kb_search()` uses (`KBService.search_semantic` +
+      `EmbeddingService`); when absent, browses recent entries
+      (`KBService.list_recent_entries()`), matching `kb_index()`.
+    - entry_type, service, date_range: optional filters, same validation as
+      the Jinja routes. Not required by FR53 (only `q` is) — supported here
+      so a future filter UI can adopt them without a backend change.
+
+    Response shape:
+        { "query": str, "entries": [...], "has_exact_matches": bool, "error": str | null }
+
+    A soft/expected condition (search not configured — no OPENAI_API_KEY) or
+    a per-entry_type/service scan failure returns 200 with a populated
+    `error` string (matching the Jinja route's graceful degrade, which
+    renders inline rather than failing the page). An operator/Qdrant
+    connection failure (`KBServiceError`) returns 503, matching
+    `investigations_api_bp`'s convention in `investigations.py`.
+    """
+    query = sanitize_query(request.args.get("q", ""))
+    entry_type = validate_entry_type(request.args.get("entry_type"))
+    service = request.args.get("service") or None
+    date_range = request.args.get("date_range") or None
+    date_from, date_to = parse_date_range(date_range or "")
+
+    service_client = get_kb_service()
+
+    if query:
+        embedding_service = get_embedding_service()
+        if not embedding_service.is_configured():
+            return jsonify(
+                {
+                    "query": query,
+                    "entries": [],
+                    "has_exact_matches": True,
+                    "error": "Search not configured. Set OPENAI_API_KEY to enable.",
+                }
+            )
+        try:
+            entries, has_exact_matches = service_client.search_semantic(
+                query=query,
+                limit=10,
+                entry_type=entry_type,
+                service=service,
+                date_from=date_from,
+                date_to=date_to,
+                embedding_service=embedding_service,
+            )
+        except KBServiceError as e:
+            return jsonify(
+                {"query": query, "entries": [], "has_exact_matches": True, "error": str(e)}
+            ), 503
+    else:
+        try:
+            entries = service_client.list_recent_entries(
+                limit=20,
+                entry_type=entry_type,
+                service=service,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        except KBServiceError as e:
+            return jsonify(
+                {"query": query, "entries": [], "has_exact_matches": True, "error": str(e)}
+            ), 503
+        has_exact_matches = True
+
+    return jsonify(
+        {
+            "query": query,
+            "entries": [_kb_entry_summary(e) for e in entries],
+            "has_exact_matches": has_exact_matches,
+            "error": None,
+        }
+    )
+
+
+@knowledge_api_bp.route("/<entry_id>")
+def knowledge_entry_json(entry_id: str) -> tuple[Response, int] | Response:
+    """JSON entry-detail endpoint for the React KB entry view (Task 5.1, FR31).
+
+    Mirrors `kb_entry()` above: fetches the entry, its related entries
+    (same-service, `list_related_entries`), and its bi-directional
+    investigation links (`get_source_investigation`/
+    `get_contributing_investigations`), reusing the exact same `KBService`
+    calls. Missing entry returns 404 with `{"error": "not_found"}`
+    (matching `investigation_detail_json`'s convention in
+    `investigations.py`); a Qdrant/service failure returns 503.
+    """
+    service_client = get_kb_service()
+
+    try:
+        entry = service_client.get_entry(entry_id)
+    except KBServiceError as e:
+        return jsonify({"error": str(e)}), 503
+
+    if not entry:
+        return jsonify({"error": "not_found"}), 404
+
+    try:
+        related_entries = service_client.list_related_entries(
+            entry_id=entry_id, service=entry.service, limit=5
+        )
+    except KBServiceError:
+        related_entries = []
+
+    source_investigation: dict[str, str] | None = None
+    contributing_investigations: list[dict[str, str]] = []
+    try:
+        entry_payload = service_client.get_entry_payload(entry_id)
+        source_investigation = service_client.get_source_investigation(
+            entry_id, payload=entry_payload
+        )
+        contributing_investigations = service_client.get_contributing_investigations(
+            entry_id, payload=entry_payload
+        )
+    except KBServiceError:
+        pass  # Non-critical — entry-detail links degrade gracefully, matching kb_entry().
+
+    return jsonify(
+        {
+            "entry": _kb_entry_detail(entry),
+            "related_entries": [_kb_entry_summary(e) for e in related_entries],
+            "source_investigation": source_investigation,
+            "contributing_investigations": contributing_investigations,
+        }
     )

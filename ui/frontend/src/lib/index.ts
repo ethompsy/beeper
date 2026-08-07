@@ -121,3 +121,13 @@ export type { UseAutoRefreshOptions } from './hooks/useAutoRefresh'
 // Metrics (MTTR trend chart) primitive (Task 5.4)
 export { TrendChart } from './components/TrendChart'
 export type { TrendChartProps, TrendChartPoint } from './components/TrendChart'
+
+// Knowledge Base browse/search + entry-detail primitives (Task 5.1)
+export { KbEntryCard } from './components/KbEntryCard'
+export type { KbEntryCardProps, KbEntryCardLinkProps } from './components/KbEntryCard'
+
+export { KbListSkeleton } from './components/KbListSkeleton'
+export type { KbListSkeletonProps } from './components/KbListSkeleton'
+
+export { KbEntryNotFound } from './components/KbEntryNotFound'
+export type { KbEntryNotFoundProps } from './components/KbEntryNotFound'

@@ -28,8 +28,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AppLayout } from '../AppLayout'
-import { KnowledgeBasePage } from '../KnowledgeBasePage'
-import { KnowledgeEntryPage } from '../KnowledgeEntryPage'
 import { IngestionStatsPage } from '../IngestionStatsPage'
 import { SourcesPage } from '../SourcesPage'
 import { SpendingPage } from '../SpendingPage'
@@ -43,14 +41,30 @@ function DummyInvestigationDetail() {
   return <div data-testid="dummy-investigation-detail">Investigation Detail</div>
 }
 
+// Task 5.1: KnowledgeBasePage/KnowledgeEntryPage are no longer static
+// placeholders — like InvestigationListPage/InvestigationDetailPage before
+// them, they now fetch real data on mount. Swapped for lightweight stand-ins
+// here for the exact same reason the investigation routes already are (see
+// the doc comment below): this suite only cares about route *matching*
+// (breadcrumb/active-nav-item/shell wrapping), not page content, which is
+// already covered by `KnowledgeBasePage.test.tsx`/`KnowledgeEntryPage.test.tsx`.
+function DummyKnowledgeBase() {
+  return <div data-testid="dummy-knowledge-base">Knowledge Base</div>
+}
+
+function DummyKnowledgeEntry() {
+  return <div data-testid="dummy-knowledge-entry">Knowledge Entry</div>
+}
+
 /**
  * Mirrors `App.tsx`'s route tree exactly (same paths, same nesting under
- * `AppLayout`), swapping the two investigation routes for lightweight
- * stand-ins so this suite doesn't have to also stub `fetch`/`EventSource`
- * for `InvestigationListPage`/`InvestigationDetailPage` — their own
- * behavior is already covered by `InvestigationDetailPage.test.tsx` etc.
- * Only route *matching* (path shape, params) matters here, and that's
- * identical regardless of which element a route renders.
+ * `AppLayout`), swapping the investigation and knowledge-base routes for
+ * lightweight stand-ins so this suite doesn't have to also stub
+ * `fetch`/`EventSource` for `InvestigationListPage`/`InvestigationDetailPage`/
+ * `KnowledgeBasePage`/`KnowledgeEntryPage` — their own behavior is already
+ * covered by their dedicated test files. Only route *matching* (path shape,
+ * params) matters here, and that's identical regardless of which element a
+ * route renders.
  */
 function renderAt(path: string) {
   const router = createMemoryRouter(
@@ -60,8 +74,8 @@ function renderAt(path: string) {
         children: [
           { path: 'investigations', element: <DummyInvestigationList /> },
           { path: 'investigations/:investigationId', element: <DummyInvestigationDetail /> },
-          { path: 'knowledge', element: <KnowledgeBasePage /> },
-          { path: 'knowledge/:entryId', element: <KnowledgeEntryPage /> },
+          { path: 'knowledge', element: <DummyKnowledgeBase /> },
+          { path: 'knowledge/:entryId', element: <DummyKnowledgeEntry /> },
           { path: 'ingestion-stats', element: <IngestionStatsPage /> },
           { path: 'sources', element: <SourcesPage /> },
           { path: 'spending', element: <SpendingPage /> },
@@ -219,9 +233,11 @@ describe('AppLayout — breadcrumb', () => {
 })
 
 describe('AppLayout — placeholder routes render inside the shell', () => {
+  // Task 5.1: knowledge/knowledge-base-page dropped from this table — those
+  // routes render real (non-placeholder) content now, via the dummy
+  // stand-ins in `renderAt` above; their "renders inside the shell" coverage
+  // moved to the two cases immediately below instead.
   const placeholderCases: Array<[path: string, testId: string]> = [
-    ['/knowledge', 'knowledge-base-page'],
-    ['/knowledge/KB-104', 'knowledge-entry-page'],
     ['/ingestion-stats', 'ingestion-stats-page'],
     ['/sources', 'sources-page'],
     ['/spending', 'spending-page'],
@@ -233,6 +249,22 @@ describe('AppLayout — placeholder routes render inside the shell', () => {
 
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeVisible()
     expect(screen.getByTestId(testId)).toBeVisible()
+    expect(screen.queryByTestId('not-found-page')).not.toBeInTheDocument()
+  })
+
+  it('renders the Knowledge Base route inside the shell (sidebar present)', () => {
+    renderAt('/knowledge')
+
+    expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeVisible()
+    expect(screen.getByTestId('dummy-knowledge-base')).toBeVisible()
+    expect(screen.queryByTestId('not-found-page')).not.toBeInTheDocument()
+  })
+
+  it('renders the Knowledge Base entry-detail route inside the shell (sidebar present)', () => {
+    renderAt('/knowledge/KB-104')
+
+    expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeVisible()
+    expect(screen.getByTestId('dummy-knowledge-entry')).toBeVisible()
     expect(screen.queryByTestId('not-found-page')).not.toBeInTheDocument()
   })
 })
