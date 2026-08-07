@@ -494,20 +494,38 @@ The closest analogy users already know: **watching Claude Code stream its reason
 
 **Palette (carry forward from v0.2.0, implemented as Tailwind config):**
 
-| Token | Hex | Usage | WCAG Contrast vs. Base |
+> **Task 6.0 update (WCAG AA color-contrast fix, Q10):** the table below
+> previously listed contrast ratios computed only against `surface-base`,
+> which overstated compliance — `primary`, `text-muted`, and
+> `status-critical` all measured below the required 4.5:1 against
+> `surface-raised`/`surface-overlay` (the lighter of the three surfaces, and
+> where these tokens are actually used most: cards, panels, badges).
+> `status-muted` had the same defect. All four were re-tuned (lightened,
+> same hue) to clear 4.5:1 against **all three** surface tones, verified by
+> `ui/frontend/src/test/contrast.test.ts`. `primary-hover`,
+> `status-healthy`, `status-warning`, `text-primary`, and `text-secondary`
+> were already compliant against every surface and are unchanged. A new
+> `on-primary` token was added for the one case a single `primary` value
+> can't satisfy: white text on a solid `primary`-filled button needs
+> `primary` to stay dark, while `primary`-as-text-on-a-dark-surface needs it
+> to be light — mutually exclusive, so on-primary-fill text uses this
+> dedicated dark foreground instead.
+
+| Token | Hex | Usage | WCAG Contrast vs. base / raised / overlay |
 |---|---|---|---|
 | `surface-base` | #0f0f1a | Page background, sidebar background | — |
 | `surface-raised` | #1a1a2e | Cards, panels, investigation steps, sidebar active item | — |
 | `surface-overlay` | #252540 | Expanded KB panel, tooltips, hamburger dropdown | — |
-| `primary` | #6366f1 | Active navigation, links, interactive elements, focus rings | 4.9:1 (AA) |
-| `primary-hover` | #818cf8 | Hover state for primary elements | 6.4:1 (AA) |
-| `status-healthy` | #22c55e | Active investigation border, healthy pipeline chip | 5.2:1 (AA) |
-| `status-warning` | #f59e0b | Warning severity, EWMA warming up chip | 4.7:1 (AA) |
-| `status-critical` | #ef4444 | Failed investigation, unhealthy pipeline | 4.6:1 (AA) |
-| `status-muted` | #6b7280 | Completed investigation border, disabled elements | 3.9:1 (AA large) |
-| `text-primary` | #f8fafc | Headings, primary content, evidence values | 17.4:1 (AAA) |
-| `text-secondary` | #94a3b8 | Labels, timestamps, metadata | 7.1:1 (AAA) |
-| `text-muted` | #64748b | Placeholder text, tertiary information | 4.5:1 (AA) |
+| `primary` | #8284f4 | Active navigation, links, interactive elements, focus rings | 5.9 / 5.3 / 4.6 :1 (AA) |
+| `primary-hover` | #818cf8 | Hover state for primary elements | 6.4 / 5.7 / 5.0 :1 (AA) |
+| `on-primary` | #0f0f1a | Text/icons on a solid `primary` fill (buttons) | 5.9:1 (AA, vs. `primary`) |
+| `status-healthy` | #22c55e | Active investigation border, healthy pipeline chip | 8.4 / 7.5 / 6.5 :1 (AA) |
+| `status-warning` | #f59e0b | Warning severity, EWMA warming up chip | 8.9 / 7.9 / 6.9 :1 (AA) |
+| `status-critical` | #f37373 | Failed investigation, unhealthy pipeline | 6.8 / 6.1 / 5.3 :1 (AA) |
+| `status-muted` | #989ea9 | Completed investigation border, disabled elements | 7.1 / 6.3 / 5.5 :1 (AA) |
+| `text-primary` | #f8fafc | Headings, primary content, evidence values | 17.4:1 (AAA, vs. base) |
+| `text-secondary` | #94a3b8 | Labels, timestamps, metadata | 7.4 / 6.7 / 5.8 :1 (AAA/AA) |
+| `text-muted` | #8391a6 | Placeholder text, tertiary information | 6.0 / 5.3 / 4.6 :1 (AA) |
 
 **Elevation system (depth through color, not shadow):**
 
@@ -616,11 +634,11 @@ Monospace: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code',
 ### Accessibility Considerations
 
 **Contrast compliance:**
-- All text-on-surface combinations meet WCAG 2.1 AA minimum (4.5:1 for normal text, 3:1 for large text)
+- All text-on-surface combinations meet WCAG 2.1 AA minimum (4.5:1 for normal text, 3:1 for large text), against **all three** surface tones (`surface-base`/`surface-raised`/`surface-overlay`) a token is actually used on — see the Task 6.0 note under §Color System above for the fix history and `ui/frontend/src/test/contrast.test.ts` for the automated proof.
 - `text-primary` on `surface-base` exceeds AAA (17.4:1)
 - Status colors on `surface-raised` all meet AA for the badge/chip context (large text equivalent at 12px bold)
-- `text-muted` (#64748b) on `surface-base` meets AA at 4.5:1 — used only for tertiary information, never for actionable content
-- Contrast ratios verified using browser DevTools accessibility audit during development. Automated `axe-core` scanner integration as CI quality gate deferred to post-MVP.
+- `text-muted` (#8391a6) meets AA at 4.5:1+ against all three surfaces — used only for tertiary information, never for actionable content
+- Contrast ratios verified by an automated `axe-core` e2e sweep (`ui/frontend/e2e/a11y.spec.ts`, Task 5.5/6.0) plus a derived-WCAG-formula unit test (`ui/frontend/src/test/contrast.test.ts`, Task 6.0), both running in CI.
 
 **Keyboard navigation:**
 - All interactive elements are focusable with visible focus ring

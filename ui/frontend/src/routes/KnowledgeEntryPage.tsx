@@ -48,7 +48,9 @@ function KbEntryCardRouterLink({ href, children, ...rest }: KbEntryCardLinkProps
 }
 
 const ENTRY_TYPE_STYLES: Record<string, string> = {
-  investigation: 'bg-primary/15 text-primary border border-primary/30',
+  // Task 6.0: solid `bg-surface-overlay` (not translucent `bg-primary/15`) —
+  // mirrors the same fix in KbEntryCard.tsx. See src/test/contrast.test.ts.
+  investigation: 'bg-surface-overlay text-primary border border-primary/30',
   runbook: 'bg-status-healthy/15 text-status-healthy border border-status-healthy/30',
   correction: 'bg-status-warning/15 text-status-warning border border-status-warning/30',
   proven_fix: 'bg-status-healthy/15 text-status-healthy border border-status-healthy/30',
@@ -200,7 +202,8 @@ export function KnowledgeEntryPage() {
               </span>
             ) : null}
             {entry.auto_published ? (
-              <span className="rounded border border-primary/30 bg-primary/15 px-2 py-0.5 font-medium text-primary">
+              // Task 6.0: solid bg-surface-overlay, see ENTRY_TYPE_STYLES above.
+              <span className="rounded border border-primary/30 bg-surface-overlay px-2 py-0.5 font-medium text-primary">
                 Auto-published
               </span>
             ) : null}
@@ -319,9 +322,10 @@ export function KnowledgeEntryPage() {
 }
 
 function InvestigationLinkRow({ link, label }: { link: InvestigationLink; label: string }) {
+  // Task 6.0: solid bg-surface-overlay, see ENTRY_TYPE_STYLES above.
   const badgeClass =
     label === 'Source'
-      ? 'bg-primary/15 text-primary border border-primary/30'
+      ? 'bg-surface-overlay text-primary border border-primary/30'
       : 'bg-surface-overlay text-text-secondary border border-surface-overlay'
   return (
     <span className="flex items-center gap-2">
