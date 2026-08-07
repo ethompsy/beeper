@@ -12,7 +12,12 @@ def register_blueprints(app: Flask) -> None:
     from beeper_ui.routes.analytics import analytics_bp
     from beeper_ui.routes.confidence_gates import confidence_gates_bp
     from beeper_ui.routes.handoff import handoff_bp
-    from beeper_ui.routes.health import health_bp
+
+    # `ingestion_api_bp` (Task 5.2: JSON BFF API for the React Ingestion Stats
+    # view) added to the existing `health_bp` import — `ruff --fix`'s
+    # import-sort rule merges same-module imports onto one line; see
+    # ui/beeper_ui/routes/health.py for both blueprints.
+    from beeper_ui.routes.health import health_bp, ingestion_api_bp
     from beeper_ui.routes.investigations import (
         investigations_api_bp,
         investigations_bp,
@@ -52,6 +57,8 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(topology_bp)
     app.register_blueprint(services_bp)
     app.register_blueprint(analytics_bp)
+    # Task 5.2: JSON BFF API for the React Ingestion Stats view.
+    app.register_blueprint(ingestion_api_bp)
     # Task 1.1: React SPA shell (served at /app/*)
     app.register_blueprint(react_shell_bp)
 

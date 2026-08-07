@@ -61,6 +61,10 @@ const EXPECTED_NAMED_EXPORTS = [
   // Shell primitives (Task 2.1)
   'Sidebar',
   'AppShell',
+  // Ingestion Stats dashboard primitives (Task 5.2, FR32/FR33)
+  'MetricTile',
+  'EwmaProgressBar',
+  'IngestionStatsSkeleton',
   // Hooks
   'useSidebarState',
   'useRouteFocusManagement',
@@ -69,6 +73,7 @@ const EXPECTED_NAMED_EXPORTS = [
   'useInvestigationEvents',
   'useAutoScrollOnAppend',
   'useStepAnchorScroll',
+  'useAutoRefresh',
   // Shared utility
   'cn',
 ] as const
@@ -83,6 +88,7 @@ const NON_COMPONENT_EXPORTS = new Set<string>([
   'useInvestigationEvents',
   'useAutoScrollOnAppend',
   'useStepAnchorScroll',
+  'useAutoRefresh',
 ])
 
 describe('dist-lib bundle — external-consumer import contract', () => {
