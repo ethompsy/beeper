@@ -1665,6 +1665,7 @@ def _generate_sse_events(
 
 
 @investigations_api_bp.route("/")
+@require_role("user")
 def investigations_list_json() -> tuple[Response, int] | Response:
     """JSON list of investigations for the React UI (Task 1.6 / FR24).
 
@@ -1712,6 +1713,7 @@ def investigations_list_json() -> tuple[Response, int] | Response:
 
 
 @investigations_api_bp.route("/<investigation_id>")
+@require_role("user")
 def investigation_detail_json(
     investigation_id: str,
 ) -> tuple[Response, int] | Response:
@@ -1864,6 +1866,7 @@ def _generate_json_sse_events(
 
 
 @investigations_api_bp.route("/<investigation_id>/events")
+@require_role("user")
 def investigation_events_json(investigation_id: str) -> Response:
     """JSON SSE event stream for a single investigation's step progress (Task 1.6).
 

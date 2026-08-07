@@ -8,7 +8,7 @@ from flask import Flask, g
 from flask.testing import FlaskClient
 
 from beeper_ui.app import create_app
-from beeper_ui.config import TestingConfig
+from beeper_ui.config import DevelopmentConfig, ProductionConfig, TestingConfig
 from beeper_ui.middleware.permissions import require_role
 
 
@@ -30,6 +30,26 @@ def permission_app() -> Flask:
     @app.route("/test/unprotected")
     def unprotected() -> dict[str, str]:
         return {"message": "anyone can access"}
+
+    return app
+
+
+@pytest.fixture
+def production_permission_app() -> Flask:
+    """Create app with ProductionConfig and test routes for permission testing.
+
+    Task 6.2a / ADR 0001 §0(a) item 3: `X-Beeper-Role` must be refused under
+    production config. `ProductionConfig.__init__`'s SECRET_KEY validation is
+    dead code under `Flask.config.from_object(<class>)` (no instantiation
+    happens), so this exercises the real, class-attribute-driven gate
+    (`Config.ALLOW_ROLE_HEADER`) rather than relying on that constructor.
+    """
+    app = create_app(ProductionConfig)
+
+    @app.route("/test/admin-only")
+    @require_role("admin")
+    def admin_only() -> dict[str, str]:
+        return {"message": "admin access granted"}
 
     return app
 
@@ -146,6 +166,70 @@ class TestXBeeperRoleHeader:
         with permission_app.test_client() as client:
             resp = client.get("/test/admin-only", headers={"X-Beeper-Role": "superadmin"})
             assert resp.status_code == 403
+
+
+class TestXBeeperRoleHeaderRefusedInProduction:
+    """Task 6.2a / ADR 0001 §0(a) item 3: `X-Beeper-Role` is a trivially
+    spoofable identity source (§0(a) — any HTTP client can set it directly)
+    and must be refused under production config, while staying honored in
+    development/testing (see `TestXBeeperRoleHeader` above, unchanged).
+
+    Consequence, documented per the plan's requirement: with the header
+    refused and no verified identity source yet (Task 6.2b, blocked on plan
+    Q11), production has NO path to the "admin" role at all — every
+    `@require_role("admin")` route resolves to 403 for every caller there
+    until 6.2b ships. This is the intended fail-closed behavior.
+    """
+
+    def test_header_does_not_grant_admin_in_production(
+        self, production_permission_app: Flask
+    ) -> None:
+        with production_permission_app.test_client() as client:
+            resp = client.get("/test/admin-only", headers={"X-Beeper-Role": "admin"})
+            # Header is ignored under ProductionConfig — falls through to the
+            # default "user" role, which the admin-gated route rejects.
+            assert resp.status_code == 403
+
+    def test_header_user_value_also_ignored_in_production(
+        self, production_permission_app: Flask
+    ) -> None:
+        with production_permission_app.test_client() as client:
+            resp = client.get("/test/admin-only", headers={"X-Beeper-Role": "user"})
+            assert resp.status_code == 403
+
+    def test_response_is_still_well_formed_rfc7807_in_production(
+        self, production_permission_app: Flask
+    ) -> None:
+        """Refusing the header must not degrade into an opaque failure —
+        the caller still gets the same well-formed 403 body as any other
+        permission denial, not a mystery error."""
+        with production_permission_app.test_client() as client:
+            resp = client.get("/test/admin-only", headers={"X-Beeper-Role": "admin"})
+            assert resp.content_type == "application/problem+json"
+            data = resp.get_json()
+            assert data["status"] == 403
+            assert data["detail"] == "Admin role required to access this resource"
+
+    def test_allow_role_header_class_attribute_is_false_on_production_config(self) -> None:
+        assert ProductionConfig.ALLOW_ROLE_HEADER is False
+
+    def test_allow_role_header_class_attribute_is_true_on_testing_config(self) -> None:
+        assert TestingConfig.ALLOW_ROLE_HEADER is True
+
+    def test_header_still_honored_under_development_config(self) -> None:
+        """Explicit development-config coverage alongside the existing
+        testing-config coverage in `TestXBeeperRoleHeader` — both
+        non-production configs keep the header as a live affordance."""
+        dev_app = create_app(DevelopmentConfig)
+
+        @dev_app.route("/test/dev-admin-only")
+        @require_role("admin")
+        def dev_admin_only() -> dict[str, str]:
+            return {"message": "admin access granted"}
+
+        with dev_app.test_client() as client:
+            resp = client.get("/test/dev-admin-only", headers={"X-Beeper-Role": "admin"})
+            assert resp.status_code == 200
 
 
 class TestGUserRoleAvailable:
@@ -289,6 +373,38 @@ class TestK8sTokenRoleResolution:
                 headers={"Authorization": f"Bearer {token}"},
             )
             assert resp.status_code == 403
+
+    def test_crafted_jwt_with_non_object_payload_does_not_crash(
+        self, permission_app: Flask
+    ) -> None:
+        """Regression (Task 6.2a): a JWT whose payload segment base64-decodes
+        to *valid JSON that is not a dict* used to crash this before_request
+        hook. `x.MTIz.y` — "MTIz" is `base64.urlsafe_b64encode(b"123")`, so
+        `json.loads()` returns the integer 123, and the old
+        `claims.get("groups", [])` raised an uncaught AttributeError (an int
+        has no `.get`), 500ing every route in the app, not just this one.
+        """
+        with permission_app.test_client() as client:
+            resp = client.get(
+                "/test/admin-only",
+                headers={"Authorization": "Bearer x.MTIz.y"},
+            )
+            # Must not crash. Falls through past the token (nothing to read
+            # groups from) to the header (absent) to the default "user",
+            # which the admin-gated route correctly rejects.
+            assert resp.status_code != 500
+            assert resp.status_code == 403
+
+    def test_crafted_jwt_does_not_crash_other_routes_either(self, permission_app: Flask) -> None:
+        """The bug was in `before_request`, which runs for every route —
+        confirm an unrelated, unprotected route survives the same header
+        too, not just the admin-gated one above."""
+        with permission_app.test_client() as client:
+            resp = client.get(
+                "/test/unprotected",
+                headers={"Authorization": "Bearer x.MTIz.y"},
+            )
+            assert resp.status_code == 200
 
 
 class TestRequireRoleValidation:

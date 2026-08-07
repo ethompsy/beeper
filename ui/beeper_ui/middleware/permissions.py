@@ -12,7 +12,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from flask import Flask, g, jsonify, request
+from flask import Flask, current_app, g, jsonify, request
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,18 @@ def resolve_user_role() -> None:
     """Resolve user role from request context and set on g.user_role.
 
     Role resolution chain:
-    1. K8s ServiceAccount token (Authorization: Bearer <token>) — production
-    2. X-Beeper-Role header — development
-    3. Default "user"
+    1. K8s ServiceAccount token (Authorization: Bearer <token>) — the only
+       path honored in production, though today it verifies group membership
+       claimed in the JWT payload WITHOUT verifying the token's signature
+       (ADR 0001 §0(a) item 2 — signature verification is Task 6.2b, blocked
+       on Q11). Treat this as a UI affordance, not a security boundary, until
+       6.2b lands.
+    2. X-Beeper-Role header — development/testing affordance ONLY. Refused
+       under production config (`Config.ALLOW_ROLE_HEADER = False` on
+       `ProductionConfig`) because it is a trivially spoofable identity
+       source: any HTTP client can set this header directly. See ADR 0001
+       §0(a) item 3.
+    3. Default "user".
     """
     # 1. Try K8s ServiceAccount token
     auth_header = request.headers.get("Authorization", "")
@@ -36,11 +45,15 @@ def resolve_user_role() -> None:
             g.user_role = role
             return
 
-    # 2. Try X-Beeper-Role header (development mode)
-    role_header = request.headers.get("X-Beeper-Role", "")
-    if role_header in VALID_ROLES:
-        g.user_role = role_header
-        return
+    # 2. Try X-Beeper-Role header — development/testing only (Task 6.2a).
+    # `ProductionConfig.__init__` cannot gate this: `app.config.from_object()`
+    # is handed the *class*, not an instance, so `__init__` never runs.
+    # `ALLOW_ROLE_HEADER` is therefore a plain class attribute, read here.
+    if current_app.config.get("ALLOW_ROLE_HEADER", True):
+        role_header = request.headers.get("X-Beeper-Role", "")
+        if role_header in VALID_ROLES:
+            g.user_role = role_header
+            return
 
     # 3. Default to "user"
     g.user_role = "user"
@@ -66,6 +79,16 @@ def _extract_role_from_k8s_token(token: str) -> str | None:
 
         payload_bytes = base64.urlsafe_b64decode(payload_b64)
         claims = json.loads(payload_bytes)
+
+        # `claims` is only a groups-bearing object if the JWT payload decoded
+        # to a JSON *object*. A crafted token can carry any valid JSON value
+        # in that segment (e.g. a bare integer) — json.loads happily returns
+        # it, and an unguarded `.get("groups", [])` would raise AttributeError
+        # on anything that isn't a dict, crashing this before_request hook
+        # and 500ing every route. Treat a non-dict payload as an invalid
+        # token instead: fall through to the header/default path.
+        if not isinstance(claims, dict):
+            return None
 
         # Valid JWT — check for beeper-admin group
         groups: list[str] = claims.get("groups", [])
@@ -134,6 +157,12 @@ def require_role(role: str) -> Callable[..., Any]:
                 )
 
             return f(*args, **kwargs)
+
+        # Introspectable marker: lets tests/tooling assert a route was
+        # deliberately gated (and with which role) without needing to
+        # provoke the 403 path — e.g. verifying the read-only `/api/v1/*`
+        # blueprints' RBAC posture (ADR 0001 §0(a) item 4 / Task 6.2a).
+        decorated_function.required_role = role  # type: ignore[attr-defined]
 
         return decorated_function
 

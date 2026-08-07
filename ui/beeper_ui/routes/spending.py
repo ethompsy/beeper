@@ -6,6 +6,7 @@ from typing import Any
 
 from flask import Blueprint, Response, jsonify, render_template, request
 
+from beeper_ui.middleware.permissions import require_role
 from beeper_ui.services.spending_service import SpendingService
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,7 @@ def spending_status() -> str:
 
 
 @spending_api_bp.route("/")
+@require_role("user")
 def spending_json() -> tuple[Response, int] | Response:
     """JSON spending dashboard data for the React UI (Task 5.3 / FR35).
 

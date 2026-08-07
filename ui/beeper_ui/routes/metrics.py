@@ -6,6 +6,7 @@ from typing import Any
 
 from flask import Blueprint, Response, jsonify, render_template, request
 
+from beeper_ui.middleware.permissions import require_role
 from beeper_ui.services.metrics_service import MetricsService
 
 logger = logging.getLogger(__name__)
@@ -296,6 +297,7 @@ def export_metrics() -> Response:
 
 
 @metrics_api_bp.route("/mttr")
+@require_role("user")
 def mttr_json() -> tuple[Response, int] | Response:
     """JSON MTTR trend + service/severity breakdown for the React view.
 
@@ -375,6 +377,7 @@ def mttr_json() -> tuple[Response, int] | Response:
 
 
 @metrics_api_bp.route("/mttr/drilldown")
+@require_role("user")
 def mttr_drilldown_json() -> tuple[Response, int] | Response:
     """JSON drill-down investigation list for a time bucket (React view).
 

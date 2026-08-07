@@ -1,7 +1,25 @@
-"""Collaboration service for real-time investigation messaging.
+"""Collaboration service — Qdrant data layer for investigation messaging.
 
-Handles message persistence in Qdrant and active user tracking
-for WebSocket-based investigation collaboration.
+Task 6.2a / ADR 0001 §0(b): the real-time (SocketIO) surface that used to
+write through this service was dropped, but this module is deliberately
+KEPT — the ADR requires the `collaboration_messages` Qdrant collection to
+survive the migration, not just its bytes on disk but as *readable* data:
+
+- `beeper_ui.routes.investigations.investigation_detail` (the Jinja detail
+  view) still calls `get_collaboration_service().get_message_history()` to
+  render the "human interventions" (past annotations/redirects) timeline —
+  a real, currently-exercised read path, not merely a "costs nothing to
+  keep" placeholder.
+- No code path in this module — or anywhere else in the codebase — issues a
+  delete/drop against `COLLABORATION_COLLECTION`. Writes (`store_message`)
+  are also unreachable now that the SocketIO handlers that called them are
+  gone, so the collection stops growing but nothing in it is at risk.
+
+If a future task removes the Jinja investigation-detail view entirely
+(Task 6.3), re-evaluate whether this module still earns its keep — until
+then, retiring it would sever the last read access to preserved
+collaboration history without deleting the underlying data, which is a
+worse outcome than just leaving the module in place.
 """
 
 import logging

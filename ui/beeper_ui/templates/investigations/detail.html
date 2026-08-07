@@ -47,15 +47,19 @@
          data-sse-backfill-url="/api/v1/investigations/{{ investigation.id }}">
         {% include "investigations/_detail_content.html" %}
     </div>
-    {% include "investigations/_collaboration_panel.html" %}
 </div>
 {% endif %}
 {% endblock %}
 
+{# Task 6.2a / ADR 0001 §0(b): the real-time collaboration panel (SocketIO
+   chat/annotate/redirect/approve-reject) was retired during the React
+   migration — its include, the socket.io CDN script, and
+   investigation-collab.js all removed here. The panel's persisted history
+   is still readable via the "human interventions" list rendered in
+   _detail_content.html (unaffected by this removal); see
+   docs/specs/decisions/0001-rbac-and-realtime-collaboration-in-react-ui.md. #}
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/sse.js') }}"></script>
-<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
-<script src="{{ url_for('static', filename='js/investigation-collab.js') }}"></script>
 {# Task 4.4 (FR26): Related KB panel expand/collapse toggle. #}
 <script src="{{ url_for('static', filename='js/kb-panel.js') }}"></script>
 {% endblock %}

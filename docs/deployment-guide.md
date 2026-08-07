@@ -509,6 +509,41 @@ The operator needs `secrets` access to read LLM credentials and data source cred
 
 Each investigator job runs under a dedicated ServiceAccount (`beeper-investigator`) with scoped permissions appropriate for reading source configuration and writing investigation results.
 
+### Beeper UI role-based access control (Task 6.2a)
+
+The Beeper UI has a two-tier `user`/`admin` permission model
+(`beeper_ui/middleware/permissions.py`) gating admin-tier mutations (trust-level
+writes, gate-threshold writes, adjustment apply/reject). **As of Task 6.2a,
+production refuses the `X-Beeper-Role` header** that development/testing use to
+set a role, because it is a trivially spoofable identity source — any HTTP
+client can set an arbitrary header. See
+[ADR 0001](specs/decisions/0001-rbac-and-realtime-collaboration-in-react-ui.md)
+for the full rationale.
+
+**Operational consequence — read this before deploying to production:**
+
+> **Production currently has no path to the `admin` role at all.** The other
+> identity source (a K8s ServiceAccount JWT's `groups` claim) still exists,
+> but its *signature is not verified* — treating it as a trusted admin grant
+> in production would reintroduce the same spoofing problem the header refusal
+> is meant to close. Until verified identity ships (tracked as Task 6.2b,
+> blocked on an open question about where a real user identity should come
+> from — OIDC/SSO, K8s TokenReview, or a network-trust boundary), **every
+> `@require_role("admin")` route in the UI returns `403 Permission Denied` for
+> every caller in production.**
+>
+> This is intentional fail-closed behavior, not a bug: it was judged
+> unacceptable to ship a control that looks like a security boundary but
+> isn't. It is an acceptable trade-off today because the Beeper UI Deployment
+> is `ClusterIP` (not internet-facing) — see the Network Security section
+> above.
+>
+> **Until Task 6.2b ships, perform admin-tier changes directly via `kubectl`/
+> Helm** (trust-level and gate-threshold config, threshold-adjustment
+> apply/reject) rather than through the UI's admin controls, which are
+> unreachable in production. Development and testing environments are
+> unaffected — the `X-Beeper-Role` header continues to work there.
+
 ### Pod Security
 
 All Beeper components enforce the following security context:

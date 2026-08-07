@@ -31,6 +31,7 @@ def register_blueprints(app: Flask) -> None:
     from beeper_ui.routes.reports import reports_bp
     from beeper_ui.routes.services import services_bp
     from beeper_ui.routes.slo import slo_bp
+    from beeper_ui.routes.socketio_gone import socketio_gone_bp
     from beeper_ui.routes.sources import sources_api_bp, sources_bp
     from beeper_ui.routes.spending import spending_api_bp, spending_bp
     from beeper_ui.routes.topology import topology_bp
@@ -58,6 +59,9 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(topology_bp)
     app.register_blueprint(services_bp)
     app.register_blueprint(analytics_bp)
+    # Task 6.2a / ADR 0001 §0(b): defined 410 Gone response for the retired
+    # SocketIO mount — replaces `init_socketio(app)` (removed from `app.py`).
+    app.register_blueprint(socketio_gone_bp)
     # Task 5.2: JSON BFF API for the React Ingestion Stats view.
     app.register_blueprint(ingestion_api_bp)
     # Task 1.1: React SPA shell (served at /app/*)

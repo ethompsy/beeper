@@ -8,6 +8,7 @@ from typing import Any
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 from werkzeug.utils import secure_filename
 
+from beeper_ui.middleware.permissions import require_role
 from beeper_ui.services.correction_service import (
     CorrectionServiceError,
     get_correction_service,
@@ -2101,6 +2102,7 @@ def _kb_entry_detail(entry: "KBEntry") -> dict[str, Any]:
 
 
 @knowledge_api_bp.route("/")
+@require_role("user")
 def knowledge_list_json() -> tuple[Response, int] | Response:
     """JSON browse/search endpoint for the React KB view (Task 5.1, FR28/FR29).
 
@@ -2182,6 +2184,7 @@ def knowledge_list_json() -> tuple[Response, int] | Response:
 
 
 @knowledge_api_bp.route("/<entry_id>")
+@require_role("user")
 def knowledge_entry_json(entry_id: str) -> tuple[Response, int] | Response:
     """JSON entry-detail endpoint for the React KB entry view (Task 5.1, FR31).
 

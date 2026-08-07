@@ -4,6 +4,7 @@ from typing import Any
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
+from beeper_ui.middleware.permissions import require_role
 from beeper_ui.services.source_service import Source, SourceService, SourceServiceError
 
 sources_bp = Blueprint("sources", __name__, url_prefix="/sources")
@@ -76,6 +77,7 @@ def _source_to_dict(source: Source) -> dict[str, Any]:
 
 
 @sources_api_bp.route("/")
+@require_role("user")
 def sources_list_json() -> tuple[Response, int] | Response:
     """JSON list of configured sources for the React UI (Task 5.3 / FR34).
 

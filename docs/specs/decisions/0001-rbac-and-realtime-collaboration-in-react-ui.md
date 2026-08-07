@@ -188,3 +188,69 @@ If instead the RBAC Drop option is chosen (not the recommendation), the equivale
 3. **If the SocketIO Drop recommendation is wrong** (i.e., collaboration is used in ways not visible from code/tests/plan history — e.g., a live demo script or an operator workflow not captured here), dropping it destroys working chat/annotation history for any investigation currently being collaborated on. Worth a direct confirmation from the user before Task 6.2 executes the deletion, not just silent approval of this ADR.
 4. **`kb_relevance_feedback` is the one SocketIO event that's fully real** (persists to Qdrant via `KBSurfacingService`, no broken operator dependency) — if SocketIO is dropped wholesale, confirm there's no other, non-collaboration-panel path already planned to collect KB relevance feedback in the React UI; if not, this is a small, real capability loss worth a one-line callout even though the recommendation still holds (it's a minor loss weighed against retiring 7 other broken/unused events plus the whole websocket subsystem).
 5. This ADR does not modify any code — `permissions.py`, `websocket/`, routes, and React source are all unchanged. It also does not correct `docs/specs/architecture.md`'s "no auth / SSE only" claim (tracked separately as Q7, plan-level, out of this task's scope) — that correction should reference this ADR's identity-source finding once written.
+
+---
+
+## 8. Implementation note — Task 6.2a (completed 2026-08-07)
+
+Item 5 above is now out of date: code has been modified. Pre-work on Task 6.2
+found the "harden identity" half of §0(a) is under-specified, not just large —
+the UI has no JWT/crypto/kubernetes dependency, no ServiceAccount (`helm/beeper`
+sets no `serviceAccountName` for the UI Deployment, and no `ui-serviceaccount
+.yaml`/ClusterRole exists for a TokenReview call), React sends no auth header
+and has no shared fetch wrapper, and most fundamentally there is **no
+authentication at all** in the UI to verify an identity from. That question is
+now tracked as **Q11** in `docs/plans/react-ui.md` and blocks a follow-on task,
+**6.2b**. Per this ADR's own §4 fallback ("split the hardening into its own
+task rather than silently reverting to port-as-is"), Task 6.2 was split:
+
+- **6.2a (this note) — everything achievable now, fail-closed.** Completed:
+  - Ported the `user`/`admin` gate to the six previously-ungated read-only
+    `/api/v1/*` JSON blueprints (§0(a) item 4) — `investigations_api_bp`,
+    `knowledge_api_bp`, `ingestion_api_bp`, `sources_api_bp`,
+    `spending_api_bp`, `metrics_api_bp` — matching the `user`-gate convention
+    every other read route in the codebase already used.
+  - **`X-Beeper-Role` is refused under `ProductionConfig`** (§0(a) item 3) via
+    a class attribute (`Config.ALLOW_ROLE_HEADER`), read by
+    `resolve_user_role()` — *not* `ProductionConfig.__init__`, which is dead
+    code under `Flask.config.from_object(<class>)` (no instantiation occurs).
+    Still honored in development/testing.
+  - Fixed an unrelated crash found during this work: a crafted JWT whose
+    payload segment is valid JSON but not an object (e.g. the bare integer
+    `123`) crashed `_extract_role_from_k8s_token`'s `claims.get(...)` with an
+    uncaught `AttributeError` inside the `before_request` hook — 500ing every
+    route. Now returns `None` (falls through) for any non-dict payload.
+  - Item 2 of §0(a) — **verifying the JWT signature** — was **not** done. It
+    requires the identity chain in the paragraph above, which does not exist
+    yet. This is 6.2b, blocked on Q11.
+  - Dropped the SocketIO surface per §0(b): `websocket/`, the Jinja
+    `_collaboration_panel.html` + `investigation-collab.js` + its CSS, and
+    the operator-forwarding helpers on `InvestigationService` (`annotate
+    _investigation`, `redirect_investigation`, `approve_fix`, `reject_fix`)
+    are removed. `collaboration_service.py` is **kept** (not just "costs
+    nothing to leave" — it is still read by the Jinja investigation-detail
+    view's "human interventions" history). `/socket.io/*` returns the exact
+    `410 Gone` body from §6. **The `collaboration_messages` Qdrant collection
+    is untouched** — no code path anywhere in the repo issues a delete/drop
+    against it.
+  - §7.4's flagged gap is confirmed, not resolved: `kb_relevance_feedback`
+    was the one fully-functional SocketIO event, and dropping it is a real,
+    if small, capability loss — no other path in the React UI collects KB
+    relevance feedback today. Out of 6.2a's scope to add one.
+
+- **6.2b (follow-on, blocked on Q11) — verified identity.** Real
+  signature/identity verification, plus the K8s identity chain the UI
+  currently lacks (ServiceAccount, RBAC for TokenReview or equivalent), so a
+  token that fails verification resolves to `user` (or is rejected), never
+  `admin`.
+
+**Operational consequence, flagged per this ADR's own instruction not to hide
+it:** refusing the spoofable header in production, with 6.2b not yet built,
+means **production has no path to the `admin` role at all** — every
+`@require_role("admin")` route 403s for every caller there until 6.2b ships.
+This is the intended fail-closed behavior, weighed against the UI's
+ClusterIP / non-internet-facing deployment. Documented in
+[`docs/deployment-guide.md`](../../deployment-guide.md#beeper-ui-role-based-access-control-task-62a)
+("RBAC and Security" → "Beeper UI role-based access control") for operators,
+and in `beeper_ui/config.py`'s `ProductionConfig`/`ALLOW_ROLE_HEADER` comments
+for developers.

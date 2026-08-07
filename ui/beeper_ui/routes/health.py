@@ -2,6 +2,7 @@
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
+from beeper_ui.middleware.permissions import require_role
 from beeper_ui.services.health_service import HealthService, HealthServiceError
 
 health_bp = Blueprint("health", __name__, url_prefix="/health")
@@ -154,6 +155,7 @@ def health_api() -> dict[str, str]:
 
 
 @ingestion_api_bp.route("/stats")
+@require_role("user")
 def ingestion_stats_json() -> tuple[Response, int] | Response:
     """JSON ingestion/detection pipeline stats for the React UI (Task 5.2, FR32-33).
 
