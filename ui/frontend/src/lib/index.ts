@@ -104,3 +104,7 @@ export { useAutoScrollOnAppend } from './hooks/useAutoScrollOnAppend'
 
 // Detail-permalink step anchor (Task 3.2, FR53)
 export { useStepAnchorScroll } from './hooks/useStepAnchorScroll'
+
+// Metrics (MTTR trend chart) primitive (Task 5.4)
+export { TrendChart } from './components/TrendChart'
+export type { TrendChartProps, TrendChartPoint } from './components/TrendChart'
