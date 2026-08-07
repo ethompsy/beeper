@@ -1,10 +1,18 @@
 """Health status routes for Beeper UI."""
 
-from flask import Blueprint, current_app, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
 from beeper_ui.services.health_service import HealthService, HealthServiceError
 
 health_bp = Blueprint("health", __name__, url_prefix="/health")
+
+# JSON API blueprint (Task 5.2 — BFF JSON API for the React Ingestion Stats
+# view). Kept separate from `health_bp` (which serves the Jinja
+# `/health/ingestion` page + its HTMX-partial auto-refresh route, unchanged
+# by this task) exactly like `investigations_api_bp` is kept separate from
+# `investigations_bp` (`ui/beeper_ui/routes/investigations.py`) — one
+# blueprint per response format, both reading through the same service layer.
+ingestion_api_bp = Blueprint("ingestion_api", __name__, url_prefix="/api/v1/ingestion")
 
 
 def get_health_service() -> HealthService:
@@ -143,3 +151,45 @@ def ingestion_stats() -> str:
 def health_api() -> dict[str, str]:
     """Health check endpoint for the UI itself."""
     return {"status": "healthy"}
+
+
+@ingestion_api_bp.route("/stats")
+def ingestion_stats_json() -> tuple[Response, int] | Response:
+    """JSON ingestion/detection pipeline stats for the React UI (Task 5.2, FR32-33).
+
+    Reuses ``HealthService.get_ingestion_stats()`` — the exact same call the
+    Jinja ``ingestion_stats()`` view above makes — and returns the
+    ``IngestionStats`` dataclass fields verbatim as snake_case JSON, mirroring
+    the operator's own ``/api/v1/ingestion/stats`` response shape 1:1.
+
+    Deliberately does NOT include the derived ``pipeline_state``/
+    ``warmup_pct``/``is_warming`` fields ``_pipeline_view()`` computes for the
+    Jinja template: the React view re-derives the identical three-state
+    precedence (no_data / warming / active) client-side from these raw
+    fields (mirrors ``_pipeline_view()`` exactly — see
+    ``ui/frontend/src/lib/ingestion/pipeline-view.ts``), so the JSON contract
+    here stays a thin passthrough of the operator's own stats, not a
+    UI-view-model endpoint.
+    """
+    service = get_health_service()
+    try:
+        stats = service.get_ingestion_stats()
+        return jsonify(
+            {
+                "buffer_size": stats.buffer_size,
+                "buffered_count": stats.buffered_count,
+                "dropped_count": stats.dropped_count,
+                "is_full": stats.is_full,
+                "metrics_received": stats.metrics_received,
+                "logs_received": stats.logs_received,
+                "anomalies_detected": stats.anomalies_detected,
+                "anomalies_suppressed": stats.anomalies_suppressed,
+                "active_metric_detectors": stats.active_metric_detectors,
+                "ewma_warmup_samples": stats.ewma_warmup_samples,
+                "ewma_warmup_minimum": stats.ewma_warmup_minimum,
+            }
+        )
+    except HealthServiceError:
+        return jsonify({"error": "operator_unavailable"}), 503
+    finally:
+        service.close()

@@ -104,3 +104,16 @@ export { useAutoScrollOnAppend } from './hooks/useAutoScrollOnAppend'
 
 // Detail-permalink step anchor (Task 3.2, FR53)
 export { useStepAnchorScroll } from './hooks/useStepAnchorScroll'
+
+// Ingestion Stats dashboard primitives (Task 5.2, FR32/FR33)
+export { MetricTile } from './components/MetricTile'
+export type { MetricTileProps, MetricTileStatus } from './components/MetricTile'
+
+export { EwmaProgressBar } from './components/EwmaProgressBar'
+export type { EwmaProgressBarProps } from './components/EwmaProgressBar'
+
+export { IngestionStatsSkeleton } from './components/IngestionStatsSkeleton'
+export type { IngestionStatsSkeletonProps } from './components/IngestionStatsSkeleton'
+
+export { useAutoRefresh } from './hooks/useAutoRefresh'
+export type { UseAutoRefreshOptions } from './hooks/useAutoRefresh'
