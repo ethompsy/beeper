@@ -67,3 +67,10 @@ def register_blueprints(app: Flask) -> None:
     # wins over any Jinja blueprint for the same path, regardless of the
     # blueprint registration order above. See react_registry.py for details.
     init_react_dispatch(app)
+
+    # Task 5.4: JSON API blueprint for the React Metrics (MTTR Trends) view.
+    # Added additively — see docs/plans/react-ui.md Task 5.0b's "shared files
+    # edited additively only" contract for this file.
+    from beeper_ui.routes.metrics import metrics_api_bp
+
+    app.register_blueprint(metrics_api_bp)

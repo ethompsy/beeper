@@ -117,3 +117,7 @@ export type { IngestionStatsSkeletonProps } from './components/IngestionStatsSke
 
 export { useAutoRefresh } from './hooks/useAutoRefresh'
 export type { UseAutoRefreshOptions } from './hooks/useAutoRefresh'
+
+// Metrics (MTTR trend chart) primitive (Task 5.4)
+export { TrendChart } from './components/TrendChart'
+export type { TrendChartProps, TrendChartPoint } from './components/TrendChart'
