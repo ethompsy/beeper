@@ -1,12 +1,39 @@
 # ADR 0001 — RBAC and real-time collaboration in the React UI
 
-- **Status:** Proposed — awaiting `[H]` user approval (Task 6.1 AC)
-- **Date:** 2026-08-04
+- **Status:** **Accepted** — `[H]` approved by the user 2026-08-06 (Task 6.1 AC). See §0 for the approved decisions, which **differ from this ADR's original recommendation on RBAC**.
+- **Date:** 2026-08-04 (proposed) · 2026-08-06 (accepted)
 - **Author:** Claude (Tech Lead), Task 6.1
 - **Affects:** `ui/beeper_ui/middleware/permissions.py`, `ui/beeper_ui/websocket/`, `ui/beeper_ui/services/collaboration_service.py`, `ui/beeper_ui/templates/investigations/_collaboration_panel.html`, all `require_role`-gated routes, `ui/frontend/` (Task 6.2 implementation target), Task 6.3 (Jinja retirement)
 - **Related:** `docs/plans/react-ui.md` — D12, Q1 (R3), Q6, Q7
 
+## 0. Approved decision (`[H]`, 2026-08-06)
+
+The user reviewed both recommendations below and approved:
+
+### (a) RBAC — **PORT + HARDEN IDENTITY** *(goes beyond §4's recommendation)*
+
+Port the two-tier role split to the React/BFF path **and** replace the spoofable identity source with a verified one. The user explicitly declined "port as-is": preserving a control that only looks like a security boundary was judged not acceptable to carry into the new UI. Concretely, Task 6.2 must:
+
+1. **Port the gates** — the same `user`/`admin` split over the same route surface as each blueprint migrates (20 `user`, 7 `admin` per §1), with the BFF/API layer as the enforcement point. The 31 tests in `ui/tests/test_permissions.py` are the behavioral spec for the gate semantics.
+2. **Verify the JWT signature** — replace the unverified `base64.urlsafe_b64decode` payload peek in `resolve_user_role()` with real validation (K8s TokenReview API, or JWKS/public-key verification). A token that fails verification must resolve to the default `user` role (or be rejected outright) — never to `admin`.
+3. **Gate the `X-Beeper-Role` header to non-production.** It may remain a development affordance, but `ProductionConfig` must refuse it. This is currently pinned by `test_permissions.py::test_header_sets_admin_role`, so **that test must be updated, not deleted** — the header path stays tested for development and gains a production-refusal test.
+4. **Decide the JSON API's posture** — `investigations_api_bp` carries no `require_role` gate today (§3). Task 6.2 must consciously choose whether the React-consumed read endpoints stay open or gain a `user` gate, rather than inheriting the gap by omission.
+
+**Scope consequence, recorded deliberately:** this makes the RBAC a genuine security boundary for the first time, and enlarges Task 6.2 beyond a pure migration task (§4 costed this as "L–XL, likely its own initiative"). If it proves too large to carry inside 6.2, split the hardening (items 2–3) into its own task rather than silently reverting to port-as-is — the approved decision is that the migrated UI does **not** ship the spoofable identity source.
+
+### (b) SocketIO collaboration — **DROP, PRESERVE DATA**
+
+Retire the surface exactly as §5's Drop option describes, with §6's data treatment as an explicit condition rather than an incidental detail: the Qdrant `collaboration_messages` collection is **left in place and not deleted**, so existing chat/annotation history remains recoverable if the decision is ever revisited. `/socket.io/*` returns the `410 Gone` + `application/problem+json` response specified in §6.
+
+This directly addresses risk §7.3: the destructive part of Drop (discarding collaboration records) is **not** authorized — only the code surface is retired. Task 6.2 must not add a data-deletion step.
+
+**Still worth confirming before 6.2 executes** (§7.4): `kb_relevance_feedback` is the one fully-functional event being retired. If no other path collects KB relevance feedback in the React UI, that is a small real capability loss — flag it rather than letting it disappear silently.
+
+---
+
 ## Summary
+
+> **Superseded on RBAC by §0.** The "Port as-is" recommendation below was NOT the approved outcome — the user chose Port + harden. The inventory, analysis, and options matrices remain accurate and are retained as the reasoning record.
 
 1. **RBAC — recommend PORT (preserve current behavior in React/BFF).** The mechanism is real code with real tests, but its identity source is **trivially spoofable by any HTTP client** (a raw `X-Beeper-Role` header, or an unsigned-and-unverified JWT payload) — it is **not a security boundary today**, only a UI-affordance / fat-finger guard for admin-tier mutations. Porting preserves that guard-rail and existing test coverage without expanding Task 6.2's scope into building real authentication, which is a separate initiative.
 2. **SocketIO collaboration — recommend DROP.** It is unreachable from the already-migrated React investigation detail view (zero references in `ui/frontend/`), invisible across 12+ Milestone 1.2–4.x plan entries that repeatedly touched that same view, and — critically — **three of its four "action" verbs (`approve_fix`, `reject_fix`, `redirect`) already silently no-op against the operator**: the REST endpoints they forward to (`/annotate`, `/redirect`, `/approve`, `/reject-fix`) do not exist in `operator/src/api.rs`. Porting would mean rebuilding a socket.io React client for a feature nobody's UI-facing code currently exercises and that's already broken where it matters.
