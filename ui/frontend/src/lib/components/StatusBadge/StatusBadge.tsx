@@ -36,6 +36,19 @@ import { cn } from '../../utils/cn'
  * 3. Pipeline / diagnostic health: healthy | warning | critical | warming-up
  *      - Used by the Ingestion Stats / EWMA diagnostic tiles (not
  *        investigation-scoped), reusing the same color language.
+ * 4. Source connection health (Task 5.3, FR34): connected | disconnected
+ *                | unknown
+ *      - Used by the Sources view (`SourcesPage.tsx`) for Prometheus/Loki
+ *        connection status. Mirrors the Jinja `source_status_badge` macro
+ *        (`ui/beeper_ui/templates/components/status.html`) exactly:
+ *        `connected` → green "Connected"; the operator's `error`/
+ *        `disconnected`/`failed` statuses all collapse to red
+ *        "Disconnected"; anything else → gray "Unknown". Deliberately a
+ *        distinct axis from `healthy`/`critical` above rather than reusing
+ *        them with an overridden `label` — this keeps the variant name and
+ *        its rendered meaning aligned for future call sites, per this
+ *        component's own "select the right variant value for the field
+ *        you're rendering" contract.
  *
  * Severity (`Low`/`Medium`/`High`/`Critical`) is NOT a StatusBadge variant —
  * per the glossary (§11) severity is its own tag with its own copy; only its
@@ -63,6 +76,10 @@ export type StatusBadgeVariant =
   | 'critical'
   | 'warming-up'
   | 'no-data'
+  // Source connection health (Task 5.3, FR34) — Sources view only
+  | 'connected'
+  | 'disconnected'
+  | 'unknown'
 
 export interface StatusBadgeProps extends HTMLAttributes<HTMLSpanElement> {
   /** Which status axis + value this badge represents (see variant taxonomy above). */
@@ -92,6 +109,9 @@ const STATUS_BADGE_LABELS: Record<StatusBadgeVariant, string> = {
   critical: 'Critical',
   'warming-up': 'Warming Up',
   'no-data': 'No Data',
+  connected: 'Connected', // Task 5.3, FR34 — source_status_badge parity
+  disconnected: 'Disconnected',
+  unknown: 'Unknown',
 }
 
 /** Token classes per variant — bg token @ 10% opacity + matching text token. */
@@ -110,6 +130,9 @@ const STATUS_BADGE_STYLES: Record<StatusBadgeVariant, string> = {
   critical: 'bg-status-critical/10 text-status-critical',
   'warming-up': 'bg-status-warning/10 text-status-warning',
   'no-data': 'bg-status-critical/10 text-status-critical',
+  connected: 'bg-status-healthy/10 text-status-healthy',
+  disconnected: 'bg-status-critical/10 text-status-critical',
+  unknown: 'bg-status-muted/10 text-status-muted',
 }
 
 export function StatusBadge({ variant, label, className, ...rest }: StatusBadgeProps) {
