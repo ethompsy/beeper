@@ -26,43 +26,9 @@ import AxeBuilder from '@axe-core/playwright'
  * this writing).
  */
 
-/**
- * `color-contrast` is disabled here — the ONE rule exception in this file,
- * scoped to that single named rule (not a blanket disable of the sweep).
- *
- * Justification (Task 5.5 audit finding, verified 2026-08-06): this rule
- * fails on every single migrated view, and — critically — it ALSO fails on
- * the already-shipped, Phase-1 Investigations list (`axe — Investigations
- * (regression) / list view, loaded`), which this task did not touch. Tracing
- * every violation's `fgColor`/`bgColor` pair shows the root cause is not any
- * one component's misuse of a token but three core design tokens
- * themselves, which fail their own documented contrast targets against every
- * surface tone they're actually paired with in the app:
- *
- *   | Token                    | Value      | vs. surface-{base,raised,overlay} | Needs  |
- *   |---------------------------|-----------|-------------------------------------|--------|
- *   | --color-primary            | #6366f1   | 3.25 - 4.26 : 1                    | 4.5:1  |
- *   | --color-text-muted         | #64748b   | 3.11 - 3.99 : 1                    | 4.5:1  |
- *   | --color-status-critical    | #ef4444   | 4.13 : 1 (on a status/10 blend)    | 4.5:1  |
- *   | --color-text-primary (#f8fafc) on --color-primary (button/badge fill) | 4.26 : 1 | 4.5:1  |
- *
- * `tokens.css` documents `--color-text-muted` as already meeting "4.5:1 AA"
- * — it doesn't, against any of the three surface tones it's actually used
- * on. Changing these token values is a cross-cutting visual-identity change
- * spanning every already-shipped view (Phase 1 + this milestone alike), not
- * a page- or component-level a11y fix this task is scoped or authorized to
- * make unilaterally (`react-ui.md`'s Task 5.5 scope: "Styling changes:
- * design tokens only" — i.e. USE existing tokens, not redefine them).
- * Escalated to the orchestrator/caller in the Task 5.5 report with a
- * recommendation to route it through the Design System Agent; tracked
- * there, not silently swallowed here.
- */
-const DISABLED_RULES = ['color-contrast']
-
 async function expectNoViolations(page: Page): Promise<void> {
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-    .disableRules(DISABLED_RULES)
     .analyze()
   expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([])
 }

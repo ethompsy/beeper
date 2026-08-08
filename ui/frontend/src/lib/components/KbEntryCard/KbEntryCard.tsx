@@ -60,7 +60,12 @@ export interface KbEntryCardProps extends Omit<AnchorHTMLAttributes<HTMLAnchorEl
 }
 
 const ENTRY_TYPE_STYLES: Record<string, string> = {
-  investigation: 'bg-primary/15 text-primary border border-primary/30',
+  // Task 6.0: solid `bg-surface-overlay` (not translucent `bg-primary/15`) —
+  // this card's own background swaps to `surface-overlay` on hover, and a
+  // translucent primary tint blended over THAT (rather than its resting
+  // `surface-raised`) drops below 4.5:1. A solid backdrop is immune to the
+  // ambient-background shift. See src/test/contrast.test.ts.
+  investigation: 'bg-surface-overlay text-primary border border-primary/30',
   runbook: 'bg-status-healthy/15 text-status-healthy border border-status-healthy/30',
   correction: 'bg-status-warning/15 text-status-warning border border-status-warning/30',
   proven_fix: 'bg-status-healthy/15 text-status-healthy border border-status-healthy/30',

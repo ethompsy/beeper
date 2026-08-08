@@ -151,7 +151,13 @@ export function KnowledgeBasePage() {
           </a>
           <a
             href="/knowledge/import"
-            className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-text-primary transition-colors duration-150 hover:bg-primary-hover motion-reduce:transition-none"
+            // Task 6.0: `text-on-primary` (not `text-text-primary`) — this is
+            // a solid `bg-primary` fill, and `--color-on-primary` is the
+            // dedicated dark foreground for text drawn on top of it.
+            // `--color-text-primary` is tuned for dark *surfaces*, not a
+            // light brand-color fill, and is provably infeasible to pair
+            // here (see tokens.css's Task 6.0 comment): src/test/contrast.test.ts.
+            className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-on-primary transition-colors duration-150 hover:bg-primary-hover motion-reduce:transition-none"
           >
             Import Runbook
           </a>
