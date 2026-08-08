@@ -6,112 +6,33 @@ from httpx import Response
 
 
 class TestSourcesRoute:
-    """Tests for sources route."""
+    """Tests for the (Task 6.3 / D13-D14) retired sources route.
 
-    @respx.mock
-    def test_sources_page_with_data(self, client: FlaskClient) -> None:
-        """Test sources page renders with source data."""
-        mock_response = {
-            "sources": [
-                {
-                    "name": "prometheus-main",
-                    "type": "prometheus",
-                    "endpoint": "http://prometheus:9090",
-                    "status": "connected",
-                    "last_check": "2026-02-10T12:00:00Z",
-                    "error": None,
-                },
-            ]
-        }
+    `/sources/` no longer renders a Jinja page — it 302-redirects to
+    `/app/sources` (the React Sources view) before the view function ever
+    runs, regardless of operator/data state, HTMX header, or query string.
+    The old data/error/empty/HTMX-partial rendering coverage this class used
+    to carry is superseded by the React Sources view's own test suite
+    (`ui/frontend/src/test/SourcesPage.test.tsx`) and the JSON API it reads
+    from (`ui/tests/test_api_v1_sources_spending.py`); redirect-mechanism
+    coverage (exclusions, query-string/permalink preservation) lives in
+    `ui/tests/test_react_route_registry.py` and
+    `ui/tests/test_jinja_retirement.py`. This class keeps a minimal,
+    file-local proof that this specific route redirects rather than
+    silently dropping all `/sources/` coverage from this file.
+    """
 
-        respx.get("http://mock-operator:8080/api/v1/sources").mock(
-            return_value=Response(200, json=mock_response)
-        )
-
+    def test_sources_page_redirects_to_react_app(self, client: FlaskClient) -> None:
         response = client.get("/sources/")
-        assert response.status_code == 200
-        assert b"prometheus-main" in response.data
-        assert b"connected" in response.data
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/app/sources"
 
-    @respx.mock
-    def test_sources_page_with_error(self, client: FlaskClient) -> None:
-        """Test sources page shows error for source with error."""
-        mock_response = {
-            "sources": [
-                {
-                    "name": "loki-prod",
-                    "type": "loki",
-                    "endpoint": "http://loki:3100",
-                    "status": "error",
-                    "last_check": "2026-02-10T12:00:00Z",
-                    "error": {
-                        "type": "connection_error",
-                        "message": "Connection refused: check endpoint URL",
-                        "details": "dial tcp: connection refused",
-                    },
-                }
-            ]
-        }
-
-        respx.get("http://mock-operator:8080/api/v1/sources").mock(
-            return_value=Response(200, json=mock_response)
-        )
-
-        response = client.get("/sources/")
-        assert response.status_code == 200
-        assert b"loki-prod" in response.data
-        assert b"error" in response.data
-        assert b"Connection refused" in response.data
-
-    @respx.mock
-    def test_sources_page_operator_unavailable(self, client: FlaskClient) -> None:
-        """Test sources page shows error when operator is unavailable."""
-        import httpx
-
-        respx.get("http://mock-operator:8080/api/v1/sources").mock(
-            side_effect=httpx.ConnectError("Connection refused")
-        )
-
-        response = client.get("/sources/")
-        assert response.status_code == 200
-        assert b"Unable to fetch sources" in response.data
-
-    @respx.mock
-    def test_sources_page_empty(self, client: FlaskClient) -> None:
-        """Test sources page with no configured sources."""
-        respx.get("http://mock-operator:8080/api/v1/sources").mock(
-            return_value=Response(200, json={"sources": []})
-        )
-
-        response = client.get("/sources/")
-        assert response.status_code == 200
-        assert b"No data sources configured" in response.data
-
-    @respx.mock
-    def test_sources_htmx_partial(self, client: FlaskClient) -> None:
-        """Test HTMX request returns partial content."""
-        mock_response = {
-            "sources": [
-                {
-                    "name": "prometheus-main",
-                    "type": "prometheus",
-                    "endpoint": "http://prometheus:9090",
-                    "status": "connected",
-                    "last_check": None,
-                    "error": None,
-                }
-            ]
-        }
-
-        respx.get("http://mock-operator:8080/api/v1/sources").mock(
-            return_value=Response(200, json=mock_response)
-        )
-
+    def test_sources_htmx_request_also_redirects(self, client: FlaskClient) -> None:
+        # The old HTMX-partial branch (same URL) is gone along with the rest
+        # of the Jinja render path — an HX-Request header changes nothing now.
         response = client.get("/sources/", headers={"HX-Request": "true"})
-        assert response.status_code == 200
-        # Partial should not include full HTML structure
-        assert b"<!DOCTYPE html>" not in response.data
-        assert b"prometheus-main" in response.data
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/app/sources"
 
 
 class TestHealthRoute:

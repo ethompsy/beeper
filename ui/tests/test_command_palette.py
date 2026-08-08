@@ -180,9 +180,12 @@ class TestCommandPaletteStaticFiles:
         """command-palette.js should define a COMMANDS array."""
         content = _read_static("js/command-palette.js")
         assert "COMMANDS" in content
-        assert "/investigations/" in content
+        # Task 6.3 (D13/D14): Investigations and Knowledge Base are retired
+        # Jinja routes — the command palette links straight at their
+        # `/app/*` React URL. SLO remains an un-migrated Jinja page.
+        assert "/app/investigations" in content
         assert "/slo/" in content
-        assert "/knowledge/" in content
+        assert "/app/knowledge" in content
 
     def test_command_palette_js_has_chord_shortcuts(self) -> None:
         """command-palette.js should define chord shortcuts."""

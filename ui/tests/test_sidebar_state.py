@@ -21,7 +21,7 @@ import os
 import re
 
 import pytest
-from flask import Flask
+from flask import Flask, render_template_string
 from flask.testing import FlaskClient
 
 from beeper_ui.app import create_app
@@ -51,11 +51,21 @@ def _read_static(relative_path: str) -> str:
 
 
 def _render_detail(app: Flask) -> str:
-    """Render investigations/detail.html (not-found branch) with the shell."""
+    """Render the layout shell with the forced-collapsed sidebar state.
+
+    Task 6.3 (D13/D14) retired `investigations/detail.html` — it was the
+    only Jinja page that ever set `{% block sidebar_state %}collapsed
+    {% endblock %}`; no other retained page uses the "collapsed" override.
+    The forced-collapsed rail is still a generic `layout_shell(sidebar_state=
+    ...)` capability of the shell macro itself (Story 3.4), independent of
+    any one caller, so this exercises that macro directly rather than a
+    now-deleted page — proving the underlying mechanism, not a specific
+    (retired) consumer of it.
+    """
     with app.test_request_context():
-        template = app.jinja_env.get_template("investigations/detail.html")
-        return template.render(
-            investigation=None, investigation_id="INV-1", error_message=None
+        return render_template_string(
+            '{% from "components/layout.html" import layout_shell %}'
+            '{% call layout_shell(sidebar_state="collapsed") %}{% endcall %}'
         )
 
 
@@ -96,9 +106,12 @@ class TestAutoStateOnNonDetailPages:
         tag = _app_shell_tag(client.get("/").data.decode())
         assert 'data-sidebar-state="auto"' in tag
 
-    def test_investigation_list_is_auto(self, client: FlaskClient) -> None:
+    def test_health_page_is_auto(self, client: FlaskClient) -> None:
         # A representative non-detail route also inherits the auto default.
-        tag = _app_shell_tag(client.get("/investigations/").data.decode())
+        # (Was `/investigations/` — retired by Task 6.3/D13-D14; `/health/`
+        # is an un-migrated Jinja page and serves the same "any ordinary
+        # page" purpose here.)
+        tag = _app_shell_tag(client.get("/health/").data.decode())
         assert 'data-sidebar-state="auto"' in tag
 
     def test_auto_uses_responsive_width(self, client: FlaskClient) -> None:
@@ -120,7 +133,10 @@ class TestAutoStateOnNonDetailPages:
 
 
 class TestDetailForcedCollapsed:
-    """investigations/detail.html forces the collapsed icon rail at any width."""
+    """`layout_shell(sidebar_state='collapsed')` forces the icon rail at any
+    width — a page opts into this by setting `{% block sidebar_state %}
+    collapsed{% endblock %}` (formerly `investigations/detail.html`, retired
+    by Task 6.3; see `_render_detail()` above)."""
 
     def test_detail_sets_collapsed_state(self, app: Flask) -> None:
         tag = _app_shell_tag(_render_detail(app))

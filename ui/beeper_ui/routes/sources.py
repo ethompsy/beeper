@@ -2,9 +2,10 @@
 
 from typing import Any
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, redirect
 
 from beeper_ui.middleware.permissions import require_role
+from beeper_ui.routes.react_registry import build_app_redirect_target
 from beeper_ui.services.source_service import Source, SourceService, SourceServiceError
 
 sources_bp = Blueprint("sources", __name__, url_prefix="/sources")
@@ -26,34 +27,20 @@ def get_source_service() -> SourceService:
 
 
 @sources_bp.route("/")
-def list_sources() -> str:
-    """Display list of all configured sources.
+def list_sources() -> Response:
+    """Retired (Task 6.3 / D13-D14): the Jinja sources list page is removed.
 
-    For HTMX requests (auto-refresh), returns only the list content partial.
-    For full page requests, returns the complete page.
+    No retained template links to ``url_for('sources.list_sources')``, but
+    this route is kept registered (not deleted) for the same defensive-
+    fallback reasoning and uniform "retired → redirect" pattern used across
+    every migrated route in this task — see
+    ``knowledge.py``'s ``kb_index()`` docstring. A real browser request
+    never reaches this body: the ``before_request`` hook always redirects
+    `/sources` (bare) to `/app/sources` first. This route is now free of
+    any reference to the removed ``list.html``/``_list_content.html``
+    templates.
     """
-    service = get_source_service()
-    error_message = None
-    sources = []
-
-    try:
-        sources = service.get_sources()
-    except SourceServiceError as e:
-        error_message = str(e)
-
-    # Check if this is an HTMX request (for partial updates)
-    if request.headers.get("HX-Request"):
-        return render_template(
-            "sources/_list_content.html",
-            sources=sources,
-            error_message=error_message,
-        )
-
-    return render_template(
-        "sources/list.html",
-        sources=sources,
-        error_message=error_message,
-    )
+    return redirect(build_app_redirect_target("/sources/"))
 
 
 def _source_to_dict(source: Source) -> dict[str, Any]:

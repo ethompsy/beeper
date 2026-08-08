@@ -1,6 +1,4 @@
-"""Tests for evidence timeline template rendering and route integration."""
-
-from unittest.mock import MagicMock, patch
+"""Tests for evidence timeline template rendering."""
 
 import pytest
 
@@ -14,13 +12,6 @@ def app():
     """Create test application."""
     app = create_app(TestingConfig)
     yield app
-
-
-@pytest.fixture
-def client(app):
-    """Create test client."""
-    with app.test_client() as c:
-        yield c
 
 
 def _make_ref(**kwargs):
@@ -376,84 +367,6 @@ class TestEvidencePanelEnhancements:
             assert "kb-doc-99" in html
             assert "View KB Entry" in html
 
-
-# --- Route integration tests ---
-
-
-class TestRouteIntegration:
-    @patch("beeper_ui.routes.investigations.get_evidence_service")
-    @patch("beeper_ui.routes.investigations.get_investigation_service")
-    def test_detail_route_includes_evidence_references(
-        self, mock_get_inv_svc, mock_get_ev_svc, client
-    ):
-        # Setup mock investigation service
-        mock_inv_svc = MagicMock()
-        mock_investigation = MagicMock()
-        mock_investigation.id = "test-inv-1"
-        mock_investigation.status = "investigating"
-        mock_investigation.severity = "high"
-        mock_investigation.condition = "Test condition"
-        mock_investigation.service = "api"
-        mock_investigation.started_at = "2026-01-01T00:00:00Z"
-        mock_investigation.completed_at = None
-        mock_investigation.triggered_at = None
-        mock_investigation.message = "Step 1"
-        mock_investigation.error = None
-        mock_inv_svc.get_investigation.return_value = mock_investigation
-        mock_inv_svc.get_investigation_findings.return_value = {
-            "layers_queried": ["prometheus"],
-            "signal_summary": "Metric spike detected",
-        }
-        mock_get_inv_svc.return_value = mock_inv_svc
-
-        # Setup mock evidence service
-        mock_ev_svc = MagicMock()
-        ref = _make_ref(
-            evidence_type="metric",
-            title="Signal: prometheus",
-            source_type="prometheus",
-            source_ref="prometheus",
-        )
-        mock_ev_svc.get_timeline_events.return_value = [
-            TimelineEvent(reference=ref, event_category="metric_anomaly")
-        ]
-        mock_get_ev_svc.return_value = mock_ev_svc
-
-        response = client.get("/investigations/test-inv-1")
-        assert response.status_code == 200
-        html = response.data.decode()
-        assert "Investigation Timeline" in html
-        assert "evidence-timeline" in html
-        mock_ev_svc.get_timeline_events.assert_called_once()
-        # extract_evidence_references and enrich_kb_references are called
-        # internally by get_timeline_events, not directly by the route
-        mock_ev_svc.extract_evidence_references.assert_not_called()
-        mock_ev_svc.enrich_kb_references.assert_not_called()
-
-    @patch("beeper_ui.routes.investigations.get_investigation_service")
-    def test_detail_route_empty_findings_no_evidence(
-        self, mock_get_inv_svc, client
-    ):
-        mock_inv_svc = MagicMock()
-        mock_investigation = MagicMock()
-        mock_investigation.id = "test-inv-2"
-        mock_investigation.status = "investigating"
-        mock_investigation.severity = "low"
-        mock_investigation.condition = "Test"
-        mock_investigation.service = "api"
-        mock_investigation.started_at = None
-        mock_investigation.completed_at = None
-        mock_investigation.triggered_at = None
-        mock_investigation.message = None
-        mock_investigation.error = None
-        mock_inv_svc.get_investigation.return_value = mock_investigation
-        mock_inv_svc.get_investigation_findings.return_value = {}
-        mock_get_inv_svc.return_value = mock_inv_svc
-
-        response = client.get("/investigations/test-inv-2")
-        assert response.status_code == 200
-        html = response.data.decode()
-        assert "No timeline events yet" in html
 
 
 # --- Unified Timeline Template Tests ---

@@ -1,17 +1,38 @@
-"""Tests for Task 1.3: BFF route-dispatch registry (D11).
+"""Tests for the BFF route-dispatch registry (Task 1.3 / D11) and its
+Task 6.3 (D13/D14) redirect cutover.
 
-Acceptance criteria [T]:
+Historical [T] acceptance criteria (Task 1.3):
   1. A React-owned prefix returns the SPA shell; an UNMIGRATED route still
      renders its Jinja page.
-  2. Collision test: for a path that exists in BOTH worlds (`/investigations`),
-     it resolves to the React shell WHEN its prefix is in the registry, and
-     to Jinja when it is NOT — deterministic precedence, toggled at test time.
+  2. Collision test: for a path that exists in BOTH worlds, it resolves to
+     the React shell WHEN its prefix is in the registry, and to Jinja when
+     it is NOT — deterministic precedence, toggled at test time.
 
-These tests require `ui/frontend/dist/` to exist (`npm run build` in
-ui/frontend/), same as test_react_shell.py, since the React shell path
-returns the built index.html. If the dist is absent, the shell-serving
-assertions are skipped with an informative message; the "still-Jinja"
-half of each test does not depend on the dist and always runs.
+Task 6.3 changed step 1's *mechanism* (D14): a matched, non-excluded path
+now 302-redirects to `/app/<path>` instead of being served the shell in
+place — see the module docstring in `beeper_ui/routes/react_registry.py`
+for why (the bundle's `base`/`basename` are hard-wired to `/app`, so serving
+it at a bare path renders nothing). It also means AC2's "toggle the
+registry, flip the outcome" demonstration no longer holds for the real
+`/investigations` (or any of the other five migrated) blueprints, because
+their Jinja view functions are now permanently gutted to a redirect
+regardless of registry membership (Task 6.3's "render path removed" half of
+its AC — see `TestGuttedViewsRedirectRegardlessOfRegistry` below). The
+underlying registry mechanism (`matches_react_prefix` + the toggle) is still
+exactly as before and is still proven here against a synthetic prefix that
+has no gutted view function of its own.
+
+The full end-to-end proof that the SIX real migrated prefixes redirect
+correctly, that un-migrated/carved-out sub-routes survive, and that query
+strings (FR53 permalinks) survive the hop lives in
+`ui/tests/test_jinja_retirement.py` — this file covers the registry/dispatch
+*mechanism* in isolation (unit tests + a couple of synthetic-prefix
+integration tests); that file covers the *production* registry value and
+every real route in `docs/design/route-parity-targets.md`.
+
+Shell-serving assertions below require `ui/frontend/dist/` to exist (`npm
+run build` in `ui/frontend/`), same as `test_react_shell.py` — if the dist is
+absent they are skipped with an informative message.
 """
 
 from pathlib import Path
@@ -25,7 +46,10 @@ from httpx import Response
 
 from beeper_ui.app import create_app
 from beeper_ui.config import TestingConfig
-from beeper_ui.routes.react_registry import matches_react_prefix
+from beeper_ui.routes.react_registry import (
+    build_app_redirect_target,
+    matches_react_prefix,
+)
 
 _TESTS_DIR = Path(__file__).parent
 _DIST = _TESTS_DIR.parent / "frontend" / "dist"
@@ -122,20 +146,103 @@ class TestMatchesReactPrefix:
     def test_app_prefix_always_excluded_even_if_registered(self) -> None:
         assert not matches_react_prefix("/app/assets/index.js", ("/app",))
 
+    def test_dotdot_segment_always_excluded_even_if_registered(self) -> None:
+        # Found via Task 6.3 test migration: Werkzeug's test client (and
+        # some raw HTTP clients) pass a literal `..` segment straight
+        # through to `request.path` without normalizing it first. Such a
+        # path must never be treated as React-owned — see
+        # `_is_always_excluded()`'s docstring in react_registry.py.
+        assert not matches_react_prefix(
+            "/investigations/../../etc/passwd/confirm", ("/investigations",)
+        )
+        assert not matches_react_prefix(
+            "/investigations/../../etc/passwd", ("/investigations",)
+        )
 
-# ── [T] AC 1: React-owned prefix -> shell; unmigrated route -> Jinja ────────
+
+# ── unit tests for the Task 6.3 redirect-target builder ─────────────────────
+
+
+class TestBuildAppRedirectTarget:
+    """`build_app_redirect_target()` — the D14 bare-path -> `/app/*` mapping."""
+
+    def _target(self, app: Flask, path: str, query_string: str = "") -> str:
+        with app.test_request_context(path, query_string=query_string):
+            return build_app_redirect_target(path)
+
+    def test_default_rewrite_prepends_app(self, app: Flask) -> None:
+        assert self._target(app, "/sources/") == "/app/sources"
+
+    def test_default_rewrite_preserves_dynamic_segment(self, app: Flask) -> None:
+        assert (
+            self._target(app, "/investigations/inv-abc123")
+            == "/app/investigations/inv-abc123"
+        )
+
+    def test_bare_path_without_trailing_slash(self, app: Flask) -> None:
+        assert self._target(app, "/knowledge") == "/app/knowledge"
+
+    def test_health_ingestion_uses_target_override(self, app: Flask) -> None:
+        # The React route is named differently (`ingestion-stats`), not a
+        # 1:1 rewrite of the Jinja path.
+        assert self._target(app, "/health/ingestion") == "/app/ingestion-stats"
+
+    def test_knowledge_search_overrides_to_knowledge_base_path(self, app: Flask) -> None:
+        # Search is a `?q=` query param on /app/knowledge in React, not its
+        # own `/app/knowledge/search` route (route-parity-targets.md §2).
+        assert self._target(app, "/knowledge/search") == "/app/knowledge"
+
+    def test_metrics_mttr_overrides_to_metrics(self, app: Flask) -> None:
+        assert self._target(app, "/metrics/mttr") == "/app/metrics"
+
+    def test_metrics_mttr_drilldown_overrides_to_metrics(self, app: Flask) -> None:
+        assert self._target(app, "/metrics/mttr/drilldown") == "/app/metrics"
+
+    def test_spending_status_overrides_to_spending(self, app: Flask) -> None:
+        assert self._target(app, "/spending/status") == "/app/spending"
+
+    def test_query_string_is_appended(self, app: Flask) -> None:
+        assert (
+            self._target(app, "/knowledge/", query_string="q=timeout&entry_type=runbook")
+            == "/app/knowledge?q=timeout&entry_type=runbook"
+        )
+
+    def test_no_query_string_no_trailing_question_mark(self, app: Flask) -> None:
+        target = self._target(app, "/sources/")
+        assert "?" not in target
+
+    def test_override_target_also_gets_query_string_appended(self, app: Flask) -> None:
+        # Overrides (search, mttr, spending status) still carry the query
+        # string through even though the base path itself is remapped.
+        assert (
+            self._target(app, "/knowledge/search", query_string="q=disk+space")
+            == "/app/knowledge?q=disk+space"
+        )
+
+
+# ── [T] AC 1: React-owned prefix -> redirect; unmigrated route -> Jinja ────
 
 
 class TestReactOwnedPrefixVsUnmigratedRoute:
-    """AC: a React-owned prefix serves the shell; an unmigrated route stays Jinja."""
+    """AC: a React-owned prefix 302-redirects; an unmigrated route stays Jinja."""
 
-    @pytest.mark.skipif(not _dist_available(), reason=_DIST_MISSING_REASON)
-    def test_registered_test_prefix_returns_spa_shell(self) -> None:
-        """A harmless test-only prefix, once registered, returns the SPA shell."""
+    def test_registered_test_prefix_redirects_to_app(self) -> None:
+        """A harmless test-only prefix, once registered, 302-redirects under /app."""
         app = _app_with_registry(("/__react_test_prefix__",))
         client = app.test_client()
 
         response = client.get("/__react_test_prefix__/anything")
+
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/app/__react_test_prefix__/anything"
+
+    @pytest.mark.skipif(not _dist_available(), reason=_DIST_MISSING_REASON)
+    def test_following_the_redirect_lands_on_the_spa_shell(self) -> None:
+        """The redirect target actually resolves to the built React shell."""
+        app = _app_with_registry(("/__react_test_prefix__",))
+        client = app.test_client()
+
+        response = client.get("/__react_test_prefix__/anything", follow_redirects=True)
 
         assert response.status_code == 200
         data = response.get_data(as_text=True)
@@ -143,90 +250,115 @@ class TestReactOwnedPrefixVsUnmigratedRoute:
 
     @respx.mock
     def test_unmigrated_route_still_renders_jinja(self, client: FlaskClient) -> None:
-        """/knowledge (never in the registry) is unaffected — still Jinja/HTML."""
-        response = client.get("/knowledge/")
-        # Rendered by the Jinja knowledge blueprint; must not be the SPA shell.
-        assert response.status_code != 404
-        data = response.get_data(as_text=True)
-        assert '<div id="root">' not in data
+        """`/health/` — never in REACT_OWNED_PREFIXES — is unaffected: still Jinja/HTML.
 
-
-# ── [T] AC 2: collision test — deterministic precedence toggle ─────────────
-
-
-class TestInvestigationsCollisionPrecedence:
-    """AC: `/investigations` resolves to React iff its prefix is registered."""
-
-    @respx.mock
-    def test_investigations_renders_jinja_when_not_registered(self) -> None:
-        """Registry does NOT contain '/investigations' -> Jinja page renders."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=MOCK_INVESTIGATIONS)
-        )
-        app = _app_with_registry(())  # empty registry (production default)
-        client = app.test_client()
-
-        response = client.get("/investigations/")
-
-        assert response.status_code == 200
-        assert b"inv-abc123" in response.data
-        data = response.get_data(as_text=True)
-        assert '<div id="root">' not in data
-
-    @pytest.mark.skipif(not _dist_available(), reason=_DIST_MISSING_REASON)
-    def test_investigations_renders_react_shell_when_registered(self) -> None:
-        """Registry DOES contain '/investigations' -> React shell wins, deterministically.
-
-        Note: no respx mock is installed here — if this fell through to the
-        Jinja view it would raise/500 on the un-mocked operator call, so a
-        200 SPA-shell response also proves Jinja's view function never ran.
+        (Was asserted against `/knowledge/` before Task 6.3 migrated Knowledge
+        Base; `/health/` — the general operator-health overview, distinct
+        from the now-migrated `/health/ingestion` — is a route-parity-
+        targets.md §7 "later increment" destination and remains genuinely
+        un-migrated.)
         """
-        app = _app_with_registry(("/investigations",))
-        client = app.test_client()
-
-        response = client.get("/investigations/")
-
-        assert response.status_code == 200
+        respx.get("http://mock-operator:8080/api/v1/health/components").mock(
+            return_value=Response(200, json={"operator": {"status": "healthy"}})
+        )
+        respx.get("http://mock-operator:8080/api/v1/ingestion/stats").mock(
+            return_value=Response(
+                200,
+                json={
+                    "buffer_size": 0,
+                    "buffered_count": 0,
+                    "dropped_count": 0,
+                    "is_full": False,
+                },
+            )
+        )
+        response = client.get("/health/")
+        assert response.status_code != 404
+        assert response.status_code != 302
         data = response.get_data(as_text=True)
-        assert "<!doctype html>" in data.lower() or "<html" in data.lower()
+        assert '<div id="root">' not in data
 
-    @pytest.mark.skipif(not _dist_available(), reason=_DIST_MISSING_REASON)
-    def test_investigations_detail_subpath_also_wins_when_registered(self) -> None:
-        """Sub-paths under a registered prefix (e.g. detail view) also go to React."""
-        app = _app_with_registry(("/investigations",))
-        client = app.test_client()
 
-        response = client.get("/investigations/inv-abc123")
+# ── [T] AC 2: collision precedence — mechanism vs. the Task 6.3 reality ─────
 
-        assert response.status_code == 200
-        data = response.get_data(as_text=True)
-        assert "<!doctype html>" in data.lower() or "<html" in data.lower()
+
+class TestRegistryTogglePrecedence:
+    """AC: prefix membership deterministically drives redirect precedence.
+
+    Uses the synthetic `/__react_test_prefix__` (which has no Jinja
+    blueprint at all, so there's nothing to "collide" with) to prove the
+    *mechanism* is registry-driven, not blueprint-registration-order-driven
+    — exactly as Task 1.3 originally proved via `/investigations`. See
+    `TestGuttedViewsRedirectRegardlessOfRegistry` below for why
+    `/investigations` itself can no longer be used for this demonstration
+    post-Task-6.3.
+    """
+
+    def test_toggle_registry_flips_precedence_on_synthetic_prefix(self) -> None:
+        unregistered_app = _app_with_registry(())
+        unregistered_response = unregistered_app.test_client().get(
+            "/__react_test_prefix__/x"
+        )
+        assert unregistered_response.status_code == 404  # no such Jinja route
+
+        registered_app = _app_with_registry(("/__react_test_prefix__",))
+        registered_response = registered_app.test_client().get(
+            "/__react_test_prefix__/x"
+        )
+        assert registered_response.status_code == 302
+        assert registered_response.headers["Location"] == "/app/__react_test_prefix__/x"
+
+
+class TestGuttedViewsRedirectRegardlessOfRegistry:
+    """Task 6.3 (D13/D14) documents an intentional AC2 behavior change.
+
+    The six migrated Jinja view functions (`list_investigations`,
+    `investigation_detail`, `kb_index`, `kb_search`, `kb_entry`,
+    `ingestion_stats`, `list_sources`, `spending_dashboard`,
+    `spending_status`, `metrics_dashboard`, `mttr_partial`,
+    `mttr_drilldown`) are now permanently gutted to a redirect — their
+    "render path" is removed, not merely toggled off by the registry (see
+    each function's docstring in its route module for why they're kept
+    registered rather than deleted: `url_for()` call sites in retained
+    templates). This means `/investigations/` (and the other five) now
+    redirects even with an EMPTY `REACT_OWNED_PREFIXES` — the registry no
+    longer gates it, unlike every other route this app has ever migrated.
+    This is a deliberate, documented consequence of "retire" (this task)
+    vs. "coexist" (Tasks 1.3-5.4), not a bug.
+    """
+
+    def test_investigations_redirects_even_with_empty_registry(self) -> None:
+        app = _app_with_registry(())  # empty registry — no before_request match
+        response = app.test_client().get("/investigations/")
+
+        # The before_request hook does NOT intercept this (empty registry) —
+        # dispatch reaches the real `list_investigations()` view, which
+        # itself now unconditionally redirects.
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/app/investigations"
+
+    def test_knowledge_index_redirects_even_with_empty_registry(self) -> None:
+        app = _app_with_registry(())
+        response = app.test_client().get("/knowledge/")
+
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/app/knowledge"
 
     @respx.mock
-    def test_toggle_registry_flips_precedence_on_same_path(self) -> None:
-        """Same exact path, opposite outcomes, keyed only by the registry —
-        proves precedence is deterministic and driven by the registry, not
-        by blueprint registration order (both apps register blueprints in
-        the same order via register_blueprints)."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=MOCK_INVESTIGATIONS)
+    def test_investigation_action_route_is_unaffected_by_this(self) -> None:
+        """Only the six gutted views behave this way — kept action routes
+        (never gutted) still depend on real request handling, proving the
+        gutting is scoped to exactly the six retired views, not a blanket
+        blueprint-wide change."""
+        respx.get("http://mock-operator:8080/api/v1/investigations/inv-1").mock(
+            return_value=Response(404)
         )
-        jinja_app = _app_with_registry(())
-        jinja_response = jinja_app.test_client().get("/investigations/")
-        assert b"inv-abc123" in jinja_response.data
+        app = _app_with_registry(())
+        response = app.test_client().get("/investigations/inv-1/urgency")
 
-        # The React half actually serves the built shell (reads dist/index.html),
-        # so the request itself only runs when the frontend has been built —
-        # skipped in the Python-only CI job. The Jinja half above always runs.
-        if _dist_available():
-            react_app = _app_with_registry(("/investigations",))
-            react_response = react_app.test_client().get("/investigations/")
-            react_data = react_response.get_data(as_text=True)
-            assert b"inv-abc123" not in react_response.data
-            assert (
-                "<!doctype html>" in react_data.lower()
-                or "<html" in react_data.lower()
-            )
+        assert response.status_code == 200
+        data = response.get_data(as_text=True)
+        assert '<div id="root">' not in data
 
 
 # ── always-excluded paths stay excluded even with a matching registry ──────
@@ -246,7 +378,7 @@ class TestAlwaysExcludedPaths:
         app = _app_with_registry(("/",))
         client = app.test_client()
 
-        response = client.get("/api/v1/investigations/")
+        response = client.get("/api/v1/investigations/", headers={"X-Beeper-Role": "user"})
 
         assert response.status_code == 200
         assert response.is_json

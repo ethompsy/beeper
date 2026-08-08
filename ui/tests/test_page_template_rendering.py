@@ -21,24 +21,24 @@ from flask import Flask
 from beeper_ui.app import create_app
 from beeper_ui.config import TestingConfig
 
-# The 29 page templates that extend base.html (per Story 3.2 Dev Notes).
+# The 22 remaining Jinja page templates that extend base.html. Was 29 (Story
+# 3.2 Dev Notes) until Task 6.3 (D13/D14) retired the migrated full pages —
+# `investigations/detail.html`, `investigations/list.html`,
+# `knowledge/entry.html`, `knowledge/index.html`, `metrics/mttr.html`,
+# `sources/list.html`, `spending/spending.html` — 7 templates removed. Their
+# React equivalents live at `/app/*`; see docs/design/route-parity-targets.md.
 PAGE_TEMPLATES: list[str] = [
     "analytics/dashboard.html",
     "handoff/handoff.html",
     "health/status.html",
-    "investigations/detail.html",
-    "investigations/list.html",
     "knowledge/diff.html",
     "knowledge/edit.html",
-    "knowledge/entry.html",
     "knowledge/history.html",
     "knowledge/import.html",
-    "knowledge/index.html",
     "knowledge/learning.html",
     "knowledge/service_knowledge.html",
     "knowledge/trust_settings.html",
     "knowledge/version.html",
-    "metrics/mttr.html",
     "notifications/config.html",
     "reports/executive.html",
     "reports/noise.html",
@@ -46,9 +46,7 @@ PAGE_TEMPLATES: list[str] = [
     "services/list.html",
     "slo/dashboard.html",
     "slo/service.html",
-    "sources/list.html",
     "spending/costs.html",
-    "spending/spending.html",
     "topology/index.html",
     "trust/history.html",
     "trust/settings.html",
@@ -126,9 +124,9 @@ def app() -> Flask:
 
 
 def test_all_page_templates_present() -> None:
-    """Guard: the curated list matches Story 3.2's documented count of 29."""
-    assert len(PAGE_TEMPLATES) == 29
-    assert len(set(PAGE_TEMPLATES)) == 29
+    """Guard: the curated list matches the post-Task-6.3 count of 22 (was 29)."""
+    assert len(PAGE_TEMPLATES) == 22
+    assert len(set(PAGE_TEMPLATES)) == 22
 
 
 @pytest.mark.parametrize("template_name", PAGE_TEMPLATES)

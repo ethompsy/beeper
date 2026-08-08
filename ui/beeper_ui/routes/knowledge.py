@@ -9,6 +9,7 @@ from flask import Blueprint, Response, flash, jsonify, redirect, render_template
 from werkzeug.utils import secure_filename
 
 from beeper_ui.middleware.permissions import require_role
+from beeper_ui.routes.react_registry import build_app_redirect_target
 from beeper_ui.services.correction_service import (
     CorrectionServiceError,
     get_correction_service,
@@ -118,68 +119,24 @@ def get_kb_service() -> KBService:
 
 
 @knowledge_bp.route("/")
-def kb_index() -> str:
-    """Display the Knowledge Base wiki index.
+def kb_index() -> Response:
+    """Retired (Task 6.3 / D13-D14): the Jinja browse/index page is removed.
 
-    Supports optional query parameters:
-    - entry_type: Filter by entry type (investigation, runbook, correction)
-    - service: Filter by service name
-    - date_range: Filter by date range (today, 7d, 30d, 90d)
-    - q: Search query (preserved for URL state)
-
-    For HTMX requests (filtering), returns only the entry list partial.
-    For full page requests, returns the complete page.
+    Kept registered — not deleted — because many retained Jinja pages still
+    build "Back to Knowledge Base" links via
+    ``url_for('knowledge.kb_index')`` (``history.html``, ``version.html``,
+    ``diff.html``, ``edit.html``, ``import.html``, ``learning.html``,
+    ``trust_settings.html``, ``service_knowledge.html``); deleting the
+    endpoint would break those ``url_for`` calls with a `BuildError`. A real
+    browser request never reaches this body: the ``REACT_OWNED_PREFIXES``
+    ``before_request`` hook (``react_registry.py``) always redirects
+    `/knowledge` (bare) to `/app/knowledge` first. This explicit redirect is
+    a defensive fallback that keeps behavior correct if that hook is ever
+    bypassed/disabled, and this route is now free of any reference to the
+    removed ``index.html``/``_entry_list.html``/``_filter_panel.html``/
+    ``_active_filters.html`` templates.
     """
-    entry_type = validate_entry_type(request.args.get("entry_type"))
-    service = request.args.get("service")
-    date_range = request.args.get("date_range")
-    query = request.args.get("q", "")
-
-    # Parse date range
-    date_from, date_to = parse_date_range(date_range or "")
-
-    service_client = get_kb_service()
-    error_message: str | None = None
-    entries: list[KBEntry] = []
-    services: list[str] = []
-    entry_types: list[str] = []
-
-    try:
-        entries = service_client.list_recent_entries(
-            limit=20,
-            entry_type=entry_type,
-            service=service,
-            date_from=date_from,
-            date_to=date_to,
-        )
-        services = service_client.get_available_services()
-        entry_types = service_client.get_entry_types()
-    except KBServiceError as e:
-        error_message = str(e)
-
-    # Check if this is an HTMX request (for partial updates)
-    if request.headers.get("HX-Request"):
-        return render_template(
-            "knowledge/_entry_list.html",
-            entries=entries,
-            error_message=error_message,
-        )
-
-    # Calculate if any filter is active (for active filter chips display)
-    any_filter_active = bool(entry_type or service or date_range)
-
-    return render_template(
-        "knowledge/index.html",
-        entries=entries,
-        services=services,
-        entry_types=entry_types,
-        selected_service=service,
-        selected_entry_type=entry_type,
-        selected_date_range=date_range,
-        query=query,
-        error_message=error_message,
-        any_filter_active=any_filter_active,
-    )
+    return redirect(build_app_redirect_target("/knowledge/"))
 
 
 # NOTE: Static routes (/search, /import) must be defined BEFORE dynamic routes (/<entry_id>)
@@ -412,112 +369,23 @@ def kb_import() -> str:
 
 
 @knowledge_bp.route("/search")
-def kb_search() -> str:
-    """Search the Knowledge Base using semantic similarity and/or filters.
+def kb_search() -> Response:
+    """Retired (Task 6.3 / D13-D14): the HTMX-only search partial is removed.
 
-    Query parameters:
-    - q: Search query (natural language, optional)
-    - entry_type: Optional filter by entry type
-    - service: Optional filter by service name
-    - date_range: Optional filter by date range (today, 7d, 30d, 90d)
-
-    Returns:
-        HTMX partial with search results.
-
-    Note:
-        If no query is provided but filters are active, performs filter-only search.
-        If query is provided, performs semantic search with optional filters.
+    Unlike ``kb_index``/``kb_entry``, no retained template references
+    ``url_for('knowledge.kb_search')`` (its only referrers —
+    ``index.html``, ``_active_filters.html``, the knowledge ``_filter_panel.html``
+    — are all retired alongside it), so this route has no ``url_for``
+    obligation. Kept registered anyway, for the same defensive-fallback
+    reason and uniform "retired → redirect" pattern as the other five
+    migrated routes in this module — see ``kb_index``'s docstring. Per
+    route-parity-targets.md §2, search is implemented in React as a ``?q=``
+    permalink on `/app/knowledge` itself (no separate `/app/knowledge/search`
+    route exists), so the redirect target below deliberately points there,
+    not at `/app/knowledge/search` (see `react_registry.py`'s
+    `_REDIRECT_TARGET_OVERRIDES`).
     """
-    query = sanitize_query(request.args.get("q", ""))
-    entry_type = validate_entry_type(request.args.get("entry_type"))
-    service = request.args.get("service") or None
-    date_range = request.args.get("date_range") or None
-
-    # Parse date range
-    date_from, date_to = parse_date_range(date_range or "")
-
-    # Check if any filter is active
-    any_filter_active = bool(entry_type or service or date_range)
-
-    # Return empty if no query and no filters
-    if not query and not any_filter_active:
-        return render_template(
-            "knowledge/_search_results.html",
-            query="",
-            entries=[],
-            has_exact_matches=True,
-            selected_entry_type=entry_type,
-            selected_service=service,
-            selected_date_range=date_range,
-            any_filter_active=False,
-        )
-
-    service_client = get_kb_service()
-    entries: list[KBEntry] = []
-    has_exact_matches = True
-
-    try:
-        if query:
-            # Semantic search with optional filters
-            embedding_service = get_embedding_service()
-
-            # Check if embedding service is configured
-            if not embedding_service.is_configured():
-                return render_template(
-                    "knowledge/_search_results.html",
-                    query=query,
-                    entries=[],
-                    has_exact_matches=True,
-                    selected_entry_type=entry_type,
-                    selected_service=service,
-                    selected_date_range=date_range,
-                    any_filter_active=any_filter_active,
-                    error_message="Search not configured. Set OPENAI_API_KEY to enable.",
-                )
-
-            entries, has_exact_matches = service_client.search_semantic(
-                query=query,
-                limit=10,
-                entry_type=entry_type,
-                service=service,
-                date_from=date_from,
-                date_to=date_to,
-                embedding_service=embedding_service,
-            )
-        else:
-            # Filter-only search (no semantic query)
-            entries = service_client.list_recent_entries(
-                limit=20,
-                entry_type=entry_type,
-                service=service,
-                date_from=date_from,
-                date_to=date_to,
-            )
-            has_exact_matches = True  # No semantic scoring for filter-only
-
-    except KBServiceError as e:
-        return render_template(
-            "knowledge/_search_results.html",
-            query=query,
-            entries=[],
-            has_exact_matches=True,
-            selected_entry_type=entry_type,
-            selected_service=service,
-            selected_date_range=date_range,
-            any_filter_active=any_filter_active,
-            error_message=str(e),
-        )
-
-    return render_template(
-        "knowledge/_search_results.html",
-        query=query,
-        entries=entries,
-        has_exact_matches=has_exact_matches,
-        selected_entry_type=entry_type,
-        selected_service=service,
-        selected_date_range=date_range,
-        any_filter_active=any_filter_active,
-    )
+    return redirect(build_app_redirect_target("/knowledge/search"))
 
 
 def _compute_change_summaries(versions: list[dict]) -> None:
@@ -1949,60 +1817,25 @@ def service_knowledge(service_name: str) -> tuple[str, int] | str:
 
 
 @knowledge_bp.route("/<entry_id>")
-def kb_entry(entry_id: str) -> tuple[str, int] | str:
-    """Display a single KB entry.
+def kb_entry(entry_id: str) -> Response:
+    """Retired (Task 6.3 / D13-D14): the Jinja entry-detail page is removed.
 
-    Args:
-        entry_id: The unique identifier of the entry
-
-    Returns:
-        Rendered entry page or 404 error.
+    Kept registered — not deleted — because it is the single most-linked
+    endpoint in the retained Jinja templates: every "View Entry"/"Return to
+    Knowledge Base entry" style link across ``history.html``, ``version.html``,
+    ``diff.html``, ``edit.html``, ``_restore_result.html``, ``_edit_result.html``,
+    ``_revision_result.html``, ``_related.html``, ``_entry_card.html``,
+    ``components/kb.html``, and the still-live investigations action
+    partials (``_findings.html``, ``_evidence_panel.html``,
+    ``_evidence_timeline.html``, ``_unified_timeline.html``, ``_linked_kb.html``)
+    builds its href via ``url_for('knowledge.kb_entry', entry_id=...)``.
+    ``kb_confirm()`` below also redirects here after a successful confirm
+    action. Deleting the endpoint would break every one of those with a
+    `BuildError`. A real browser request never reaches this body — see
+    ``kb_index``'s docstring for why — this route is now free of any
+    reference to the removed ``entry.html`` template.
     """
-    service_client = get_kb_service()
-    error_message: str | None = None
-    entry: KBEntry | None = None
-    related_entries: list[KBEntry] = []
-    source_investigation: dict[str, str] | None = None
-    contributing_investigations: list[dict[str, str]] = []
-
-    try:
-        entry = service_client.get_entry(entry_id)
-        if entry:
-            related_entries = service_client.list_related_entries(
-                entry_id=entry_id, service=entry.service, limit=5
-            )
-            # Fetch payload once for both link methods (avoids 2 extra Qdrant queries)
-            entry_payload = service_client.get_entry_payload(entry_id)
-            source_investigation = service_client.get_source_investigation(
-                entry_id, payload=entry_payload
-            )
-            contributing_investigations = service_client.get_contributing_investigations(
-                entry_id, payload=entry_payload
-            )
-    except KBServiceError as e:
-        error_message = str(e)
-
-    if not entry and not error_message:
-        return (
-            render_template(
-                "knowledge/entry.html",
-                entry=None,
-                related_entries=[],
-                source_investigation=None,
-                contributing_investigations=[],
-                error_message=f"Entry '{entry_id}' not found",
-            ),
-            404,
-        )
-
-    return render_template(
-        "knowledge/entry.html",
-        entry=entry,
-        related_entries=related_entries,
-        source_investigation=source_investigation,
-        contributing_investigations=contributing_investigations,
-        error_message=error_message,
-    )
+    return redirect(build_app_redirect_target(f"/knowledge/{entry_id}"))
 
 
 @knowledge_bp.route("/<entry_id>/related")

@@ -9,7 +9,7 @@ Maps each [T] acceptance criterion to a named test:
   AC5  empty_state macro renders with title/description/icon
 
 Test pattern follows repo convention (test_sidebar_state.py, test_command_palette.py):
-  - Render assertions using client.get() and app.jinja_env.get_template().render()
+  - Render assertions using app.jinja_env.get_template().render()
   - Static-source assertions for source-level contracts
   - No JS runner (AD-7 / AD-8)
 """
@@ -17,13 +17,10 @@ Test pattern follows repo convention (test_sidebar_state.py, test_command_palett
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-import respx
 from flask import Flask
-from flask.testing import FlaskClient
-from httpx import Response
 
 from beeper_ui.app import create_app
 from beeper_ui.config import TestingConfig
@@ -39,12 +36,6 @@ TEMPLATES_DIR = os.path.join(
 @pytest.fixture
 def app() -> Flask:
     return create_app(TestingConfig)
-
-
-@pytest.fixture
-def client(app: Flask) -> FlaskClient:
-    with app.test_client() as c:
-        yield c
 
 
 # ---------------------------------------------------------------------------
@@ -238,107 +229,6 @@ class TestStatusBadgeMacro:
 # AC3 — Status-group filter: active is default; user can switch to resolved/failed
 # ---------------------------------------------------------------------------
 
-class TestStatusGroupFilter:
-    """AC3: active group is default; user can switch to resolved/failed."""
-
-    @pytest.fixture(autouse=True)
-    def _mock_urgency(self):
-        with patch("beeper_ui.routes.investigations._get_slo_service") as mock_slo, \
-             patch("beeper_ui.routes.investigations._get_urgency_service") as mock_urg:
-            slo = MagicMock()
-            slo.get_service_budget.return_value = None
-            mock_slo.return_value = slo
-            urg = MagicMock()
-            urg.compute_batch_urgency.return_value = {}
-            mock_urg.return_value = urg
-            yield
-
-    @respx.mock
-    def test_default_view_shows_active_investigations(self, client: FlaskClient) -> None:
-        """GET /investigations/ with no params shows active (investigating) group by default."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[_INVESTIGATING, _COMPLETED, _FAILED])
-        )
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        # Active investigation visible
-        assert b"inv-active-001" in response.data
-
-    @respx.mock
-    def test_default_view_hides_completed(self, client: FlaskClient) -> None:
-        """Default active group does NOT show completed investigations."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[_INVESTIGATING, _COMPLETED])
-        )
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        # Completed investigation not in default active view
-        assert b"inv-done-001" not in response.data
-
-    @respx.mock
-    def test_status_group_resolved_shows_completed(self, client: FlaskClient) -> None:
-        """status_group=resolved shows completed investigations."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[_INVESTIGATING, _COMPLETED])
-        )
-        response = client.get("/investigations/?status_group=resolved")
-        assert response.status_code == 200
-        assert b"inv-done-001" in response.data
-        assert b"inv-active-001" not in response.data
-
-    @respx.mock
-    def test_status_group_failed_shows_failed(self, client: FlaskClient) -> None:
-        """status_group=failed shows failed investigations."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[_INVESTIGATING, _FAILED])
-        )
-        response = client.get("/investigations/?status_group=failed")
-        assert response.status_code == 200
-        assert b"inv-fail-001" in response.data
-        assert b"inv-active-001" not in response.data
-
-    @respx.mock
-    def test_active_group_includes_awaiting_confirmation(
-        self, client: FlaskClient
-    ) -> None:
-        """active group includes both investigating AND awaiting_confirmation investigations."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[_INVESTIGATING, _AWAITING, _COMPLETED])
-        )
-        response = client.get("/investigations/?status_group=active")
-        assert response.status_code == 200
-        assert b"inv-active-001" in response.data
-        assert b"inv-await-001" in response.data
-        assert b"inv-done-001" not in response.data
-
-    def test_status_group_tab_bar_in_template(self) -> None:
-        """list.html contains the status-group tab bar with active/resolved/failed tabs."""
-        path = os.path.join(TEMPLATES_DIR, "investigations", "list.html")
-        with open(path) as f:
-            source = f.read()
-        # The template uses a loop over tab IDs; verify all three group keys appear
-        assert "active" in source
-        assert "resolved" in source
-        assert "failed" in source
-        # Verify it's a tab bar referencing status_group
-        assert "status_group" in source
-
-    def test_status_group_tab_bar_role_tablist(self) -> None:
-        """Status-group tab bar has role=tablist for accessibility."""
-        path = os.path.join(TEMPLATES_DIR, "investigations", "list.html")
-        with open(path) as f:
-            source = f.read()
-        assert 'role="tablist"' in source
-
-    @respx.mock
-    def test_active_tab_has_aria_selected_true(self, client: FlaskClient) -> None:
-        """Default /investigations/ renders active tab with aria-selected=true."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[])
-        )
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        assert b'aria-selected="true"' in response.data
 
 
 # ---------------------------------------------------------------------------
@@ -430,46 +320,6 @@ class TestEmptyStateMacro:
         html = _render_empty(app, "Title", "Desc")
         assert "empty-state" in html
 
-    @respx.mock
-    def test_empty_state_rendered_in_page_when_no_investigations(
-        self, client: FlaskClient
-    ) -> None:
-        """Full page renders empty_state when the active group has no investigations."""
-        with patch("beeper_ui.routes.investigations._get_slo_service") as ms, \
-             patch("beeper_ui.routes.investigations._get_urgency_service") as mu:
-            ms.return_value = MagicMock()
-            ms.return_value.get_service_budget.return_value = None
-            mu.return_value = MagicMock()
-            mu.return_value.compute_batch_urgency.return_value = {}
-
-            respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-                return_value=Response(200, json=[])
-            )
-            response = client.get("/investigations/")
-            assert response.status_code == 200
-            assert b"empty-state" in response.data
-            assert b"No active investigations" in response.data
-
-    @respx.mock
-    def test_empty_state_message_mentions_detection(
-        self, client: FlaskClient
-    ) -> None:
-        """Empty state description explains investigations appear on detection."""
-        with patch("beeper_ui.routes.investigations._get_slo_service") as ms, \
-             patch("beeper_ui.routes.investigations._get_urgency_service") as mu:
-            ms.return_value = MagicMock()
-            ms.return_value.get_service_budget.return_value = None
-            mu.return_value = MagicMock()
-            mu.return_value.compute_batch_urgency.return_value = {}
-
-            respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-                return_value=Response(200, json=[])
-            )
-            response = client.get("/investigations/")
-            assert response.status_code == 200
-            # The empty state explains that investigations appear on anomaly detection
-            assert b"anomal" in response.data.lower() or b"detect" in response.data.lower()
-
     def test_empty_state_macro_file_exists(self) -> None:
         """templates/components/empty.html exists and exports empty_state."""
         path = os.path.join(TEMPLATES_DIR, "components", "empty.html")
@@ -479,75 +329,3 @@ class TestEmptyStateMacro:
         assert "macro empty_state" in source
 
 
-# ---------------------------------------------------------------------------
-# Integration: full page render with new macros
-# ---------------------------------------------------------------------------
-
-class TestListPageIntegration:
-    """Integration tests for the migrated list page."""
-
-    @pytest.fixture(autouse=True)
-    def _mock_urgency(self):
-        with patch("beeper_ui.routes.investigations._get_slo_service") as mock_slo, \
-             patch("beeper_ui.routes.investigations._get_urgency_service") as mock_urg:
-            slo = MagicMock()
-            slo.get_service_budget.return_value = None
-            mock_slo.return_value = slo
-            urg = MagicMock()
-            urg.compute_batch_urgency.return_value = {}
-            mock_urg.return_value = urg
-            yield
-
-    @respx.mock
-    def test_list_uses_investigation_card_macro(self, client: FlaskClient) -> None:
-        """Full-page render uses investigation_card macro (class contract)."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[_INVESTIGATING])
-        )
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        # investigation_card produces a link with the investigation-card class
-        assert b"investigation-card" in response.data
-
-    @respx.mock
-    def test_list_sse_container_preserved(self, client: FlaskClient) -> None:
-        """id='investigation-list' SSE container is preserved (Task 4.3 hook).
-
-        Task 4.3 (AD-4) migrated the list off the htmx SSE extension onto the
-        native EventSource client (sse.js): the stream URL now lives on
-        data-sse-url instead of the old htmx sse-connect attribute.
-        """
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[])
-        )
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        assert b'id="investigation-list"' in response.data
-        assert b'data-sse-url="/investigations/stream"' in response.data
-
-    @respx.mock
-    def test_list_no_legacy_card_class_on_migrated_elements(
-        self, client: FlaskClient
-    ) -> None:
-        """Migrated list page does not use the legacy .card class on investigation rows."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[_INVESTIGATING])
-        )
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        # The investigation card itself should use bg-surface-raised, not .card
-        assert b"bg-surface-raised" in response.data
-
-    @respx.mock
-    def test_list_uses_semantic_tokens_not_hex(self, client: FlaskClient) -> None:
-        """Rendered list page has no raw hex color literals (uses design tokens)."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[_INVESTIGATING])
-        )
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        html = response.data.decode()
-        # Check that investigation cards don't embed hardcoded palette colors
-        assert "#1a1a2e" not in html
-        assert "#0f0f1a" not in html
-        assert "#22c55e" not in html

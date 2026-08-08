@@ -674,7 +674,13 @@ class TestCorrectionRoutes:
     def test_no_regressions_kb_index(
         self, mock_get_service: MagicMock, client: FlaskClient
     ) -> None:
-        """Ensure existing KB routes still work."""
+        """Ensure the KB index route still resolves without error.
+
+        Task 6.3 (Jinja retirement, D13/D14): `GET /knowledge/` is retired
+        and now 302-redirects to the React app (`/app/knowledge`) before the
+        Jinja view runs, so this regression check now proves the redirect
+        happens cleanly rather than a 200 render.
+        """
         mock_svc = MagicMock()
         mock_get_service.return_value = mock_svc
         mock_svc.list_recent_entries.return_value = []
@@ -682,7 +688,8 @@ class TestCorrectionRoutes:
         mock_svc.get_entry_types.return_value = []
 
         response = client.get("/knowledge/")
-        assert response.status_code == 200
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/app/knowledge"
 
 
 # ── Revision Service Tests (Story 5-2) ──

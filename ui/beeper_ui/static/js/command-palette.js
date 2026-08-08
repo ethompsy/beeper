@@ -11,22 +11,27 @@
   var COMMANDS = [
     // Navigation targets
     {
+      // Task 6.3 (D13/D14): retired Jinja route — links straight at the
+      // `/app/*` React URL rather than the bare, now-redirecting URL, to
+      // avoid an unnecessary extra hop.
       label: "Investigations",
-      href: "/investigations/",
+      href: "/app/investigations",
       category: "navigation",
       keywords: ["inv", "incidents", "anomaly"],
       shortcut: "g i",
     },
     {
+      // Task 6.3 (D13/D14): retired Jinja route — see Investigations above.
       label: "Knowledge Base",
-      href: "/knowledge/",
+      href: "/app/knowledge",
       category: "navigation",
       keywords: ["kb", "wiki", "docs", "knowledge"],
       shortcut: "g k",
     },
     {
+      // Task 6.3 (D13/D14): retired Jinja route — see Investigations above.
       label: "Sources",
-      href: "/sources/",
+      href: "/app/sources",
       category: "navigation",
       keywords: ["source", "data", "prometheus", "loki"],
     },
@@ -38,15 +43,19 @@
       shortcut: "g h",
     },
     {
+      // Task 6.3 (D13/D14): retired Jinja route — see Investigations above.
       label: "Metrics",
-      href: "/metrics/",
+      href: "/app/metrics",
       category: "navigation",
       keywords: ["metric", "dashboard", "chart"],
       shortcut: "g m",
     },
     {
+      // Task 6.3 (D13/D14): retired Jinja route — see Investigations above.
+      // Cost Insights below is a *separate*, un-migrated nav destination
+      // that keeps its bare `/spending/costs` URL.
       label: "Spending",
-      href: "/spending/",
+      href: "/app/spending",
       category: "navigation",
       keywords: ["spend", "cost", "budget", "llm"],
     },

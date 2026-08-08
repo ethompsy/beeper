@@ -6,31 +6,11 @@ from beeper_ui.services.escalation_urgency_service import (
     EscalationUrgencyError,
     UrgencyScore,
 )
-from beeper_ui.services.investigation_service import Investigation, InvestigationDetail
-from beeper_ui.services.slo_service import SloServiceError
+from beeper_ui.services.investigation_service import InvestigationDetail
 
 INV_SVC_PATCH = "beeper_ui.routes.investigations.get_investigation_service"
 SLO_SVC_PATCH = "beeper_ui.routes.investigations._get_slo_service"
 URG_SVC_PATCH = "beeper_ui.routes.investigations._get_urgency_service"
-
-
-def _make_investigation(
-    inv_id: str = "inv-001",
-    service: str = "api-gateway",
-    severity: str = "high",
-    status: str = "investigating",
-    condition: str = "HighErrorRate",
-) -> Investigation:
-    return Investigation(
-        id=inv_id,
-        status=status,
-        service=service,
-        severity=severity,
-        condition=condition,
-        started_at="2026-03-16T10:00:00Z",
-        completed_at="2026-03-16T10:05:00Z",
-        triggered_at="2026-03-16T09:59:00Z",
-    )
 
 
 def _make_investigation_detail(
@@ -78,125 +58,6 @@ def _make_urgency_score(
     )
 
 
-class TestListInvestigationsWithUrgency:
-    """Tests for GET /investigations with urgency scores."""
-
-    @patch(URG_SVC_PATCH)
-    @patch(SLO_SVC_PATCH)
-    @patch(INV_SVC_PATCH)
-    def test_list_returns_urgency_column(
-        self, mock_inv_svc, mock_slo_svc, mock_urg_svc, client
-    ):
-        inv_svc = MagicMock()
-        inv_svc.list_investigations.return_value = [_make_investigation()]
-        inv_svc.get_investigation_findings.return_value = {}
-        mock_inv_svc.return_value = inv_svc
-
-        slo_svc = MagicMock()
-        slo_svc.get_service_budget.return_value = {
-            "burn_rate": 2.0,
-            "budget_remaining": 0.5,
-        }
-        mock_slo_svc.return_value = slo_svc
-
-        urg_svc = MagicMock()
-        urg_svc.compute_batch_urgency.return_value = {
-            "inv-001": _make_urgency_score(),
-        }
-        mock_urg_svc.return_value = urg_svc
-
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        # Story 4.1 migrated the list to a card layout (investigation_card macro).
-        # Urgency scores are computed for internal sorting but not displayed in the
-        # card layout — they appear on the detail page. Verify the investigation
-        # card is rendered and investigation-related content is present.
-        assert b"inv-001" in response.data
-        assert b"investigation-card" in response.data
-
-    @patch(URG_SVC_PATCH)
-    @patch(SLO_SVC_PATCH)
-    @patch(INV_SVC_PATCH)
-    def test_list_sort_by_urgency(
-        self, mock_inv_svc, mock_slo_svc, mock_urg_svc, client
-    ):
-        inv1 = _make_investigation(inv_id="inv-low", severity="low")
-        inv2 = _make_investigation(inv_id="inv-high", severity="critical")
-        inv_svc = MagicMock()
-        inv_svc.list_investigations.return_value = [inv1, inv2]
-        inv_svc.get_investigation_findings.return_value = {}
-        mock_inv_svc.return_value = inv_svc
-
-        slo_svc = MagicMock()
-        slo_svc.get_service_budget.return_value = None
-        mock_slo_svc.return_value = slo_svc
-
-        urg_svc = MagicMock()
-        urg_svc.compute_batch_urgency.return_value = {
-            "inv-low": _make_urgency_score(score=25.0),
-            "inv-high": _make_urgency_score(score=90.0),
-        }
-        mock_urg_svc.return_value = urg_svc
-
-        response = client.get("/investigations/?sort=urgency")
-        assert response.status_code == 200
-        # High urgency should appear before low urgency in response
-        html = response.data.decode()
-        pos_high = html.find("inv-high")
-        pos_low = html.find("inv-low")
-        assert pos_high < pos_low, "High urgency should sort before low"
-
-    @patch(URG_SVC_PATCH)
-    @patch(SLO_SVC_PATCH)
-    @patch(INV_SVC_PATCH)
-    def test_slo_failure_degrades_gracefully(
-        self, mock_inv_svc, mock_slo_svc, mock_urg_svc, client
-    ):
-        inv_svc = MagicMock()
-        inv_svc.list_investigations.return_value = [_make_investigation()]
-        inv_svc.get_investigation_findings.return_value = {}
-        mock_inv_svc.return_value = inv_svc
-
-        slo_svc = MagicMock()
-        slo_svc.get_service_budget.side_effect = SloServiceError("timeout")
-        mock_slo_svc.return_value = slo_svc
-
-        urg_svc = MagicMock()
-        urg_svc.compute_batch_urgency.return_value = {
-            "inv-001": _make_urgency_score(score=75.0, has_slo_data=False),
-        }
-        mock_urg_svc.return_value = urg_svc
-
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        assert b"inv-001" in response.data  # List still renders
-
-    @patch(URG_SVC_PATCH)
-    @patch(SLO_SVC_PATCH)
-    @patch(INV_SVC_PATCH)
-    def test_urgency_service_failure_degrades_gracefully(
-        self, mock_inv_svc, mock_slo_svc, mock_urg_svc, client
-    ):
-        inv_svc = MagicMock()
-        inv_svc.list_investigations.return_value = [_make_investigation()]
-        inv_svc.get_investigation_findings.return_value = {}
-        mock_inv_svc.return_value = inv_svc
-
-        slo_svc = MagicMock()
-        slo_svc.get_service_budget.return_value = None
-        mock_slo_svc.return_value = slo_svc
-
-        urg_svc = MagicMock()
-        urg_svc.compute_batch_urgency.side_effect = EscalationUrgencyError(
-            "qdrant down"
-        )
-        mock_urg_svc.return_value = urg_svc
-
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        # Story 4.1: card layout replaces the table; urgency is not shown in the
-        # card list even when urgency service is unavailable. The list still renders.
-        assert b"inv-001" in response.data  # Card still renders without urgency
 
 
 class TestInvestigationUrgencyDetail:
@@ -406,32 +267,3 @@ class TestInvestigationUrgencyDetail:
         inv_svc.close.assert_called_once()
 
 
-class TestListFindingsLogging:
-    """Tests for logging in list route findings fetch."""
-
-    @patch(URG_SVC_PATCH)
-    @patch(SLO_SVC_PATCH)
-    @patch(INV_SVC_PATCH)
-    def test_findings_fetch_failure_logs_warning(
-        self, mock_inv_svc, mock_slo_svc, mock_urg_svc, client, caplog
-    ):
-        """Verify that findings fetch failures are logged, not silently swallowed."""
-        inv_svc = MagicMock()
-        inv_svc.list_investigations.return_value = [_make_investigation()]
-        inv_svc.get_investigation_findings.side_effect = Exception("qdrant timeout")
-        mock_inv_svc.return_value = inv_svc
-
-        slo_svc = MagicMock()
-        slo_svc.get_service_budget.return_value = None
-        mock_slo_svc.return_value = slo_svc
-
-        urg_svc = MagicMock()
-        urg_svc.compute_batch_urgency.return_value = {}
-        mock_urg_svc.return_value = urg_svc
-
-        import logging
-
-        with caplog.at_level(logging.WARNING):
-            response = client.get("/investigations/")
-        assert response.status_code == 200
-        assert "Failed to fetch findings for inv-001" in caplog.text

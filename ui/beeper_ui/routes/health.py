@@ -1,8 +1,9 @@
 """Health status routes for Beeper UI."""
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request
 
 from beeper_ui.middleware.permissions import require_role
+from beeper_ui.routes.react_registry import build_app_redirect_target
 from beeper_ui.services.health_service import HealthService, HealthServiceError
 
 health_bp = Blueprint("health", __name__, url_prefix="/health")
@@ -71,81 +72,31 @@ def health_status() -> str:
     )
 
 
-def _pipeline_view(stats: dict | None) -> dict:
-    """Derive the pipeline-diagnostic view-model from raw ingestion stats.
-
-    Computes the mutually-exclusive pipeline state and the EWMA warmup
-    percentage used by the diagnostic dashboard (Task 5.2, FR32-33):
-
-      • no_data  — metrics_received == 0 AND logs_received == 0 (red chip)
-      • warming  — ewma_warmup_samples < ewma_warmup_minimum   (amber chip + bar)
-      • active   — samples >= minimum                          (green chip)
-
-    warmup_pct = samples / minimum * 100 (clamped 0-100; 0 when minimum == 0).
-    """
-    if not stats:
-        return {
-            "pipeline_state": "no_data",
-            "warmup_pct": 0,
-            "is_warming": False,
-        }
-
-    metrics_received = stats.get("metrics_received", 0) or 0
-    logs_received = stats.get("logs_received", 0) or 0
-    samples = stats.get("ewma_warmup_samples", 0) or 0
-    minimum = stats.get("ewma_warmup_minimum", 0) or 0
-
-    warmup_pct = (samples / minimum * 100) if minimum > 0 else 0
-    warmup_pct = max(0, min(100, warmup_pct))
-
-    if metrics_received == 0 and logs_received == 0:
-        state = "no_data"
-    elif samples < minimum:
-        state = "warming"
-    else:
-        state = "active"
-
-    return {
-        "pipeline_state": state,
-        "warmup_pct": warmup_pct,
-        "is_warming": state == "warming",
-    }
-
-
 @health_bp.route("/ingestion")
-def ingestion_stats() -> str:
-    """Pipeline diagnostic dashboard (Observe > Ingestion Stats, Task 5.2).
+def ingestion_stats() -> Response:
+    """Retired (Task 6.3 / D13-D14): the Jinja diagnostic dashboard is removed.
 
-    Grafana-style ingestion + detection diagnostics: metrics/logs received,
-    anomaly detection counters, and the EWMA warmup state with a tri-state
-    pipeline chip (warming / active / no data).
+    No retained template links to ``url_for('health.ingestion_stats')``, but
+    this route is kept registered (not deleted) for the same defensive-
+    fallback reasoning and uniform "retired → redirect" pattern used across
+    every migrated route in this task — see
+    ``knowledge.py``'s ``kb_index()`` docstring. A real browser request
+    never reaches this body: the ``REACT_OWNED_PREFIXES`` ``before_request``
+    hook (``react_registry.py``) always redirects the exact bare path
+    `/health/ingestion` to `/app/ingestion-stats` first (an explicit target
+    override — the React route lives under a differently-named path, not a
+    1:1 rewrite of the Jinja one). This route is now free of any reference
+    to the removed ``ingestion.html``/``_ingestion_content.html`` templates
+    or the ``_pipeline_view()`` helper that fed them (the React view
+    re-derives the identical three-state precedence client-side from the
+    raw ``/api/v1/ingestion/stats`` fields — see ``ingestion_stats_json()``
+    below, unaffected by this change).
 
-    Auto-refresh (AC6): the page polls this same route via HTMX
-    (``hx-trigger="every 5s"``); HMTX requests get only the stats partial so the
-    dashboard re-renders on pipeline state change without a full reload.
+    ``/health/`` (the general operator-health overview) and ``/health/api``
+    are separate routes on this same blueprint and are untouched — only
+    this one path is React-owned.
     """
-    service = get_health_service()
-    ingestion_stats_data = None
-    error_message = None
-
-    try:
-        stats = service.get_ingestion_stats()
-        ingestion_stats_data = stats.__dict__
-    except HealthServiceError as e:
-        error_message = str(e)
-
-    pipeline = _pipeline_view(ingestion_stats_data)
-
-    context = {
-        "ingestion_stats": ingestion_stats_data,
-        "pipeline": pipeline,
-        "error_message": error_message,
-    }
-
-    if request.headers.get("HX-Request"):
-        return render_template("health/_ingestion_content.html", **context)
-
-    return render_template("health/ingestion.html", **context)
+    return redirect(build_app_redirect_target("/health/ingestion"))
 
 
 @health_bp.route("/api")

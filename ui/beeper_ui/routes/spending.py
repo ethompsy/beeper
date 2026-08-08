@@ -4,9 +4,10 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from flask import Blueprint, Response, jsonify, render_template, request
+from flask import Blueprint, Response, jsonify, redirect, render_template, request
 
 from beeper_ui.middleware.permissions import require_role
+from beeper_ui.routes.react_registry import build_app_redirect_target
 from beeper_ui.services.spending_service import SpendingService
 
 logger = logging.getLogger(__name__)
@@ -96,65 +97,38 @@ def _compute_spend_chart_data(
     }
 
 
-def _load_spending_template_data(svc: SpendingService) -> dict[str, Any]:
-    """Load all spending dashboard data.
-
-    Args:
-        svc: SpendingService instance.
-
-    Returns:
-        Dict of template variables.
-    """
-    summary = svc.get_spending_summary()
-    cap_status = svc.get_cap_status()
-    provider_config = svc.get_provider_config()
-    trend = svc.get_spending_trend(period="daily")
-    chart = _compute_spend_chart_data(trend)
-
-    return {
-        "summary": summary,
-        "cap_status": cap_status,
-        "provider_config": provider_config,
-        "error_message": None,
-        **chart,
-    }
-
-
 @spending_bp.route("/")
-def spending_dashboard() -> str:
-    """Render spending dashboard page."""
-    svc = get_spending_service()
-    try:
-        template_data = _load_spending_template_data(svc)
+def spending_dashboard() -> Response:
+    """Retired (Task 6.3 / D13-D14): the Jinja spending dashboard is removed.
 
-        if request.headers.get("HX-Request"):
-            return render_template("spending/_spending_content.html", **template_data)
-        return render_template("spending/spending.html", **template_data)
-    except Exception as e:
-        logger.exception("Failed to load spending dashboard: %s", e)
-        error_data = {"error_message": "Unable to connect to spending data store"}
-        if request.headers.get("HX-Request"):
-            return render_template("spending/_spending_content.html", **error_data)
-        return render_template("spending/spending.html", **error_data)
-    finally:
-        svc.close()
+    No retained template links to ``url_for('spending.spending_dashboard')``,
+    but this route is kept registered (not deleted) for the same
+    defensive-fallback reasoning and uniform "retired → redirect" pattern
+    used across every migrated route in this task — see
+    ``knowledge.py``'s ``kb_index()`` docstring. A real browser request
+    never reaches this body: the ``before_request`` hook always redirects
+    `/spending` (bare) to `/app/spending` first. This route (and
+    ``spending_status`` below) is now free of any reference to the removed
+    ``spending.html``/``_spending_content.html`` templates or the
+    ``_load_spending_template_data()`` helper that fed them — Cost Insights
+    (``cost_insights()``/``cost_breakdown_partial()`` below) is a separate,
+    un-migrated nav destination and is untouched by this change.
+    """
+    return redirect(build_app_redirect_target("/spending/"))
 
 
 @spending_bp.route("/status")
-def spending_status() -> str:
-    """Return spending status partial for HTMX updates."""
-    svc = get_spending_service()
-    try:
-        template_data = _load_spending_template_data(svc)
-        return render_template("spending/_spending_content.html", **template_data)
-    except Exception as e:
-        logger.exception("Failed to load spending status: %s", e)
-        return render_template(
-            "spending/_spending_content.html",
-            error_message="Unable to connect to spending data store",
-        )
-    finally:
-        svc.close()
+def spending_status() -> Response:
+    """Retired (Task 6.3 / D13-D14): the HTMX auto-refresh partial is removed.
+
+    This was the ``hx-trigger="every 30s"`` partial for the now-retired
+    ``spending_dashboard()`` page above — same view, no route of its own in
+    React (route-parity-targets.md §4b). The ``before_request`` hook
+    redirects bare `/spending/status` to `/app/spending` via an explicit
+    target override (`react_registry.py`'s `_REDIRECT_TARGET_OVERRIDES`),
+    not a literal `/app/spending/status`, since no such React route exists.
+    """
+    return redirect(build_app_redirect_target("/spending/status"))
 
 
 @spending_api_bp.route("/")

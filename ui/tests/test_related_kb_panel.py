@@ -184,19 +184,6 @@ class TestAC1WideFixedBottomBarExpandsUpward:
         bar_pos = html.find("kb-panel-bar")
         assert body_pos < bar_pos
 
-    def test_panel_js_wired_on_detail_page(self, client: FlaskClient) -> None:
-        with respx.mock:
-            respx.get(
-                "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
-            ).mock(return_value=Response(200, json=MOCK_DETAIL))
-            with patch(
-                "beeper_ui.routes.investigations.InvestigationService."
-                "get_investigation_findings",
-                return_value={},
-            ):
-                resp = client.get("/investigations/inv-detail-001")
-                assert resp.status_code == 200
-                assert "js/kb-panel.js" in resp.data.decode()
 
     def test_panel_js_flips_aria_expanded(self, kb_panel_source: str) -> None:
         """The toggle flips aria-expanded — the FR26 expand interaction."""
@@ -270,25 +257,6 @@ class TestAC2NarrowInlineBelowTimeline:
             assert "static" in html
             assert "lg:fixed" in html
 
-    def test_detail_container_keeps_lazyload_and_sse_hook(
-        self, client: FlaskClient
-    ) -> None:
-        """The inline #related-kb container preserves hx-get lazy-load and the
-        data-sse-swap="kb-update" hook from Task 4.3."""
-        with respx.mock:
-            respx.get(
-                "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
-            ).mock(return_value=Response(200, json=MOCK_DETAIL))
-            with patch(
-                "beeper_ui.routes.investigations.InvestigationService."
-                "get_investigation_findings",
-                return_value={},
-            ):
-                resp = client.get("/investigations/inv-detail-001")
-                html = resp.data.decode()
-                assert 'id="related-kb"' in html
-                assert 'hx-trigger="load"' in html
-                assert 'data-sse-swap="kb-update"' in html
 
 
 # ---------------------------------------------------------------------------

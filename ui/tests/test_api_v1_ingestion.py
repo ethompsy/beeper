@@ -12,9 +12,15 @@ Acceptance criteria (each [T] maps to a clearly-named test class):
 [T3] Operator-unavailable failures return a JSON 503 error body (matching
      `investigations_api_bp`'s `operator_unavailable` convention), never an
      HTML error page.
-[T4] The existing Jinja `/health/ingestion` route is unchanged by this task
-     (still renders HTML, still serves the same template context) — a
-     regression guard proving the two blueprints stayed independent.
+[T4] Task 6.3 (D13/D14) retired the Jinja `/health/ingestion` route: it no
+     longer renders HTML (`health/ingestion.html`/`_ingestion_content.html`
+     deleted) and unconditionally 302-redirects to the React equivalent,
+     `/app/ingestion-stats` (a target override — not a plain "/app" + path
+     rewrite, see `react_registry.py`). This class used to be a regression
+     guard proving the Jinja route was unaffected by adding the JSON API;
+     that premise is now false, so it has been repurposed into a regression
+     guard for the redirect itself, and to prove the JSON API blueprint
+     (`ingestion_api_bp`) is unaffected by the Jinja route's retirement.
 """
 
 from __future__ import annotations
@@ -165,46 +171,58 @@ class TestOperatorUnavailable:
 
 
 class TestJinjaRouteUnchanged:
-    """[T4] Regression guard: `/health/ingestion` (Jinja) is untouched by this
-    task — still HTML, still the same template context contract."""
+    """[T4] `/health/ingestion` (Jinja) now unconditionally redirects to the
+    React view (Task 6.3 / D13-D14) rather than rendering HTML."""
 
     @respx.mock
-    def test_jinja_route_still_renders_html(self, client: FlaskClient) -> None:
+    def test_jinja_route_redirects_to_react_app(self, client: FlaskClient) -> None:
+        """The bare Jinja URL 302-redirects to its React target-override
+        destination rather than rendering `ingestion.html` (deleted)."""
         respx.get("http://mock-operator:8080/api/v1/ingestion/stats").mock(
             return_value=Response(200, json=_STATS_RESPONSE)
         )
         resp = client.get("/health/ingestion")
-        assert resp.status_code == 200
-        assert "text/html" in resp.content_type
-        assert b"Ingestion &amp; Detection" in resp.data or b"Ingestion & Detection" in resp.data
+        assert resp.status_code == 302
+        assert resp.headers["Location"] == "/app/ingestion-stats"
 
     @respx.mock
-    def test_jinja_htmx_partial_still_works(self, client: FlaskClient) -> None:
+    def test_jinja_route_redirects_regardless_of_hx_request_header(
+        self, client: FlaskClient
+    ) -> None:
+        """The retired route no longer branches on HX-Request — every
+        request (partial-refresh or full-page) gets the same redirect."""
         respx.get("http://mock-operator:8080/api/v1/ingestion/stats").mock(
             return_value=Response(200, json=_STATS_RESPONSE)
         )
         resp = client.get("/health/ingestion", headers={"HX-Request": "true"})
-        assert resp.status_code == 200
-        assert b"<!DOCTYPE html>" not in resp.data
+        assert resp.status_code == 302
+        assert resp.headers["Location"] == "/app/ingestion-stats"
 
     @respx.mock
-    def test_jinja_and_json_routes_are_independently_registered(self, client: FlaskClient) -> None:
-        """Both blueprints answer from the same worker without interfering."""
+    def test_jinja_redirect_and_json_route_are_independently_registered(
+        self, client: FlaskClient
+    ) -> None:
+        """The Jinja blueprint's redirect and the JSON API blueprint both
+        answer from the same worker without interfering with each other."""
         respx.get("http://mock-operator:8080/api/v1/ingestion/stats").mock(
             return_value=Response(200, json=_STATS_RESPONSE)
         )
         html_resp = client.get("/health/ingestion")
         json_resp = client.get("/api/v1/ingestion/stats")
-        assert "text/html" in html_resp.content_type
+        assert html_resp.status_code == 302
+        assert json_resp.status_code == 200
         assert "application/json" in json_resp.content_type
 
     @respx.mock
-    def test_jinja_route_still_raises_no_html_error_regression(self, client: FlaskClient) -> None:
-        """HealthServiceError on the Jinja route still degrades to its own
-        (HTML) error block, unaffected by the new JSON error path."""
+    def test_jinja_route_redirects_even_when_operator_is_down(
+        self, client: FlaskClient
+    ) -> None:
+        """The redirect is unconditional: it never calls HealthService (no
+        HTML error block to render anymore), so an operator outage that
+        would 503 the JSON API has no effect on this route."""
         respx.get("http://mock-operator:8080/api/v1/ingestion/stats").mock(
             side_effect=httpx.ConnectError("down")
         )
         resp = client.get("/health/ingestion")
-        assert resp.status_code == 200
-        assert b"Unable to fetch ingestion stats" in resp.data
+        assert resp.status_code == 302
+        assert resp.headers["Location"] == "/app/ingestion-stats"

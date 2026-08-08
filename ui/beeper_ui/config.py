@@ -23,13 +23,28 @@ class Config:
     # File upload settings
     MAX_CONTENT_LENGTH = 2 * 1024 * 1024  # 2MB max upload size
 
-    # React-owned path-prefix dispatch registry (Task 1.3 / D11).
-    # Explicit list of path prefixes (e.g. "/investigations") that should be
-    # served by the React SPA shell instead of their Jinja equivalent, with
-    # deterministic precedence over Jinja blueprints. Starts empty — real
-    # view migrations populate this per-milestone (see docs/plans/react-ui.md).
-    # `/api/*` and `/app/*` are always excluded regardless of this list.
-    REACT_OWNED_PREFIXES: tuple[str, ...] = ()
+    # React-owned path-prefix dispatch registry (Task 1.3 / D11; cutover
+    # Task 6.3 / D13-D14). Bare requests under one of these prefixes
+    # 302-redirect to their `/app/*` React equivalent instead of being
+    # served by their Jinja blueprint — see
+    # `ui/beeper_ui/routes/react_registry.py` for the redirect mechanism,
+    # its exclusions (un-migrated sub-routes that must keep rendering: KB
+    # write/history/admin routes, Cost Insights, `/metrics/export`,
+    # Jinja-only investigation actions), and its target-path overrides.
+    # This is the full "migrated" set (D13) — the ten un-migrated nav
+    # destinations in docs/design/route-parity-targets.md §7 (Health, SLO,
+    # Services, Topology, Analytics, Reports, Handoff, Cost Insights,
+    # Notifications, Trust) are deliberately NOT listed here and keep
+    # rendering Jinja. `/api/*` and `/app/*` are always excluded regardless
+    # of this list.
+    REACT_OWNED_PREFIXES: tuple[str, ...] = (
+        "/investigations",
+        "/knowledge",
+        "/health/ingestion",
+        "/sources",
+        "/spending",
+        "/metrics",
+    )
 
     # Task 6.2a / ADR 0001 §0(a) item 3: whether `beeper_ui.middleware
     # .permissions.resolve_user_role()` honors the `X-Beeper-Role` header.

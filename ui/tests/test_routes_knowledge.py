@@ -32,123 +32,12 @@ def _make_entry(
     )
 
 
-class TestKBEntryDetailLinks:
-    """Tests for bi-directional investigation links on KB entry detail page."""
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_entry_detail_passes_source_investigation(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Verify entry detail page passes source_investigation to template context."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.get_entry.return_value = _make_entry(
-            "kb-with-source", "investigation", "Entry With Source"
-        )
-        mock_service.list_related_entries.return_value = []
-        mock_service.get_source_investigation.return_value = {
-            "investigation_id": "inv-source-abc",
-            "relationship": "source",
-        }
-        mock_service.get_contributing_investigations.return_value = []
-
-        response = client.get("/knowledge/kb-with-source")
-        assert response.status_code == 200
-        assert b"inv-source-abc" in response.data
-        mock_service.get_source_investigation.assert_called_once()
-        call_args = mock_service.get_source_investigation.call_args
-        assert call_args[0][0] == "kb-with-source"
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_entry_detail_passes_contributing_investigations(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Verify entry detail page passes contributing_investigations to template."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.get_entry.return_value = _make_entry(
-            "kb-with-contribs", "investigation", "Entry With Contributors"
-        )
-        mock_service.list_related_entries.return_value = []
-        mock_service.get_source_investigation.return_value = None
-        mock_service.get_contributing_investigations.return_value = [
-            {"investigation_id": "inv-contrib-1", "relationship": "contributing"},
-            {"investigation_id": "inv-contrib-2", "relationship": "contributing"},
-        ]
-
-        response = client.get("/knowledge/kb-with-contribs")
-        assert response.status_code == 200
-        assert b"inv-contrib-1" in response.data
-        assert b"inv-contrib-2" in response.data
-        mock_service.get_contributing_investigations.assert_called_once()
-        call_args = mock_service.get_contributing_investigations.call_args
-        assert call_args[0][0] == "kb-with-contribs"
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_entry_detail_with_both_source_and_contribs(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Verify entry detail renders both source and contributing links."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.get_entry.return_value = _make_entry(
-            "kb-both-links", "investigation", "Both Links Entry"
-        )
-        mock_service.list_related_entries.return_value = []
-        mock_service.get_source_investigation.return_value = {
-            "investigation_id": "inv-source-main",
-            "relationship": "source",
-        }
-        mock_service.get_contributing_investigations.return_value = [
-            {"investigation_id": "inv-contrib-extra", "relationship": "contributing"},
-        ]
-
-        response = client.get("/knowledge/kb-both-links")
-        assert response.status_code == 200
-        # Both source and contributing links should appear
-        assert b"inv-source-main" in response.data
-        assert b"inv-contrib-extra" in response.data
-        # FR31: the source investigation reference renders within Incident Details
-        assert b"Source Investigation" in response.data
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_entry_detail_no_investigation_links(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Verify entry detail without investigation links renders correctly."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.get_entry.return_value = _make_entry(
-            "kb-no-links", "runbook", "No Links Entry"
-        )
-        mock_service.list_related_entries.return_value = []
-        mock_service.get_source_investigation.return_value = None
-        mock_service.get_contributing_investigations.return_value = []
-
-        response = client.get("/knowledge/kb-no-links")
-        assert response.status_code == 200
-        assert b"No Links Entry" in response.data
-        # Investigation Links section should not appear
-        assert b"Investigation Links" not in response.data
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_entry_detail_calls_both_link_methods(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Verify that get_source_investigation and get_contributing_investigations are called."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.get_entry.return_value = _make_entry("kb-verify-calls")
-        mock_service.list_related_entries.return_value = []
-        mock_service.get_source_investigation.return_value = None
-        mock_service.get_contributing_investigations.return_value = []
-
-        client.get("/knowledge/kb-verify-calls")
-
-        mock_service.get_source_investigation.assert_called_once()
-        assert mock_service.get_source_investigation.call_args[0][0] == "kb-verify-calls"
-        mock_service.get_contributing_investigations.assert_called_once()
-        assert mock_service.get_contributing_investigations.call_args[0][0] == "kb-verify-calls"
+# TestKBEntryDetailLinks (bi-directional investigation links on the KB entry
+# detail page) was removed under Task 6.3 — every test in it called
+# `client.get("/knowledge/<id>")` (bare) and asserted on rendered HTML from
+# that page, which is now retired and 302-redirects to the React app. There
+# is no remaining Python-level render surface to assert against; that
+# coverage now belongs to the React app's own tests.
 
 
 class TestServiceKnowledgeRoute:
@@ -294,39 +183,12 @@ class TestServiceKnowledgeRoute:
         assert b"Failed to load knowledge entries" in response.data
 
 
-class TestFilterPanelServiceLink:
-    """Tests for the 'View Service Knowledge' link in the filter panel."""
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_filter_panel_shows_service_link_when_selected(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test that selecting a service in KB index shows View Service Knowledge link."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.list_recent_entries.return_value = []
-        mock_service.get_available_services.return_value = ["payment-service"]
-        mock_service.get_entry_types.return_value = ["investigation"]
-
-        response = client.get("/knowledge/?service=payment-service")
-        assert response.status_code == 200
-        assert b"View Service Knowledge" in response.data
-        assert b"/knowledge/services/payment-service/knowledge" in response.data
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_filter_panel_hides_service_link_when_no_service(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test that no service link is shown when no service is selected."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.list_recent_entries.return_value = []
-        mock_service.get_available_services.return_value = ["api"]
-        mock_service.get_entry_types.return_value = ["investigation"]
-
-        response = client.get("/knowledge/")
-        assert response.status_code == 200
-        assert b"View Service Knowledge" not in response.data
+# TestFilterPanelServiceLink (the 'View Service Knowledge' link in the KB
+# index filter panel) was removed under Task 6.3 — both tests rendered the
+# retired `GET /knowledge/` index page (via the deleted
+# `knowledge/_filter_panel.html`, which only that page used) and asserted on
+# its HTML. The index route now redirects to the React app; this specific
+# link's presence is no longer assertable from Python tests.
 
 
 class TestConfirmEntryRoute:
@@ -385,41 +247,13 @@ class TestConfirmEntryRoute:
         )
         assert response.status_code == 302
 
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_confirm_button_visible_for_ai_generated(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test that Confirm button appears for AI-generated entries."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        entry = _make_entry("kb-ai", "investigation", "AI Entry")
-        entry.validation_status = "AI-generated"
-        mock_service.get_entry.return_value = entry
-        mock_service.list_related_entries.return_value = []
-        mock_service.get_source_investigation.return_value = None
-        mock_service.get_contributing_investigations.return_value = []
-
-        response = client.get("/knowledge/kb-ai")
-        assert response.status_code == 200
-        assert b"Confirm as Accurate" in response.data
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_confirm_button_hidden_for_proven(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test that Confirm button is hidden for already-confirmed entries."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        entry = _make_entry("kb-proven", "proven_fix", "Proven Entry")
-        entry.validation_status = "proven"
-        mock_service.get_entry.return_value = entry
-        mock_service.list_related_entries.return_value = []
-        mock_service.get_source_investigation.return_value = None
-        mock_service.get_contributing_investigations.return_value = []
-
-        response = client.get("/knowledge/kb-proven")
-        assert response.status_code == 200
-        assert b"Confirm as Accurate" not in response.data
+    # test_confirm_button_visible_for_ai_generated and
+    # test_confirm_button_hidden_for_proven were removed under Task 6.3 —
+    # both called `client.get("/knowledge/<id>")` (bare) to check whether the
+    # "Confirm as Accurate" button appeared on the entry detail page. That
+    # page is now retired and 302-redirects to the React app, so button
+    # visibility is no longer assertable here; the confirm action itself
+    # (above) is still covered via the still-live POST route.
 
 
 class TestEditRouteValidationStatus:

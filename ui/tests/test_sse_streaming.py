@@ -105,104 +105,6 @@ class TestAC1NativeEventSourceWiring:
         # The contract is a NATIVE EventSource, instantiated by the client.
         assert "new EventSource" in sse_source
 
-    @respx.mock
-    def test_detail_page_wires_sse_js_and_stream_url(
-        self, client: FlaskClient
-    ) -> None:
-        """Detail page loads sse.js and exposes the stream URL via data-sse-url."""
-        with _mock_detail_page():
-            response = client.get("/investigations/inv-sse-001")
-            assert response.status_code == 200
-            html = response.data.decode()
-            assert "js/sse.js" in html
-            assert 'data-sse-url="/investigations/inv-sse-001/stream"' in html
-
-    @respx.mock
-    def test_detail_step_container_registered_for_step_update(
-        self, client: FlaskClient
-    ) -> None:
-        """Steps append on arrival: #step-progress is registered for step-update."""
-        with _mock_detail_page():
-            response = client.get("/investigations/inv-sse-001")
-            html = response.data.decode()
-            assert 'id="step-progress"' in html
-            assert 'data-sse-swap="step-update"' in html
-
-    @respx.mock
-    def test_list_page_wires_sse_js_and_stream_url(
-        self, client: FlaskClient
-    ) -> None:
-        """List page loads sse.js and exposes the list stream URL."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[])
-        )
-        response = client.get("/investigations/")
-        assert response.status_code == 200
-        html = response.data.decode()
-        assert "js/sse.js" in html
-        assert 'data-sse-url="/investigations/stream"' in html
-
-    @respx.mock
-    def test_list_registers_fr24_events(self, client: FlaskClient) -> None:
-        """FR24: the list container is registered for investigation_created and
-        investigation_status events."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[])
-        )
-        response = client.get("/investigations/")
-        html = response.data.decode()
-        assert "investigation_created" in html
-        assert "investigation_status" in html
-
-    def test_list_stream_emits_fr24_event_names(self, app: Flask) -> None:
-        """The list SSE generator emits investigation_created / investigation_status
-        (FR24), not the legacy htmx event names."""
-        from beeper_ui.routes.investigations import _generate_sse_events
-
-        first = [
-            {
-                "id": "inv-1",
-                "status": "investigating",
-                "service": "payments",
-                "severity": "high",
-                "condition": "x",
-            }
-        ]
-        second = first + [
-            {
-                "id": "inv-2",
-                "status": "investigating",
-                "service": "billing",
-                "severity": "low",
-                "condition": "y",
-            }
-        ]
-
-        emitted: list[str] = []
-        call = {"n": 0}
-
-        def fake_list(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
-            from beeper_ui.services.investigation_service import Investigation
-
-            call["n"] += 1
-            data = first if call["n"] == 1 else second
-            return [Investigation.from_dict(d) for d in data]
-
-        # sleep is a no-op so the generator advances; we stop after 2 yields by
-        # closing the generator (never an infinite loop in the test).
-        with app.app_context(), patch(
-            "beeper_ui.routes.investigations.InvestigationService.list_investigations",
-            new=fake_list,
-        ), patch("beeper_ui.routes.investigations.time.sleep", return_value=None):
-            gen = _generate_sse_events("http://op", 5.0)
-            for _ in range(2):
-                emitted.append(next(gen))
-            gen.close()
-
-        joined = "\n".join(emitted)
-        # First change → status; the added investigation → created.
-        assert "event: investigation_status" in joined
-        assert "event: investigation_created" in joined
 
 
 # ---------------------------------------------------------------------------
@@ -284,16 +186,6 @@ class TestAC3ReconnectRestBackfill:
         assert 'li[data-order="' in sse_source
         assert "insertStepByOrder" in sse_source
 
-    def test_detail_exposes_backfill_url(self, client: FlaskClient) -> None:
-        """The detail container exposes the REST backfill URL (no hardcoded JS)."""
-        with respx.mock:
-            with _mock_detail_page():
-                response = client.get("/investigations/inv-sse-001")
-                html = response.data.decode()
-                assert (
-                    'data-sse-backfill-url="/api/v1/investigations/inv-sse-001"'
-                    in html
-                )
 
     @respx.mock
     def test_backfill_json_endpoint_returns_steps_with_order(
@@ -359,17 +251,6 @@ class TestAC4RetryLimitAndUnavailableBanner:
         assert 'this.root.innerHTML = ""' not in sse_source
         assert "this.root.hidden = true" not in sse_source
 
-    @respx.mock
-    def test_detail_content_server_rendered_independent_of_stream(
-        self, client: FlaskClient
-    ) -> None:
-        """Detail content (summary header, steps) is server-rendered, so it stays
-        viewable even when live updates are unavailable (NFR7)."""
-        with _mock_detail_page({"root_cause_hypothesis": "x"}):
-            response = client.get("/investigations/inv-sse-001")
-            html = response.data.decode()
-            assert "investigation-summary-header" in html
-            assert "investigation-step" in html
 
 
 # ---------------------------------------------------------------------------
@@ -435,31 +316,6 @@ class TestAC6NativeNotHtmxAndReconnectWindow:
         assert "htmx.createEventSource" not in sse_source
         assert "defineExtension" not in sse_source
 
-    @respx.mock
-    def test_detail_page_drops_htmx_sse_extension(
-        self, client: FlaskClient
-    ) -> None:
-        """Investigation detail no longer uses the htmx SSE extension (AD-4)."""
-        with _mock_detail_page():
-            response = client.get("/investigations/inv-sse-001")
-            html = response.data.decode()
-            assert "htmx-ext-sse.js" not in html
-            assert 'hx-ext="sse"' not in html
-            assert "sse-connect=" not in html
-
-    @respx.mock
-    def test_list_page_drops_htmx_sse_extension(
-        self, client: FlaskClient
-    ) -> None:
-        """Investigation list no longer uses the htmx SSE extension (AD-4)."""
-        respx.get("http://mock-operator:8080/api/v1/investigations").mock(
-            return_value=Response(200, json=[])
-        )
-        response = client.get("/investigations/")
-        html = response.data.decode()
-        assert "htmx-ext-sse.js" not in html
-        assert 'hx-ext="sse"' not in html
-        assert "sse-connect=" not in html
 
     def test_reconnect_window_capped_at_5s(self, sse_source: str) -> None:
         """NFR9: the reconnect backoff is capped at 5000ms (≤5s)."""

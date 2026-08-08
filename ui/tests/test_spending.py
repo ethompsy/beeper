@@ -1,11 +1,20 @@
-"""Tests for spending dashboard routes and service."""
+"""Tests for the spending service.
+
+Task 6.3 (D13/D14) retired the Jinja `/spending/` and `/spending/status`
+routes (`spending/spending.html`, `spending/_spending_content.html` deleted);
+both bare URLs now 302-redirect to `/app/spending` (react_registry.py). The
+`TestSpendingRoutes` class that used to live in this file exercised those
+now-deleted templates (full page, HTMX partial, the HTMX auto-refresh status
+partial, and the Qdrant-unavailable error card) and has been removed in
+full — see `test_sources_spending_views.py`'s module docstring for the
+equivalent note on the sibling `/sources/` retirement. The Qdrant-unavailable
+JSON error path survives at the JSON API layer
+(`test_api_v1_sources_spending.py::TestSpendingJsonEndpoint::
+test_spending_data_unavailable_returns_503`).
+"""
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
-
-import pytest
-from flask import Flask
-from flask.testing import FlaskClient
 
 from beeper_ui.services.spending_service import SpendingService
 
@@ -136,134 +145,3 @@ class TestSpendingService:
 
         # Qdrant scroll should only be called once
         assert svc._qdrant_client.scroll.call_count == 1
-
-
-# ── Spending routes tests ──────────────────────────
-
-
-class TestSpendingRoutes:
-    """Tests for spending dashboard routes."""
-
-    @pytest.fixture
-    def app(self) -> Flask:
-        """Create test Flask app."""
-        from beeper_ui.app import create_app
-        from beeper_ui.config import TestingConfig
-
-        return create_app(TestingConfig)
-
-    @pytest.fixture
-    def client(self, app: Flask) -> FlaskClient:
-        """Create test client."""
-        with app.test_client() as c:
-            yield c
-
-    @patch("beeper_ui.routes.spending.get_spending_service")
-    def test_spending_dashboard_renders(
-        self, mock_get_svc: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test full page renders."""
-        mock_svc = MagicMock()
-        mock_svc.get_spending_summary.return_value = {
-            "daily_cost_usd": 10.50,
-            "monthly_cost_usd": 150.00,
-            "daily_cap_usd": 50.0,
-            "monthly_cap_usd": 500.0,
-            "daily_pct": 21.0,
-            "monthly_pct": 30.0,
-            "projected_monthly_usd": 200.0,
-            "daily_investigation_count": 15,
-            "monthly_investigation_count": 200,
-            "rate_per_hour": 5,
-            "rate_limit": 100,
-        }
-        mock_svc.get_cap_status.return_value = {
-            "enforcement_active": False,
-            "caps_configured": True,
-            "warnings": [],
-        }
-        mock_svc.get_spending_trend.return_value = []
-        mock_get_svc.return_value = mock_svc
-
-        response = client.get("/spending/")
-        assert response.status_code == 200
-        assert b"Spending" in response.data
-
-    @patch("beeper_ui.routes.spending.get_spending_service")
-    def test_spending_dashboard_htmx(
-        self, mock_get_svc: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test HTMX partial rendering."""
-        mock_svc = MagicMock()
-        mock_svc.get_spending_summary.return_value = {
-            "daily_cost_usd": 0,
-            "monthly_cost_usd": 0,
-            "daily_cap_usd": None,
-            "monthly_cap_usd": None,
-            "daily_pct": None,
-            "monthly_pct": None,
-            "projected_monthly_usd": 0,
-            "daily_investigation_count": 0,
-            "monthly_investigation_count": 0,
-            "rate_per_hour": 0,
-            "rate_limit": None,
-        }
-        mock_svc.get_cap_status.return_value = {
-            "enforcement_active": False,
-            "caps_configured": False,
-            "warnings": [],
-        }
-        mock_svc.get_spending_trend.return_value = []
-        mock_get_svc.return_value = mock_svc
-
-        response = client.get(
-            "/spending/", headers={"HX-Request": "true"}
-        )
-        assert response.status_code == 200
-        # Partial should not include full HTML structure
-        assert b"<!DOCTYPE html>" not in response.data
-
-    @patch("beeper_ui.routes.spending.get_spending_service")
-    def test_spending_status_route(
-        self, mock_get_svc: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test spending status HTMX partial route."""
-        mock_svc = MagicMock()
-        mock_svc.get_spending_summary.return_value = {
-            "daily_cost_usd": 5.0,
-            "monthly_cost_usd": 100.0,
-            "daily_cap_usd": 50.0,
-            "monthly_cap_usd": 500.0,
-            "daily_pct": 10.0,
-            "monthly_pct": 20.0,
-            "projected_monthly_usd": 150.0,
-            "daily_investigation_count": 5,
-            "monthly_investigation_count": 50,
-            "rate_per_hour": 2,
-            "rate_limit": 100,
-        }
-        mock_svc.get_cap_status.return_value = {
-            "enforcement_active": False,
-            "caps_configured": True,
-            "warnings": [],
-        }
-        mock_svc.get_spending_trend.return_value = []
-        mock_get_svc.return_value = mock_svc
-
-        response = client.get("/spending/status")
-        assert response.status_code == 200
-
-    @patch("beeper_ui.routes.spending.get_spending_service")
-    def test_spending_dashboard_qdrant_error(
-        self, mock_get_svc: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test graceful error handling when Qdrant is unavailable."""
-        mock_svc = MagicMock()
-        mock_svc.get_spending_summary.side_effect = Exception(
-            "Connection refused"
-        )
-        mock_get_svc.return_value = mock_svc
-
-        response = client.get("/spending/")
-        assert response.status_code == 200
-        assert b"Unable to connect" in response.data
