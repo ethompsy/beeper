@@ -17,6 +17,10 @@ markdown = "^3.5"
 bleach = "^6.1"
 litellm = "^1.30"
 slack-sdk = "^3.27"
+# Task 8.6 (ADR 0002 §6, FR59) — argon2id password hashing for `local`-mode
+# accounts. See ui/beeper_ui/services/password_hashing.py for the pinned
+# RFC 9106 §4 parameter choice.
+argon2-cffi = "^23.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

@@ -87,3 +87,18 @@ def register_blueprints(app: Flask) -> None:
     from beeper_ui.routes.auth import auth_api_bp
 
     app.register_blueprint(auth_api_bp)
+
+    # Task 8.6: local login/logout (ADR 0002 §6, FR59). Both conditionally
+    # registered on `BEEPER_AUTH_MODE` — a request to an unregistered route
+    # 404s outright, rather than 403ing at request time — mirroring how the
+    # (future, Task 8.8) SCIM blueprint's registration is mode-gated. See
+    # `beeper_ui/routes/auth.py`'s module docstring for the full
+    # local-only-vs-both-session-modes registration rationale for each of
+    # the two blueprints below.
+    from beeper_ui.routes.auth import local_auth_api_bp, session_auth_api_bp
+
+    auth_mode = app.config.get("BEEPER_AUTH_MODE", "none")
+    if auth_mode == "local":
+        app.register_blueprint(local_auth_api_bp)
+    if auth_mode in {"local", "oidc"}:
+        app.register_blueprint(session_auth_api_bp)

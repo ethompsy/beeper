@@ -582,6 +582,28 @@ class IdentityStoreService:
         """Current alarm state, for `/health/api`'s detail flag (FR60)."""
         return self._zero_active_admins
 
+    def refresh_zero_admin_alarm(self) -> bool:
+        """PUBLIC, read-triggered variant of the zero-active-admins alarm
+        check (ADR §5.3 / FR60 / FR61).
+
+        Task 8.6 addition (flagged per the task's "minimal additive method
+        allowed if genuinely needed" allowance — this is the one identity
+        -store change this task makes; every other 8.6 interaction goes
+        through the pre-existing public API). Every WRITE path
+        (`create_local_user`, `update_user`, `adopt_or_create_scim_user`)
+        already re-runs `_check_zero_admin_alarm()` via `_after_mutation()`
+        — but Task 8.6's `local`-mode boot-time bootstrap
+        (`beeper_ui.services.bootstrap.ensure_bootstrap_admin()`) has a
+        legitimate no-write path (the seeded username already exists, or no
+        seed is configured at all) that must STILL raise the same
+        CRITICAL-log + `/health/api` flag when the store nonetheless has
+        zero active admins (FR61: "no seed + no active admin ⇒ prominent
+        startup ERROR"). This is that path's read-only trigger. Returns the
+        resulting `has_zero_active_admins()` value for convenience.
+        """
+        self._check_zero_admin_alarm()
+        return self._zero_active_admins
+
     def _check_zero_admin_alarm(self) -> None:
         try:
             count = self.count_active_admins()
