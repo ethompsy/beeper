@@ -128,6 +128,37 @@ class Config:
         os.environ.get("BEEPER_SESSION_LIFETIME_HOURS", "8")
     )
 
+    # --- ADR 0002 §3/§8 OIDC config (Task 8.5) ---------------------------
+    # Required in `oidc` mode — boot-refused otherwise, see
+    # `validate_boot_config()` below. The discovery document
+    # (`{issuer}/.well-known/openid-configuration`) is fetched lazily, on
+    # first `/auth/login` hit — never at boot (`beeper_ui.routes.oidc_auth`).
+    BEEPER_OIDC_ISSUER: str = os.environ.get("BEEPER_OIDC_ISSUER", "")
+    BEEPER_OIDC_CLIENT_ID: str = os.environ.get("BEEPER_OIDC_CLIENT_ID", "")
+    BEEPER_OIDC_CLIENT_SECRET: str = os.environ.get("BEEPER_OIDC_CLIENT_SECRET", "")
+    # Empty ⇒ derived from the request host at callback-URL-build time
+    # (`oidc_auth._build_redirect_uri()`) — covers `kubectl port-forward`,
+    # where the externally-visible host isn't known at boot. Uses
+    # `BEEPER_EXTERNAL_SCHEME` for the scheme, never request introspection
+    # (same doctrine as `middleware.session.same_origin_request()`).
+    BEEPER_OIDC_REDIRECT_URL: str = os.environ.get("BEEPER_OIDC_REDIRECT_URL", "")
+    BEEPER_OIDC_SCOPES: str = os.environ.get(
+        "BEEPER_OIDC_SCOPES", "openid profile email groups"
+    )
+    # Name of the ID-token / UserInfo claim carrying group membership (ADR
+    # §3/§8) — read by `oidc_auth.py`'s FR56 role mapping.
+    BEEPER_OIDC_GROUPS_CLAIM: str = os.environ.get("BEEPER_OIDC_GROUPS_CLAIM", "groups")
+    # RP-initiated logout (ADR §3): unset ⇒ `POST /auth/logout` only clears
+    # the local session (the safe default — see `oidc_auth.py`'s module
+    # docstring for why: this app never retains an `id_token`, so an
+    # RP-initiated logout URL can only ever be built without the
+    # `id_token_hint` most IdPs expect). Set ⇒ best-effort `end_session_endpoint`
+    # URL (no `id_token_hint`) is additionally returned for a future
+    # frontend to redirect the browser to.
+    BEEPER_OIDC_POST_LOGOUT_REDIRECT_URL: str = os.environ.get(
+        "BEEPER_OIDC_POST_LOGOUT_REDIRECT_URL", ""
+    )
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""
@@ -238,9 +269,9 @@ def validate_boot_config(config: type[Config]) -> None:
        invalidate every session on pod restart, and diverge across
        replicas, in `local`/`oidc` — so it must be refused, not defaulted.
 
-    OIDC-specific refusals (issuer/client-id/client-secret presence, ADR
-    §8) belong to Task 8.5, which owns those config keys, and are
-    deliberately NOT enforced here.
+    3. `oidc` mode requires `BEEPER_OIDC_ISSUER`/`_CLIENT_ID`/`_CLIENT_SECRET`
+       all non-empty (ADR §8; Task 8.5's addition to this shared function —
+       additive-only, per the multi-task file-sharing contract).
 
     Raises:
         AuthConfigError: on any contradiction described above, or an
@@ -267,3 +298,22 @@ def validate_boot_config(config: type[Config]) -> None:
             "restarts and stay consistent across replicas (ADR 0002 §2). "
             'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
         )
+
+    if mode == "oidc":
+        missing = [
+            name
+            for name, value in (
+                ("BEEPER_OIDC_ISSUER", getattr(config, "BEEPER_OIDC_ISSUER", "")),
+                ("BEEPER_OIDC_CLIENT_ID", getattr(config, "BEEPER_OIDC_CLIENT_ID", "")),
+                (
+                    "BEEPER_OIDC_CLIENT_SECRET",
+                    getattr(config, "BEEPER_OIDC_CLIENT_SECRET", ""),
+                ),
+            )
+            if not value
+        ]
+        if missing:
+            raise AuthConfigError(
+                "BEEPER_AUTH_MODE=oidc requires "
+                f"{', '.join(missing)} to be set (ADR 0002 §3/§8)."
+            )
