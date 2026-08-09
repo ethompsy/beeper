@@ -132,3 +132,16 @@ def register_blueprints(app: Flask) -> None:
         app.register_blueprint(local_auth_api_bp)
     if auth_mode in {"local", "oidc"}:
         app.register_blueprint(session_auth_api_bp)
+
+    # Task 8.7 (ADR 0002 §6/§5.2, FR60): the admin users management API.
+    # Registered whenever BEEPER_AUTH_MODE != "none" — BOTH `local` and
+    # `oidc` (not `local`-only) — see `routes/admin_users.py`'s module
+    # docstring for the full registration rationale (the SCIM-owned
+    # read-only behavior it implements is only meaningful if the view is
+    # reachable in `oidc` mode too). Never registered in mode `none`: no
+    # identity store exists there, and this blueprint's routes touch
+    # `get_identity_store()`, which must never be constructed in that mode.
+    if auth_mode in {"local", "oidc"}:
+        from beeper_ui.routes.admin_users import admin_users_api_bp
+
+        app.register_blueprint(admin_users_api_bp)

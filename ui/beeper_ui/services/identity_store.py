@@ -424,13 +424,15 @@ class IdentityStoreService:
         user_name: str | None = None,
         emails: Iterable[str] | None = None,
         group_ids: Iterable[str] | None = None,
+        password_hash: str | None = None,
     ) -> UserRecord:
         """Partial update (role/active/display_name/user_name/emails/
-        group_ids). Raises `UserNotFoundError` if `user_id` doesn't exist.
-        Callers that must refuse a last-admin-orphaning write (Task 8.7's
-        admin UI, per ADR §5.3's `409 last-admin`) should check
-        `would_orphan_admins()` BEFORE calling this — this method itself
-        never refuses (see `_after_mutation`'s alarm-only behavior below).
+        group_ids/password_hash). Raises `UserNotFoundError` if `user_id`
+        doesn't exist. Callers that must refuse a last-admin-orphaning
+        write (Task 8.7's admin UI, per ADR §5.3's `409 last-admin`) should
+        check `would_orphan_admins()` BEFORE calling this — this method
+        itself never refuses (see `_after_mutation`'s alarm-only behavior
+        below).
 
         ADDITIVE (Task 8.8 — SCIM surface): `user_name`, `emails`, and
         `group_ids` are new keyword-only parameters, all defaulting to
@@ -446,6 +448,19 @@ class IdentityStoreService:
         `user_name` renames go through the same uniqueness check as
         `create_local_user()` (case-insensitive, excludes self), raising
         `DuplicateUserError` on collision.
+
+        ADDITIVE (Task 8.7 — admin UI): `password_hash`, same "new
+        keyword-only parameter, defaults to `None` = no-op" shape as the
+        Task 8.8 additions above. Needed because `POST
+        /api/v1/admin/users/<id>/reset-password`
+        (`beeper_ui.routes.admin_users`) must persist a freshly-Argon2id
+        -hashed password onto an EXISTING record — no pre-8.7 write
+        primitive could do that (`create_local_user()` only accepts a hash
+        at creation time). Passing a hash here does not change `origin`,
+        `role`, or `active` — a reset is orthogonal to those fields, and
+        the caller (the admin-users route) applies its own
+        `409 scim-owned-user` guard before calling this for a SCIM-linked
+        record while in `oidc` mode.
         """
         if role is not None and role not in VALID_ROLES:
             raise ValueError(f"role must be one of {sorted(VALID_ROLES)}, got {role!r}")
@@ -473,6 +488,8 @@ class IdentityStoreService:
                 record.emails = list(emails)
             if group_ids is not None:
                 record.group_ids = list(group_ids)
+            if password_hash is not None:
+                record.password_hash = password_hash
             record.last_modified = _now_iso()
             self._upsert(record)
         self._after_mutation(user_id)
