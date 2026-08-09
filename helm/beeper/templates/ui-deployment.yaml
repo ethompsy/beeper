@@ -65,6 +65,91 @@ spec:
               value: {{ include "beeper.fullname" . }}-qdrant
             - name: QDRANT_PORT
               value: "6333"
+            {{- /*
+            Task 8.9 / ADR 0002 §8: identity env wiring, entirely absent
+            when ui.auth.mode is "none" (the default) — NFR26's demo
+            invariance depends on this block adding ZERO lines in mode
+            none, not merely rendering empty values. See
+            demo/tests/test_ui_auth_helm.py for the regression guard and
+            docs/deployment-guide.md#authentication--identity for the
+            full reference.
+            */}}
+            {{- if ne .Values.ui.auth.mode "none" }}
+            - name: BEEPER_AUTH_MODE
+              value: {{ .Values.ui.auth.mode | quote }}
+            - name: BEEPER_EXTERNAL_SCHEME
+              value: {{ .Values.ui.auth.externalScheme | quote }}
+            - name: BEEPER_SESSION_LIFETIME_HOURS
+              value: {{ .Values.ui.auth.sessionLifetimeHours | quote }}
+            - name: BEEPER_ADMIN_GROUPS
+              value: {{ .Values.ui.auth.adminGroups | quote }}
+            - name: BEEPER_USER_GROUPS
+              value: {{ .Values.ui.auth.userGroups | quote }}
+            {{- if .Values.ui.auth.existingSecret }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ui.auth.existingSecret }}
+                  key: secretKey
+                  optional: true
+            {{- end }}
+            {{- if eq .Values.ui.auth.mode "oidc" }}
+            - name: BEEPER_OIDC_ISSUER
+              value: {{ .Values.ui.auth.oidc.issuer | quote }}
+            - name: BEEPER_OIDC_CLIENT_ID
+              value: {{ .Values.ui.auth.oidc.clientId | quote }}
+            - name: BEEPER_OIDC_REDIRECT_URL
+              value: {{ .Values.ui.auth.oidc.redirectUrl | quote }}
+            - name: BEEPER_OIDC_SCOPES
+              value: {{ .Values.ui.auth.oidc.scopes | quote }}
+            - name: BEEPER_OIDC_GROUPS_CLAIM
+              value: {{ .Values.ui.auth.oidc.groupsClaim | quote }}
+            - name: BEEPER_OIDC_POST_LOGOUT_REDIRECT_URL
+              value: {{ .Values.ui.auth.oidc.postLogoutRedirectUrl | quote }}
+            {{- if .Values.ui.auth.existingSecret }}
+            - name: BEEPER_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ui.auth.existingSecret }}
+                  key: clientSecret
+                  optional: true
+            {{- end }}
+            - name: BEEPER_SCIM_ENABLED
+              value: {{ .Values.ui.auth.scim.enabled | quote }}
+            {{- if .Values.ui.auth.scim.enabled }}
+            - name: BEEPER_SCIM_STRICT
+              value: {{ .Values.ui.auth.scim.strict | quote }}
+            {{- if .Values.ui.auth.existingSecret }}
+            - name: BEEPER_SCIM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ui.auth.existingSecret }}
+                  key: scimToken
+                  optional: true
+            - name: BEEPER_SCIM_TOKEN_SECONDARY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ui.auth.existingSecret }}
+                  key: scimTokenSecondary
+                  optional: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- if and (eq .Values.ui.auth.mode "local") .Values.ui.auth.bootstrap.enabled .Values.ui.auth.existingSecret }}
+            - name: BEEPER_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ui.auth.existingSecret }}
+                  key: bootstrapUsername
+                  optional: true
+            - name: BEEPER_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ui.auth.existingSecret }}
+                  key: bootstrapPassword
+                  optional: true
+            {{- end }}
+            {{- end }}
           resources:
             {{- toYaml .Values.ui.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

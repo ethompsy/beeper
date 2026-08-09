@@ -1,0 +1,23 @@
+# Example values overlay: `local` auth mode (SSO disabled — the
+# directive's admin-managed fallback). Task 8.9 / ADR 0002 §6.
+#
+# Usage:
+#   helm upgrade --install beeper ./helm/beeper \
+#     -f ./helm/beeper/values.yaml \
+#     -f ./helm/beeper/examples/values-identity-local.yaml
+#
+# Prerequisite: create the `beeper-identity` Secret first — see
+# ./identity-secret.yaml (only `secretKey` and, optionally,
+# `bootstrapUsername`/`bootstrapPassword` are needed for this mode).
+#
+# This file intentionally sets `externalScheme: http` for the kind-demo /
+# `kubectl port-forward` live-validation path (docs/runbooks/
+# identity-live-validation.md scenario 1) — set it back to the default
+# `https` for any deployment behind real TLS, or the session cookie's
+# `Secure` flag will be dropped (ADR §2 / security LOW-10).
+
+ui:
+  auth:
+    mode: local
+    existingSecret: beeper-identity
+    externalScheme: http

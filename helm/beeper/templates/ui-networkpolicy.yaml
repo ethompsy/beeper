@@ -1,0 +1,51 @@
+{{- /*
+Task 8.9 / ADR 0002 §4 (security HIGH-5): optional defense-in-depth
+NetworkPolicy for the SCIM bearer token, which is an admin-equivalent
+secret (group membership IS the admin grant).
+
+HONESTY NOTE (do not "fix" this later without re-reading the ADR):
+Kubernetes NetworkPolicy operates at L3/L4 (IP/port) only — it has no
+concept of an HTTP path. Beeper's UI serves `/scim/v2/*` on the exact same
+container port as every browser/API route, so this policy CANNOT be scoped
+to "just SCIM traffic". What it actually does, when enabled, is restrict
+ALL ingress to the UI pod's port to `ui.auth.scim.networkPolicy.allowFrom`.
+That is only a sensible thing to turn on when `allowFrom` also covers every
+other legitimate source that must reach the UI (an ingress controller's
+namespace, the operator's namespace, etc.) in addition to the IdP's SCIM
+egress range — otherwise this would lock out real users, not just protect
+the SCIM token. `docs/deployment-guide.md` states this plainly; this
+comment is the second half of "say so rather than overclaiming."
+
+Deliberately refuses to render an accidental allow-all: Kubernetes treats
+an ingress rule with an EMPTY `from` list as "matches all sources" (a
+well-known NetworkPolicy footgun — omitting `from`/leaving it empty is
+NOT deny-all), which would silently defeat this entire feature while
+looking, at a glance, like it was doing something. `fail` below turns that
+misconfiguration into a hard `helm template`/`helm install` error instead.
+*/}}
+{{- if .Values.ui.auth.scim.networkPolicy.enabled }}
+{{- if not .Values.ui.auth.scim.networkPolicy.allowFrom }}
+{{- fail "ui.auth.scim.networkPolicy.enabled=true requires ui.auth.scim.networkPolicy.allowFrom to list at least one peer selector. An empty `from` list in a Kubernetes NetworkPolicy ingress rule matches ALL sources (allow-all) -- leaving this empty would silently defeat the policy while appearing to restrict access. See docs/deployment-guide.md's SCIM NetworkPolicy section." }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "beeper.fullname" . }}-ui-scim
+  labels:
+    {{- include "beeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  # Selects the whole UI pod, not a path — see the honesty note above.
+  podSelector:
+    matchLabels:
+      {{- include "beeper.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ui
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- toYaml .Values.ui.auth.scim.networkPolicy.allowFrom | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: http
+{{- end }}
