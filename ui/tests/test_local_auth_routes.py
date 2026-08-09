@@ -51,6 +51,11 @@ class _LocalConfig(TestingConfig):
 class _OidcConfig(TestingConfig):
     BEEPER_AUTH_MODE = "oidc"
     BEEPER_EXTERNAL_SCHEME = "http"
+    # Task 8.5's boot refusal requires OIDC completeness in `oidc` mode
+    # (merge-resolution addition, same stubs as test_auth_me.py).
+    BEEPER_OIDC_ISSUER = "https://idp.example.com"
+    BEEPER_OIDC_CLIENT_ID = "client-1"
+    BEEPER_OIDC_CLIENT_SECRET = "secret-1"
 
 
 @pytest.fixture
