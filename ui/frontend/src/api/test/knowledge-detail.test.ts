@@ -54,7 +54,11 @@ describe('fetchKnowledgeEntry', () => {
 
     await fetchKnowledgeEntry('KB 001/weird')
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/knowledge/KB%20001%2Fweird', undefined)
+    // Task 8.4: routed through `apiFetch`, which injects `credentials:
+    // 'same-origin'` by default even when no `init` was passed.
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/knowledge/KB%20001%2Fweird', {
+      credentials: 'same-origin',
+    })
   })
 
   it('resolves { kind: "ok", data } on a 200 JSON response', async () => {

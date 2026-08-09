@@ -56,7 +56,12 @@ describe('fetchMttrData', () => {
 
     const result = await fetchMttrData()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/metrics/mttr', { signal: undefined })
+    // Task 8.4: routed through `apiFetch`, which injects `credentials:
+    // 'same-origin'` by default.
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/metrics/mttr', {
+      credentials: 'same-origin',
+      signal: undefined,
+    })
     expect(result).toEqual(SAMPLE_DASHBOARD)
   })
 
@@ -108,7 +113,10 @@ describe('fetchMttrData', () => {
     const controller = new AbortController()
     await fetchMttrData(undefined, controller.signal)
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/metrics/mttr', { signal: controller.signal })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/metrics/mttr', {
+      credentials: 'same-origin',
+      signal: controller.signal,
+    })
   })
 })
 

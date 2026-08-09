@@ -39,7 +39,12 @@ describe('fetchIngestionStats', () => {
 
     const result = await fetchIngestionStats()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingestion/stats', { signal: undefined })
+    // Task 8.4: routed through `apiFetch`, which injects `credentials:
+    // 'same-origin'` by default.
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingestion/stats', {
+      credentials: 'same-origin',
+      signal: undefined,
+    })
     expect(result).toEqual(SAMPLE_STATS)
   })
 
@@ -54,7 +59,10 @@ describe('fetchIngestionStats', () => {
     const controller = new AbortController()
     await fetchIngestionStats(controller.signal)
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingestion/stats', { signal: controller.signal })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingestion/stats', {
+      credentials: 'same-origin',
+      signal: controller.signal,
+    })
   })
 
   it('throws IngestionStatsError on a non-OK HTTP response', async () => {

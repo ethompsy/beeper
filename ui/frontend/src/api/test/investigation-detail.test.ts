@@ -9,6 +9,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fetchInvestigationDetail, type InvestigationDetailDto } from '../investigation-detail'
+import { PermissionDeniedError } from '../http'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -29,9 +30,11 @@ describe('fetchInvestigationDetail', () => {
 
     await fetchInvestigationDetail('INV 0042/weird')
 
+    // Task 8.4: routed through `apiFetch`, which injects `credentials:
+    // 'same-origin'` by default even when no `init` was passed.
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/investigations/INV%200042%2Fweird',
-      undefined,
+      { credentials: 'same-origin' },
     )
   })
 
@@ -107,5 +110,29 @@ describe('fetchInvestigationDetail', () => {
     const result = await fetchInvestigationDetail('INV-0042')
 
     expect(result.kind).toBe('error')
+  })
+
+  it('resolves { kind: "error", error: PermissionDeniedError } on a 403 (Task 8.4), still without throwing', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        clone() {
+          return this
+        },
+        json: async () => ({
+          type: 'https://beeper.dev/errors/not-provisioned',
+          detail: 'This account is authenticated but not provisioned for access.',
+        }),
+      } as unknown as Response),
+    )
+
+    const result = await fetchInvestigationDetail('INV-0042')
+
+    expect(result.kind).toBe('error')
+    if (result.kind === 'error') {
+      expect(result.error).toBeInstanceOf(PermissionDeniedError)
+    }
   })
 })

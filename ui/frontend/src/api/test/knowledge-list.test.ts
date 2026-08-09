@@ -8,6 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fetchKnowledgeBase, KnowledgeBaseError, type KnowledgeListResponse } from '../knowledge-list'
+import { PermissionDeniedError } from '../http'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -30,7 +31,12 @@ describe('fetchKnowledgeBase', () => {
 
     await fetchKnowledgeBase()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/knowledge/', { signal: undefined })
+    // Task 8.4: routed through `apiFetch`, which injects `credentials:
+    // 'same-origin'` by default.
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/knowledge/', {
+      credentials: 'same-origin',
+      signal: undefined,
+    })
   })
 
   it('URL-encodes the `q` param (FR53/FR29)', async () => {
@@ -113,5 +119,26 @@ describe('fetchKnowledgeBase', () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.signal).toBe(controller.signal)
+  })
+
+  it('rejects with the shared PermissionDeniedError on a 403 — NOT wrapped as KnowledgeBaseError (Task 8.4)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        clone() {
+          return this
+        },
+        json: async () => ({
+          type: 'https://beeper.dev/errors/permission-denied',
+          detail: 'Admin role required to access this resource',
+        }),
+      }),
+    )
+
+    const error = await fetchKnowledgeBase().catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(PermissionDeniedError)
+    expect(error).not.toBeInstanceOf(KnowledgeBaseError)
   })
 })

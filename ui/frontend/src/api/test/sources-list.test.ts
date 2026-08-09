@@ -33,7 +33,12 @@ describe('fetchSources', () => {
 
     const result = await fetchSources()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/sources/', { signal: undefined })
+    // Task 8.4: routed through `apiFetch`, which injects `credentials:
+    // 'same-origin'` by default.
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/sources/', {
+      credentials: 'same-origin',
+      signal: undefined,
+    })
     expect(result).toEqual([SAMPLE_SOURCE])
   })
 
@@ -48,7 +53,10 @@ describe('fetchSources', () => {
     const controller = new AbortController()
     await fetchSources(controller.signal)
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/sources/', { signal: controller.signal })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/sources/', {
+      credentials: 'same-origin',
+      signal: controller.signal,
+    })
   })
 
   it('throws SourcesListError on a non-OK HTTP response', async () => {
