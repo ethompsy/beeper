@@ -131,3 +131,10 @@ export type { KbListSkeletonProps } from './components/KbListSkeleton'
 
 export { KbEntryNotFound } from './components/KbEntryNotFound'
 export type { KbEntryNotFoundProps } from './components/KbEntryNotFound'
+
+// Identity/auth-mode hydration (Task 8.4, ADR 0002 §3/§6/§8). No story
+// needed — hooks are excluded from the Storybook-coverage barrel sweep
+// (`src/lib/test/story-coverage.test.ts` only scans `./components/*`
+// re-exports), matching every other hook already exported below.
+export { useCurrentUser } from './hooks/useCurrentUser'
+export type { AuthMode, CurrentUserRecord, CurrentUserState } from './hooks/useCurrentUser'
