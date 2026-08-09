@@ -250,7 +250,23 @@ means **production has no path to the `admin` role at all** — every
 `@require_role("admin")` route 403s for every caller there until 6.2b ships.
 This is the intended fail-closed behavior, weighed against the UI's
 ClusterIP / non-internet-facing deployment. Documented in
-[`docs/deployment-guide.md`](../../deployment-guide.md#beeper-ui-role-based-access-control-task-62a)
-("RBAC and Security" → "Beeper UI role-based access control") for operators,
+[`docs/deployment-guide.md`](../../deployment-guide.md#beeper-ui-authentication--identity-adr-0002)
+("RBAC and Security" → "Beeper UI authentication & identity") for operators,
 and in `beeper_ui/config.py`'s `ProductionConfig`/`ALLOW_ROLE_HEADER` comments
 for developers.
+
+**Closing note (2026-08-09, Task 8.9):** the "production has no path to the
+`admin` role at all" statement above is **no longer true**. Q11 (this ADR's
+own §0(a) forward reference) was resolved and implemented as
+[ADR 0002](0002-oidc-scim-and-local-fallback-identity.md) — verified OIDC/SSO
+login with SCIM-governed roles, or admin-managed local accounts, per
+Milestone 2.3 (Tasks 8.1–8.9). Both new identity sources are **verified** (a
+signature-checked login, or a store-backed session), so they satisfy this
+ADR's own §0(a) item 2 ("no unverified identity may grant `admin`") — the
+constraint that made mode `none`'s fail-closed behavior necessary in the
+first place. Mode `none` (the default, zero-config demo/dev posture)
+deliberately keeps today's behavior unchanged: still no admin path in
+production, still the spoofable `X-Beeper-Role` header in dev/test only.
+Operators needing a real admin path in production should configure
+`ui.auth.mode: local` or `ui.auth.mode: oidc` — see
+[`docs/deployment-guide.md`](../../deployment-guide.md#authentication--identity).
