@@ -85,16 +85,21 @@ class ProductionConfig(Config):
     DEBUG = False
 
     # Refuses the spoofable `X-Beeper-Role` header (Task 6.2a / ADR 0001
-    # §0(a) item 3). Consequence: until Task 6.2b (verified identity, blocked
-    # on plan Q11) lands, production has NO admin path at all — the K8s-token
-    # route also grants "admin" from an unverified JWT payload claim today
-    # (§0(a) item 2), so it is not a substitute; every `@require_role
-    # ("admin")` route resolves to 403 for every caller in production.
-    # This is the intended fail-closed behavior per the user's explicit
-    # decision not to ship the spoofable identity source, weighed against a
-    # ClusterIP / non-internet-facing deployment. Operators needing
+    # §0(a) item 3). Every `@require_role("admin")` route now resolves to
+    # 403 for every caller in production: the header is refused here, and
+    # the only other historical path to a role — an unverified-JWT
+    # `Authorization: Bearer` peek at the token's `groups` claim — has been
+    # deleted unconditionally, in every mode, as a standalone security
+    # hotfix (Task 8.2; ADR 0002 §7/§12 CRITICAL-1). That claim was FALSE
+    # before Task 8.2 landed: the Bearer peek ran first on every request,
+    # ungated by `ALLOW_ROLE_HEADER`, so a crafted token granted "admin" in
+    # production regardless of this flag. See
+    # `docs/specs/decisions/0002-oidc-scim-and-local-fallback-identity.md`
+    # and `ui/beeper_ui/middleware/permissions.py`. Production has NO admin
+    # path at all until Task 8.3's unified resolver (ADR 0002 §7) ships
+    # verified identity (OIDC/SCIM or local accounts). Operators needing
     # admin-tier changes (trust-level writes, gate-threshold writes,
-    # adjustment apply/reject) must use `kubectl`/Helm directly until 6.2b.
+    # adjustment apply/reject) must use `kubectl`/Helm directly until then.
     ALLOW_ROLE_HEADER = False
 
     def __init__(self) -> None:
@@ -115,11 +120,29 @@ class ProductionConfig(Config):
 
 
 def get_config() -> type[Config]:
-    """Get configuration based on environment."""
-    env = os.environ.get("FLASK_ENV", "development")
+    """Get configuration based on the `FLASK_ENV` environment variable.
+
+    Fails SAFE, not open (Task 8.2 hotfix; ADR 0002 §8 / FR54). Two distinct
+    cases, deliberately resolved differently:
+
+    - `FLASK_ENV` **absent** (unset): stays `DevelopmentConfig`, preserving
+      local-dev ergonomics — `flask run` on a laptop with no env configured
+      keeps working exactly as before.
+    - `FLASK_ENV` **present but unrecognized** (e.g. a typo like
+      `produciton`): previously fell back to the permissive
+      `DevelopmentConfig`, which honors the spoofable `X-Beeper-Role`
+      header — a silent-open failure mode. Now falls back to
+      `ProductionConfig` instead, so a misconfigured deployment fails
+      closed rather than accidentally exposing the dev role-header
+      affordance. Helm's `ui.flaskEnv` defaults to `production` (D3); only
+      `make demo-up`/`demo-deploy` explicitly opt into `development`.
+    """
+    env = os.environ.get("FLASK_ENV")
+    if env is None:
+        return DevelopmentConfig
     configs = {
         "development": DevelopmentConfig,
         "testing": TestingConfig,
         "production": ProductionConfig,
     }
-    return configs.get(env, DevelopmentConfig)
+    return configs.get(env, ProductionConfig)

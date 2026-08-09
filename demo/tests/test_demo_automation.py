@@ -19,6 +19,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MAKEFILE = os.path.join(REPO_ROOT, "Makefile")
 KIND_CONFIG = os.path.join(REPO_ROOT, "kind-config.yaml")
 VALUES_DEV = os.path.join(REPO_ROOT, "helm", "beeper", "values-dev.yaml")
+VALUES_MAIN = os.path.join(REPO_ROOT, "helm", "beeper", "values.yaml")
 UI_SVC_TEMPLATE = os.path.join(
     REPO_ROOT, "helm", "beeper", "templates", "ui-deployment.yaml"
 )
@@ -177,6 +178,68 @@ class TestQdrantVersion:
     def test_values_dev_pins_qdrant_v1_15_0(self):
         values = yaml.safe_load(_read(VALUES_DEV))
         assert values["qdrant"]["image"]["tag"] == "v1.15.0"
+
+
+# --- Task 8.2: fail-closed FLASK_ENV (ADR 0002 §8, D3) --------------------------
+
+
+class TestFlaskEnvFailClosed:
+    """AC: chart default `ui.flaskEnv` is `production` (secure by default);
+    `make demo-up`/`demo-deploy` (via values-dev.yaml) explicitly pin
+    `development` so the demo's `X-Beeper-Role` dev/admin affordance keeps
+    working with zero interactive steps. Pure YAML/text parsing — no
+    kubectl/kind/docker/helm binary required, per this module's convention.
+
+    Regression guard for the pre-Task-8.2 hole: nothing set `FLASK_ENV`
+    anywhere, so a Helm-deployed pod silently ran `DevelopmentConfig`
+    in-cluster (honoring the spoofable role header) — see
+    `ui/beeper_ui/config.py::get_config` and
+    `ui/tests/test_permissions.py::TestGetConfigFailSafeFallback`.
+    """
+
+    def test_chart_default_flask_env_is_production(self):
+        values = yaml.safe_load(_read(VALUES_MAIN))
+        assert values["ui"]["flaskEnv"] == "production", (
+            "chart default must be secure-by-default (ADR 0002 §8 D3); a "
+            "regression here silently reopens the in-cluster X-Beeper-Role "
+            "admin hole for every deployment that doesn't override it"
+        )
+
+    def test_demo_values_pin_flask_env_development(self):
+        values = yaml.safe_load(_read(VALUES_DEV))
+        assert values["ui"]["flaskEnv"] == "development", (
+            "make demo-up/demo-deploy (via values-dev.yaml) must explicitly "
+            "opt into development so the demo header affordance keeps "
+            "working with zero interactive steps"
+        )
+
+    def test_demo_and_chart_defaults_disagree_on_purpose(self):
+        """The whole point: demo values must override, not coincidentally
+        match, the chart default — otherwise a chart-default change could
+        silently stop being demo-only."""
+        chart_default = yaml.safe_load(_read(VALUES_MAIN))["ui"]["flaskEnv"]
+        demo_value = yaml.safe_load(_read(VALUES_DEV))["ui"]["flaskEnv"]
+        assert chart_default != demo_value
+        assert chart_default == "production"
+        assert demo_value == "development"
+
+    def test_ui_deployment_template_wires_flask_env_from_values(self):
+        """The Deployment template must render FLASK_ENV from
+        `.Values.ui.flaskEnv`, not a hardcoded literal — otherwise the
+        values-file assertions above prove nothing about the deployed pod."""
+        template = _read(UI_SVC_TEMPLATE)
+        assert "name: FLASK_ENV" in template
+        assert "Values.ui.flaskEnv" in template
+
+    def test_flask_env_entry_value_comes_directly_from_flaskenv_value(self):
+        """Guard against a future edit reintroducing a hardcoded FLASK_ENV
+        value (e.g. a stray literal `production`/`development` string)
+        instead of the templated one: the `name: FLASK_ENV` line's very next
+        line must be the `.Values.ui.flaskEnv` reference."""
+        template = _read(UI_SVC_TEMPLATE)
+        match = re.search(r"- name: FLASK_ENV\n\s*value:\s*(\S.*)", template)
+        assert match, "FLASK_ENV env entry not found immediately followed by its value"
+        assert "Values.ui.flaskEnv" in match.group(1)
 
 
 # --- Task 6.2: fault injection & recovery --------------------------------------

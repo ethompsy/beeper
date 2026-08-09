@@ -30,6 +30,14 @@ operator:
 # UI configuration
 ui:
   replicaCount: 1
+  # Task 8.2 / ADR 0002 §8 (D3): sets the UI container's FLASK_ENV. Defaults
+  # to `production` — secure by default. `get_config()` (ui/beeper_ui/config.py)
+  # honors this: `production` refuses the spoofable `X-Beeper-Role` dev
+  # header (ALLOW_ROLE_HEADER=False), and any value it doesn't recognize
+  # also fails closed to production. `make demo-up`/`demo-deploy` override
+  # this to `development` via values-dev.yaml so the demo's header-driven
+  # admin affordance keeps working with zero interactive steps.
+  flaskEnv: production
   image:
     repository: beeper/ui
     tag: ""  # Defaults to Chart appVersion

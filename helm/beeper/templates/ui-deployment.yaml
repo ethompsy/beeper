@@ -55,6 +55,8 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
           env:
+            - name: FLASK_ENV
+              value: {{ .Values.ui.flaskEnv | quote }}
             - name: BEEPER_UI_PORT
               value: "5000"
             - name: BEEPER_OPERATOR_URL

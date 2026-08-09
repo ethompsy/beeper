@@ -1,13 +1,12 @@
 """Permission middleware for role-based access control.
 
 Implements a two-tier (admin/user) permission model:
-- before_request handler resolves user role from K8s token or header
+- before_request handler resolves user role from the X-Beeper-Role header
+  (development/testing affordance only) or defaults to "user"
 - require_role() decorator enforces role requirements on specific routes
 """
 
-import base64
 import functools
-import json
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -23,29 +22,31 @@ def resolve_user_role() -> None:
     """Resolve user role from request context and set on g.user_role.
 
     Role resolution chain:
-    1. K8s ServiceAccount token (Authorization: Bearer <token>) — the only
-       path honored in production, though today it verifies group membership
-       claimed in the JWT payload WITHOUT verifying the token's signature
-       (ADR 0001 §0(a) item 2 — signature verification is Task 6.2b, blocked
-       on Q11). Treat this as a UI affordance, not a security boundary, until
-       6.2b lands.
-    2. X-Beeper-Role header — development/testing affordance ONLY. Refused
+    1. X-Beeper-Role header — development/testing affordance ONLY. Refused
        under production config (`Config.ALLOW_ROLE_HEADER = False` on
        `ProductionConfig`) because it is a trivially spoofable identity
        source: any HTTP client can set this header directly. See ADR 0001
        §0(a) item 3.
-    3. Default "user".
-    """
-    # 1. Try K8s ServiceAccount token
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[len("Bearer "):]
-        role = _extract_role_from_k8s_token(token)
-        if role:
-            g.user_role = role
-            return
+    2. Default "user".
 
-    # 2. Try X-Beeper-Role header — development/testing only (Task 6.2a).
+    An `Authorization: Bearer <token>` header is NEVER consulted here, in
+    any mode. A prior version of this resolver peeked at the *unverified*
+    `groups` claim of a Bearer JWT's payload, unconditionally, before the
+    `ALLOW_ROLE_HEADER` gate above — so a crafted 3-segment base64 token
+    carrying `{"groups": ["beeper-admin"]}` granted "admin" to any caller in
+    production too, defeating the fail-closed guarantee below entirely. That
+    path (`_extract_role_from_k8s_token`) and its call site were deleted
+    unconditionally, in every mode, as a standalone security hotfix (Task
+    8.2; ADR 0002 §7/§12 CRITICAL-1 — see
+    `docs/specs/decisions/0002-oidc-scim-and-local-fallback-identity.md`).
+    See `TestBearerTokensNeverGrantRoles` in `ui/tests/test_permissions.py`
+    for the permanent regression guard proving the exact old bypass payload,
+    and other crafted tokens, are inert in every mode. Verified,
+    request-bound identity is Task 8.3's unified resolver (ADR 0002 §7);
+    until it ships, a stray `Authorization: Bearer` header is simply
+    ignored.
+    """
+    # 1. X-Beeper-Role header — development/testing only (Task 6.2a).
     # `ProductionConfig.__init__` cannot gate this: `app.config.from_object()`
     # is handed the *class*, not an instance, so `__init__` never runs.
     # `ALLOW_ROLE_HEADER` is therefore a plain class attribute, read here.
@@ -55,53 +56,8 @@ def resolve_user_role() -> None:
             g.user_role = role_header
             return
 
-    # 3. Default to "user"
+    # 2. Default to "user"
     g.user_role = "user"
-
-
-def _extract_role_from_k8s_token(token: str) -> str | None:
-    """Extract role from K8s ServiceAccount JWT token.
-
-    Checks for 'beeper-admin' in the token's group claims.
-    Returns "admin" if found, None otherwise (caller falls through).
-    """
-    try:
-        # JWT has 3 parts: header.payload.signature
-        parts = token.split(".")
-        if len(parts) != 3:
-            return None
-
-        # Decode payload (second part), add padding as needed
-        payload_b64 = parts[1]
-        padding = 4 - len(payload_b64) % 4
-        if padding != 4:
-            payload_b64 += "=" * padding
-
-        payload_bytes = base64.urlsafe_b64decode(payload_b64)
-        claims = json.loads(payload_bytes)
-
-        # `claims` is only a groups-bearing object if the JWT payload decoded
-        # to a JSON *object*. A crafted token can carry any valid JSON value
-        # in that segment (e.g. a bare integer) — json.loads happily returns
-        # it, and an unguarded `.get("groups", [])` would raise AttributeError
-        # on anything that isn't a dict, crashing this before_request hook
-        # and 500ing every route. Treat a non-dict payload as an invalid
-        # token instead: fall through to the header/default path.
-        if not isinstance(claims, dict):
-            return None
-
-        # Valid JWT — check for beeper-admin group
-        groups: list[str] = claims.get("groups", [])
-        if "beeper-admin" in groups:
-            return "admin"
-
-        # Valid JWT but no admin group — return "user" (don't fall through to header)
-        return "user"
-    except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
-        # Token parsing failed — not a valid JWT, fall through
-        pass
-
-    return None
 
 
 def require_role(role: str) -> Callable[..., Any]:
