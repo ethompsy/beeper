@@ -12,6 +12,8 @@
  * here, only the fetch/shape contract.
  */
 
+import { apiFetch } from './http'
+
 export type MttrPeriod = 'week' | 'month' | 'quarter'
 
 export interface MttrTrendPoint {
@@ -108,7 +110,7 @@ export async function fetchMttrData(
   params?: MttrParams,
   signal?: AbortSignal,
 ): Promise<MttrDashboardData> {
-  const response = await fetch(`${MTTR_ENDPOINT}${buildMttrQuery(params)}`, { signal })
+  const response = await apiFetch(`${MTTR_ENDPOINT}${buildMttrQuery(params)}`, { signal })
 
   if (!response.ok) {
     throw new MetricsApiError(`Failed to fetch MTTR data (HTTP ${response.status})`, response.status)
@@ -160,7 +162,7 @@ export async function fetchMttrDrilldown(
   params: MttrDrilldownParams,
   signal?: AbortSignal,
 ): Promise<MttrDrilldownData> {
-  const response = await fetch(`${DRILLDOWN_ENDPOINT}${buildDrilldownQuery(params)}`, { signal })
+  const response = await apiFetch(`${DRILLDOWN_ENDPOINT}${buildDrilldownQuery(params)}`, { signal })
 
   const data = (await response.json()) as MttrDrilldownData & { error?: string }
 

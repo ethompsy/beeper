@@ -251,10 +251,18 @@ class TestExemptionMatrixEndToEnd:
 
     @pytest.mark.parametrize("config_class", [_LocalConfig, _OidcNoScimConfig])
     def test_api_v1_auth_prefix_open_with_no_session(self, config_class: type) -> None:
+        """Task 8.4 landed `GET /api/v1/auth/me` (see `test_auth_me.py` for
+        its full behavioral coverage) — this exemption-matrix test now
+        proves the *reachable-logged-out* half of the contract: a 200 with
+        an unauthenticated body, not a synthetic 401/302 from the resolver
+        (superseding this test's prior "no blueprint registered yet, plain
+        404" assertion, documented here per the Task 8.2 precedent of never
+        swapping a pinned assertion silently)."""
         app = _make_app(config_class)
         with app.test_client() as client:
             resp = client.get("/api/v1/auth/me")
-            assert resp.status_code == 404
+            assert resp.status_code == 200
+            assert resp.get_json()["authenticated"] is False
 
     def test_non_exempt_api_path_is_gated_with_no_session(self) -> None:
         app = _make_app(_LocalConfig)

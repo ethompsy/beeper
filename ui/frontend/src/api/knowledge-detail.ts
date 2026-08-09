@@ -21,6 +21,7 @@
  * React view renders it directly rather than shipping a second markdown
  * parser/sanitizer to the client.
  */
+import { apiFetch } from './http'
 import type { KnowledgeEntrySummary } from './knowledge-list'
 
 export interface KnowledgeEntryDetail {
@@ -78,8 +79,10 @@ export async function fetchKnowledgeEntry(
 ): Promise<KnowledgeEntryResult> {
   let response: Response
   try {
-    response = await fetch(`/api/v1/knowledge/${encodeURIComponent(entryId)}`, init)
+    response = await apiFetch(`/api/v1/knowledge/${encodeURIComponent(entryId)}`, init)
   } catch (error) {
+    // Also catches `apiFetch`'s `PermissionDeniedError` (403) — carried
+    // through untouched in `error`, same as `investigation-detail.ts`.
     return { kind: 'error', error }
   }
 

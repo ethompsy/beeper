@@ -12,6 +12,8 @@
  * dedup-by-name behavior (NFR12), so no de-duplication is needed here.
  */
 
+import { apiFetch } from './http'
+
 export interface SourceErrorDetail {
   type: string
   message: string
@@ -44,7 +46,7 @@ const SOURCES_ENDPOINT = '/api/v1/sources/'
  * Fetch the configured sources list from the Task 5.3 JSON API.
  */
 export async function fetchSources(signal?: AbortSignal): Promise<SourceListItem[]> {
-  const response = await fetch(SOURCES_ENDPOINT, { signal })
+  const response = await apiFetch(SOURCES_ENDPOINT, { signal })
 
   if (!response.ok) {
     throw new SourcesListError(`Failed to fetch sources (HTTP ${response.status})`, response.status)

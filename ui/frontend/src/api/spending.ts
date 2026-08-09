@@ -14,6 +14,8 @@
  * the full API key is never sent to the browser.
  */
 
+import { apiFetch } from './http'
+
 export interface SpendingSummary {
   daily_cost_usd: number
   monthly_cost_usd: number
@@ -77,7 +79,7 @@ const SPENDING_ENDPOINT = '/api/v1/spending/'
  * status + trend) from the Task 5.3 JSON API.
  */
 export async function fetchSpending(signal?: AbortSignal): Promise<SpendingDashboardData> {
-  const response = await fetch(SPENDING_ENDPOINT, { signal })
+  const response = await apiFetch(SPENDING_ENDPOINT, { signal })
 
   if (!response.ok) {
     throw new SpendingFetchError(

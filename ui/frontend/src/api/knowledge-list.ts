@@ -15,6 +15,8 @@
  * single `/app/knowledge` route — no `/app/knowledge/search`).
  */
 
+import { apiFetch, PermissionDeniedError } from './http'
+
 /** One KB entry as summarized for the browse/search list (no full content). */
 export interface KnowledgeEntrySummary {
   id: string
@@ -91,8 +93,13 @@ export async function fetchKnowledgeBase(
 ): Promise<KnowledgeListResponse> {
   let response: Response
   try {
-    response = await fetch(`${LIST_ENDPOINT}${buildQuery(params)}`, { signal })
+    response = await apiFetch(`${LIST_ENDPOINT}${buildQuery(params)}`, { signal })
   } catch (err) {
+    // `apiFetch` throws `PermissionDeniedError` on 403 (Task 8.4) — rethrow
+    // it as-is so callers can distinguish it from a network/HTTP failure;
+    // only wrap OTHER thrown values into this client's own error type,
+    // preserving this function's existing message-preservation contract.
+    if (err instanceof PermissionDeniedError) throw err
     throw new KnowledgeBaseError(
       err instanceof Error ? err.message : 'Unable to connect to the Beeper operator.',
     )

@@ -79,3 +79,11 @@ def register_blueprints(app: Flask) -> None:
     from beeper_ui.routes.metrics import metrics_api_bp
 
     app.register_blueprint(metrics_api_bp)
+
+    # Task 8.4: shared `GET /api/v1/auth/me` identity probe (ADR 0002 §3/§6).
+    # Added additively, same pattern as `metrics_api_bp` above — Task 8.8
+    # (SCIM, running in parallel) owns `routes/__init__.py` edits of its own
+    # kind but this file's contract stays "append only" for both tasks.
+    from beeper_ui.routes.auth import auth_api_bp
+
+    app.register_blueprint(auth_api_bp)

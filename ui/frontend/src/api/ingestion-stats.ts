@@ -12,7 +12,11 @@
  * `IngestionStats` dataclass fields, snake_case, passthrough from the
  * operator — no derived pipeline-state fields (those are computed
  * client-side, see `src/lib/ingestion/pipeline-view.ts`).
+ *
+ * Task 8.4: routed through `apiFetch` (shared same-origin credentials +
+ * 401/403 auth seam) in place of bare `fetch`.
  */
+import { apiFetch } from './http'
 
 export interface IngestionStats {
   buffer_size: number
@@ -59,7 +63,7 @@ function isErrorBody(data: unknown): data is { error: string } {
  * call this; the client itself has no polling/caching behavior of its own.
  */
 export async function fetchIngestionStats(signal?: AbortSignal): Promise<IngestionStats> {
-  const response = await fetch(STATS_ENDPOINT, { signal })
+  const response = await apiFetch(STATS_ENDPOINT, { signal })
 
   if (!response.ok) {
     throw new IngestionStatsError(
