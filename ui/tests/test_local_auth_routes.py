@@ -454,7 +454,6 @@ class TestLogout:
     def test_logout_clears_session_me_becomes_anonymous(
         self, seeded_store: IdentityStoreService
     ) -> None:
-
         seeded_store.create_local_user(
             user_name="ivan@corp.com", password_hash=hash_password("ivans-password-1"), role="user"
         )
@@ -483,3 +482,90 @@ class TestLogout:
             resp = client.post("/api/v1/auth/logout", headers=SAME_ORIGIN)
             assert resp.status_code == 200
             assert resp.get_json()["authenticated"] is False
+
+
+# ---------------------------------------------------------------------------
+# [T] end-to-end: a logged-in local admin's session passes require_role("admin")
+# ---------------------------------------------------------------------------
+
+
+class TestLoggedInAdminPassesRequireRoleAdmin:
+    """AC (docs/plans/react-ui.md Task 8.6): "local mode: session admin
+    passes `require_role('admin')`". `test_identity_resolver.py` (Task 8.3)
+    already proves the resolver's per-mode truth table generically (a
+    seeded session -> `require_role` outcome, independent of how the
+    session was established); this test closes the loop specifically
+    through THIS task's own `POST /api/v1/auth/login` endpoint end-to-end
+    — login response -> cookie jar -> a real `@require_role("admin")`
+    route -> 200, and the mirror-image 403 for a non-admin login."""
+
+    def test_admin_login_then_admin_gated_route_succeeds(
+        self, seeded_store: IdentityStoreService
+    ) -> None:
+        from beeper_ui.middleware.permissions import require_role
+
+        seeded_store.create_local_user(
+            user_name="admin@corp.com",
+            password_hash=hash_password("admins-password-1"),
+            role="admin",
+        )
+        app = _make_app(_LocalConfig)
+
+        @app.route("/api/v1/test-admin-only")
+        @require_role("admin")
+        def _admin_only() -> dict:
+            return {"ok": True}
+
+        with app.test_client() as client:
+            login_resp = client.post(
+                "/api/v1/auth/login",
+                json={"username": "admin@corp.com", "password": "admins-password-1"},
+                headers=SAME_ORIGIN,
+            )
+            assert login_resp.status_code == 200
+
+            gated_resp = client.get("/api/v1/test-admin-only")
+            assert gated_resp.status_code == 200
+            assert gated_resp.get_json() == {"ok": True}
+
+    def test_non_admin_login_then_admin_gated_route_403s(
+        self, seeded_store: IdentityStoreService
+    ) -> None:
+        from beeper_ui.middleware.permissions import require_role
+
+        seeded_store.create_local_user(
+            user_name="regular@corp.com",
+            password_hash=hash_password("regulars-password-1"),
+            role="user",
+        )
+        app = _make_app(_LocalConfig)
+
+        @app.route("/api/v1/test-admin-only-2")
+        @require_role("admin")
+        def _admin_only_2() -> dict:
+            return {"ok": True}
+
+        with app.test_client() as client:
+            login_resp = client.post(
+                "/api/v1/auth/login",
+                json={"username": "regular@corp.com", "password": "regulars-password-1"},
+                headers=SAME_ORIGIN,
+            )
+            assert login_resp.status_code == 200
+
+            gated_resp = client.get("/api/v1/test-admin-only-2")
+            assert gated_resp.status_code == 403
+
+    def test_unauthenticated_api_request_401s_in_local_mode(self) -> None:
+        app = _make_app(_LocalConfig)
+
+        @app.route("/api/v1/test-needs-auth")
+        def _needs_auth() -> dict:
+            return {"ok": True}
+
+        with app.test_client() as client:
+            resp = client.get("/api/v1/test-needs-auth")
+            assert resp.status_code == 401
+            assert (
+                resp.get_json()["type"] == "https://beeper.dev/errors/authentication-required"
+            )
