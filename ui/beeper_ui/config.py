@@ -3,6 +3,41 @@
 import os
 import secrets
 
+VALID_AUTH_MODES: frozenset[str] = frozenset({"none", "local", "oidc"})
+
+_TRUE_STRINGS = frozenset({"1", "true", "yes", "on"})
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Parse a boolean environment variable (`1`/`true`/`yes`/`on`, case-insensitive)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in _TRUE_STRINGS
+
+
+def parse_group_names(raw: str) -> tuple[str, ...]:
+    """Parse a comma-separated group-name config value into a tuple.
+
+    Used for `BEEPER_ADMIN_GROUPS` / `BEEPER_USER_GROUPS` (ADR 0002 §3/§8) —
+    shared by OIDC login (Task 8.5), SCIM group→role derivation (Task 8.8),
+    and `beeper_ui.services.identity_store`'s adopt-and-link role recompute
+    (Task 8.3). Strips whitespace and drops empty entries so a trailing
+    comma or accidental double-comma doesn't produce a spurious empty group
+    name that would never match anything anyway.
+    """
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
+class AuthConfigError(RuntimeError):
+    """Raised at boot when `BEEPER_AUTH_MODE` / related config is contradictory.
+
+    ADR 0002 §1/§8, FR54: enforcement lives EXCLUSIVELY in
+    `beeper_ui.app.create_app()` — never a `Config` subclass `__init__` (see
+    `ProductionConfig.__init__`'s docstring below for why that hook is dead
+    code under `Flask.config.from_object(<class>)`).
+    """
+
 
 class Config:
     """Base configuration."""
@@ -57,6 +92,41 @@ class Config:
     # itself (see `get_config()` / `create_app()`), never an instance, so a
     # subclass `__init__` is dead code here (see `ProductionConfig` below).
     ALLOW_ROLE_HEADER: bool = True
+
+    # --- ADR 0002 identity/auth config (Task 8.3) -----------------------
+    # Single authoritative mode knob (ADR §1): `none` (default) preserves
+    # today's behavior exactly; `local`/`oidc` route through the shared
+    # identity store + session-cookie resolver
+    # (`beeper_ui.middleware.permissions.resolve_request_identity()`).
+    BEEPER_AUTH_MODE: str = os.environ.get("BEEPER_AUTH_MODE", "none")
+
+    # Valid ONLY when BEEPER_AUTH_MODE == "oidc" — refused at boot otherwise
+    # (ADR §1/§8; see `validate_boot_config()` below). The SCIM blueprint
+    # itself (Task 8.8) is registered only when this is true.
+    BEEPER_SCIM_ENABLED: bool = _env_bool("BEEPER_SCIM_ENABLED")
+
+    # `oidc` + SCIM only: an authenticated-but-never-provisioned principal
+    # normally defaults to role "user" (D2); setting this refuses instead
+    # (403 `not-provisioned`) — see ADR §5.2.
+    BEEPER_SCIM_STRICT: bool = _env_bool("BEEPER_SCIM_STRICT")
+
+    # One group-name config pair shared by OIDC login (8.5) role mapping,
+    # SCIM (8.8) role mapping, and the identity store's adopt-and-link role
+    # recompute (ADR §3/§5.2, Task 8.3). Comma-separated, case-insensitive
+    # — parse with `parse_group_names()`.
+    BEEPER_ADMIN_GROUPS: str = os.environ.get("BEEPER_ADMIN_GROUPS", "Admins,beeper-admin")
+    BEEPER_USER_GROUPS: str = os.environ.get("BEEPER_USER_GROUPS", "")
+
+    # Session-cookie hardening (ADR §2). `BEEPER_EXTERNAL_SCHEME` drives
+    # `SESSION_COOKIE_SECURE` EXPLICITLY in `create_app()` — never inferred
+    # from request introspection, so a TLS-terminating ingress speaking
+    # plain http to the pod cannot silently strip the flag (security
+    # LOW-10). `BEEPER_SESSION_LIFETIME_HOURS` is the absolute session
+    # lifetime (no sliding refresh in v1).
+    BEEPER_EXTERNAL_SCHEME: str = os.environ.get("BEEPER_EXTERNAL_SCHEME", "https")
+    BEEPER_SESSION_LIFETIME_HOURS: float = float(
+        os.environ.get("BEEPER_SESSION_LIFETIME_HOURS", "8")
+    )
 
 
 class DevelopmentConfig(Config):
@@ -146,3 +216,54 @@ def get_config() -> type[Config]:
         "production": ProductionConfig,
     }
     return configs.get(env, ProductionConfig)
+
+
+def validate_boot_config(config: type[Config]) -> None:
+    """Refuse contradictory `BEEPER_AUTH_MODE` config at boot.
+
+    ADR 0002 §1/§8, FR54. Called from `beeper_ui.app.create_app()` —
+    deliberately NOT from any `Config` subclass `__init__` (see
+    `ProductionConfig.__init__`'s docstring above: that hook never runs
+    under `Flask.config.from_object(<class>)`, which is always handed the
+    class itself, never an instance).
+
+    Only the two refusals Task 8.3 owns are enforced here:
+
+    1. `BEEPER_SCIM_ENABLED=true` is valid only when `BEEPER_AUTH_MODE=oidc`.
+    2. `local`/`oidc` mode requires `SECRET_KEY` supplied via the **process
+       environment** — not merely a truthy `config.SECRET_KEY`, which falls
+       back to `secrets.token_hex(32)` per process (see `Config.SECRET_KEY`
+       above) when the env var is absent. That fallback is fine for `none`
+       (no session ever needs to survive a restart) but would silently
+       invalidate every session on pod restart, and diverge across
+       replicas, in `local`/`oidc` — so it must be refused, not defaulted.
+
+    OIDC-specific refusals (issuer/client-id/client-secret presence, ADR
+    §8) belong to Task 8.5, which owns those config keys, and are
+    deliberately NOT enforced here.
+
+    Raises:
+        AuthConfigError: on any contradiction described above, or an
+            unrecognized `BEEPER_AUTH_MODE` value.
+    """
+    mode = getattr(config, "BEEPER_AUTH_MODE", "none")
+    if mode not in VALID_AUTH_MODES:
+        raise AuthConfigError(
+            f"BEEPER_AUTH_MODE={mode!r} is invalid; must be one of "
+            f"{sorted(VALID_AUTH_MODES)}."
+        )
+
+    scim_enabled = getattr(config, "BEEPER_SCIM_ENABLED", False)
+    if scim_enabled and mode != "oidc":
+        raise AuthConfigError(
+            "BEEPER_SCIM_ENABLED=true is only valid when BEEPER_AUTH_MODE=oidc "
+            f"(got BEEPER_AUTH_MODE={mode!r}). See ADR 0002 §1."
+        )
+
+    if mode in {"local", "oidc"} and not os.environ.get("SECRET_KEY"):
+        raise AuthConfigError(
+            f"SECRET_KEY environment variable must be set when "
+            f"BEEPER_AUTH_MODE={mode!r}: sessions must survive process "
+            "restarts and stay consistent across replicas (ADR 0002 §2). "
+            'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
+        )

@@ -5,6 +5,7 @@ from flask import Blueprint, Response, current_app, jsonify, redirect, render_te
 from beeper_ui.middleware.permissions import require_role
 from beeper_ui.routes.react_registry import build_app_redirect_target
 from beeper_ui.services.health_service import HealthService, HealthServiceError
+from beeper_ui.services.identity_store import get_identity_store_if_initialized
 
 health_bp = Blueprint("health", __name__, url_prefix="/health")
 
@@ -100,9 +101,26 @@ def ingestion_stats() -> Response:
 
 
 @health_bp.route("/api")
-def health_api() -> dict[str, str]:
-    """Health check endpoint for the UI itself."""
-    return {"status": "healthy"}
+def health_api() -> dict[str, object]:
+    """Health check endpoint for the UI itself.
+
+    Task 8.3 / ADR 0002 §5.3, FR60: when the identity store has already
+    been constructed (i.e. `BEEPER_AUTH_MODE` is `local`/`oidc` AND at least
+    one identity-store operation has run this process), the response gains
+    a `zero_active_admins` detail flag mirroring the store's CRITICAL-logged
+    alarm state. Deliberately absent in mode `none` and before the store's
+    first use in `local`/`oidc` — this route never triggers construction
+    itself (`get_identity_store_if_initialized()`, not `get_identity_store
+    ()`): a k8s liveness/readiness probe hitting this route must never open
+    a Qdrant connection just because it was polled, and this route is
+    listed exempt from identity gating precisely so probes never 401
+    (ADR §2 exemption matrix).
+    """
+    body: dict[str, object] = {"status": "healthy"}
+    store = get_identity_store_if_initialized()
+    if store is not None:
+        body["zero_active_admins"] = store.has_zero_active_admins()
+    return body
 
 
 @ingestion_api_bp.route("/stats")

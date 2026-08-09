@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from datetime import datetime, timedelta, timezone
 
 from flask import (
@@ -20,7 +20,8 @@ from flask import (
     stream_with_context,
 )
 
-from beeper_ui.middleware.permissions import require_role
+from beeper_ui.middleware.permissions import require_role, resolve_role_for_identity
+from beeper_ui.middleware.session import read_session_identity
 from beeper_ui.routes.react_registry import build_app_redirect_target
 from beeper_ui.services.confidence_gate_service import (
     ConfidenceGateError,
@@ -1475,6 +1476,8 @@ def _generate_json_sse_events(
     operator_timeout: float,
     investigation_id: str,
     poll_interval: float,
+    *,
+    reauth_check: Callable[[], bool] | None = None,
 ) -> Generator[str, None, None]:
     """Generate JSON SSE events for a single investigation's progress (Task 1.6).
 
@@ -1496,6 +1499,16 @@ def _generate_json_sse_events(
     Each step in the ordered pipeline is emitted individually so the client can
     apply updates incrementally and position them by ``order`` without receiving
     the full list on every poll.
+
+    ``reauth_check`` (Task 8.3 / ADR 0002 §2/NFR25): an optional zero-arg
+    callable re-checked once per poll tick, BEFORE polling the operator.
+    ``None`` (the default, and always the case in ``BEEPER_AUTH_MODE=none``)
+    means "no re-auth needed" — behavior is byte-identical to pre-8.3. When
+    supplied and it returns falsy, the stream terminates immediately (no
+    further events, generator returns) — the client's reconnect-on-error
+    fetch then converts that into the normal 401 → login path. See
+    ``_build_sse_reauth_check()`` on ``investigation_events_json`` below for
+    how this closure is built and what it captures.
     """
     svc = InvestigationService(
         operator_url=operator_url,
@@ -1508,6 +1521,15 @@ def _generate_json_sse_events(
         return f"event: {event_name}\ndata: {json.dumps(payload)}\n\n"
 
     while True:
+        if reauth_check is not None and not reauth_check():
+            logger.info(
+                "JSON SSE: terminating stream for investigation %s — "
+                "identity failed re-authorization at poll tick (ADR 0002 §2/NFR25)",
+                investigation_id,
+            )
+            svc.close()
+            return
+
         try:
             detail = svc.get_investigation(investigation_id)
             if detail is None:
@@ -1552,6 +1574,39 @@ def _generate_json_sse_events(
         time.sleep(poll_interval)
 
 
+def _build_sse_reauth_check() -> Callable[[], bool] | None:
+    """Build the ADR §2/NFR25 keepalive re-auth check for the JSON SSE stream.
+
+    Returns ``None`` in mode ``none`` (no-op — existing tests / behavior
+    unchanged) or when there is no session identity to re-check (shouldn't
+    happen in practice: ``resolve_request_identity()`` already 401s an
+    unauthenticated request in ``local``/``oidc`` before this view function
+    ever runs — defensive fallback only).
+
+    Otherwise returns a zero-arg callable the generator invokes once per
+    poll tick. It re-resolves the STORE's current role for the identity
+    captured HERE, at stream-start — not by re-reading the session on every
+    tick, since the session's cookie-carried content cannot change
+    mid-stream without the client sending a new request; it's the store
+    (role/active, mutable at any time by an admin or SCIM) that must be
+    re-checked. This also re-validates the captured snapshot's absolute
+    `exp`, so a stream that outlives the session's lifetime terminates too.
+    """
+    mode = current_app.config.get("BEEPER_AUTH_MODE", "none")
+    if mode == "none":
+        return None
+    identity = read_session_identity()
+    if identity is None:
+        return None
+
+    def _check() -> bool:
+        if time.time() > identity.exp:
+            return False
+        return resolve_role_for_identity(mode, identity).status == "ok"
+
+    return _check
+
+
 @investigations_api_bp.route("/<investigation_id>/events")
 @require_role("user")
 def investigation_events_json(investigation_id: str) -> Response:
@@ -1574,6 +1629,7 @@ def investigation_events_json(investigation_id: str) -> Response:
     poll_interval: float = float(
         current_app.config.get("JSON_SSE_POLL_INTERVAL", _DEFAULT_JSON_SSE_POLL_INTERVAL)
     )
+    reauth_check = _build_sse_reauth_check()
     return Response(
         stream_with_context(
             _generate_json_sse_events(
@@ -1581,6 +1637,7 @@ def investigation_events_json(investigation_id: str) -> Response:
                 operator_timeout,
                 investigation_id,
                 poll_interval,
+                reauth_check=reauth_check,
             )
         ),
         mimetype="text/event-stream",
