@@ -94,6 +94,23 @@ def _doc_body() -> str:
     return text[idx:]
 
 
+_MILESTONE_2_1_END_MARKER = "## 6. Known parity gaps"
+
+
+def _milestone_2_1_body() -> str:
+    """The doc's Milestone-2.1 route-inventory window only (§1-§5) — bounded
+    so a later section's own '- **Parity target:**' bullets (§9, Task 8.6;
+    any future section) can never perturb `test_six_per_task_parity_target_
+    bullets_present`'s Milestone-2.1-specific count. `test_each_task_block_
+    parity_target_resolves` below deliberately does NOT use this narrower
+    window — it validates every parity-target bullet in the whole document,
+    §9's included, which is exactly what we want (§9's own citations must
+    resolve too)."""
+    body = _doc_body()
+    end = body.index(_MILESTONE_2_1_END_MARKER)
+    return body[:end]
+
+
 def _nav_items() -> list[tuple[str, str]]:
     """Parse (label, url) pairs out of the sidebar_group() calls in layout.html."""
     text = _LAYOUT_PATH.read_text()
@@ -250,8 +267,11 @@ class TestParityTargetsResolve:
     def test_six_per_task_parity_target_bullets_present(self) -> None:
         # §1 (Investigations, shipped) + 5.1 (KB) + 5.2 (Ingestion Stats) +
         # 5.3a (Sources) + 5.3b (Spending) + 5.4 (Metrics) = 6 blocks with
-        # exactly one '- **Parity target:**' field apiece.
-        bullets = _PARITY_TARGET_BULLET_RE.findall(_doc_body())
+        # exactly one '- **Parity target:**' field apiece. Scoped to the
+        # Milestone-2.1 window (§1-§5) — see `_milestone_2_1_body()` — so
+        # §9's own net-new-route parity-target bullets (Task 8.6) don't
+        # inflate this Milestone-2.1-specific count.
+        bullets = _PARITY_TARGET_BULLET_RE.findall(_milestone_2_1_body())
         assert len(bullets) == 6, (
             f"expected 6 per-task '- **Parity target:**' bullets (§1-§5), "
             f"found {len(bullets)}: {bullets}"
@@ -271,8 +291,11 @@ class TestParityTargetsResolve:
     def test_all_six_per_task_bullets_are_retired_by_task_6_3(self) -> None:
         # Every Milestone-2.1 migrated route (§1-§5) was retired by Task 6.3
         # — guards against a bullet's RETIRED marker silently going missing
-        # (or being added to the wrong line) on a future doc edit.
-        body = _doc_body()
+        # (or being added to the wrong line) on a future doc edit. Scoped
+        # to the Milestone-2.1 window for the same reason as the "six"
+        # test above — §9's net-new routes were never migrated FROM
+        # anything, so they are correctly never "retired".
+        body = _milestone_2_1_body()
         retired_count = sum(
             1
             for match in _PARITY_TARGET_BULLET_RE.finditer(body)
@@ -352,3 +375,114 @@ class TestMetricsTask54ParityTarget:
             "Task 5.4's parity target must not cite an FR id (no FR covers "
             f"the MTTR dashboard) — found: {found}"
         )
+
+
+# ── AC: §9 "net-new React routes (no Jinja ancestor)" convention (Task 8.6) ─
+
+
+_SECTION9_HEADER = "## 9. Net-new React routes (no Jinja ancestor)"
+_NET_NEW_JINJA_MARKER = "- **Jinja URL(s):** none (net-new)"
+_SUBSECTION_RE = re.compile(r"^### (9[a-z])\. (.+)$", re.MULTILINE)
+
+
+def _section9_body() -> str:
+    text = _doc_text()
+    assert _SECTION9_HEADER in text, "§9 net-new-routes section not found or has drifted"
+    start = text.index(_SECTION9_HEADER)
+    return text[start:]
+
+
+def _section9_blocks() -> list[tuple[str, str, str]]:
+    """Return `(subsection_id, title, block_text)` for every `### 9<letter>.`
+    block in §9 — block_text runs from that heading to the next `###`/`##`
+    heading (or end of file)."""
+    section = _section9_body()
+    matches = list(_SUBSECTION_RE.finditer(section))
+    assert matches, "no '### 9<letter>. <title>' blocks found under §9"
+    blocks: list[tuple[str, str, str]] = []
+    for i, match in enumerate(matches):
+        block_start = match.end()
+        block_end = matches[i + 1].start() if i + 1 < len(matches) else len(section)
+        blocks.append((match.group(1), match.group(2), section[block_start:block_end]))
+    return blocks
+
+
+class TestNetNewRoutesSection:
+    """AC [T] (Task 8.6): '§9 doc convention + guard test' — a net-new React
+    route (one with no Jinja ancestor to redirect from/retire) must be
+    documented in §9 using the `Jinja URL(s): none (net-new)` marker, with
+    a `Parity target` that resolves per the same rules every other block
+    in this doc follows (proven for free by `TestParityTargetsResolve
+    .test_each_task_block_parity_target_resolves`, which sweeps the WHOLE
+    document body, §9 included — see that test and `_milestone_2_1_body()`
+    above for why the Milestone-2.1-specific counts stay unaffected)."""
+
+    def test_section9_header_present(self) -> None:
+        assert _SECTION9_HEADER in _doc_text()
+
+    def test_at_least_two_net_new_blocks_present(self) -> None:
+        # 9a (/app/login, Task 8.6) + 9b (/app/admin/users, reserved for
+        # Task 8.7) — a future net-new route (e.g. a later Task 8.x view)
+        # only needs to ADD a block here, never remove one, so this is a
+        # floor, not an exact count.
+        blocks = _section9_blocks()
+        assert len(blocks) >= 2, f"expected >=2 §9 blocks, found {len(blocks)}: {blocks}"
+
+    def test_every_section9_block_uses_the_net_new_jinja_marker(self) -> None:
+        # THE net-new-specific guard: every §9 block must mark its
+        # '- **Jinja URL(s):**' field with the literal 'none (net-new)'
+        # string — never a real path (there isn't one) and never omitted.
+        failures = []
+        for subsection_id, title, block in _section9_blocks():
+            if _NET_NEW_JINJA_MARKER not in block:
+                failures.append((subsection_id, title))
+        assert not failures, (
+            f"§9 block(s) missing the exact '{_NET_NEW_JINJA_MARKER}' marker: "
+            f"{failures}"
+        )
+
+    def test_every_section9_block_has_a_resolving_parity_target(
+        self, valid_fr_ids: set[str]
+    ) -> None:
+        failures = []
+        for subsection_id, title, block in _section9_blocks():
+            match = _PARITY_TARGET_BULLET_RE.search(block)
+            if match is None:
+                failures.append((subsection_id, title, "no '- **Parity target:**' bullet"))
+                continue
+            ok, problems = _target_resolves(match.group(1), valid_fr_ids)
+            if not ok:
+                failures.append((subsection_id, title, problems))
+        assert not failures, f"§9 block(s) with an unresolved parity target: {failures}"
+
+    def test_app_login_documented_as_net_new(self) -> None:
+        blocks = _section9_blocks()
+        login_blocks = [
+            block for _id, _title, block in blocks if "`/app/login`" in block
+        ]
+        assert login_blocks, "expected a §9 block documenting `/app/login`"
+        assert _NET_NEW_JINJA_MARKER in login_blocks[0]
+
+    def test_app_admin_users_noted_as_upcoming_for_task_8_7(self) -> None:
+        blocks = _section9_blocks()
+        admin_blocks = [
+            block for _id, _title, block in blocks if "`/app/admin/users`" in block
+        ]
+        assert admin_blocks, (
+            "expected a §9 block noting `/app/admin/users` as reserved/upcoming "
+            "for Task 8.7"
+        )
+        assert "8.7" in admin_blocks[0]
+
+    def test_fabricated_fr_citation_is_rejected(self, valid_fr_ids: set[str]) -> None:
+        """Regression guard for the guard itself: a §9-shaped block citing
+        an FR id that does NOT exist in docs/reqs/main.md must fail
+        `_target_resolves()` — proving this section's validation is not
+        vacuously true. (Does not touch the real doc; constructs a synthetic
+        block text and drives the same helper the tests above use.)"""
+        fabricated = "- **Jinja URL(s):** none (net-new)\n- **Parity target:** FR9999\n"
+        match = _PARITY_TARGET_BULLET_RE.search(fabricated)
+        assert match is not None
+        ok, problems = _target_resolves(match.group(1), valid_fr_ids)
+        assert ok is False
+        assert problems
