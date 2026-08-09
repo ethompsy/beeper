@@ -82,15 +82,43 @@ by `user_name_lc` for a stable, predictable table order (`list_users()`
 itself returns Qdrant scroll order, which is not guaranteed stable).
 
 ── One additive `identity_store` change (flagged prominently) ─────────────
-`IdentityStoreService.update_user()` gains one new keyword-only parameter,
-`password_hash: str | None = None` (default = no-op, exactly the same
-additive-kwarg pattern Task 8.8 already used on this same method for
-`user_name`/`emails`/`group_ids`) — needed because `POST
+`IdentityStoreService.update_user()` gains two new keyword-only
+parameters: `password_hash: str | None = None` (default = no-op, exactly
+the same additive-kwarg pattern Task 8.8 already used on this same method
+for `user_name`/`emails`/`group_ids`) — needed because `POST
 /<user_id>/reset-password` must persist a freshly-hashed password onto an
-EXISTING record, and no pre-8.7 write primitive could do that (
-`create_local_user()` only sets a hash at creation time). See that
-parameter's docstring in `identity_store.py` and
-`ui/tests/test_admin_users_api.py::TestPasswordResetHashPersistence`.
+EXISTING record, and no pre-8.7 write primitive could do that
+(`create_local_user()` only sets a hash at creation time); and
+`guard_last_admin: bool = False` (see the next section). See both
+parameters' docstrings in `identity_store.py` and
+`ui/tests/test_admin_users_api.py::TestPasswordResetHashPersistence` /
+`::TestLastAdminProtection`.
+
+── Security-review fix: atomic last-admin guard (post-review addendum) ────
+The FIRST version of `patch_user()` below called
+`store.would_orphan_admins(...)` (an unlocked read) and, if it returned
+`False`, called `store.update_user(...)` as a SEPARATE, later-locked call
+— a TOCTOU race: two concurrent demotions of two different admins could
+each observe "not the last admin" before either write landed, together
+orphaning the store despite both individual requests "passing" the guard
+(security review, MEDIUM finding #1). Fixed by routing this refusal
+through `update_user(..., guard_last_admin=True)` instead, which performs
+the equivalent check INSIDE its own `self._write_lock` critical section —
+see that parameter's docstring in `identity_store.py` for the full
+before/after. `would_orphan_admins()` itself is untouched and still used
+nowhere in this file's write path (kept as a public pre-check primitive
+for other callers, e.g. a future UI wanting to proactively disable a
+control).
+
+Also per that same review (MEDIUM finding #2): every `request.get_json
+(silent=True)` call below is followed by an explicit `isinstance(body,
+dict)` check before any `.get()` call — `silent=True) or {}` only
+substitutes the empty-object default for a FALSY parsed value (`None`,
+`{}`, `[]`, `0`, `""`, `False`); a syntactically-valid but non-object JSON
+top-level value (`[1,2,3]`, `"x"`, `42`, `true`) is truthy and previously
+passed through unchanged into `body.get(...)`, raising an unhandled
+`AttributeError` (Flask's default, non-RFC7807 500) instead of this
+module's own `422 validation-failed`.
 """
 
 from __future__ import annotations
@@ -103,14 +131,13 @@ from beeper_ui.middleware.permissions import require_role
 from beeper_ui.services.identity_store import VALID_ROLES as STORE_VALID_ROLES
 from beeper_ui.services.identity_store import (
     DuplicateUserError,
+    LastAdminError,
     UserRecord,
     get_identity_store,
 )
 from beeper_ui.services.password_hashing import MIN_PASSWORD_LENGTH, hash_password
 
-admin_users_api_bp = Blueprint(
-    "admin_users_api", __name__, url_prefix="/api/v1/admin/users"
-)
+admin_users_api_bp = Blueprint("admin_users_api", __name__, url_prefix="/api/v1/admin/users")
 
 _ERROR_BASE = "https://beeper.dev/errors"
 
@@ -178,6 +205,29 @@ def _scim_owned_conflict(record: UserRecord) -> tuple[Response, int, dict[str, s
     return None
 
 
+def _json_object_body() -> dict[str, Any] | tuple[Response, int, dict[str, str]]:
+    """Parse the request body and require it to be a JSON object.
+
+    Security-review fix (Task 8.7, MEDIUM finding #2): `request.get_json
+    (silent=True) or {}` only substitutes `{}` for a FALSY parsed value —
+    a truthy non-dict body (`[1,2,3]`, `"x"`, `42`, `true`) passed through
+    unchanged into a subsequent `.get()` call, raising an unhandled
+    `AttributeError` (an uncontrolled 500, not this module's own RFC7807
+    `422`). Every route below calls this instead of parsing inline; a
+    caller checks `isinstance(result, dict)` — if `False`, `result` is
+    already the `_problem()` tuple to return directly.
+    """
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return _problem(
+            type_suffix="validation-failed",
+            title="Validation Failed",
+            status=422,
+            detail="Request body must be a JSON object.",
+        )
+    return body
+
+
 def _validate_password(password: str) -> str | None:
     """Returns an error detail string if `password` fails the 8.6 minimum
     -length rule, else `None`. No composition/rotation policy — ADR §6 /
@@ -221,7 +271,9 @@ def create_user() -> _JsonResponse:
             ),
         )
 
-    body = request.get_json(silent=True) or {}
+    body = _json_object_body()
+    if not isinstance(body, dict):
+        return body
     username = str(body.get("user_name") or body.get("username") or "").strip()
     display_name = str(body.get("display_name") or "").strip()
     password = str(body.get("password") or "")
@@ -286,7 +338,9 @@ def patch_user(user_id: str) -> _JsonResponse:
     if conflict is not None:
         return conflict
 
-    body = request.get_json(silent=True) or {}
+    body = _json_object_body()
+    if not isinstance(body, dict):
+        return body
     has_role = "role" in body
     has_active = "active" in body
     if not has_role and not has_active:
@@ -315,11 +369,22 @@ def patch_user(user_id: str) -> _JsonResponse:
             detail="active must be a boolean.",
         )
 
-    # ADR §5.3 / FR60: last-admin protection is a STORE-LEVEL primitive
-    # (`would_orphan_admins`) the admin UI must call BEFORE mutating —
-    # `update_user()` itself never refuses (SCIM writes must alarm, not
-    # 409, per ADR §5.3), so this refusal is this route's responsibility.
-    if store.would_orphan_admins(user_id, new_role=new_role, new_active=new_active):
+    # ADR §5.3 / FR60: last-admin protection. `guard_last_admin=True` makes
+    # `update_user()` raise `LastAdminError` INSTEAD of writing, atomically
+    # (inside its own write-lock) — NOT a separate `would_orphan_admins()`
+    # pre-check followed by a separately-locked write, which had a TOCTOU
+    # race (security review, MEDIUM finding #1 — see this module's
+    # docstring and `update_user()`'s in `identity_store.py`).
+    # `update_user()` itself still never refuses BY DEFAULT (SCIM writes
+    # must alarm, not 409, per ADR §5.3) — this route is what opts in.
+    try:
+        updated = store.update_user(
+            user_id,
+            role=new_role if has_role else None,
+            active=new_active if has_active else None,
+            guard_last_admin=True,
+        )
+    except LastAdminError:
         return _problem(
             type_suffix="last-admin",
             title="Last Admin Protected",
@@ -329,12 +394,6 @@ def patch_user(user_id: str) -> _JsonResponse:
                 "admin before demoting or deactivating this account."
             ),
         )
-
-    updated = store.update_user(
-        user_id,
-        role=new_role if has_role else None,
-        active=new_active if has_active else None,
-    )
     return jsonify(_user_to_dict(updated))
 
 
@@ -360,7 +419,9 @@ def reset_password(user_id: str) -> _JsonResponse:
     if conflict is not None:
         return conflict
 
-    body = request.get_json(silent=True) or {}
+    body = _json_object_body()
+    if not isinstance(body, dict):
+        return body
     password = str(body.get("password") or "")
     password_problem = _validate_password(password)
     if password_problem:

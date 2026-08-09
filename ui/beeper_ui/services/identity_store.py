@@ -84,6 +84,28 @@ class UserNotFoundError(IdentityStoreError):
     """Raised when a mutation targets a user id that doesn't exist."""
 
 
+class LastAdminError(IdentityStoreError):
+    """Raised by `update_user(..., guard_last_admin=True)` when the write
+    would leave zero active admins.
+
+    ADDITIVE (Task 8.7 — security-review fix). Before this, the admin-users
+    route's last-admin refusal was TWO separate calls —
+    `would_orphan_admins()` (its own, UNLOCKED read) followed by a later,
+    separately-locked `update_user()` — which left a TOCTOU race: two
+    concurrent demotions of two different admins could each observe "not
+    the last admin" before either write landed, together orphaning the
+    store. This exception is raised from INSIDE `update_user()`'s own
+    `self._write_lock` critical section, so the check and the write are
+    now atomic relative to every other call through this same lock (the
+    only way any mutation reaches the store). `would_orphan_admins()`
+    itself is UNCHANGED and remains available as a cheap, non-mutating,
+    best-effort pre-check (e.g. for a UI that wants to disable a control
+    before the user even submits) — it is simply no longer the sole
+    enforcement mechanism for admin-UI callers, which now pass
+    `guard_last_admin=True` for the authoritative check.
+    """
+
+
 class GroupNotFoundError(IdentityStoreError):
     """Raised when a mutation targets a group id that doesn't exist.
 
@@ -168,9 +190,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _recompute_role(
-    group_display_names: Iterable[str], admin_groups: Iterable[str]
-) -> str:
+def _recompute_role(group_display_names: Iterable[str], admin_groups: Iterable[str]) -> str:
     """Derive `admin`/`user` from SCIM/OIDC group membership (ADR §3/§5.2).
 
     Case-insensitive membership test against `admin_groups` (already
@@ -203,9 +223,7 @@ class IdentityStoreService:
         self._cache_ttl = cache_ttl_seconds
         self._write_lock = threading.Lock()
         self._id_cache: dict[str, tuple[float, UserRecord | None]] = {}
-        self._lookup_cache: dict[
-            tuple[str, str | None], tuple[float, dict[str, Any] | None]
-        ] = {}
+        self._lookup_cache: dict[tuple[str, str | None], tuple[float, dict[str, Any] | None]] = {}
         self._zero_active_admins = False
         self._ensure_collections()
 
@@ -425,14 +443,30 @@ class IdentityStoreService:
         emails: Iterable[str] | None = None,
         group_ids: Iterable[str] | None = None,
         password_hash: str | None = None,
+        guard_last_admin: bool = False,
     ) -> UserRecord:
         """Partial update (role/active/display_name/user_name/emails/
         group_ids/password_hash). Raises `UserNotFoundError` if `user_id`
-        doesn't exist. Callers that must refuse a last-admin-orphaning
-        write (Task 8.7's admin UI, per ADR §5.3's `409 last-admin`) should
-        check `would_orphan_admins()` BEFORE calling this — this method
-        itself never refuses (see `_after_mutation`'s alarm-only behavior
-        below).
+        doesn't exist. By default this method never refuses on last-admin
+        grounds (see `_after_mutation`'s alarm-only behavior below) — SCIM
+        writes (Task 8.8) must stay alarm-only per ADR §5.3 ("a hard 409 to
+        the IdP would page someone with a permanent provisioning error").
+
+        `guard_last_admin=True` (Task 8.7's admin UI; security-review fix)
+        makes this call raise `LastAdminError` INSTEAD of writing, still
+        inside this method's own `self._write_lock` critical section, if
+        the resulting role/active combination would leave zero active
+        admins. This replaces the admin-UI route's earlier two-call
+        pattern (a separate, unlocked `would_orphan_admins()` check
+        followed by a separately-locked write) — that pattern had a TOCTOU
+        race: two concurrent demotions of two different admins could each
+        observe "not the last admin" before either write landed, together
+        orphaning the store. Passing `guard_last_admin=True` closes that
+        race by making the check and the write atomic relative to every
+        other mutation, which all funnel through this same lock.
+        `would_orphan_admins()` remains available, unchanged, as a
+        non-mutating, best-effort pre-check (e.g. to proactively disable a
+        UI control) — it is simply no longer the sole enforcement point.
 
         ADDITIVE (Task 8.8 — SCIM surface): `user_name`, `emails`, and
         `group_ids` are new keyword-only parameters, all defaulting to
@@ -468,6 +502,25 @@ class IdentityStoreService:
             record = self._fetch_by_id_raw(user_id)
             if record is None:
                 raise UserNotFoundError(user_id)
+            if guard_last_admin:
+                # Same predicate as `would_orphan_admins()`, but evaluated
+                # HERE — inside the lock this method already holds for its
+                # own write — so no other mutation can interleave between
+                # this check and the `_upsert()` below. `count_active_admins`
+                # is a read (no lock of its own), but every WRITE that could
+                # change its answer is itself serialized on `self._write_lock`,
+                # which this call already holds — that's what makes the
+                # check-then-write atomic.
+                currently_counted = record.role == "admin" and record.active
+                resulting_role = role if role is not None else record.role
+                resulting_active = active if active is not None else record.active
+                still_counted = resulting_role == "admin" and resulting_active
+                if (
+                    currently_counted
+                    and not still_counted
+                    and self.count_active_admins(exclude_user_id=user_id) == 0
+                ):
+                    raise LastAdminError(user_id)
             if user_name is not None:
                 new_lc = user_name.strip().casefold()
                 if not new_lc:
@@ -648,16 +701,27 @@ class IdentityStoreService:
     def would_orphan_admins(
         self, user_id: str, *, new_role: str | None = None, new_active: bool | None = None
     ) -> bool:
-        """Store-level last-admin guard PRIMITIVE (ADR §5.3) for Task 8.7's
-        admin UI to use for its `409 last-admin` refusal.
+        """Store-level last-admin guard PRIMITIVE (ADR §5.3).
 
         NOT enforced by this module's own writes — `update_user()` /
-        `adopt_or_create_scim_user()` never refuse on this basis; per ADR
-        §5.3, "SCIM writes are not refused... they alarm instead" (a hard
-        409 to the IdP would page someone with a permanent provisioning
-        error). 8.7's admin-UI mutation routes are expected to call this
-        BEFORE calling `update_user()`/`deactivate_user()` and return `409
-        last-admin` themselves when it returns True.
+        `adopt_or_create_scim_user()` never refuse on this basis by
+        default; per ADR §5.3, "SCIM writes are not refused... they alarm
+        instead" (a hard 409 to the IdP would page someone with a
+        permanent provisioning error).
+
+        THIS METHOD IS NOT ATOMIC WITH ANY SUBSEQUENT WRITE (security
+        -review finding, Task 8.7): it takes an unlocked snapshot read, so
+        a caller that calls this and THEN separately calls `update_user()`
+        has a TOCTOU race window between the two calls. Task 8.7's
+        admin-UI mutation route does NOT use this method for its `409
+        last-admin` enforcement for that reason — it calls
+        `update_user(..., guard_last_admin=True)` instead, which performs
+        the equivalent check atomically inside its own write-lock. This
+        method remains public and useful as a cheap, non-mutating,
+        best-effort PRE-check only (e.g. a caller that wants to disable a
+        UI control before the user even submits, tolerating a rare
+        stale-by-milliseconds answer) — never as the sole enforcement for
+        a caller that needs a hard guarantee.
 
         Returns True iff `user_id` is CURRENTLY a counted active admin and
         the proposed `new_role`/`new_active` change would remove them from
@@ -735,9 +799,7 @@ class IdentityStoreService:
     ) -> GroupRecord:
         display_name_lc = display_name.strip().casefold()
         with self._write_lock:
-            existing = (
-                self._fetch_group_by_external_id_raw(external_id) if external_id else None
-            )
+            existing = self._fetch_group_by_external_id_raw(external_id) if external_id else None
             if existing is None:
                 existing = self._fetch_group_by_display_name_lc_raw(display_name_lc)
             if existing is not None:

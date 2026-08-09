@@ -20,6 +20,13 @@ AC [T] linkage (docs/plans/react-ui.md Task 8.7):
   - oidc-mode create-user decision -> TestOidcModeCreateRefused
   - route registration (none -> 404; local/oidc -> present) ->
     TestRouteRegistration
+
+Security-review addendum (post-review fixes, both MEDIUM):
+  - non-dict JSON body -> 422 validation-failed, never an unhandled 500 ->
+    TestMalformedJsonBody
+  - last-admin guard is atomic (no separate unlocked pre-check +
+    later-locked write) -> TestLastAdminGuardAtomicity
+  - CSRF regression guard for this blueprint specifically -> TestCsrf
 """
 
 from __future__ import annotations
@@ -34,6 +41,7 @@ from beeper_ui.app import create_app
 from beeper_ui.config import TestingConfig
 from beeper_ui.services.identity_store import (
     IdentityStoreService,
+    LastAdminError,
     reset_identity_store,
     set_identity_store_for_testing,
 )
@@ -811,3 +819,188 @@ class TestCreatedUserCanLogIn:
                 headers=SAME_ORIGIN,
             )
             assert new_login.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# [T] Security-review fix #2: malformed (non-dict) JSON body -> 422, never 500
+# ---------------------------------------------------------------------------
+
+
+class TestMalformedJsonBody:
+    """A syntactically-valid but non-object JSON top-level value (a list,
+    string, number, or bool) previously reached `body.get(...)` unchanged
+    (`get_json(silent=True) or {}` only substitutes `{}` for a FALSY
+    value), raising an unhandled `AttributeError` — Flask's default,
+    non-RFC7807 500. Every mutating route must instead return this
+    module's own `422 validation-failed`."""
+
+    @pytest.mark.parametrize("payload", [[1, 2, 3], "just a string", 42, True])
+    def test_create_user_non_dict_body_422_not_500(
+        self, seeded_store: IdentityStoreService, payload: object
+    ) -> None:
+        app = _make_app(_LocalConfig)
+        with _admin_client(app, seeded_store) as client:
+            resp = client.post("/api/v1/admin/users/", json=payload, headers=SAME_ORIGIN)
+            assert resp.status_code == 422
+            assert resp.get_json()["type"] == "https://beeper.dev/errors/validation-failed"
+
+    @pytest.mark.parametrize("payload", [[1, 2, 3], "just a string", 42, True])
+    def test_patch_user_non_dict_body_422_not_500(
+        self, seeded_store: IdentityStoreService, payload: object
+    ) -> None:
+        target = seeded_store.create_local_user(
+            user_name="malformed1@corp.com", password_hash=hash_password("x" * 12), role="user"
+        )
+        app = _make_app(_LocalConfig)
+        with _admin_client(app, seeded_store) as client:
+            resp = client.patch(
+                f"/api/v1/admin/users/{target.id}", json=payload, headers=SAME_ORIGIN
+            )
+            assert resp.status_code == 422
+            assert resp.get_json()["type"] == "https://beeper.dev/errors/validation-failed"
+
+    @pytest.mark.parametrize("payload", [[1, 2, 3], "just a string", 42, True])
+    def test_reset_password_non_dict_body_422_not_500(
+        self, seeded_store: IdentityStoreService, payload: object
+    ) -> None:
+        target = seeded_store.create_local_user(
+            user_name="malformed2@corp.com", password_hash=hash_password("x" * 12), role="user"
+        )
+        app = _make_app(_LocalConfig)
+        with _admin_client(app, seeded_store) as client:
+            resp = client.post(
+                f"/api/v1/admin/users/{target.id}/reset-password",
+                json=payload,
+                headers=SAME_ORIGIN,
+            )
+            assert resp.status_code == 422
+            assert resp.get_json()["type"] == "https://beeper.dev/errors/validation-failed"
+
+
+# ---------------------------------------------------------------------------
+# [T] Security-review fix #1: atomic last-admin guard (TOCTOU close)
+# ---------------------------------------------------------------------------
+
+
+class TestLastAdminGuardAtomicity:
+    """Store-level proof that `update_user(..., guard_last_admin=True)`
+    raises `LastAdminError` from INSIDE its own write-lock critical
+    section, rather than via a separate, unlocked `would_orphan_admins()`
+    pre-check — the fix for the TOCTOU race the security review flagged
+    (two concurrent demotions of two different admins could each pass a
+    separate pre-check before either write landed)."""
+
+    def test_guard_last_admin_raises_and_does_not_write(
+        self, seeded_store: IdentityStoreService
+    ) -> None:
+        admin = seeded_store.create_local_user(
+            user_name="soleadmin@corp.com", password_hash=hash_password("x" * 12), role="admin"
+        )
+        with pytest.raises(LastAdminError):
+            seeded_store.update_user(admin.id, role="user", guard_last_admin=True)
+        unchanged = seeded_store.get_by_id(admin.id, use_cache=False)
+        assert unchanged is not None
+        assert unchanged.role == "admin"
+
+    def test_guard_last_admin_allows_non_orphaning_write(
+        self, seeded_store: IdentityStoreService
+    ) -> None:
+        seeded_store.create_local_user(
+            user_name="admin-a@corp.com", password_hash=hash_password("x" * 12), role="admin"
+        )
+        second = seeded_store.create_local_user(
+            user_name="admin-b@corp.com", password_hash=hash_password("x" * 12), role="admin"
+        )
+        updated = seeded_store.update_user(second.id, role="user", guard_last_admin=True)
+        assert updated.role == "user"
+
+    def test_guard_last_admin_false_by_default_never_raises(
+        self, seeded_store: IdentityStoreService
+    ) -> None:
+        """Default behavior (SCIM's own call sites, and any pre-8.7 caller)
+        is UNCHANGED — `update_user()` without `guard_last_admin=True`
+        still never refuses, per ADR §5.3's "SCIM writes alarm instead"."""
+        admin = seeded_store.create_local_user(
+            user_name="scimstyle@corp.com", password_hash=hash_password("x" * 12), role="admin"
+        )
+        updated = seeded_store.update_user(admin.id, role="user")
+        assert updated.role == "user"
+
+    def test_the_route_uses_the_atomic_guard_not_a_separate_precheck(
+        self, seeded_store: IdentityStoreService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """White-box regression guard (security-review recommendation #4):
+        `patch_user()` must call `update_user(..., guard_last_admin=True)`
+        and must NOT call `would_orphan_admins()` at all — asserts the
+        route was actually rewired to the atomic primitive, not just that
+        its observable 409 behavior still happens to pass."""
+        import beeper_ui.routes.admin_users as admin_users_module
+
+        orphan_calls: list[str] = []
+        original = IdentityStoreService.would_orphan_admins
+
+        def spy(self: IdentityStoreService, user_id: str, **kwargs: object) -> bool:
+            orphan_calls.append(user_id)
+            return original(self, user_id, **kwargs)
+
+        monkeypatch.setattr(IdentityStoreService, "would_orphan_admins", spy)
+
+        target = seeded_store.create_local_user(
+            user_name="routecheck@corp.com", password_hash=hash_password("x" * 12), role="user"
+        )
+        app = _make_app(_LocalConfig)
+        with _admin_client(app, seeded_store) as client:
+            resp = client.patch(
+                f"/api/v1/admin/users/{target.id}", json={"active": False}, headers=SAME_ORIGIN
+            )
+            assert resp.status_code == 200
+        assert orphan_calls == [], (
+            "admin_users.patch_user() called would_orphan_admins() — it should call "
+            "update_user(..., guard_last_admin=True) exclusively"
+        )
+        assert admin_users_module.LastAdminError is LastAdminError
+
+
+# ---------------------------------------------------------------------------
+# [T] CSRF regression guard for this blueprint (security-review recommendation #3)
+# ---------------------------------------------------------------------------
+
+
+class TestCsrf:
+    """The shared `before_request` hook (`resolve_request_identity()`)
+    covers CSRF for `/api/v1/admin/*` since it is NOT in
+    `permissions.EXEMPT_PATH_PREFIXES` — this module's routes do not
+    self-enforce it. This is cheap regression insurance against a future
+    accidental addition of `/api/v1/admin` to that exemption list."""
+
+    def test_patch_without_origin_or_referer_403_csrf_rejected(
+        self, seeded_store: IdentityStoreService
+    ) -> None:
+        target = seeded_store.create_local_user(
+            user_name="csrfcheck@corp.com", password_hash=hash_password("x" * 12), role="user"
+        )
+        app = _make_app(_LocalConfig)
+        with _admin_client(app, seeded_store) as client:
+            resp = client.patch(f"/api/v1/admin/users/{target.id}", json={"active": False})
+            assert resp.status_code == 403
+            assert resp.get_json()["type"] == "https://beeper.dev/errors/csrf-rejected"
+        unchanged = seeded_store.get_by_id(target.id, use_cache=False)
+        assert unchanged is not None
+        assert unchanged.active is True
+
+    def test_create_with_cross_origin_origin_header_403_csrf_rejected(
+        self, seeded_store: IdentityStoreService
+    ) -> None:
+        app = _make_app(_LocalConfig)
+        with _admin_client(app, seeded_store) as client:
+            resp = client.post(
+                "/api/v1/admin/users/",
+                json={
+                    "user_name": "evil@corp.com",
+                    "password": "a-real-password-1",
+                    "role": "user",
+                },
+                headers={"Origin": "http://evil.example.com"},
+            )
+            assert resp.status_code == 403
+            assert resp.get_json()["type"] == "https://beeper.dev/errors/csrf-rejected"
