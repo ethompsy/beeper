@@ -84,6 +84,15 @@ class UserNotFoundError(IdentityStoreError):
     """Raised when a mutation targets a user id that doesn't exist."""
 
 
+class GroupNotFoundError(IdentityStoreError):
+    """Raised when a mutation targets a group id that doesn't exist.
+
+    ADDITIVE (Task 8.8 — SCIM surface), mirrors `UserNotFoundError`. See
+    `update_group()`'s docstring for why this — and that method — exist
+    alongside the pre-existing `upsert_group()`.
+    """
+
+
 @dataclass
 class UserRecord:
     """`beeper_users` schema (ADR §5.1). Point id = uuid4 (== `id` below)."""
@@ -303,6 +312,23 @@ class IdentityStoreService:
         """Case-insensitive lookup by `userName` (local login / SCIM `userName eq`)."""
         return self._fetch_by_username_lc_raw(user_name.strip().casefold())
 
+    def get_by_external_id(self, external_id: str) -> UserRecord | None:
+        """Lookup by SCIM `externalId` (Task 8.8: `externalId eq` filter,
+        `GET /Users/{id}` after adoption, PUT/PATCH/DELETE resource
+        lookup).
+
+        ADDITIVE — Task 8.8 (SCIM surface). Task 8.3 exposed only
+        `lookup()` (a `{role, active}`-shaped seam for the resolver) and
+        the private `_fetch_by_external_id_raw`; the SCIM route layer
+        needs a full `UserRecord` keyed by `externalId` without going
+        through the resolver's cached, narrower `lookup()` shape (e.g. a
+        SCIM `GET /Users/{id}` must return every SCIM attribute, and a
+        `PUT`/`PATCH`/`DELETE` must resolve the full record to mutate).
+        Trivial pass-through to the existing private raw-fetch helper —
+        no new query shape, no cache semantics change.
+        """
+        return self._fetch_by_external_id_raw(external_id)
+
     def lookup(
         self, email_lc: str, external_id: str | None = None, *, use_cache: bool = True
     ) -> dict[str, Any] | None:
@@ -395,25 +421,58 @@ class IdentityStoreService:
         role: str | None = None,
         active: bool | None = None,
         display_name: str | None = None,
+        user_name: str | None = None,
+        emails: Iterable[str] | None = None,
+        group_ids: Iterable[str] | None = None,
     ) -> UserRecord:
-        """Partial update (role/active/display_name). Raises
-        `UserNotFoundError` if `user_id` doesn't exist. Callers that must
-        refuse a last-admin-orphaning write (Task 8.7's admin UI, per ADR
-        §5.3's `409 last-admin`) should check `would_orphan_admins()`
-        BEFORE calling this — this method itself never refuses (see
-        `_after_mutation`'s alarm-only behavior below)."""
+        """Partial update (role/active/display_name/user_name/emails/
+        group_ids). Raises `UserNotFoundError` if `user_id` doesn't exist.
+        Callers that must refuse a last-admin-orphaning write (Task 8.7's
+        admin UI, per ADR §5.3's `409 last-admin`) should check
+        `would_orphan_admins()` BEFORE calling this — this method itself
+        never refuses (see `_after_mutation`'s alarm-only behavior below).
+
+        ADDITIVE (Task 8.8 — SCIM surface): `user_name`, `emails`, and
+        `group_ids` are new keyword-only parameters, all defaulting to
+        `None` (no-op) — every pre-existing call site (Task 8.3's own
+        tests, Task 8.6/8.7's local-account and admin-UI callers) is
+        unaffected. Needed because a SCIM `PUT /Users/{id}` is a
+        full-resource replace that can rename `userName` and/or replace
+        `emails`, and `group_ids` is the store's documented "read-model"
+        of current group membership (ADR §5.1) that SCIM group-membership
+        PATCH/PUT keeps in sync so the admin UI (Task 8.7) can render it
+        later — without this, SCIM would have needed a second write path
+        duplicating this method's lock/cache/alarm bookkeeping.
+        `user_name` renames go through the same uniqueness check as
+        `create_local_user()` (case-insensitive, excludes self), raising
+        `DuplicateUserError` on collision.
+        """
         if role is not None and role not in VALID_ROLES:
             raise ValueError(f"role must be one of {sorted(VALID_ROLES)}, got {role!r}")
         with self._write_lock:
             record = self._fetch_by_id_raw(user_id)
             if record is None:
                 raise UserNotFoundError(user_id)
+            if user_name is not None:
+                new_lc = user_name.strip().casefold()
+                if not new_lc:
+                    raise ValueError("user_name must not be empty")
+                if new_lc != record.user_name_lc:
+                    existing = self._fetch_by_username_lc_raw(new_lc)
+                    if existing is not None and existing.id != user_id:
+                        raise DuplicateUserError(f"user_name {user_name!r} already exists")
+                record.user_name = user_name
+                record.user_name_lc = new_lc
             if role is not None:
                 record.role = role
             if active is not None:
                 record.active = active
             if display_name is not None:
                 record.display_name = display_name
+            if emails is not None:
+                record.emails = list(emails)
+            if group_ids is not None:
+                record.group_ids = list(group_ids)
             record.last_modified = _now_iso()
             self._upsert(record)
         self._after_mutation(user_id)
@@ -440,6 +499,28 @@ class IdentityStoreService:
             record.last_modified = _now_iso()
             self._upsert(record)
         return record
+
+    def delete_user(self, user_id: str) -> bool:
+        """Hard-delete a user record. Returns True if a record was deleted,
+        False if `user_id` didn't exist (idempotent — no exception).
+
+        ADDITIVE (Task 8.8 — SCIM surface). No pre-8.8 caller performs a
+        hard delete: `local`-mode accounts use `deactivate_user()` (ADR
+        §6: "no hard delete in v1" for the local-fallback pillar — history
+        stays recoverable, prevents username-reuse identity confusion).
+        SCIM is different: FR57/ADR §4 explicitly require `DELETE
+        /Users/{id}` to be a real, hard delete (the IdP's own deprovisioning
+        contract), so this is a genuinely new write primitive, not a
+        relaxation of the local-mode policy above — the SCIM route layer is
+        the only caller."""
+        with self._write_lock:
+            record = self._fetch_by_id_raw(user_id)
+            if record is None:
+                return False
+            self._client.delete(collection_name=USERS_COLLECTION, points_selector=[user_id])
+        self.invalidate_cache(user_id)
+        self._check_zero_admin_alarm()
+        return True
 
     # ------------------------------------------------------------------
     # Writes — SCIM adopt-and-link (Task 8.8 callers; ADR §5.2 HIGH-6)
@@ -641,8 +722,77 @@ class IdentityStoreService:
             )
         return group
 
+    def update_group(
+        self,
+        group_id: str,
+        *,
+        display_name: str | None = None,
+        member_ids: Iterable[str] | None = None,
+    ) -> GroupRecord:
+        """Update a group resolved BY ITS SCIM RESOURCE ID (`id`), in place
+        — never forks a second row. Raises `GroupNotFoundError` if
+        `group_id` doesn't exist.
+
+        ADDITIVE (Task 8.8 — SCIM surface). `upsert_group()` (Task 8.3)
+        keys its find-or-create lookup on `external_id` first,
+        `display_name_lc` second — the right primitive for an idempotent
+        SCIM *push* keyed by the IdP's own identifiers, but wrong for `PUT
+        /Groups/{id}` and the membership-PATCH routes: a SCIM client that
+        already resolved the group by its `id` and is renaming
+        `displayName` in the same request would make `upsert_group()` look
+        up the *new* name, fail to find this row, and silently create a
+        SECOND group instead of updating the one being edited — worse for
+        a group with no `externalId` at all, which falls through to the
+        display-name-only match entirely. This method resolves strictly
+        by `id`, matching `update_user()`'s existing shape and its
+        "resolve first, then mutate that exact row" contract.
+        """
+        with self._write_lock:
+            record = self._fetch_group_one(key="id", value=group_id)
+            if record is None:
+                raise GroupNotFoundError(group_id)
+            if display_name is not None:
+                record.display_name = display_name
+                record.display_name_lc = display_name.strip().casefold()
+            if member_ids is not None:
+                record.member_ids = list(member_ids)
+            self._client.upsert(
+                collection_name=GROUPS_COLLECTION,
+                points=[PointStruct(id=record.id, vector=[0.0], payload=record.to_payload())],
+            )
+        return record
+
     def get_group_by_external_id(self, external_id: str) -> GroupRecord | None:
         return self._fetch_group_by_external_id_raw(external_id)
+
+    def get_group_by_id(self, group_id: str) -> GroupRecord | None:
+        """ADDITIVE (Task 8.8 — SCIM surface): `GET /Groups/{id}` and every
+        `PUT`/`PATCH`/`DELETE /Groups/{id}` resolves the target group by
+        its SCIM resource `id` (our point id), not by `externalId` or
+        `displayName` — the only two lookups Task 8.3 exposed. Trivial
+        pass-through, same shape as `get_by_id()` on the user side."""
+        return self._fetch_group_one(key="id", value=group_id)
+
+    def delete_group(self, group_id: str) -> bool:
+        """Hard-delete a group record. Returns True if deleted, False if
+        `group_id` didn't exist (idempotent).
+
+        ADDITIVE (Task 8.8 — SCIM surface). Mirrors `delete_user()`: FR57/
+        ADR §4 specify `/Groups/{id} GET/PUT/PATCH/DELETE`, and unlike
+        users, groups have no pre-existing soft-deactivation concept at
+        all (`beeper_groups` is pure IdP-pushed passthrough, ADR §5.1) — a
+        SCIM group delete is simply a hard delete of the passthrough row.
+        Deleting a group does NOT retroactively touch any member's `role`
+        — SCIM clients that delete a group are expected to have already
+        removed its members (RFC 7644 does not require server-side
+        cascade), so no role recompute is triggered here; the route layer
+        documents this as a deliberate, RFC-conforming scope limit."""
+        with self._write_lock:
+            record = self._fetch_group_one(key="id", value=group_id)
+            if record is None:
+                return False
+            self._client.delete(collection_name=GROUPS_COLLECTION, points_selector=[group_id])
+        return True
 
     def list_groups(self, limit: int = 1000) -> list[GroupRecord]:
         try:

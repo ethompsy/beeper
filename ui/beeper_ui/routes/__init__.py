@@ -79,3 +79,19 @@ def register_blueprints(app: Flask) -> None:
     from beeper_ui.routes.metrics import metrics_api_bp
 
     app.register_blueprint(metrics_api_bp)
+
+    # Task 8.8 (ADR 0002 §1/§4): the SCIM 2.0 provisioning blueprint is
+    # registered ONLY when BEEPER_SCIM_ENABLED is true — disabled ⇒ not
+    # registered at all ⇒ /scim/v2/* 404s like any other undefined path
+    # (never a fingerprintable surface). `validate_boot_config()` already
+    # refuses BEEPER_SCIM_ENABLED=true outside `oidc` mode at boot (Task
+    # 8.3), so this flag alone is sufficient here — by the time
+    # register_blueprints() runs, `oidc` mode is guaranteed whenever this
+    # is true. Bearer-token presence is NOT checked here (see ADR §8):
+    # "enabled but unconfigured" is a per-request 403 inside the
+    # blueprint's own `before_request` (beeper_ui.routes.scim
+    # ._require_scim_bearer_auth`), not a registration-time refusal.
+    if app.config.get("BEEPER_SCIM_ENABLED", False):
+        from beeper_ui.routes.scim import scim_bp
+
+        app.register_blueprint(scim_bp)
