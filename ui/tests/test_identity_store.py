@@ -223,6 +223,28 @@ class TestUpdateUser:
         with pytest.raises(ValueError, match="role"):
             store.update_user(record.id, role="superadmin")
 
+    def test_update_password_hash_persists(self, store: IdentityStoreService) -> None:
+        """ADDITIVE (Task 8.7 — admin UI password reset): `update_user()`'s
+        new `password_hash` kwarg persists a fresh hash onto an EXISTING
+        record without touching role/active/origin. See
+        `beeper_ui.routes.admin_users`'s module docstring for the full
+        "one additive identity_store change" rationale."""
+        record = store.create_local_user(
+            user_name="ivy@corp.com", password_hash="old-hash", role="admin", active=True
+        )
+        updated = store.update_user(record.id, password_hash="new-hash")
+        assert updated.password_hash == "new-hash"
+        assert updated.role == "admin"
+        assert updated.active is True
+        assert updated.origin == "local"
+
+    def test_update_password_hash_none_is_a_no_op(self, store: IdentityStoreService) -> None:
+        record = store.create_local_user(
+            user_name="jack@corp.com", password_hash="untouched-hash", role="user"
+        )
+        updated = store.update_user(record.id, role="admin")
+        assert updated.password_hash == "untouched-hash"
+
     def test_deactivate_and_reactivate(self, store: IdentityStoreService) -> None:
         record = store.create_local_user(user_name="gail@corp.com", role="user")
         deactivated = store.deactivate_user(record.id)

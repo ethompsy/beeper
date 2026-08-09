@@ -463,16 +463,25 @@ class TestNetNewRoutesSection:
         assert login_blocks, "expected a §9 block documenting `/app/login`"
         assert _NET_NEW_JINJA_MARKER in login_blocks[0]
 
-    def test_app_admin_users_noted_as_upcoming_for_task_8_7(self) -> None:
+    def test_app_admin_users_documented_as_implemented_by_task_8_7(self) -> None:
+        # Updated by Task 8.7 itself (per that task's instructions: "the
+        # guard test ... will need its expectations extended accordingly")
+        # — the block started life as a Task 8.6-authored placeholder
+        # ("reserved for Task 8.7" / "not yet implemented") and now records
+        # the real, shipped route. Both checks matter: the block must still
+        # cite "8.7" (provenance) AND must no longer claim to be
+        # unimplemented (a stale "not yet implemented" marker left behind
+        # after the route ships would be a silent doc-drift regression).
         blocks = _section9_blocks()
         admin_blocks = [
             block for _id, _title, block in blocks if "`/app/admin/users`" in block
         ]
         assert admin_blocks, (
-            "expected a §9 block noting `/app/admin/users` as reserved/upcoming "
-            "for Task 8.7"
+            "expected a §9 block documenting `/app/admin/users`"
         )
         assert "8.7" in admin_blocks[0]
+        assert "not yet implemented" not in admin_blocks[0]
+        assert "implemented" in admin_blocks[0]
 
     def test_fabricated_fr_citation_is_rejected(self, valid_fr_ids: set[str]) -> None:
         """Regression guard for the guard itself: a §9-shaped block citing

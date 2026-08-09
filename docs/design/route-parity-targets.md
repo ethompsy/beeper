@@ -233,19 +233,28 @@ section:
   is a server-redirect flow with no React page of its own — out of scope
   here.
 
-### 9b. Admin users management (`/app/admin/users`) — reserved for Task 8.7
+### 9b. Admin users management (`/app/admin/users`) — implemented by Task 8.7
 
 - **Jinja URL(s):** none (net-new)
 - **React URL (canonical, dev-time, under `/app`):** `/app/admin/users`
 - **REACT_OWNED_PREFIXES value (future cutover):** n/a (see §9a).
 - **Parity target:** FR60 — user list/create/role-assign/deactivate/
   reactivate/password-reset, last-admin and SCIM-owned refusal states.
-- **Dual-mode/HTMX:** N/A — net-new.
-- **Permalink state to URL-encode:** none decided yet — left to Task 8.7.
-- **Data source:** `admin_users_api_bp` (`/api/v1/admin/users`, Task 8.7 —
-  not yet implemented) / `IdentityStoreService`.
-- **Status:** **not yet implemented.** Pinned here in advance — per this
-  doc's own opening rule ("pins a written parity target for every route
-  ... before its task starts") — so Task 8.7 has a target the moment it
-  begins, the same discipline Task 5.0 established for the Milestone 2.1
-  routes.
+- **Dual-mode/HTMX:** N/A — net-new; renders inside the authenticated
+  `AppLayout` sidebar shell (a Manage-group destination, unlike `/app/login`
+  in §9a), role-gated as a UI affordance (`useCurrentUser().role ===
+  "admin"` hides the nav item; the API — `require_role("admin")` on every
+  route — is the actual enforcement boundary).
+- **Permalink state to URL-encode:** none — no list filter/sort/pagination
+  state in v1 (a fixed, admin-managed-scale user table per ADR §6's
+  "minimal" scope).
+- **Data source:** `admin_users_api_bp` (`/api/v1/admin/users`,
+  `ui/beeper_ui/routes/admin_users.py`) / `IdentityStoreService`
+  (`ui/beeper_ui/services/identity_store.py`).
+- **Status:** **implemented (Task 8.7).** Registered whenever
+  `BEEPER_AUTH_MODE != "none"` (`local` and `oidc`; never `none` — see that
+  module's docstring for the registration + `oidc`-mode create-refusal
+  decisions). Read/write states: `409 last-admin` (demote/deactivate the
+  final active admin), `409 scim-owned-user` (write to a SCIM-linked
+  record while in `oidc` mode), `409 local-user-creation-unavailable`
+  (create attempted while in `oidc` mode).
