@@ -22,6 +22,11 @@ slack-sdk = "^3.27"
 # additions, recorded in the ADR: `requests`, `cryptography`.
 authlib = "^1.6"
 
+# Task 8.6 (ADR 0002 §6, FR59) — argon2id password hashing for `local`-mode
+# accounts. See ui/beeper_ui/services/password_hashing.py for the pinned
+# RFC 9106 §4 parameter choice.
+argon2-cffi = "^23.1"
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
 pytest-flask = "^1.3"

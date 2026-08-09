@@ -138,3 +138,7 @@ export type { KbEntryNotFoundProps } from './components/KbEntryNotFound'
 // re-exports), matching every other hook already exported below.
 export { useCurrentUser } from './hooks/useCurrentUser'
 export type { AuthMode, CurrentUserRecord, CurrentUserState } from './hooks/useCurrentUser'
+
+// Local-mode login primitive (Task 8.6, ADR 0002 §6, FR59).
+export { LoginForm } from './components/LoginForm'
+export type { LoginFormProps } from './components/LoginForm'

@@ -79,6 +79,27 @@ def create_app(config_class: type | None = None) -> Flask:
     # Register permission middleware (before_request identity resolver)
     init_permissions(app)
 
+    # Task 8.6: `flask create-admin` CLI (ADR 0002 §6 / FR61 recovery path).
+    # Registered unconditionally — see beeper_ui/cli.py's module docstring
+    # for why gating CLI *registration* on `BEEPER_AUTH_MODE` would be
+    # counterproductive for a command whose whole purpose is recovering a
+    # misconfigured deployment.
+    from beeper_ui.cli import register_cli
+
+    register_cli(app)
+
+    # Task 8.6: local-mode admin bootstrap (ADR 0002 §6, FR61) — idempotent
+    # seed from BEEPER_BOOTSTRAP_ADMIN_USERNAME/_PASSWORD, or (if neither is
+    # set) just the zero-active-admins alarm check. Never raises (see
+    # `beeper_ui.services.bootstrap`'s module docstring) and is a pure no-op
+    # outside `local` mode — mode `none` (the demo) never touches the
+    # identity store at all, preserving NFR26's "zero identity
+    # configuration" guarantee.
+    if app.config.get("BEEPER_AUTH_MODE", "none") == "local":
+        from beeper_ui.services.bootstrap import ensure_bootstrap_admin
+
+        ensure_bootstrap_admin(app)
+
     # Register markdown template filter
     setup_markdown_filter(app)
 

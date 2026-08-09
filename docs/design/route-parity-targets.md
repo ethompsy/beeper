@@ -173,3 +173,79 @@ Not in Milestone 2.1's scope (5.1–5.4). Recorded so a future task can be scope
 | 14 | Cost Insights | Manage | Later increment | §7 |
 | 15 | Notifications | Manage | Later increment | §7 |
 | 16 | Trust | Manage | Later increment | §7 |
+
+---
+
+## 9. Net-new React routes (no Jinja ancestor)
+
+Every route block in §1–§7 above ports an EXISTING Jinja view — "parity"
+means matching what the retired template already did. ADR 0002 (Milestone
+2.3, Identity & Access) introduces the first React routes with **no Jinja
+predecessor at all**: `/app/login` (Task 8.6) and, following it,
+`/app/admin/users` (Task 8.7). Neither one has a template to port from or
+retire — the UI was unauthenticated before ADR 0002, so there is nothing
+upstream of these routes except the FR text itself. This section is the
+convention for documenting that case, added by Task 8.6 per the ADR's own
+§6 instruction ("`docs/design/route-parity-targets.md` gains a §9
+'Net-new React routes (no Jinja ancestor)' block convention").
+
+**Block shape:** every net-new route block uses the same `- **Field:**`
+line set as §1–§5 above, with two differences the guard test
+(`ui/tests/test_route_parity_targets.py`) enforces specifically for this
+section:
+
+- **`- **Jinja URL(s):**` is always the literal string `none (net-new)`** —
+  never a real Jinja path (there isn't one) and never left blank (an empty
+  field would be indistinguishable from an oversight). This is the marker
+  the guard test's net-new-specific check looks for.
+- **`- **Parity target:**` cites the FR id(s) that define "done" for a
+  route with no template to diff against** — resolved against
+  `docs/reqs/main.md` exactly like every other block's citation (the
+  existing `_target_resolves()` check in the guard test needs no special
+  casing for this: an FR id is an FR id regardless of which section cites
+  it).
+
+### 9a. Local login (`/app/login`)
+
+- **Jinja URL(s):** none (net-new)
+- **React URL (canonical, dev-time, under `/app`):** `/app/login`
+- **REACT_OWNED_PREFIXES value (future cutover):** n/a — there is no bare
+  Jinja path to redirect from; `/app/login` is reached directly (via a
+  typed URL, a bookmark, or the `next=` redirect `resolve_request_identity()`
+  emits for an unauthenticated page/API request in `local` mode).
+- **Parity target:** FR59, FR61 — the uniform-401 local-login matrix
+  (unknown-user/bad-password/deactivated indistinguishable, constant
+  delay) and the bootstrap/recovery flow this page is the front door for.
+  No template citation applies (net-new).
+- **Dual-mode/HTMX:** N/A — never existed as a Jinja route; renders inside
+  the React shell, outside the authenticated sidebar chrome (a minimal
+  centered card, per ADR §6).
+- **Permalink state to URL-encode:** `next` — the post-login redirect
+  target, same-origin-validated both server-side
+  (`beeper_ui.middleware.session.build_login_redirect_next()`) and
+  client-side (`LoginPage.tsx`'s `resolveSafeNextPath()`; only a bare
+  `/app` or `/app/...` path is honored, everything else falls back to
+  `/app/investigations`).
+- **Data source:** `POST /api/v1/auth/login` / `GET /api/v1/auth/me`
+  (`ui/beeper_ui/routes/auth.py`) / `IdentityStoreService`
+  (`ui/beeper_ui/services/identity_store.py`).
+- **Scope / carve-outs:** the OIDC login flow (`GET /auth/login`, Task 8.5)
+  is a server-redirect flow with no React page of its own — out of scope
+  here.
+
+### 9b. Admin users management (`/app/admin/users`) — reserved for Task 8.7
+
+- **Jinja URL(s):** none (net-new)
+- **React URL (canonical, dev-time, under `/app`):** `/app/admin/users`
+- **REACT_OWNED_PREFIXES value (future cutover):** n/a (see §9a).
+- **Parity target:** FR60 — user list/create/role-assign/deactivate/
+  reactivate/password-reset, last-admin and SCIM-owned refusal states.
+- **Dual-mode/HTMX:** N/A — net-new.
+- **Permalink state to URL-encode:** none decided yet — left to Task 8.7.
+- **Data source:** `admin_users_api_bp` (`/api/v1/admin/users`, Task 8.7 —
+  not yet implemented) / `IdentityStoreService`.
+- **Status:** **not yet implemented.** Pinned here in advance — per this
+  doc's own opening rule ("pins a written parity target for every route
+  ... before its task starts") — so Task 8.7 has a target the moment it
+  begins, the same discipline Task 5.0 established for the Milestone 2.1
+  routes.

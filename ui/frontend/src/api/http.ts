@@ -121,6 +121,19 @@ export function __setNavigateForTest(fn: (url: string) => void): void {
   navigateFn = fn
 }
 
+/**
+ * Navigate the browser to `url` — the same indirection this module's own
+ * 401-redirect-to-login path uses internally (`goToLogin`/`navigateFn`).
+ * Exported (Task 8.6) so `LoginPage.tsx`'s post-login redirect (success ->
+ * `next` or `/app/investigations`) shares exactly ONE navigation seam with
+ * this module's unauthenticated -> login redirect, rather than each
+ * maintaining its own `window.location.href` call site and its own
+ * `__setNavigateForTest`-equivalent for tests.
+ */
+export function navigateTo(url: string): void {
+  navigateFn(url)
+}
+
 /** Test-only reset — clears the cached mode and restores the default navigate function. */
 export function __resetApiFetchForTest(): void {
   cachedAuthMode = null
