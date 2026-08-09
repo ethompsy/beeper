@@ -1,6 +1,6 @@
 # ADR 0002 — Verified identity for the Beeper UI: OIDC login, SCIM provisioning, and a local fallback
 
-- **Status:** **Proposed** — awaiting `[H]` user approval (the Q11 architecture gate; see §0 and §12). No implementation may start before that approval is recorded here.
+- **Status:** **Accepted** — `[H]` approved by the user 2026-08-09 (Task 8.1). All four §12 decision points were approved **as recommended**: D1 local password accounts (login required in `local` mode) · D2 store-primary roles with default-`user` for unprovisioned principals · D3 Helm chart defaults `ui.flaskEnv: production` with `make demo-*` opting into development · D4 no break-glass login in `oidc` mode (CLI + zero-admin alarm recovery). The verbatim Q11 directive is confirmed (restored from the conversation record, §0). Implementation may proceed per §10's rollout order.
 - **Date:** 2026-08-08 (proposed)
 - **Author:** Claude (Synthesis Architect), Q11 / Task 6.2b design program
 - **Affects:** `ui/beeper_ui/middleware/permissions.py`, `ui/beeper_ui/config.py`, `ui/beeper_ui/app.py`, new `ui/beeper_ui/routes/auth.py` + `scim.py` + `admin_users.py`, new `ui/beeper_ui/services/identity_store.py`, `ui/pyproject.toml`, `ui/frontend/src/api/*`, `ui/frontend/src/lib/*`, `helm/beeper/templates/ui-deployment.yaml`, `helm/beeper/values.yaml`, `Makefile` (demo targets), `docs/reqs/main.md` (FR54–FR62, NFR25–NFR26), `docs/deployment-guide.md`, `docs/design/route-parity-targets.md` (new §9 net-new-route convention)
