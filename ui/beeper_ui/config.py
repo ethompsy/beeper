@@ -128,6 +128,19 @@ class Config:
         os.environ.get("BEEPER_SESSION_LIFETIME_HOURS", "8")
     )
 
+    # --- ADR 0002 §4/§8 SCIM bearer token(s) (Task 8.8) ------------------
+    # Long-lived bearer token(s) for `/scim/v2/*` (env/Secret-supplied —
+    # never a source-controlled default, unlike BEEPER_ADMIN_GROUPS above).
+    # `BEEPER_SCIM_TOKEN_SECONDARY` is optional and exists solely for
+    # dual-token zero-downtime rotation (ADR §4/FR58): during a rotation
+    # window both the outgoing and incoming token values are accepted.
+    # Neither value is validated at boot (deliberately — see ADR §8's
+    # "SCIM enabled without a token" row: the surface REGISTERS and fails
+    # closed per-request with 403, it does not refuse to boot; see
+    # `beeper_ui.routes.scim_helpers.authenticate_scim_request()`).
+    BEEPER_SCIM_TOKEN: str = os.environ.get("BEEPER_SCIM_TOKEN", "")
+    BEEPER_SCIM_TOKEN_SECONDARY: str = os.environ.get("BEEPER_SCIM_TOKEN_SECONDARY", "")
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""

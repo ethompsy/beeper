@@ -27,6 +27,13 @@ respx = "^0.21"
 pytest-asyncio = "^0.24"
 types-bleach = "^6.1"
 types-Markdown = "^3.5"
+# Task 8.8 (SCIM surface): dev-only, response-shape conformance oracle for
+# tests/_scim_json_schemas.py against RFC 7643 — never imported by
+# production code (ADR 0002 §4: "JSON-Schema response validation is a
+# dev-dependency only"). Already resolvable transitively via `litellm`'s
+# own `jsonschema` requirement; declared explicitly here since test code
+# now imports it directly.
+jsonschema = "^4.20"
 
 [tool.ruff]
 line-length = 100

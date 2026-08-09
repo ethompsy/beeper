@@ -80,6 +80,20 @@ class FakeQdrantClient:
         results.sort(key=lambda p: p.id)
         return results[:limit], None
 
+    def delete(self, collection_name: str, points_selector: Any = None, **_kwargs: Any) -> Any:
+        """ADDITIVE (Task 8.8 — SCIM surface): hard-delete support.
+
+        `points_selector` is accepted as a plain list of point ids (the
+        only shape `IdentityStoreService.delete_user()`/`delete_group()`
+        pass) — a real `PointIdsList`/`Filter` selector is not modeled
+        here since production code never constructs one.
+        """
+        store = self.collections.get(collection_name, {})
+        ids = list(points_selector) if points_selector is not None else []
+        for point_id in ids:
+            store.pop(point_id, None)
+        return object()
+
     def close(self) -> None:
         pass
 
