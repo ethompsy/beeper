@@ -20,11 +20,22 @@ class _LocalModeConfig(TestingConfig):
 
 class _OidcModeConfig(TestingConfig):
     BEEPER_AUTH_MODE = "oidc"
+    # Task 8.5 / ADR 0002 §3/§8: `oidc` mode now also requires these three
+    # (boot-refused otherwise — see `test_oidc_config_boot_refusals.py` for
+    # that refusal's own dedicated coverage). Set here so this file's
+    # pre-existing SECRET_KEY-focused tests keep exercising ONLY the
+    # SECRET_KEY check they're named for.
+    BEEPER_OIDC_ISSUER = "https://idp.example.com"
+    BEEPER_OIDC_CLIENT_ID = "client-1"
+    BEEPER_OIDC_CLIENT_SECRET = "secret-1"
 
 
 class _OidcScimConfig(TestingConfig):
     BEEPER_AUTH_MODE = "oidc"
     BEEPER_SCIM_ENABLED = True
+    BEEPER_OIDC_ISSUER = "https://idp.example.com"
+    BEEPER_OIDC_CLIENT_ID = "client-1"
+    BEEPER_OIDC_CLIENT_SECRET = "secret-1"
 
 
 class _NoneModeScimEnabledConfig(TestingConfig):

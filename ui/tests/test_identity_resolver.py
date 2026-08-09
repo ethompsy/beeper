@@ -57,17 +57,30 @@ class _LocalConfig(TestingConfig):
 class _OidcNoScimConfig(TestingConfig):
     BEEPER_AUTH_MODE = "oidc"
     BEEPER_SCIM_ENABLED = False
+    # Task 8.5 / ADR 0002 §3/§8: `oidc` mode now also boot-requires these
+    # three (see `test_oidc_config_boot_refusals.py` for that refusal's own
+    # dedicated coverage) — set here purely to keep `create_app()` booting
+    # for this file's resolver-focused tests.
+    BEEPER_OIDC_ISSUER = "https://idp.example.com"
+    BEEPER_OIDC_CLIENT_ID = "client-1"
+    BEEPER_OIDC_CLIENT_SECRET = "secret-1"
 
 
 class _OidcScimConfig(TestingConfig):
     BEEPER_AUTH_MODE = "oidc"
     BEEPER_SCIM_ENABLED = True
+    BEEPER_OIDC_ISSUER = "https://idp.example.com"
+    BEEPER_OIDC_CLIENT_ID = "client-1"
+    BEEPER_OIDC_CLIENT_SECRET = "secret-1"
 
 
 class _OidcScimStrictConfig(TestingConfig):
     BEEPER_AUTH_MODE = "oidc"
     BEEPER_SCIM_ENABLED = True
     BEEPER_SCIM_STRICT = True
+    BEEPER_OIDC_ISSUER = "https://idp.example.com"
+    BEEPER_OIDC_CLIENT_ID = "client-1"
+    BEEPER_OIDC_CLIENT_SECRET = "secret-1"
 
 
 def _register_test_routes(app: Flask) -> Flask:
@@ -241,13 +254,37 @@ class TestExemptionMatrixEndToEnd:
             # NOT our resolver's synthetic authentication-required 401.
             assert resp.status_code == 404
 
-    @pytest.mark.parametrize("config_class", [_LocalConfig, _OidcNoScimConfig])
-    def test_auth_prefix_open_with_no_session(self, config_class: type) -> None:
-        app = _make_app(config_class)
+    def test_auth_prefix_open_with_no_session_local_mode(self) -> None:
+        """`local` mode never registers `auth_bp` (Task 8.5's OIDC
+        blueprint) — still a plain 404, not a synthetic 401/302."""
+        app = _make_app(_LocalConfig)
         with app.test_client() as client:
             resp = client.get("/auth/login")
-            # No blueprint registered yet (Task 8.5) — plain 404, not 401/302.
             assert resp.status_code == 404
+
+    def test_auth_prefix_open_with_no_session_oidc_mode(self) -> None:
+        """Task 8.5 landed `auth_bp` (`GET /auth/login|callback`, `POST
+        /auth/logout`), registered in `oidc` mode — this exemption-matrix
+        test now proves the *reachable-logged-out* half of the contract
+        with a real request into that blueprint (302 to the IdP's
+        authorization endpoint), not a synthetic 401/302 from the resolver
+        and not the prior "no blueprint registered yet, plain 404"
+        placeholder (superseded here, documented per the Task 8.2 precedent
+        of never swapping a pinned assertion silently — see the sibling
+        `/api/v1/auth` test above for the same precedent already applied
+        once in this file)."""
+        import responses
+
+        from tests._stub_oidc_idp import DISCOVERY_URL, StubIdP
+
+        app = _make_app(_OidcNoScimConfig)
+        with responses.RequestsMock() as rsps, app.test_client() as client:
+            rsps.add(
+                "GET", DISCOVERY_URL, json=StubIdP().discovery_document(), status=200
+            )
+            resp = client.get("/auth/login")
+            assert resp.status_code == 302
+            assert "idp.example.com" in resp.headers["Location"]
 
     @pytest.mark.parametrize("config_class", [_LocalConfig, _OidcNoScimConfig])
     def test_api_v1_auth_prefix_open_with_no_session(self, config_class: type) -> None:

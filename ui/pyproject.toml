@@ -17,6 +17,10 @@ markdown = "^3.5"
 bleach = "^6.1"
 litellm = "^1.30"
 slack-sdk = "^3.27"
+# Task 8.5 / ADR 0002 §3: OIDC RP (authorization-code flow, JWKS
+# fetch/rotation-cache, full ID-token validation). Deliberate transitive
+# additions, recorded in the ADR: `requests`, `cryptography`.
+authlib = "^1.6"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
@@ -34,6 +38,12 @@ types-Markdown = "^3.5"
 # own `jsonschema` requirement; declared explicitly here since test code
 # now imports it directly.
 jsonschema = "^4.20"
+# Task 8.5 / ADR 0002 §9: "responses not respx for Authlib stubs" — Authlib's
+# Flask/requests OAuth client uses `requests`, not `httpx`, so its HTTP
+# boundary (discovery doc, JWKS, token endpoint, UserInfo) is mocked with
+# `responses`, unlike the `respx`-mocked `httpx` clients elsewhere in this
+# suite (litellm, operator client).
+responses = "^0.25"
 
 [tool.ruff]
 line-length = 100

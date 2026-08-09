@@ -103,3 +103,17 @@ def register_blueprints(app: Flask) -> None:
         from beeper_ui.routes.scim import scim_bp
 
         app.register_blueprint(scim_bp)
+
+    # Task 8.5: browser-facing OIDC login (`GET /auth/login|callback`,
+    # `POST /auth/logout`) — ADR 0002 §1/§3. Registered ONLY in `oidc` mode,
+    # mirroring the SCIM blueprint's (Task 8.8) "disabled ⇒ plain 404, no
+    # fingerprintable surface" pattern and the local-auth (Task 8.6)
+    # "registered only in local mode" pattern. The Authlib OAuth client is
+    # constructed here too (`init_oidc_client()`) but touches the network
+    # only lazily, on first `/auth/login` hit — `none`/`local` mode boots
+    # never construct it at all.
+    if app.config.get("BEEPER_AUTH_MODE") == "oidc":
+        from beeper_ui.routes.oidc_auth import auth_bp, init_oidc_client
+
+        init_oidc_client(app)
+        app.register_blueprint(auth_bp)

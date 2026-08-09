@@ -40,6 +40,11 @@ class ScimTestConfig(TestingConfig):
     BEEPER_SCIM_ENABLED = True
     BEEPER_SCIM_TOKEN = SCIM_TOKEN
     BEEPER_SCIM_TOKEN_SECONDARY = ""
+    # Task 8.5's boot refusal requires OIDC completeness in `oidc` mode
+    # (merge-resolution addition, same stubs as test_auth_me.py).
+    BEEPER_OIDC_ISSUER = "https://idp.example.com"
+    BEEPER_OIDC_CLIENT_ID = "client-1"
+    BEEPER_OIDC_CLIENT_SECRET = "secret-1"
 
 
 class ScimDualTokenConfig(ScimTestConfig):
@@ -65,6 +70,10 @@ class ScimDisabledConfig(TestingConfig):
 
     BEEPER_AUTH_MODE = "oidc"
     BEEPER_SCIM_ENABLED = False
+    # Task 8.5 boot-refusal stubs (merge-resolution addition).
+    BEEPER_OIDC_ISSUER = "https://idp.example.com"
+    BEEPER_OIDC_CLIENT_ID = "client-1"
+    BEEPER_OIDC_CLIENT_SECRET = "secret-1"
 
 
 def auth_headers(token: str = SCIM_TOKEN) -> dict[str, str]:

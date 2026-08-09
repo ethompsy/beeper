@@ -62,6 +62,13 @@ class _LocalConfig(TestingConfig):
 class _OidcNoScimConfig(TestingConfig):
     BEEPER_AUTH_MODE = "oidc"
     BEEPER_SCIM_ENABLED = False
+    # Task 8.5 / ADR 0002 §3/§8: `oidc` mode now also boot-requires these
+    # three (see `test_oidc_config_boot_refusals.py` for that refusal's own
+    # dedicated coverage) — set here purely to keep `create_app()` booting
+    # for this file's SSE-reauth-focused tests.
+    BEEPER_OIDC_ISSUER = "https://idp.example.com"
+    BEEPER_OIDC_CLIENT_ID = "client-1"
+    BEEPER_OIDC_CLIENT_SECRET = "secret-1"
 
 
 @pytest.fixture
