@@ -8,6 +8,7 @@ import { IngestionStatsPage } from './routes/IngestionStatsPage'
 import { SourcesPage } from './routes/SourcesPage'
 import { SpendingPage } from './routes/SpendingPage'
 import { MetricsPage } from './routes/MetricsPage'
+import { LoginPage } from './routes/LoginPage'
 
 /**
  * App — router root (Task 2.1, extended by Task 5.0b).
@@ -37,6 +38,15 @@ import { MetricsPage } from './routes/MetricsPage'
  */
 const router = createBrowserRouter(
   [
+    // Task 8.6 (ADR 0002 §6): `/app/login` is a SIBLING of the `AppLayout`
+    // tree, not a child of it — it renders a minimal centered card with
+    // NO sidebar/shell chrome (an unauthenticated visitor has no nav to
+    // show). This is also the first net-new route with no Jinja ancestor
+    // (see docs/design/route-parity-targets.md §9); `/app/admin/users`
+    // (Task 8.7) will follow the same top-level-sibling pattern once it's
+    // decided whether it needs the authenticated shell (it will — that
+    // one IS a Manage-nav destination, unlike this one).
+    { path: 'login', element: <LoginPage /> },
     {
       element: <AppLayout />,
       children: [
