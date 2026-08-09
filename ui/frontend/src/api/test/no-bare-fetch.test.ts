@@ -44,8 +44,9 @@ function topLevelApiClientFiles(): string[] {
 describe('src/api/*.ts — no bare fetch() calls (Task 8.4 static sweep)', () => {
   const files = topLevelApiClientFiles()
 
-  it('sanity check: the expected 8 clients + http.ts were actually found', () => {
+  it('sanity check: the expected 9 clients + http.ts were actually found', () => {
     expect(files).toEqual([
+      'admin-users.ts',
       'http.ts',
       'ingestion-stats.ts',
       'investigation-detail.ts',

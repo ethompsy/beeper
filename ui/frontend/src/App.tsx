@@ -9,6 +9,7 @@ import { SourcesPage } from './routes/SourcesPage'
 import { SpendingPage } from './routes/SpendingPage'
 import { MetricsPage } from './routes/MetricsPage'
 import { LoginPage } from './routes/LoginPage'
+import { AdminUsersPage } from './routes/AdminUsersPage'
 
 /**
  * App — router root (Task 2.1, extended by Task 5.0b).
@@ -35,6 +36,15 @@ import { LoginPage } from './routes/LoginPage'
  * visible), matching Task 2.5's contract that an invalid investigation id
  * degrades to an in-shell message, not a bare 404 page — and now applies to
  * any unrecognized path, not just investigation ids.
+ *
+ * Task 8.7 (ADR 0002 §6, FR60): `/app/admin/users` is registered as a
+ * CHILD of the `AppLayout` route tree below (NOT a sibling like `login`
+ * above) — per the comment `login`'s entry left here, this route IS a
+ * Manage-nav destination and needs the authenticated sidebar shell. Role
+ * gating (hiding the nav item for non-admins) lives in `AppLayout.tsx`;
+ * the route itself is reachable by direct navigation regardless (the page
+ * component renders its own in-shell 403 for a non-admin caller — see
+ * `AdminUsersPage.tsx`'s doc comment).
  */
 const router = createBrowserRouter(
   [
@@ -42,10 +52,11 @@ const router = createBrowserRouter(
     // tree, not a child of it — it renders a minimal centered card with
     // NO sidebar/shell chrome (an unauthenticated visitor has no nav to
     // show). This is also the first net-new route with no Jinja ancestor
-    // (see docs/design/route-parity-targets.md §9); `/app/admin/users`
-    // (Task 8.7) will follow the same top-level-sibling pattern once it's
-    // decided whether it needs the authenticated shell (it will — that
-    // one IS a Manage-nav destination, unlike this one).
+    // (see docs/design/route-parity-targets.md §9). `/app/admin/users`
+    // (Task 8.7, registered below) is the SECOND net-new route (§9b) but
+    // does NOT follow this sibling pattern — it IS a Manage-nav
+    // destination, so it's a CHILD of the `AppLayout` tree instead (see
+    // that route's entry below).
     { path: 'login', element: <LoginPage /> },
     {
       element: <AppLayout />,
@@ -59,6 +70,11 @@ const router = createBrowserRouter(
         { path: 'sources', element: <SourcesPage /> },
         { path: 'spending', element: <SpendingPage /> },
         { path: 'metrics', element: <MetricsPage /> },
+        // Task 8.7 (ADR 0002 §6, FR60) — a Manage-nav destination, hence a
+        // child of `AppLayout` (the authenticated shell), unlike `login`
+        // above. See `AdminUsersPage.tsx` for the in-shell 403 state a
+        // non-admin caller gets on direct navigation here.
+        { path: 'admin/users', element: <AdminUsersPage /> },
         {
           path: '*',
           element: (

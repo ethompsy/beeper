@@ -142,3 +142,43 @@ export type { AuthMode, CurrentUserRecord, CurrentUserState } from './hooks/useC
 // Local-mode login primitive (Task 8.6, ADR 0002 §6, FR59).
 export { LoginForm } from './components/LoginForm'
 export type { LoginFormProps } from './components/LoginForm'
+
+// Admin users management primitives (Task 8.7, ADR 0002 §6, FR60).
+export { OriginBadge } from './components/OriginBadge'
+export type { OriginBadgeProps, OriginBadgeVariant } from './components/OriginBadge'
+
+export { RoleSelect } from './components/RoleSelect'
+export type { RoleSelectProps, RoleSelectValue } from './components/RoleSelect'
+
+export { ConfirmActionDialog } from './components/ConfirmActionDialog'
+export type { ConfirmActionDialogProps } from './components/ConfirmActionDialog'
+
+export { UserFormDialog } from './components/UserFormDialog'
+// `MIN_PASSWORD_LENGTH` is re-exported via the deep direct-file path below
+// (component dir + filename, not just the directory-level specifier),
+// deliberately: `story-coverage.test.ts`'s barrel parser scans this file's
+// raw text (not comment-aware) for single-name re-export statements
+// pointing one path segment into `components/`, to decide which names need
+// a matching Storybook story sibling. Combining this constant into the
+// SAME re-export statement as the component above would hide the
+// component from that scan entirely (a comma inside the braces breaks the
+// parser's single-identifier match) — a real coverage gap, not cosmetic,
+// since that statement is what the primary per-component check keys off
+// of. Splitting into two statements that both point at the shallow
+// directory-level specifier is equally wrong the other way: the second
+// statement would then ALSO match, registering this constant itself as a
+// pseudo-component and demanding a story file for it that will never
+// exist. The deep specifier below sidesteps both failure modes — it's a
+// real, valid module specifier (resolving straight to the component's own
+// implementation file, exactly like that file's sibling barrel one
+// directory up already does) that lands outside the parser's
+// single-segment pattern, so only the component statement above is swept.
+export { MIN_PASSWORD_LENGTH } from './components/UserFormDialog/UserFormDialog'
+export type {
+  UserFormDialogProps,
+  UserFormDialogMode,
+  CreateUserFormValues,
+} from './components/UserFormDialog'
+
+export { UserTable } from './components/UserTable'
+export type { UserTableProps, UserTableRow, UserTableRowState } from './components/UserTable'

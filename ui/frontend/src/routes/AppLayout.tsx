@@ -4,6 +4,7 @@ import {
   AppShell,
   useSidebarState,
   useRouteFocusManagement,
+  useCurrentUser,
   type SidebarGroupData,
   type SidebarNavItem,
   type SidebarLinkProps,
@@ -17,13 +18,13 @@ import {
  *
  * Nav groups mirror docs/specs/ux-design-specification.md's "Sidebar Group"
  * table exactly: Observe (Investigations, Sources, Ingestion Stats), Learn
- * (Knowledge Base, Metrics), Manage (Spending). `href`s are React Router
- * paths (relative to the router's `/app` basename) — per
- * docs/design/route-parity-targets.md they are client-side route ids, not
- * required to mirror the Jinja URL 1:1 (see that doc's §3/§6 notes on the
- * `ingestion-stats` and `knowledge` hrefs specifically).
+ * (Knowledge Base, Metrics), Manage (Spending, + Users for admins — Task
+ * 8.7). `href`s are React Router paths (relative to the router's `/app`
+ * basename) — per docs/design/route-parity-targets.md they are client-side
+ * route ids, not required to mirror the Jinja URL 1:1 (see that doc's §3/§6
+ * notes on the `ingestion-stats` and `knowledge` hrefs specifically).
  */
-const NAV_GROUPS: SidebarGroupData[] = [
+const BASE_NAV_GROUPS: SidebarGroupData[] = [
   {
     id: 'observe',
     label: 'Observe',
@@ -48,8 +49,27 @@ const NAV_GROUPS: SidebarGroupData[] = [
   },
 ]
 
-/** Flattened once at module scope — every nav item across all three groups, in display order. */
-const FLAT_NAV_ITEMS: SidebarNavItem[] = NAV_GROUPS.flatMap((group) => group.items)
+const USERS_NAV_ITEM: SidebarNavItem = { id: 'admin-users', label: 'Users', href: '/admin/users' }
+
+/**
+ * Task 8.7 (ADR 0002 §6, FR60): builds the nav groups per-render (rather
+ * than the pre-8.7 module-level `NAV_GROUPS` constant) because the Manage
+ * group's item list now depends on a hook result — `useCurrentUser()`.
+ *
+ * **This is a UI affordance only, NOT a security boundary** — hiding the
+ * "Users" nav item from a non-admin caller only prevents an accidental
+ * click; the actual enforcement is `@require_role("admin")` on every route
+ * in `admin_users_api_bp` (`ui/beeper_ui/routes/admin_users.py`), and
+ * `AdminUsersPage.tsx` renders its own in-shell 403 state if a non-admin
+ * reaches `/app/admin/users` directly (typed URL, bookmark, etc.) — this
+ * function hiding the nav item is a courtesy, not a gate.
+ */
+function buildNavGroups(isAdmin: boolean): SidebarGroupData[] {
+  if (!isAdmin) return BASE_NAV_GROUPS
+  return BASE_NAV_GROUPS.map((group) =>
+    group.id === 'manage' ? { ...group, items: [...group.items, USERS_NAV_ITEM] } : group,
+  )
+}
 
 /**
  * Resolve which nav item (if any) the current pathname belongs to.
@@ -61,10 +81,14 @@ const FLAT_NAV_ITEMS: SidebarNavItem[] = NAV_GROUPS.flatMap((group) => group.ite
  * match wins so a more specific href never loses to a shorter one that also
  * happens to prefix-match. Returns `undefined` for anything that matches no
  * nav item (the catch-all route) — nothing should be highlighted there.
+ *
+ * Takes the flattened nav items as a parameter (Task 8.7) rather than
+ * closing over a module-level constant — the item set is now role-
+ * dependent (`buildNavGroups`), computed per-render inside `AppLayout`.
  */
-function matchActiveNavItem(pathname: string): SidebarNavItem | undefined {
+function matchActiveNavItem(pathname: string, flatNavItems: SidebarNavItem[]): SidebarNavItem | undefined {
   let best: SidebarNavItem | undefined
-  for (const item of FLAT_NAV_ITEMS) {
+  for (const item of flatNavItems) {
     const isMatch = pathname === item.href || pathname.startsWith(`${item.href}/`)
     if (isMatch && (best === undefined || item.href.length > best.href.length)) {
       best = item
@@ -83,6 +107,12 @@ function RouterLink({ href, children, ...rest }: SidebarLinkProps) {
 
 export function AppLayout() {
   const { pathname } = useLocation()
+
+  // Task 8.7 (ADR 0002 §6, FR60): role-gated "Users" nav item — see
+  // `buildNavGroups`'s doc comment for why this is a UI affordance only.
+  const { user } = useCurrentUser()
+  const navGroups = buildNavGroups(user?.role === 'admin')
+  const flatNavItems = navGroups.flatMap((group) => group.items)
 
   // The two detail routes that render "Parent > <id>" breadcrumbs (Task
   // 5.0b generalizes the investigation-only version to also cover
@@ -107,7 +137,7 @@ export function AppLayout() {
   const sidebarState = useSidebarState(isDetailRoute ? 'collapsed' : 'auto', pathname)
   useRouteFocusManagement(isFocusManagedDetailRoute, pathname)
 
-  const activeNavItem = matchActiveNavItem(pathname)
+  const activeNavItem = matchActiveNavItem(pathname, flatNavItems)
 
   let breadcrumb: ReactNode
   if (investigationDetailMatch) {
@@ -141,7 +171,7 @@ export function AppLayout() {
 
   return (
     <AppShell
-      groups={NAV_GROUPS}
+      groups={navGroups}
       activeItemId={activeNavItem?.id}
       expanded={sidebarState.expanded}
       isOverlay={sidebarState.isOverlay}
