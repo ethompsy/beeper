@@ -29,6 +29,24 @@ from beeper_ui.services.identity_store import IdentityStoreService
 
 logger = logging.getLogger("beeper_ui.scim.audit")
 
+# FR58 requires every provisioning mutation to be audit-logged in the DEPLOYED
+# process, not just under test. The records are INFO-level, but Flask/Werkzeug
+# leave the root logger unconfigured (effective WARNING via logging.lastResort),
+# so without a dedicated handler the audit trail is silently dropped in-cluster
+# — found in the Task 8.9 live validation (unit tests passed via caplog, which
+# bypasses handler config). A dedicated handler makes emission
+# independent of ambient logging configuration.
+if not logger.handlers:
+    _audit_handler = logging.StreamHandler()
+    _audit_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s")
+    )
+    logger.addHandler(_audit_handler)
+    logger.setLevel(logging.INFO)
+    # propagate stays True: pytest's caplog captures via root propagation, and
+    # in-cluster the unconfigured root drops INFO silently, so the dedicated
+    # handler above is the only in-cluster emitter (no double lines).
+
 # RFC 7644 §3.1: SCIM's own content type. Used on every /scim/v2/* response
 # (a recorded deviation from the rest of the app's `application/problem+json`
 # convention — SCIM error bodies use the SCIM error schema, not RFC7807; see

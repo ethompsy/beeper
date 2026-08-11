@@ -90,7 +90,7 @@ class TestFingerprintNeverRawToken:
                 headers=auth_headers(),
                 json={"userName": "audit3@corp.com", "externalId": "ext-3"},
             )
-        message = next(r for r in caplog.records if r.name == AUDIT_LOGGER).getMessage()
+        message = [r for r in caplog.records if r.name == AUDIT_LOGGER][-1].getMessage()
         assert f"token_fp={EXPECTED_FINGERPRINT}" in message
 
 
@@ -103,7 +103,7 @@ class TestAdminGroupChangeFlagging:
                 headers=auth_headers(),
                 json={"userName": "plain@corp.com", "externalId": "ext-p"},
             )
-        message = next(r for r in caplog.records if r.name == AUDIT_LOGGER).getMessage()
+        message = [r for r in caplog.records if r.name == AUDIT_LOGGER][-1].getMessage()
         assert "admin_group_change=False" in message
 
     def test_group_create_with_admin_members_flagged(
@@ -156,7 +156,7 @@ class TestAdminGroupChangeFlagging:
                     ],
                 },
             )
-        message = next(r for r in caplog.records if r.name == AUDIT_LOGGER).getMessage()
+        message = [r for r in caplog.records if r.name == AUDIT_LOGGER][-1].getMessage()
         assert "op=patch" in message
         assert "admin_group_change=True" in message
 
@@ -181,7 +181,7 @@ class TestAdminGroupChangeFlagging:
                     ],
                 },
             )
-        message = next(r for r in caplog.records if r.name == AUDIT_LOGGER).getMessage()
+        message = [r for r in caplog.records if r.name == AUDIT_LOGGER][-1].getMessage()
         assert "admin_group_change=True" in message
 
     def test_delete_active_admin_user_flagged(self, caplog: pytest.LogCaptureFixture) -> None:
@@ -190,7 +190,7 @@ class TestAdminGroupChangeFlagging:
         store.update_user(alice["id"], role="admin")
         with caplog.at_level(logging.INFO, logger=AUDIT_LOGGER):
             client.delete(f"/scim/v2/Users/{alice['id']}", headers=auth_headers())
-        message = next(r for r in caplog.records if r.name == AUDIT_LOGGER).getMessage()
+        message = [r for r in caplog.records if r.name == AUDIT_LOGGER][-1].getMessage()
         assert "op=delete" in message
         assert "admin_group_change=True" in message
 
@@ -199,7 +199,7 @@ class TestAdminGroupChangeFlagging:
         bob = _create_user(client, "bob@corp.com", "ext-b")
         with caplog.at_level(logging.INFO, logger=AUDIT_LOGGER):
             client.delete(f"/scim/v2/Users/{bob['id']}", headers=auth_headers())
-        message = next(r for r in caplog.records if r.name == AUDIT_LOGGER).getMessage()
+        message = [r for r in caplog.records if r.name == AUDIT_LOGGER][-1].getMessage()
         assert "admin_group_change=False" in message
 
     def test_delete_admin_group_with_members_flagged(
@@ -228,7 +228,7 @@ class TestAdminGroupChangeFlagging:
                 headers=auth_headers(),
                 json={"userName": "alice@corp.com", "displayName": "Alice A", "active": True},
             )
-        message = next(r for r in caplog.records if r.name == AUDIT_LOGGER).getMessage()
+        message = [r for r in caplog.records if r.name == AUDIT_LOGGER][-1].getMessage()
         assert "admin_group_change=False" in message
 
 
@@ -241,7 +241,7 @@ class TestAuditLogTarget:
                 headers=auth_headers(),
                 json={"userName": "target@corp.com", "externalId": "ext-t"},
             )
-        message = next(r for r in caplog.records if r.name == AUDIT_LOGGER).getMessage()
+        message = [r for r in caplog.records if r.name == AUDIT_LOGGER][-1].getMessage()
         assert "target=target@corp.com" in message
 
     def test_target_is_display_name_for_groups(self, caplog: pytest.LogCaptureFixture) -> None:
@@ -250,5 +250,36 @@ class TestAuditLogTarget:
             client.post(
                 "/scim/v2/Groups", headers=auth_headers(), json={"displayName": "TargetGroup"}
             )
-        message = next(r for r in caplog.records if r.name == AUDIT_LOGGER).getMessage()
+        message = [r for r in caplog.records if r.name == AUDIT_LOGGER][-1].getMessage()
         assert "target=TargetGroup" in message
+
+
+class TestAuditLoggerEmissionConfig:
+    """Live-validation finding (Task 8.9): audit records must be emitted by
+    the DEPLOYED process regardless of ambient logging config — caplog-based
+    tests bypass handlers and could not catch a dropped-trail regression."""
+
+    def test_audit_logger_has_dedicated_handler_at_info(self):
+        import logging
+
+        from beeper_ui.routes import scim_helpers
+
+        log = scim_helpers.logger
+        assert log.handlers, "audit logger must own a handler (not rely on root)"
+        assert log.level == logging.INFO
+        assert log.propagate is True  # caplog capture depends on propagation
+
+    def test_audit_record_reaches_its_handler(self):
+        import io
+        import logging
+
+        from beeper_ui.routes import scim_helpers
+
+        buf = io.StringIO()
+        extra = logging.StreamHandler(buf)
+        scim_helpers.logger.addHandler(extra)
+        try:
+            scim_helpers.logger.info("audit-emission-probe")
+        finally:
+            scim_helpers.logger.removeHandler(extra)
+        assert "audit-emission-probe" in buf.getvalue()
