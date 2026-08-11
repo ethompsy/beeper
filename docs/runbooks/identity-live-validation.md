@@ -84,7 +84,7 @@ run it now if it isn't already forwarding.
 5. **Last-admin refusal:** with only `admin` and `bob` both admins, demote **either one** — should succeed (two active admins). Now demote the other back to `user` — **the second demotion must be refused** (`409 last-admin`, rendered inline, not a generic error). Restore both to admin, or leave one as the sole admin.
 6. **Demote/deactivate `bob`:** set `bob` back to role `user`, then deactivate `bob`. Expect: deactivated users show inactive styling; no last-admin block fires here since `bob` isn't currently the last active admin.
 7. **Login-fails:** open a new private/incognito tab, attempt to log in as `bob` with the correct password. Expect: `401`, generic "invalid username or password" — no distinction from a wrong-password or unknown-user attempt (same body for all three per ADR §6).
-8. **CLI recovery path (optional but recommended to actually exercise once):** `echo 'Sup3rSecret!!' | kubectl exec -i -n beeper deploy/beeper-ui -- flask --app beeper_ui create-admin carol --password-stdin`. Expect: `Admin user 'carol' created.`, and `carol` now appears in `/app/admin/users` as an active admin without ever using the web UI create-dialog.
+8. **CLI recovery path (optional but recommended to actually exercise once):** `echo 'Sup3rSecret!!' | kubectl exec -i -n beeper deploy/beeper-ui -- flask --app beeper_ui.app create-admin carol --password-stdin`. Expect: `Admin user 'carol' created.`, and `carol` now appears in `/app/admin/users` as an active admin without ever using the web UI create-dialog.
 
 ### Rollback / cleanup
 

@@ -394,7 +394,7 @@ ui:
 | `ui.auth.oidc.*` | — | Standard OIDC RP settings; see [IdP setup notes](#idp-setup-notes-okta--entra-id--keycloak) below for provider-specific values. |
 | `ui.auth.scim.enabled` | `false` | Registers the `/scim/v2` provisioning surface. Valid **only** when `mode: oidc` — the chart doesn't enforce this (the application does, refusing to boot), but setting it under `local`/`none` is always a mistake. |
 | `ui.auth.scim.networkPolicy.*` | disabled | Optional defense-in-depth NetworkPolicy — see [Optional SCIM NetworkPolicy](#optional-scim-networkpolicy-defense-in-depth-not-path-isolation) below for what it actually does and doesn't restrict. |
-| `ui.auth.bootstrap.enabled` | `true` | In `local` mode, whether to wire `bootstrapUsername`/`bootstrapPassword` from `existingSecret`. Set `false` if you'd rather seed the first admin purely via `flask create-admin` (see [Bootstrap & lockout recovery](#bootstrap--lockout-recovery)). |
+| `ui.auth.bootstrap.enabled` | `true` | In `local` mode, whether to wire `bootstrapUsername`/`bootstrapPassword` from `existingSecret`. Set `false` if you'd rather seed the first admin purely via `flask --app beeper_ui.app create-admin` (see [Bootstrap & lockout recovery](#bootstrap--lockout-recovery)). |
 
 **Three modes at a glance:**
 
@@ -632,10 +632,10 @@ An enabled-but-unconfigured SCIM surface (neither key set) fails closed with `40
 ```bash
 # Promote/reactivate an existing user, or create a new admin if it doesn't exist yet.
 echo "$NEW_PASSWORD" | kubectl exec -i deploy/<release>-ui -- \
-  flask --app beeper_ui create-admin <username> --password-stdin
+  flask --app beeper_ui.app create-admin <username> --password-stdin
 ```
 
-`flask create-admin` works from a `kubectl exec` shell regardless of the currently-configured `BEEPER_AUTH_MODE` — it's registered unconditionally, precisely so it's available while troubleshooting a broken auth config. If the username already exists, it is promoted-and-reactivated (role set to `admin`, `active` set to `true`) rather than erroring — the common case is "someone got demoted/deactivated by mistake," not "nobody was ever seeded."
+`flask --app beeper_ui.app create-admin` works from a `kubectl exec` shell regardless of the currently-configured `BEEPER_AUTH_MODE` — it's registered unconditionally, precisely so it's available while troubleshooting a broken auth config. If the username already exists, it is promoted-and-reactivated (role set to `admin`, `active` set to `true`) rather than erroring — the common case is "someone got demoted/deactivated by mistake," not "nobody was ever seeded."
 
 **There is no break-glass local-password login in `oidc` mode** (ADR §12 D4, deliberate) — the CLI above, via `kubectl exec`, is the only recovery path when your IdP itself is unreachable or misconfigured. Watch for the `zero_active_admins` health flag; it's the signal this situation has occurred.
 
