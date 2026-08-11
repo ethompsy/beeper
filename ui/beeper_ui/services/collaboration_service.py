@@ -23,7 +23,6 @@ worse outcome than just leaving the module in place.
 """
 
 import logging
-import os
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
@@ -88,9 +87,15 @@ class CollaborationService:
         """Initialize the collaboration service.
 
         Args:
-            qdrant_url: Qdrant server URL. Defaults to QDRANT_URL env var.
+            qdrant_url: Qdrant server URL. Defaults to QDRANT_URL env var,
+                falling back to QDRANT_HOST/QDRANT_PORT (the Helm chart's
+                actual env contract — same fix as identity_store, found in
+                the Task 8.9 live validation; this service's in-cluster
+                connectivity had never been exercised).
         """
-        url = qdrant_url or os.environ.get("QDRANT_URL", "http://localhost:6333")
+        from beeper_ui.services.identity_store import _default_qdrant_url
+
+        url = qdrant_url or _default_qdrant_url()
         self._client = QdrantClient(url=url, timeout=5.0)
         self._active_rooms: dict[str, _ActiveRoom] = {}
         self._ensure_collection()

@@ -203,6 +203,24 @@ def _recompute_role(group_display_names: Iterable[str], admin_groups: Iterable[s
     return "user"
 
 
+def _default_qdrant_url() -> str:
+    """Resolve the Qdrant URL from the deployment's actual env contract.
+
+    The Helm chart sets QDRANT_HOST/QDRANT_PORT (the contract every live
+    service — kb_service etc. — reads); QDRANT_URL is an optional full-URL
+    override kept for tests/local use. Reading only QDRANT_URL made the
+    store silently dial localhost in-cluster (found in the Task 8.9 live
+    validation; the pattern was inherited from collaboration_service, whose
+    in-cluster connectivity was never exercised).
+    """
+    url = os.environ.get("QDRANT_URL")
+    if url:
+        return url
+    host = os.environ.get("QDRANT_HOST", "localhost")
+    port = os.environ.get("QDRANT_PORT", "6333")
+    return f"http://{host}:{port}"
+
+
 class IdentityStoreService:
     """CRUD + role resolution over the shared identity store (ADR §5)."""
 
@@ -214,7 +232,7 @@ class IdentityStoreService:
         clock: Callable[[], float] = time.monotonic,
         cache_ttl_seconds: float = ROLE_CACHE_TTL_SECONDS,
     ) -> None:
-        url = qdrant_url or os.environ.get("QDRANT_URL", "http://localhost:6333")
+        url = qdrant_url or _default_qdrant_url()
         self._client = QdrantClient(url=url, timeout=5.0)
         self._admin_groups: tuple[str, ...] = (
             tuple(admin_groups) if admin_groups is not None else DEFAULT_ADMIN_GROUPS

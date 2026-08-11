@@ -685,3 +685,32 @@ class TestSingleton:
         set_identity_store_for_testing(store)
         assert get_identity_store() is store
         assert get_identity_store_if_initialized() is store
+
+
+class TestQdrantUrlResolution:
+    """The store must honor the Helm chart's QDRANT_HOST/QDRANT_PORT env
+    contract (live-validation finding, Task 8.9): QDRANT_URL overrides,
+    HOST/PORT compose the default, bare default is localhost."""
+
+    def test_qdrant_url_env_wins(self, monkeypatch):
+        from beeper_ui.services.identity_store import _default_qdrant_url
+
+        monkeypatch.setenv("QDRANT_URL", "http://explicit:9999")
+        monkeypatch.setenv("QDRANT_HOST", "ignored-host")
+        assert _default_qdrant_url() == "http://explicit:9999"
+
+    def test_host_port_env_compose_url(self, monkeypatch):
+        from beeper_ui.services.identity_store import _default_qdrant_url
+
+        monkeypatch.delenv("QDRANT_URL", raising=False)
+        monkeypatch.setenv("QDRANT_HOST", "beeper-qdrant")
+        monkeypatch.setenv("QDRANT_PORT", "6333")
+        assert _default_qdrant_url() == "http://beeper-qdrant:6333"
+
+    def test_bare_default_is_localhost(self, monkeypatch):
+        from beeper_ui.services.identity_store import _default_qdrant_url
+
+        monkeypatch.delenv("QDRANT_URL", raising=False)
+        monkeypatch.delenv("QDRANT_HOST", raising=False)
+        monkeypatch.delenv("QDRANT_PORT", raising=False)
+        assert _default_qdrant_url() == "http://localhost:6333"
