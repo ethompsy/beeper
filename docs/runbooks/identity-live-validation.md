@@ -154,6 +154,11 @@ spec:
             - {name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin}
             - {name: KC_BOOTSTRAP_ADMIN_PASSWORD, value: admin}
             - {name: KC_HOSTNAME_STRICT, value: "false"}
+            # Set the browser-facing hostname AT INITIAL DEPLOY (2026-08-11 run
+            # finding): start-dev state is ephemeral — changing env later rolls
+            # the pod and WIPES the realm fixture. localhost:8090 matches the
+            # port-forward below; see "Split-horizon bridge" note.
+            - {name: KC_HOSTNAME, value: "http://localhost:8090"}
           ports:
             - {containerPort: 8080, name: http}
 ---
@@ -241,6 +246,26 @@ server-side for discovery/JWKS/token exchange); your **browser** reaches
 Keycloak through the `8090` port-forward instead. This asymmetry is fine —
 OIDC discovery/JWKS/token calls are server-to-server, only the initial
 redirect and the login form need to be browser-reachable.
+
+> **Split-horizon bridge (required — 2026-08-11 run finding):** one issuer URL
+> must work from BOTH the browser and the beeper-ui pod, or the discovery
+> document sends the browser to an unresolvable in-cluster hostname. With
+> `KC_HOSTNAME=http://localhost:8090` above, the browser reaches Keycloak via
+> the 8090 port-forward; give the beeper-ui POD the same view with a loopback
+> sidecar, re-applied after every helm upgrade of the release:
+>
+> ```bash
+> kubectl -n beeper patch deployment beeper-ui --type=json -p '[{"op":"add",
+>   "path":"/spec/template/spec/containers/-","value":{"name":"kc-loopback-bridge",
+>   "image":"alpine/socat","args":["tcp-listen:8090,fork,reuseaddr",
+>   "tcp:dev-keycloak.beeper-idp-dev.svc.cluster.local:8080"]}}]'
+> ```
+> and set `--set ui.auth.oidc.issuer=http://localhost:8090/realms/beeper` in the
+> helm upgrade instead of the in-cluster issuer shown earlier. Remove the
+> sidecar during cleanup. **Also required:** Beeper's default scopes request a
+> `groups` *scope* — create a `groups` client scope (with the group-membership
+> mapper) and attach it as a default client scope, or Keycloak rejects the
+> authorization request with `invalid_scope`.
 
 ### Protocol
 
@@ -346,7 +371,7 @@ can log in via Keycloak so you have a live browser session to observe.)
      "Operations": [{"op": "replace", "path": "active", "value": false}]
    }'
    ```
-   In the browser: within 60 s, any request (including an open SSE stream, if one is active) returns `401 authentication-required` and the UI redirects to `/auth/login`. This is the session-clear path (ADR §5.3) — distinct from step 4's role-only demotion.
+   In the browser: within 60 s, any request (including an open SSE stream, if one is active) returns `401 authentication-required`. **Observed behavior note (2026-08-11):** the UI's login redirect fires once; if the user's IdP session is still alive, the IdP silently re-authenticates and the store denies again — the UI then settles on an explanatory error state rather than redirect-looping. That guarded stop is correct; expect the error card, not an endless bounce.
 6. **Audit log check:** `kubectl -n beeper logs deploy/beeper-ui | grep beeper_ui.scim.audit` — every mutation above should have an audit line with an actor token fingerprint (`sha256[:8]`), never the raw `$SCIM_TOKEN` value, and the group-membership changes affecting `Admins` should be flagged distinctly from ordinary user field changes.
 
 ### Rollback / cleanup
@@ -377,3 +402,75 @@ kubectl delete namespace beeper-idp-dev --ignore-not-found
 ## After all three scenarios
 
 Confirm the demo is unaffected: `helm upgrade beeper ./helm/beeper --namespace beeper --values ./helm/beeper/values-dev.yaml --set operator.image.tag=dev --set ui.image.tag=dev --set investigator.image.tag=dev --wait`, then re-run `make demo-fault FAULT=payment-failure` (or any existing demo validation you use) to confirm the identity work left the core demo path untouched — this is the final leg of Task 8.9's program gate.
+
+
+---
+
+## Completed run — 2026-08-11 (orchestrator-driven; evidence reviewed by the user)
+
+Driven end-to-end by the session orchestrator with screenshots + API captures at
+every checkpoint; four real defects were found and fixed during the run (all
+committed to main the same day):
+
+1. **`identity_store`/`collaboration_service` dialed `localhost` in-cluster** —
+   both read only `QDRANT_URL`, which the chart never sets; fixed to honor the
+   chart's `QDRANT_HOST`/`QDRANT_PORT` contract (`aac7633`).
+2. **`flask --app beeper_ui create-admin` cannot resolve the factory** — docs
+   corrected to `--app beeper_ui.app`.
+3. **SCIM audit trail silently dropped in-cluster** — the `beeper_ui.scim.audit`
+   logger had no handler and the unconfigured root drops INFO; fixed with a
+   dedicated handler (caplog-based tests could not catch it).
+4. **Bootstrap races Qdrant readiness on cold cluster starts** — degrades
+   gracefully per FR61 (boot continues, no admin seeded); recovery = pod
+   restart or the `create-admin` CLI. Note: `/health/api`'s
+   `zero_active_admins: false` means "alarm not raised", which is also the
+   store-unreachable state — do not read it as proof the admin exists; check
+   the bootstrap log line.
+
+### Scenario 1 — local mode: **PASS 8/8**
+
+| Step | Observed | Pass |
+|---|---|---|
+| 1 Bootstrap admin active | `zero_active_admins: false` + "Bootstrap admin 'admin' created" log line (after fix #1/#4) | ✅ |
+| 2 Login as bootstrap admin | Redirected to original `next` permalink; Manage→Users visible | ✅ |
+| 3 Create `bob` | Appeared instantly: origin Local, role User, active, last-login Never | ✅ |
+| 4 Promote `bob` | Role select updated in place, no reload | ✅ |
+| 5 Last-admin refusal | First demotion succeeded; second refused inline: "This is the last active admin…" | ✅ |
+| 6 Deactivate `bob` | Confirm dialog → Inactive badge + Reactivate action | ✅ |
+| 7 Login as deactivated `bob` | 401; body byte-identical to wrong-password and unknown-user | ✅ |
+| 8 CLI `create-admin carol` | Created (corrected invocation); carol logs in as active admin | ✅ |
+
+### Scenario 2 — OIDC vs disposable Keycloak 26.7.0: **PASS 5/5**
+
+| Step | Observed | Pass |
+|---|---|---|
+| 1 Cold permalink → login | 302 → `/auth/login` → real Keycloak form (after split-horizon bridge + groups scope fixture fixes) | ✅ |
+| 2 Login as `alice` (Admins) | Returned to the original `/app/investigations` permalink | ✅ |
+| 3 Role from groups claim | `/me`: role admin (SCIM off ⇒ snapshot governs); Manage→Users visible | ✅ |
+| 4 Logout | 200; `/me` immediately anonymous | ✅ |
+| 5 Non-admin (`dave`, no groups) | role user; Users nav hidden; direct URL → in-shell "Admin access required" | ✅ |
+
+Beeper's `oidc-idp-error` RFC7807 page also validated incidentally (clean 400,
+no 500) via the initial `invalid_scope` fixture gap.
+
+### Scenario 3 — SCIM push simulation: **PASS 6/6**
+
+| Step | Observed | Pass |
+|---|---|---|
+| 1 Create `bob2` | 201 + id | ✅ |
+| 2 Filter | `totalResults: 1` | ✅ |
+| 3 Group-push Admins (alice) | Live session flipped user→**admin** with no re-login (D2 store-primacy; she was `user` while unprovisioned despite the Admins claim) | ✅ |
+| 4 Unassign alice | Within TTL: still authenticated, role user, admin API **403** (session intact) | ✅ |
+| 5 Deactivate alice | Within TTL: **401 authentication-required**; one login redirect, then guarded stop (see step-5 note) | ✅ |
+| 6 Audit log | In-cluster lines with `token_fp=`, `admin_group_change=True` flagged; raw token grep = 0 (after fix #3) | ✅ |
+
+### Program gate
+
+Mode `none` restored: `/health/api` plain-healthy, `/me` `auth_mode: none`,
+anonymous page + API access intact (3311 investigations listed), 28 otel-demo
+pods Running. The `demo-deploy` flagd ConfigMap ownership conflict (pre-existing,
+from live `demo-fault` kubectl patches vs helm) was repaired by deleting the CM
+and re-running `make demo-deploy`.
+
+**Witnessed by:** orchestrator (session-driven), user approval recorded in
+`docs/plans/react-ui.md` Task 8.9. **Verdict: PASS (19/19 steps across three scenarios).**
