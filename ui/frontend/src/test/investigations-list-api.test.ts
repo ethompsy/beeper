@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { fetchInvestigations, InvestigationsListError } from '../api/investigations-list'
+import { PermissionDeniedError } from '../api/http'
 
 const SAMPLE_ITEM = {
   id: 'inv-1',
@@ -36,7 +37,12 @@ describe('fetchInvestigations', () => {
 
     const result = await fetchInvestigations()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/investigations/', { signal: undefined })
+    // Task 8.4: routed through `apiFetch`, which injects `credentials:
+    // 'same-origin'` by default on top of the caller's own init.
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/investigations/', {
+      credentials: 'same-origin',
+      signal: undefined,
+    })
     expect(result).toEqual([SAMPLE_ITEM])
   })
 
@@ -92,6 +98,28 @@ describe('fetchInvestigations', () => {
     const controller = new AbortController()
     await fetchInvestigations(undefined, controller.signal)
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/investigations/', { signal: controller.signal })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/investigations/', {
+      credentials: 'same-origin',
+      signal: controller.signal,
+    })
+  })
+
+  it('rejects with the shared PermissionDeniedError on a 403 (Task 8.4 apiFetch seam), not InvestigationsListError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        clone() {
+          return this
+        },
+        json: async () => ({
+          type: 'https://beeper.dev/errors/not-provisioned',
+          detail: 'This account is authenticated but not provisioned for access.',
+        }),
+      }),
+    )
+
+    await expect(fetchInvestigations()).rejects.toBeInstanceOf(PermissionDeniedError)
   })
 })

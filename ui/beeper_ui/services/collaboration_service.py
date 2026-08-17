@@ -1,11 +1,28 @@
-"""Collaboration service for real-time investigation messaging.
+"""Collaboration service — Qdrant data layer for investigation messaging.
 
-Handles message persistence in Qdrant and active user tracking
-for WebSocket-based investigation collaboration.
+Task 6.2a / ADR 0001 §0(b): the real-time (SocketIO) surface that used to
+write through this service was dropped, but this module is deliberately
+KEPT — the ADR requires the `collaboration_messages` Qdrant collection to
+survive the migration, not just its bytes on disk but as *readable* data:
+
+- `beeper_ui.routes.investigations.investigation_detail` (the Jinja detail
+  view) still calls `get_collaboration_service().get_message_history()` to
+  render the "human interventions" (past annotations/redirects) timeline —
+  a real, currently-exercised read path, not merely a "costs nothing to
+  keep" placeholder.
+- No code path in this module — or anywhere else in the codebase — issues a
+  delete/drop against `COLLABORATION_COLLECTION`. Writes (`store_message`)
+  are also unreachable now that the SocketIO handlers that called them are
+  gone, so the collection stops growing but nothing in it is at risk.
+
+If a future task removes the Jinja investigation-detail view entirely
+(Task 6.3), re-evaluate whether this module still earns its keep — until
+then, retiring it would sever the last read access to preserved
+collaboration history without deleting the underlying data, which is a
+worse outcome than just leaving the module in place.
 """
 
 import logging
-import os
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
@@ -70,9 +87,15 @@ class CollaborationService:
         """Initialize the collaboration service.
 
         Args:
-            qdrant_url: Qdrant server URL. Defaults to QDRANT_URL env var.
+            qdrant_url: Qdrant server URL. Defaults to QDRANT_URL env var,
+                falling back to QDRANT_HOST/QDRANT_PORT (the Helm chart's
+                actual env contract — same fix as identity_store, found in
+                the Task 8.9 live validation; this service's in-cluster
+                connectivity had never been exercised).
         """
-        url = qdrant_url or os.environ.get("QDRANT_URL", "http://localhost:6333")
+        from beeper_ui.services.identity_store import _default_qdrant_url
+
+        url = qdrant_url or _default_qdrant_url()
         self._client = QdrantClient(url=url, timeout=5.0)
         self._active_rooms: dict[str, _ActiveRoom] = {}
         self._ensure_collection()

@@ -42,3 +42,58 @@ test.describe('focus management (WCAG 2.4.3)', () => {
     await expect(activeNavItem).toBeFocused()
   })
 })
+
+/**
+ * Task 5.5 a11y-audit finding: this same WCAG 2.4.3 contract (cold-load ->
+ * focus the detail `<h1>`; back-to-list -> focus the active sidebar item)
+ * was only wired for the investigation detail route — `AppLayout.tsx`'s
+ * `isDetailRoute` never covered `/knowledge/:entryId`, so
+ * `useRouteFocusManagement` never ran for Knowledge Base entries at all. See
+ * `AppLayout.tsx`'s `isFocusManagedDetailRoute` and
+ * `KnowledgeEntryPage.tsx`'s always-rendered `<h1 id="detail-summary-heading">`
+ * (both doc comments explain the fix and the fetch-timing race it closes).
+ *
+ * No `page.route` mock needed for the cold-load case — like
+ * `InvestigationDetailPage`'s `SummaryHeader`, the heading falls back to the
+ * raw entry id synchronously and doesn't wait on the (here, unmocked and
+ * therefore failing) fetch to paint or receive focus.
+ */
+test.describe('focus management (WCAG 2.4.3) — Knowledge Base entry detail', () => {
+  test('cold-loading a KB entry permalink moves focus to the entry heading', async ({ page }) => {
+    await page.goto('/app/knowledge/kb-001')
+
+    const heading = page.getByRole('heading', { name: 'kb-001' })
+    await expect(heading).toBeVisible()
+    await expect(heading).toBeFocused()
+  })
+
+  test('navigating back to the Knowledge Base list from an entry returns focus to the active sidebar nav item', async ({
+    page,
+  }) => {
+    await page.route('**/api/v1/knowledge/**', async (route) => {
+      const url = new URL(route.request().url())
+      if (!url.pathname.endsWith('/api/v1/knowledge/') && !url.pathname.endsWith('/api/v1/knowledge')) {
+        return route.fallback()
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ query: '', entries: [], has_exact_matches: true, error: null }),
+      })
+    })
+    await page.goto('/app/knowledge/kb-001')
+    await expect(page.getByRole('heading', { name: 'kb-001' })).toBeFocused()
+
+    // Client-side back-navigation via the breadcrumb link (not a reload).
+    // Scoped to the breadcrumb — unlike investigation detail, KB detail
+    // deliberately does NOT force-collapse the sidebar (see
+    // `AppLayout.tsx`'s `isFocusManagedDetailRoute` doc comment), so the
+    // sidebar's own "Knowledge Base" nav link is also on-screen and would
+    // otherwise make this locator ambiguous.
+    await page.getByLabel('Breadcrumb').getByRole('link', { name: 'Knowledge Base' }).click()
+
+    await expect(page).toHaveURL(/\/app\/knowledge$/)
+    const activeNavItem = page.locator('[data-sidebar-nav-active="true"]')
+    await expect(activeNavItem).toBeFocused()
+  })
+})

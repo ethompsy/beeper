@@ -31,6 +31,8 @@
  */
 
 /** Job-phase status string as returned by the operator (`InvestigationPhase`). */
+import { apiFetch } from './http'
+
 export type InvestigationDetailStatus =
   | 'pending'
   | 'investigating'
@@ -137,11 +139,16 @@ export async function fetchInvestigationDetail(
 ): Promise<InvestigationDetailResult> {
   let response: Response
   try {
-    response = await fetch(
+    response = await apiFetch(
       `/api/v1/investigations/${encodeURIComponent(investigationId)}`,
       init,
     )
   } catch (error) {
+    // Also catches `apiFetch`'s `PermissionDeniedError` (403) — this
+    // function's `{ kind: 'error', error }` contract already carries the
+    // thrown value through untouched, so callers CAN narrow on
+    // `error instanceof PermissionDeniedError` without any shape change
+    // here (Task 8.4).
     return { kind: 'error', error }
   }
 

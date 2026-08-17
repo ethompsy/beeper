@@ -36,6 +36,19 @@ import { cn } from '../../utils/cn'
  * 3. Pipeline / diagnostic health: healthy | warning | critical | warming-up
  *      - Used by the Ingestion Stats / EWMA diagnostic tiles (not
  *        investigation-scoped), reusing the same color language.
+ * 4. Source connection health (Task 5.3, FR34): connected | disconnected
+ *                | unknown
+ *      - Used by the Sources view (`SourcesPage.tsx`) for Prometheus/Loki
+ *        connection status. Mirrors the Jinja `source_status_badge` macro
+ *        (`ui/beeper_ui/templates/components/status.html`) exactly:
+ *        `connected` → green "Connected"; the operator's `error`/
+ *        `disconnected`/`failed` statuses all collapse to red
+ *        "Disconnected"; anything else → gray "Unknown". Deliberately a
+ *        distinct axis from `healthy`/`critical` above rather than reusing
+ *        them with an overridden `label` — this keeps the variant name and
+ *        its rendered meaning aligned for future call sites, per this
+ *        component's own "select the right variant value for the field
+ *        you're rendering" contract.
  *
  * Severity (`Low`/`Medium`/`High`/`Critical`) is NOT a StatusBadge variant —
  * per the glossary (§11) severity is its own tag with its own copy; only its
@@ -63,6 +76,10 @@ export type StatusBadgeVariant =
   | 'critical'
   | 'warming-up'
   | 'no-data'
+  // Source connection health (Task 5.3, FR34) — Sources view only
+  | 'connected'
+  | 'disconnected'
+  | 'unknown'
 
 export interface StatusBadgeProps extends HTMLAttributes<HTMLSpanElement> {
   /** Which status axis + value this badge represents (see variant taxonomy above). */
@@ -92,24 +109,44 @@ const STATUS_BADGE_LABELS: Record<StatusBadgeVariant, string> = {
   critical: 'Critical',
   'warming-up': 'Warming Up',
   'no-data': 'No Data',
+  connected: 'Connected', // Task 5.3, FR34 — source_status_badge parity
+  disconnected: 'Disconnected',
+  unknown: 'Unknown',
 }
 
-/** Token classes per variant — bg token @ 10% opacity + matching text token. */
+/**
+ * Token classes per variant — bg token @ 10% opacity + matching text token,
+ * EXCEPT for the primary/status-critical/status-muted-driven variants below
+ * (Task 6.0), which use a solid `bg-surface-overlay` backdrop instead.
+ *
+ * Why the split: this badge renders inside cards that swap their own
+ * background to `surface-overlay` on hover (`InvestigationCard`,
+ * `KbEntryCard`) — a translucent tint blended over THAT (rather than the
+ * card's resting `surface-raised`) drops several of these below 4.5:1 even
+ * at the Task 6.0 token values (verified: `src/test/contrast.test.ts`). A
+ * solid backdrop is immune to the ambient-background shift. The
+ * status-healthy/status-warning-driven variants stay translucent — both
+ * tokens clear 4.5:1 with comfortable margin even under the same
+ * hover-exposed worst case, so there's no compliance reason to change them.
+ */
 const STATUS_BADGE_STYLES: Record<StatusBadgeVariant, string> = {
   investigating: 'bg-status-healthy/10 text-status-healthy',
   'awaiting-confirmation': 'bg-status-warning/10 text-status-warning',
-  completed: 'bg-status-muted/10 text-status-muted',
-  'analysis-failed': 'bg-status-critical/10 text-status-critical',
-  pending: 'bg-status-muted/10 text-status-muted',
-  detected: 'bg-primary/10 text-primary',
+  completed: 'bg-surface-overlay text-status-muted',
+  'analysis-failed': 'bg-surface-overlay text-status-critical',
+  pending: 'bg-surface-overlay text-status-muted',
+  detected: 'bg-surface-overlay text-primary',
   resolved: 'bg-status-healthy/10 text-status-healthy',
   verified: 'bg-status-healthy/10 text-status-healthy',
-  failed: 'bg-status-critical/10 text-status-critical',
+  failed: 'bg-surface-overlay text-status-critical',
   healthy: 'bg-status-healthy/10 text-status-healthy',
   warning: 'bg-status-warning/10 text-status-warning',
-  critical: 'bg-status-critical/10 text-status-critical',
+  critical: 'bg-surface-overlay text-status-critical',
   'warming-up': 'bg-status-warning/10 text-status-warning',
-  'no-data': 'bg-status-critical/10 text-status-critical',
+  'no-data': 'bg-surface-overlay text-status-critical',
+  connected: 'bg-status-healthy/10 text-status-healthy',
+  disconnected: 'bg-surface-overlay text-status-critical',
+  unknown: 'bg-surface-overlay text-status-muted',
 }
 
 export function StatusBadge({ variant, label, className, ...rest }: StatusBadgeProps) {

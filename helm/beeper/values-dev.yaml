@@ -20,6 +20,12 @@ operator:
       memory: 512Mi
 
 ui:
+  # Task 8.2 / ADR 0002 §8 (D3): the chart defaults ui.flaskEnv to
+  # `production` (fail-closed). The demo opts into `development` here so
+  # `make demo-up`/`demo-deploy` keep the X-Beeper-Role dev/admin affordance
+  # working with zero interactive steps — see helm/beeper/values.yaml and
+  # demo/tests/test_demo_automation.py::TestFlaskEnvFailClosed.
+  flaskEnv: development
   image:
     pullPolicy: Never
   service:

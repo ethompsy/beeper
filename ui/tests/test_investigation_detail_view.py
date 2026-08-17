@@ -16,7 +16,7 @@ Maps each [T] acceptance criterion to named tests:
        server-rendered, not dependent on the live stream.
 
 Test pattern follows repo convention (test_investigation_list_view.py):
-  - Render assertions via app.jinja_env.get_template().render() / client.get()
+  - Render assertions via app.jinja_env.get_template().render()
   - Static-source assertions for source-level contracts
   - No JS runner (AD-7 / AD-8)
 """
@@ -24,13 +24,9 @@ Test pattern follows repo convention (test_investigation_list_view.py):
 from __future__ import annotations
 
 import os
-from unittest.mock import patch
 
 import pytest
-import respx
 from flask import Flask
-from flask.testing import FlaskClient
-from httpx import Response
 
 from beeper_ui.app import create_app
 from beeper_ui.config import TestingConfig
@@ -52,12 +48,6 @@ STEP_TIMELINE_PARTIAL = os.path.join(
 @pytest.fixture
 def app() -> Flask:
     return create_app(TestingConfig)
-
-
-@pytest.fixture
-def client(app: Flask) -> FlaskClient:
-    with app.test_client() as c:
-        yield c
 
 
 # ---------------------------------------------------------------------------
@@ -121,18 +111,6 @@ def _render_conclusion(
             inv, findings, service_topology or {}
         )
 
-
-def _mock_detail_page(client: FlaskClient, findings: dict | None = None):
-    """Return a context that mocks the operator detail fetch + findings."""
-    respx.get(
-        "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
-    ).mock(return_value=Response(200, json=_DETAIL))
-    return patch(
-        "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
-        return_value=findings if findings is not None else {},
-    )
-
-
 # ---------------------------------------------------------------------------
 # AC1 — summary_header renders service/severity/signal-count/status (no SSE);
 #       breadcrumb reads "Investigations > INV-{id}".
@@ -182,51 +160,6 @@ class TestSummaryHeaderMacro:
             source = f.read()
         assert "macro summary_header" in source
 
-    @respx.mock
-    def test_breadcrumb_reads_investigations_inv_id(
-        self, client: FlaskClient
-    ) -> None:
-        """Full page breadcrumb reads 'Investigations > INV-{id}'."""
-        with _mock_detail_page(client):
-            response = client.get("/investigations/inv-detail-001")
-            assert response.status_code == 200
-            html = response.data.decode()
-            assert "Investigations" in html
-            assert "INV-inv-detail-001" in html
-            # Breadcrumb uses the layout's breadcrumb landmark, not legacy .breadcrumb
-            assert 'aria-label="Breadcrumb"' in html
-
-    @respx.mock
-    def test_page_renders_summary_header_immediately(
-        self, client: FlaskClient
-    ) -> None:
-        """Full page emits the summary header server-side (no streaming)."""
-        with _mock_detail_page(client, {"signals_gathered": 9}):
-            response = client.get("/investigations/inv-detail-001")
-            assert response.status_code == 200
-            html = response.data.decode()
-            assert "investigation-summary-header" in html
-            assert 'data-no-sse="true"' in html
-            # _DETAIL carries signal_count=12 on the record, so that wins.
-            assert "12 signals" in html
-
-    @respx.mock
-    def test_page_signal_count_falls_back_to_findings(
-        self, client: FlaskClient
-    ) -> None:
-        """When the record omits signal_count, it falls back to findings."""
-        detail_no_count = {k: v for k, v in _DETAIL.items() if k != "signal_count"}
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
-        ).mock(return_value=Response(200, json=detail_no_count))
-        with patch(
-            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
-            return_value={"signals_gathered": 9},
-        ):
-            response = client.get("/investigations/inv-detail-001")
-            assert response.status_code == 200
-            html = response.data.decode()
-            assert "9 signals" in html
 
 
 # ---------------------------------------------------------------------------
@@ -303,17 +236,6 @@ class TestInvestigationStepMacro:
             source = f.read()
         assert "macro investigation_step" in source
 
-    @respx.mock
-    def test_page_renders_steps_via_macro(self, client: FlaskClient) -> None:
-        """Full page emits investigation_step output (data-step-type) in timeline."""
-        with _mock_detail_page(client):
-            response = client.get("/investigations/inv-detail-001")
-            assert response.status_code == 200
-            html = response.data.decode()
-            assert "investigation-step" in html
-            assert "data-step-type=" in html
-            # The 'investigating'/signal-correlation message → correlation step active
-            assert "border-l-primary-hover" in html
 
 
 # ---------------------------------------------------------------------------
@@ -428,17 +350,6 @@ class TestConclusionBlock:
             source = f.read()
         assert "macro conclusion_block" in source
 
-    @respx.mock
-    def test_page_renders_conclusion_block(self, client: FlaskClient) -> None:
-        with _mock_detail_page(
-            client,
-            {"root_cause_hypothesis": "DB pool exhausted", "signals_gathered": 5},
-        ):
-            response = client.get("/investigations/inv-detail-001")
-            assert response.status_code == 200
-            html = response.data.decode()
-            assert "investigation-conclusion" in html
-            assert "DB pool exhausted" in html
 
 
 # ---------------------------------------------------------------------------
@@ -449,54 +360,6 @@ class TestConclusionBlock:
 class TestStepsRenderServerSide:
     """AC5: completed steps render server-side; page never blank (NFR7)."""
 
-    @respx.mock
-    def test_completed_steps_present_without_streaming(
-        self, client: FlaskClient
-    ) -> None:
-        """A completed investigation server-renders all completed steps with no
-        reliance on the SSE stream (the request never opens the stream)."""
-        completed = {**_DETAIL, "status": "completed", "message": None}
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-detail-001"
-        ).mock(return_value=Response(200, json=completed))
-        with patch(
-            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
-            return_value={},
-        ):
-            response = client.get("/investigations/inv-detail-001")
-            assert response.status_code == 200
-            html = response.data.decode()
-            # All six pipeline steps render as completed in the static response
-            assert html.count('data-step-state="completed"') == 6
-            assert "Customer Impact Assessment" in html
-            assert "Documentation" in html
-
-    @respx.mock
-    def test_step_container_is_server_rendered_not_lazy(
-        self, client: FlaskClient
-    ) -> None:
-        """The #step-progress container holds rendered steps, not an hx-get
-        load placeholder — proving NFR7 (no blank-until-fetch)."""
-        with _mock_detail_page(client):
-            response = client.get("/investigations/inv-detail-001")
-            html = response.data.decode()
-            assert 'id="step-progress"' in html
-            assert "step-timeline" in html
-            assert "investigation-step" in html
-
-    @respx.mock
-    def test_sse_hook_preserved_for_task_4_3(self, client: FlaskClient) -> None:
-        """The SSE step-update hook is preserved on #step-progress so Task 4.3
-        can stream live updates over the server-rendered baseline.
-
-        Task 4.3 (AD-4) migrated the detail page off the htmx SSE extension onto
-        the native EventSource client (sse.js): the step container now carries
-        data-sse-swap="step-update" and the stream URL lives on data-sse-url."""
-        with _mock_detail_page(client):
-            response = client.get("/investigations/inv-detail-001")
-            html = response.data.decode()
-            assert 'data-sse-swap="step-update"' in html
-            assert 'data-sse-url="/investigations/inv-detail-001/stream"' in html
 
     def test_step_timeline_partial_uses_macro(self) -> None:
         """_step_timeline.html drives rendering through investigation_step."""
@@ -528,16 +391,6 @@ class TestTokenDisciplineAndMigration:
         for hex_literal in ("#1a1a2e", "#0f0f1a", "#6366f1", "#22c55e", "#f59e0b"):
             assert hex_literal not in source
 
-    @respx.mock
-    def test_detail_page_no_raw_palette_hex(self, client: FlaskClient) -> None:
-        with _mock_detail_page(
-            client, {"root_cause_hypothesis": "x", "signals_gathered": 3}
-        ):
-            response = client.get("/investigations/inv-detail-001")
-            html = response.data.decode()
-            # migrated header/timeline/conclusion must not embed palette hex
-            assert "#1a1a2e" not in html
-            assert "#6366f1" not in html
 
     def test_migrated_header_drops_legacy_classes(self) -> None:
         """The migrated summary header carries no legacy main.css header classes

@@ -59,11 +59,16 @@ describe('design-system token CSS variables', () => {
   })
 
   describe('brand / interactive colors', () => {
-    it('primary is #6366f1', () => {
-      expect(getTokenValue(tokensSource, '--color-primary')).toBe('#6366f1')
+    // Task 6.0 (WCAG AA color-contrast fix, Q10): #6366f1 -> #8284f4, see
+    // src/test/contrast.test.ts for the derived-ratio proof.
+    it('primary is #8284f4', () => {
+      expect(getTokenValue(tokensSource, '--color-primary')).toBe('#8284f4')
     })
     it('primary-hover is #818cf8', () => {
       expect(getTokenValue(tokensSource, '--color-primary-hover')).toBe('#818cf8')
+    })
+    it('on-primary is #0f0f1a', () => {
+      expect(getTokenValue(tokensSource, '--color-on-primary')).toBe('#0f0f1a')
     })
   })
 
@@ -74,11 +79,13 @@ describe('design-system token CSS variables', () => {
     it('status-warning is #f59e0b', () => {
       expect(getTokenValue(tokensSource, '--color-status-warning')).toBe('#f59e0b')
     })
-    it('status-critical is #ef4444', () => {
-      expect(getTokenValue(tokensSource, '--color-status-critical')).toBe('#ef4444')
+    // Task 6.0: #ef4444 -> #f37373, see src/test/contrast.test.ts.
+    it('status-critical is #f37373', () => {
+      expect(getTokenValue(tokensSource, '--color-status-critical')).toBe('#f37373')
     })
-    it('status-muted is #6b7280', () => {
-      expect(getTokenValue(tokensSource, '--color-status-muted')).toBe('#6b7280')
+    // Task 6.0: #6b7280 -> #989ea9, see src/test/contrast.test.ts.
+    it('status-muted is #989ea9', () => {
+      expect(getTokenValue(tokensSource, '--color-status-muted')).toBe('#989ea9')
     })
   })
 
@@ -89,8 +96,9 @@ describe('design-system token CSS variables', () => {
     it('text-secondary is #94a3b8', () => {
       expect(getTokenValue(tokensSource, '--color-text-secondary')).toBe('#94a3b8')
     })
-    it('text-muted is #64748b', () => {
-      expect(getTokenValue(tokensSource, '--color-text-muted')).toBe('#64748b')
+    // Task 6.0: #64748b -> #8391a6, see src/test/contrast.test.ts.
+    it('text-muted is #8391a6', () => {
+      expect(getTokenValue(tokensSource, '--color-text-muted')).toBe('#8391a6')
     })
   })
 

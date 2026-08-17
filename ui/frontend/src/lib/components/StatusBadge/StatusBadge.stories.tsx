@@ -28,6 +28,9 @@ const meta = {
         'critical',
         'warming-up',
         'no-data',
+        'connected',
+        'disconnected',
+        'unknown',
       ] satisfies StatusBadgeVariant[],
     },
   },
@@ -81,6 +84,22 @@ export const PipelineHealthVariants: Story = {
       <StatusBadge variant="critical" />
       <StatusBadge variant="warming-up" />
       <StatusBadge variant="no-data" />
+    </div>
+  ),
+}
+
+/**
+ * Source connection health variants (Task 5.3, FR34) — Sources view only.
+ * Mirrors the Jinja `source_status_badge` macro's three-way mapping:
+ * connected → green, disconnected → red, unknown → gray.
+ */
+export const SourceConnectionVariants: Story = {
+  args: { variant: 'connected' },
+  render: () => (
+    <div className="flex flex-wrap gap-2">
+      <StatusBadge variant="connected" />
+      <StatusBadge variant="disconnected" />
+      <StatusBadge variant="unknown" />
     </div>
   ),
 }

@@ -418,34 +418,6 @@ class TestRemediationProgressRoute:
         assert b"/knowledge/kb-fix-123" in resp.data
 
 
-# --- List view tests ---
-
-
-class TestRemediationBadgeInList:
-    """Test remediation badge in investigation list view."""
-
-    def test_list_content_template_has_remediation_column(self) -> None:
-        html = _read_static("_list_content.html")
-        assert "Remediation" in html
-        assert "remediation-badge" in html
-
-    def test_list_content_template_has_em_dash_fallback(self) -> None:
-        html = _read_static("_list_content.html")
-        assert "mdash" in html  # &mdash; for no remediation
-
-
-# --- Detail page integration tests ---
-
-
-class TestRemediationInDetailPage:
-    """Test remediation progress card in investigation detail page."""
-
-    def test_detail_template_has_remediation_section(self) -> None:
-        html = _read_static("_detail_content.html")
-        assert "Remediation Progress" in html
-        assert "remediation-progress" in html
-        assert "remediation-update" in html
-
 
 # --- SSE tests ---
 

@@ -24,6 +24,7 @@ import {
   statusToBadgeVariant,
 } from './investigation-detail-mappers'
 import { fetchInvestigationDetail } from '../api/investigation-detail'
+import { recheckAuthAfterStreamFailure } from '../api/http'
 import { deriveProblemState } from '../lib/investigations/problem-state'
 import type { InvestigationDetailMetadata, InvestigationStepDto } from '../api/investigation-detail'
 
@@ -73,10 +74,24 @@ const EMPTY_STEPS: InvestigationStepDto[] = []
  * interim (that function already merges by `order` without dropping fields).
  *
  * The `failed` terminal state (after `MAX_CONSECUTIVE_ERRORS`) needs no page
- * state at all — `SseConnectionIndicator` already renders the "Live updates
+ * STATE at all — `SseConnectionIndicator` already renders the "Live updates
  * unavailable — refresh to sync" fallback purely from `connectionState`, and
  * every other block on this page renders unconditionally regardless of
- * `connectionState`, so the header/steps/KB panel stay fully viewable.
+ * `connectionState`, so the header/steps/KB panel stay fully viewable. It
+ * does need one SIDE EFFECT (Task 8.4, ADR 0002 §2/§8): `onFailed` below
+ * calls `recheckAuthAfterStreamFailure()`, which re-probes
+ * `GET /api/v1/auth/me` and redirects to login ONLY if that probe confirms
+ * the session actually dropped. This is necessary because the browser's
+ * native `EventSource` never exposes the HTTP status code that closed the
+ * connection — a `failed` state is equally consistent with "the session
+ * expired mid-stream" (ADR §2's SSE mid-flight re-auth) and "the
+ * operator/network hiccuped" (a `[T]` requirement is that the existing
+ * 5-retry failure path must not become a redirect loop). The `/me` recheck
+ * is the discriminator: still-authenticated leaves the existing "Live
+ * updates unavailable" banner as the correct and ONLY UX (no redirect, no
+ * page-state change); genuinely-unauthenticated (and `local`/`oidc` mode)
+ * redirects exactly like `apiFetch`'s own 401 handling. Mode `none` is a
+ * no-op in `recheckAuthAfterStreamFailure()` regardless (never redirects).
  *
  * ── Step-anchor permalink (Task 3.2, FR53) ──
  *
@@ -119,8 +134,17 @@ export function InvestigationDetailPage() {
     })
   }, [investigationId])
 
+  // Task 8.4: on the terminal `failed` state, re-check `/api/v1/auth/me` and
+  // redirect to login ONLY if that confirms the session actually dropped —
+  // see this page's doc comment above ("The `failed` terminal state...")
+  // for the full discriminator rationale.
+  const handleStreamFailed = useCallback(() => {
+    void recheckAuthAfterStreamFailure()
+  }, [])
+
   const { connectionState, steps: liveStepEvents } = useInvestigationEvents(streamId, {
     onReconnect: handleReconnect,
+    onFailed: handleStreamFailed,
   })
 
   const fetchedSteps: InvestigationStepDto[] = query.status === 'ok' ? query.data.steps : EMPTY_STEPS

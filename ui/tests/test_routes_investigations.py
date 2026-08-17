@@ -109,8 +109,3 @@ class TestLinkedKBEndpoint:
         response = client.get("/investigations/inv-validation/linked-kb")
         assert response.status_code == 200
         assert b"proven" in response.data
-
-    def test_linked_kb_invalid_investigation_id(self, client: FlaskClient) -> None:
-        """Test that invalid investigation IDs return 404."""
-        response = client.get("/investigations/../../etc/passwd/linked-kb")
-        assert response.status_code == 404

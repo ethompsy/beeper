@@ -222,24 +222,26 @@ class TestAtomicMigration:
         )
 
     def test_page_templates_still_extend_base(self) -> None:
-        """The 29 page templates documented in Story 3-2 still extend base.html."""
+        """The 22 remaining page templates still extend base.html.
+
+        Was 29 (Story 3-2) until Task 6.3 (D13/D14) retired the migrated
+        full pages (`investigations/detail.html`, `investigations/list.html`,
+        `knowledge/entry.html`, `knowledge/index.html`, `metrics/mttr.html`,
+        `sources/list.html`, `spending/spending.html`) — see
+        `test_page_template_rendering.py`'s `PAGE_TEMPLATES` for the same list.
+        """
         expected = {
             "analytics/dashboard.html",
             "handoff/handoff.html",
             "health/status.html",
-            "investigations/detail.html",
-            "investigations/list.html",
             "knowledge/diff.html",
             "knowledge/edit.html",
-            "knowledge/entry.html",
             "knowledge/history.html",
             "knowledge/import.html",
-            "knowledge/index.html",
             "knowledge/learning.html",
             "knowledge/service_knowledge.html",
             "knowledge/trust_settings.html",
             "knowledge/version.html",
-            "metrics/mttr.html",
             "notifications/config.html",
             "reports/executive.html",
             "reports/noise.html",
@@ -247,9 +249,7 @@ class TestAtomicMigration:
             "services/list.html",
             "slo/dashboard.html",
             "slo/service.html",
-            "sources/list.html",
             "spending/costs.html",
-            "spending/spending.html",
             "topology/index.html",
             "trust/history.html",
             "trust/settings.html",

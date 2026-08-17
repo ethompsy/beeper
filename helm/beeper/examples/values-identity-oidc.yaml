@@ -1,0 +1,37 @@
+# Example values overlay: `oidc` auth mode WITHOUT SCIM (login-time claims
+# snapshot governs for the session lifetime — see ADR 0002 §5.2/§5.3's
+# documented limitation: demotion/deprovisioning only takes effect at
+# session expiry or next login). Task 8.9 / ADR 0002 §3.
+#
+# Usage:
+#   helm upgrade --install beeper ./helm/beeper \
+#     -f ./helm/beeper/values.yaml \
+#     -f ./helm/beeper/examples/values-identity-oidc.yaml
+#
+# Prerequisite: register a confidential OIDC client with your IdP, with a
+# redirect URI of `<externalScheme>://<host>/auth/callback`, then create
+# the `beeper-identity` Secret with `secretKey` + `clientSecret` — see
+# ./identity-secret.yaml. See docs/deployment-guide.md's IdP setup notes
+# for Okta/Entra/Keycloak specifics (Entra in particular needs the SCIM
+# externalId note in values-identity-oidc-scim.yaml if you later enable
+# SCIM).
+
+ui:
+  auth:
+    mode: oidc
+    existingSecret: beeper-identity
+    externalScheme: https
+    adminGroups: "Admins,beeper-admin"
+    oidc:
+      issuer: "https://your-idp.example.com/realms/beeper"   # Keycloak realm issuer shown here; Okta/Entra issuers differ in shape
+      clientId: "beeper-ui"
+      # redirectUrl left empty: derived from the request Host header at
+      # callback-URL-build time (BEEPER_EXTERNAL_SCHEME + Host), which
+      # covers `kubectl port-forward` where the externally-visible host
+      # isn't known at deploy time. Set explicitly if your IdP requires an
+      # exact pre-registered redirect URI that differs from the request
+      # Host (common with strict Entra app registrations).
+      redirectUrl: ""
+      scopes: "openid profile email groups"
+      groupsClaim: "groups"
+      postLogoutRedirectUrl: ""

@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from datetime import datetime, timedelta, timezone
 
 from flask import (
@@ -14,13 +14,15 @@ from flask import (
     abort,
     current_app,
     jsonify,
+    redirect,
     render_template,
     request,
     stream_with_context,
 )
 
-from beeper_ui.middleware.permissions import require_role
-from beeper_ui.services.collaboration_service import get_collaboration_service
+from beeper_ui.middleware.permissions import require_role, resolve_role_for_identity
+from beeper_ui.middleware.session import read_session_identity
+from beeper_ui.routes.react_registry import build_app_redirect_target
 from beeper_ui.services.confidence_gate_service import (
     ConfidenceGateError,
     ConfidenceGateService,
@@ -35,7 +37,6 @@ from beeper_ui.services.escalation_urgency_service import (
 from beeper_ui.services.evidence_service import get_evidence_service
 from beeper_ui.services.investigation_service import (
     Investigation,
-    InvestigationDetail,
     InvestigationService,
     InvestigationServiceError,
     compute_remediation_status,
@@ -254,181 +255,23 @@ VALID_STATUS_GROUPS = set(STATUS_GROUPS.keys())
 
 
 @investigations_bp.route("/")
-def list_investigations() -> str:
-    """Display list of all investigations.
+def list_investigations() -> Response:
+    """Retired (Task 6.3 / D13-D14): the Jinja list page is removed.
 
-    Supports optional query parameters:
-    - status: Filter by status (investigating, awaiting_confirmation, completed, failed)
-    - service: Filter by service name
-    - severity: Filter by severity (low, medium, high, critical)
-    - date_range: Filter by time window (today, 7d, 30d, 90d)
-    - sort: Sort by urgency score descending (sort=urgency)
-
-    For HTMX requests (filtering/SSE updates), returns only the list content partial.
-    For full page requests, returns the complete page.
+    Kept registered — not deleted — because several retained Jinja pages
+    still build links to it via ``url_for('investigations.list_investigations',
+    ...)`` (e.g. ``knowledge/service_knowledge.html``,
+    ``reports/_noise_content.html``); deleting the endpoint would break
+    those ``url_for`` calls with a `BuildError`. A real browser request
+    never reaches this body: the ``REACT_OWNED_PREFIXES`` ``before_request``
+    hook (``react_registry.py``) always redirects `/investigations*` to its
+    `/app/investigations` equivalent first. This explicit redirect is a
+    defensive fallback that keeps behavior correct if that hook is ever
+    bypassed/disabled, and this route is now free of any reference to the
+    removed ``list.html``/``_list_content.html``/``_filter_panel.html``
+    templates.
     """
-    status = validate_status(request.args.get("status"))
-    service = validate_service(request.args.get("service"))
-    severity = validate_severity(request.args.get("severity"))
-    date_range = validate_date_range(request.args.get("date_range"))
-    sort_by = request.args.get("sort", "")
-    if sort_by not in VALID_SORTS:
-        sort_by = ""
-    workflow_state_filter = request.args.get("workflow_state", "")
-    if workflow_state_filter and workflow_state_filter not in VALID_WORKFLOW_STATES:
-        workflow_state_filter = ""
-    group_by = request.args.get("group_by", "")
-    if group_by not in ("", "workflow_state"):
-        group_by = ""
-    # Status-group filter (FR22): active=Pending/Running, resolved=completed, failed=failed
-    # Default is "active" when the status_group param is absent and no per-status filter set.
-    # Passing status_group= (empty) or status_group=all explicitly disables the default.
-    _sg_raw = request.args.get("status_group")  # None when param absent
-    if _sg_raw is None and not status:
-        # No explicit param → apply the active-first default (FR22)
-        status_group = "active"
-    elif _sg_raw in VALID_STATUS_GROUPS:
-        status_group = _sg_raw
-    else:
-        # Empty string, "all", or any invalid value → no group filter
-        status_group = ""
-
-    svc = get_investigation_service()
-    error_message: str | None = None
-    investigations: list[Investigation] = []
-
-    try:
-        investigations = svc.list_investigations(
-            status=status,
-            service=service,
-            severity=severity,
-        )
-        # Apply client-side date range filtering
-        cutoff = parse_date_range(date_range)
-        if cutoff:
-            investigations = filter_by_date_range(investigations, cutoff)
-    except InvestigationServiceError:
-        error_message = "Unable to connect to the Beeper operator."
-
-    # Compute workflow state counts (before filtering by workflow_state)
-    workflow_state_counts: dict[str, int] = {}
-    for inv in investigations:
-        ws = inv.workflow_state or "unknown"
-        workflow_state_counts[ws] = workflow_state_counts.get(ws, 0) + 1
-
-    # Apply workflow state filter (after counting)
-    if workflow_state_filter:
-        investigations = [
-            inv
-            for inv in investigations
-            if inv.workflow_state == workflow_state_filter
-        ]
-
-    # Apply status-group filter (FR22) — active/resolved/failed grouping.
-    # Only applied when status_group is set AND no explicit per-status filter overrides it.
-    if status_group and not status:
-        allowed = STATUS_GROUPS.get(status_group, set())
-        investigations = [inv for inv in investigations if inv.status in allowed]
-
-    # Compute urgency scores for all investigations
-    urgency_scores: dict[str, UrgencyScore] = {}
-    if investigations:
-        slo_svc = _get_slo_service()
-        urgency_svc = _get_urgency_service()
-        try:
-            # Fetch SLO budgets per unique service
-            services = {inv.service for inv in investigations}
-            slo_budgets: dict[str, dict[str, object] | None] = {}
-            for svc_name in services:
-                try:
-                    slo_budgets[svc_name] = slo_svc.get_service_budget(
-                        svc_name
-                    )
-                except SloServiceError:
-                    slo_budgets[svc_name] = None
-
-            # Fetch findings per investigation for customer_impacting
-            findings_map: dict[str, dict[str, object]] = {}
-            for inv in investigations:
-                try:
-                    findings_map[inv.id] = svc.get_investigation_findings(
-                        inv.id
-                    )
-                except Exception:
-                    logger.warning(
-                        "Failed to fetch findings for %s, using empty",
-                        inv.id,
-                    )
-                    findings_map[inv.id] = {}
-
-            urgency_scores = urgency_svc.compute_batch_urgency(
-                investigations, slo_budgets, findings_map
-            )
-        except EscalationUrgencyError:
-            logger.warning("Failed to compute urgency scores, degrading gracefully")
-        finally:
-            slo_svc.close()
-            urgency_svc.close()
-
-        # Compute remediation status from already-fetched findings
-        for inv in investigations:
-            if inv.workflow_state in ("investigating", "resolved"):
-                inv.remediation_status = compute_remediation_status(
-                    findings_map.get(inv.id, {})
-                )
-
-    # Sort by urgency if requested
-    if sort_by == "urgency" and urgency_scores:
-        investigations.sort(
-            key=lambda inv: urgency_scores.get(
-                inv.id, UrgencyScore.default()
-            ).score,
-            reverse=True,
-        )
-
-    # Calculate if any filter is active.
-    # Default status_group="active" is NOT considered an active filter chip —
-    # it's the normal default view. Only non-default, non-empty groups are shown.
-    any_filter_active = bool(status or service or severity or date_range or workflow_state_filter
-                             or (status_group and status_group not in ("active", "")))
-
-    # Group investigations by workflow state if requested
-    grouped_investigations: dict[str, list[Investigation]] = {}
-    if group_by == "workflow_state":
-        for inv in investigations:
-            key = inv.workflow_state or "unknown"
-            grouped_investigations.setdefault(key, []).append(inv)
-
-    # Check if this is an HTMX request (for partial updates)
-    if request.headers.get("HX-Request"):
-        return render_template(
-            "investigations/_list_content.html",
-            investigations=investigations,
-            urgency_scores=urgency_scores,
-            error_message=error_message,
-            workflow_state_counts=workflow_state_counts,
-            group_by=group_by,
-            grouped_investigations=grouped_investigations,
-            selected_status_group=status_group,
-        )
-
-    return render_template(
-        "investigations/list.html",
-        investigations=investigations,
-        urgency_scores=urgency_scores,
-        error_message=error_message,
-        selected_status=status,
-        selected_service=service,
-        selected_severity=severity,
-        selected_date_range=date_range,
-        selected_sort=sort_by,
-        selected_workflow_state=workflow_state_filter,
-        workflow_state_counts=workflow_state_counts,
-        any_filter_active=any_filter_active,
-        group_by=group_by,
-        grouped_investigations=grouped_investigations,
-        selected_status_group=status_group,
-    )
+    return redirect(build_app_redirect_target("/investigations/"))
 
 
 # Pipeline step definitions for timeline display.
@@ -530,118 +373,25 @@ def _get_step_states(
 
 
 @investigations_bp.route("/<investigation_id>")
-def investigation_detail(investigation_id: str) -> str | tuple[str, int]:
-    """Display investigation detail pane with real-time updates.
+def investigation_detail(investigation_id: str) -> Response:
+    """Retired (Task 6.3 / D13-D14): the Jinja detail page is removed.
 
-    For HTMX requests, returns partial HTML.
-    For full page requests, returns the complete page.
+    The "human interventions" history (annotations/redirects read from
+    ``collaboration_service``) lived exclusively in the now-removed
+    ``_detail_content.html`` — per the Task 6.3 constraint, neither
+    ``collaboration_service.py`` nor its Qdrant ``collaboration_messages``
+    collection is deleted (the data stays recoverable for a future view),
+    but there is currently no UI reading it.
+
+    Kept registered for the same ``url_for`` reason as ``list_investigations``
+    above — no retained template currently references
+    ``url_for('investigations.investigation_detail', ...)`` (its only
+    referrer, ``knowledge/entry.html``, is also retired), but keeping this a
+    defensive redirect rather than deleting the route costs nothing and
+    guards against future template drift. See that function's docstring for
+    why a real request never reaches this body in production.
     """
-    if not SERVICE_NAME_PATTERN.match(investigation_id):
-        abort(404)
-
-    svc = get_investigation_service()
-    error_message: str | None = None
-    investigation: InvestigationDetail | None = None
-    findings: dict[str, object] = {}
-    step_states: list[dict[str, str]] = []
-
-    try:
-        investigation = svc.get_investigation(investigation_id)
-        if investigation is None:
-            if request.headers.get("HX-Request"):
-                return render_template(
-                    "investigations/_detail_not_found.html",
-                    investigation_id=investigation_id,
-                ), 404
-            return render_template(
-                "investigations/detail.html",
-                investigation=None,
-                investigation_id=investigation_id,
-                error_message="Investigation not found.",
-                findings={},
-                step_states=[],
-            ), 404
-
-        findings = svc.get_investigation_findings(investigation_id)
-        step_states = _get_step_states(investigation.message, investigation.status)
-        # Surface the correlated-signal count in the summary header (FR23). The
-        # operator may not include it on the investigation record, so fall back
-        # to the pipeline findings' signals_gathered count when available.
-        if investigation.signal_count is None and findings:
-            signals_gathered = findings.get("signals_gathered")
-            if signals_gathered is not None:
-                try:
-                    investigation.signal_count = int(signals_gathered)
-                except (TypeError, ValueError):
-                    investigation.signal_count = None
-    except InvestigationServiceError:
-        error_message = "Unable to connect to the Beeper operator."
-
-    # Extract timeline events (includes evidence extraction + KB enrichment internally)
-    timeline_events = []
-    if findings:
-        ev_svc = get_evidence_service()
-        timeline_events = ev_svc.get_timeline_events(investigation_id, findings)
-
-    # Extract deploy correlation data from pipeline findings
-    deploy_correlations = findings.get("deploy_correlations", []) if findings else []
-    deploy_summary = findings.get("deploy_summary", "") if findings else ""
-
-    # Extract service topology data from pipeline findings
-    service_topology = findings.get("service_topology", {}) if findings else {}
-
-    # Extract change event correlation data from pipeline findings
-    change_events = findings.get("change_events", []) if findings else []
-    change_summary = findings.get("change_summary", "") if findings else ""
-
-    # Retrieve human interventions (annotations & redirects) from collaboration history
-    human_interventions = []
-    try:
-        collab_svc = get_collaboration_service()
-        all_messages = collab_svc.get_message_history(investigation_id)
-        human_interventions = [
-            msg.to_payload()
-            for msg in all_messages
-            if msg.message_type in ("annotation", "redirect")
-        ]
-    except Exception:
-        logger.warning(
-            "Failed to fetch human interventions for %s",
-            investigation_id,
-            exc_info=True,
-        )
-
-    if request.headers.get("HX-Request"):
-        return render_template(
-            "investigations/_detail_content.html",
-            investigation=investigation,
-            findings=findings,
-            step_states=step_states,
-            error_message=error_message,
-            timeline_events=timeline_events,
-            deploy_correlations=deploy_correlations,
-            deploy_summary=deploy_summary,
-            service_topology=service_topology,
-            change_events=change_events,
-            change_summary=change_summary,
-            human_interventions=human_interventions,
-        )
-
-    return render_template(
-        "investigations/detail.html",
-        investigation=investigation,
-        investigation_id=investigation_id,
-        findings=findings,
-        step_states=step_states,
-        error_message=error_message,
-        timeline_events=timeline_events,
-        deploy_correlations=deploy_correlations,
-        deploy_summary=deploy_summary,
-        service_topology=service_topology,
-        change_events=change_events,
-        change_summary=change_summary,
-        human_interventions=human_interventions,
-    )
+    return redirect(build_app_redirect_target(f"/investigations/{investigation_id}"))
 
 
 @investigations_bp.route("/<investigation_id>/related-kb")
@@ -1602,69 +1352,8 @@ def investigation_detail_stream(investigation_id: str) -> Response:
     )
 
 
-def _investigation_fingerprint(investigations: list[Investigation]) -> str:
-    """Create a fingerprint of the investigation list for change detection."""
-    return "|".join(f"{inv.id}:{inv.status}" for inv in investigations)
-
-
-def _generate_sse_events(
-    operator_url: str, operator_timeout: float
-) -> Generator[str, None, None]:
-    """Generate SSE events by polling the operator API.
-
-    Renders the list partial and emits the FR24 list events consumed by the
-    native EventSource client (sse.js): ``investigation_created`` when a new
-    investigation appears, ``investigation_status`` when an existing one changes
-    status. Both carry the freshly-rendered list partial so the client just
-    swaps the list innerHTML.
-    """
-    svc = InvestigationService(
-        operator_url=operator_url,
-        timeout=operator_timeout,
-    )
-    last_fingerprint = ""
-
-    while True:
-        try:
-            investigations = svc.list_investigations()
-            current_fingerprint = _investigation_fingerprint(investigations)
-
-            if current_fingerprint != last_fingerprint:
-                # Distinguish a newly-created investigation (more entries than
-                # last poll) from a status change on an existing one (FR24).
-                if last_fingerprint and len(
-                    current_fingerprint.split("|")
-                ) > len(last_fingerprint.split("|")):
-                    event_type = "investigation_created"
-                else:
-                    event_type = "investigation_status"
-
-                # Render HTML partial for the client innerHTML swap.
-                # Note: urgency_scores not computed in SSE path (too expensive
-                # for every poll cycle); template handles missing data gracefully.
-                html = render_template(
-                    "investigations/_list_content.html",
-                    investigations=investigations,
-                    urgency_scores={},
-                    error_message=None,
-                )
-                # Format for SSE: prefix each line with "data: "
-                data_lines = "\n".join(
-                    f"data: {line}" for line in html.split("\n")
-                )
-                yield f"event: {event_type}\n{data_lines}\n\n"
-                last_fingerprint = current_fingerprint
-
-        except InvestigationServiceError:
-            logger.warning("SSE: Failed to poll operator for investigations")
-        except GeneratorExit:
-            svc.close()
-            return
-
-        time.sleep(SSE_POLL_INTERVAL)
-
-
 @investigations_api_bp.route("/")
+@require_role("user")
 def investigations_list_json() -> tuple[Response, int] | Response:
     """JSON list of investigations for the React UI (Task 1.6 / FR24).
 
@@ -1712,6 +1401,7 @@ def investigations_list_json() -> tuple[Response, int] | Response:
 
 
 @investigations_api_bp.route("/<investigation_id>")
+@require_role("user")
 def investigation_detail_json(
     investigation_id: str,
 ) -> tuple[Response, int] | Response:
@@ -1786,6 +1476,8 @@ def _generate_json_sse_events(
     operator_timeout: float,
     investigation_id: str,
     poll_interval: float,
+    *,
+    reauth_check: Callable[[], bool] | None = None,
 ) -> Generator[str, None, None]:
     """Generate JSON SSE events for a single investigation's progress (Task 1.6).
 
@@ -1807,6 +1499,16 @@ def _generate_json_sse_events(
     Each step in the ordered pipeline is emitted individually so the client can
     apply updates incrementally and position them by ``order`` without receiving
     the full list on every poll.
+
+    ``reauth_check`` (Task 8.3 / ADR 0002 §2/NFR25): an optional zero-arg
+    callable re-checked once per poll tick, BEFORE polling the operator.
+    ``None`` (the default, and always the case in ``BEEPER_AUTH_MODE=none``)
+    means "no re-auth needed" — behavior is byte-identical to pre-8.3. When
+    supplied and it returns falsy, the stream terminates immediately (no
+    further events, generator returns) — the client's reconnect-on-error
+    fetch then converts that into the normal 401 → login path. See
+    ``_build_sse_reauth_check()`` on ``investigation_events_json`` below for
+    how this closure is built and what it captures.
     """
     svc = InvestigationService(
         operator_url=operator_url,
@@ -1819,6 +1521,15 @@ def _generate_json_sse_events(
         return f"event: {event_name}\ndata: {json.dumps(payload)}\n\n"
 
     while True:
+        if reauth_check is not None and not reauth_check():
+            logger.info(
+                "JSON SSE: terminating stream for investigation %s — "
+                "identity failed re-authorization at poll tick (ADR 0002 §2/NFR25)",
+                investigation_id,
+            )
+            svc.close()
+            return
+
         try:
             detail = svc.get_investigation(investigation_id)
             if detail is None:
@@ -1863,7 +1574,41 @@ def _generate_json_sse_events(
         time.sleep(poll_interval)
 
 
+def _build_sse_reauth_check() -> Callable[[], bool] | None:
+    """Build the ADR §2/NFR25 keepalive re-auth check for the JSON SSE stream.
+
+    Returns ``None`` in mode ``none`` (no-op — existing tests / behavior
+    unchanged) or when there is no session identity to re-check (shouldn't
+    happen in practice: ``resolve_request_identity()`` already 401s an
+    unauthenticated request in ``local``/``oidc`` before this view function
+    ever runs — defensive fallback only).
+
+    Otherwise returns a zero-arg callable the generator invokes once per
+    poll tick. It re-resolves the STORE's current role for the identity
+    captured HERE, at stream-start — not by re-reading the session on every
+    tick, since the session's cookie-carried content cannot change
+    mid-stream without the client sending a new request; it's the store
+    (role/active, mutable at any time by an admin or SCIM) that must be
+    re-checked. This also re-validates the captured snapshot's absolute
+    `exp`, so a stream that outlives the session's lifetime terminates too.
+    """
+    mode = current_app.config.get("BEEPER_AUTH_MODE", "none")
+    if mode == "none":
+        return None
+    identity = read_session_identity()
+    if identity is None:
+        return None
+
+    def _check() -> bool:
+        if time.time() > identity.exp:
+            return False
+        return resolve_role_for_identity(mode, identity).status == "ok"
+
+    return _check
+
+
 @investigations_api_bp.route("/<investigation_id>/events")
+@require_role("user")
 def investigation_events_json(investigation_id: str) -> Response:
     """JSON SSE event stream for a single investigation's step progress (Task 1.6).
 
@@ -1884,6 +1629,7 @@ def investigation_events_json(investigation_id: str) -> Response:
     poll_interval: float = float(
         current_app.config.get("JSON_SSE_POLL_INTERVAL", _DEFAULT_JSON_SSE_POLL_INTERVAL)
     )
+    reauth_check = _build_sse_reauth_check()
     return Response(
         stream_with_context(
             _generate_json_sse_events(
@@ -1891,6 +1637,7 @@ def investigation_events_json(investigation_id: str) -> Response:
                 operator_timeout,
                 investigation_id,
                 poll_interval,
+                reauth_check=reauth_check,
             )
         ),
         mimetype="text/event-stream",
@@ -1902,25 +1649,20 @@ def investigation_events_json(investigation_id: str) -> Response:
     )
 
 
-@investigations_bp.route("/stream")
-def investigation_stream() -> Response:
-    """SSE endpoint for real-time investigation updates.
 
-    Polls the operator API every 3 seconds and only pushes events
-    when the investigation list changes. Sends rendered HTML partials
-    for direct HTMX swap.
-    """
-    # Capture config before entering generator
-    operator_url: str = current_app.config["OPERATOR_URL"]
-    operator_timeout: float = current_app.config["OPERATOR_TIMEOUT"]
-    return Response(
-        stream_with_context(
-            _generate_sse_events(operator_url, operator_timeout)
-        ),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+# NOTE (Task 6.3 / D13-D14): the list-level HTML SSE endpoint that used to
+# live at `/investigations/stream` (`investigation_stream()` /
+# `_generate_sse_events()`) is deliberately DELETED, not gutted-to-redirect
+# like the routes above. Its sole reason to exist was pushing rendered
+# `investigations/_list_content.html` fragments into the now-removed
+# `investigations/list.html` page via a native EventSource (sse.js) — that
+# template is gone, nothing else ever opened this stream (the React list
+# view polls/consumes `/api/v1/investigations/` + the JSON SSE endpoints
+# below), and keeping a "redirect stub" for a streaming endpoint doesn't
+# make sense the way it does for a page route (an EventSource that gets
+# redirected to an HTML shell just errors client-side). Unlike the detail
+# stream below, none of its dependent code survives elsewhere, so there is
+# no `url_for` or template obligation keeping it registered. Bare
+# `/investigations/stream` now falls through to the same `/investigations`
+# prefix redirect as everything else under this blueprint (harmless: the
+# path was already 100% dead).

@@ -1,0 +1,54 @@
+# Example values overlay: `oidc` auth mode WITH SCIM provisioning
+# (store-primary role resolution, <=60s deprovisioning propagation —
+# NFR25). Task 8.9 / ADR 0002 §4/§5. This is the recommended production
+# configuration when your IdP supports SCIM (Okta, Entra ID, Keycloak all
+# do).
+#
+# Usage:
+#   helm upgrade --install beeper ./helm/beeper \
+#     -f ./helm/beeper/values.yaml \
+#     -f ./helm/beeper/examples/values-identity-oidc-scim.yaml
+#
+# Prerequisite: create the `beeper-identity` Secret with `secretKey` +
+# `clientSecret` + `scimToken` — see ./identity-secret.yaml. Then register
+# a SCIM provisioning app in your IdP pointing at
+# `https://<host>/scim/v2` with the `scimToken` value as its bearer
+# credential.
+#
+# ENTRA ID SPECIFIC: map the SCIM `externalId` attribute to `objectId`,
+# NOT `sub` (Entra's OIDC `sub` claim is pairwise/app-specific and will
+# never match the externalId your SCIM app pushes, breaking adopt-and-link
+# for anyone who logs in before being SCIM-provisioned). See
+# docs/deployment-guide.md's IdP setup notes for the full walkthrough.
+#
+# The optional NetworkPolicy below is commented out by default — read the
+# honesty note in helm/beeper/templates/ui-networkpolicy.yaml and
+# docs/deployment-guide.md before enabling it: it restricts ALL ingress to
+# the UI's port (NetworkPolicy cannot scope by HTTP path), not just
+# /scim/v2, so `allowFrom` must also cover your real users' traffic
+# sources.
+
+ui:
+  auth:
+    mode: oidc
+    existingSecret: beeper-identity
+    externalScheme: https
+    adminGroups: "Admins,beeper-admin"
+    oidc:
+      issuer: "https://your-idp.example.com/realms/beeper"
+      clientId: "beeper-ui"
+      redirectUrl: ""
+      scopes: "openid profile email groups"
+      groupsClaim: "groups"
+      postLogoutRedirectUrl: ""
+    scim:
+      enabled: true
+      strict: false
+      # networkPolicy:
+      #   enabled: true
+      #   allowFrom:
+      #     - ipBlock:
+      #         cidr: 203.0.113.0/24   # replace with your IdP's published SCIM egress range
+      #     - namespaceSelector:
+      #         matchLabels:
+      #           kubernetes.io/metadata.name: ingress-nginx   # your ingress controller's namespace, so browser traffic keeps working

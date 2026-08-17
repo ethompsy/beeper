@@ -26,44 +26,12 @@ def test_index_page(client: FlaskClient) -> None:
     assert b"Beeper" in response.data
 
 
-@respx.mock
-def test_sources_page_renders_with_sources(client: FlaskClient) -> None:
-    """Test sources page renders with source data from operator."""
-    mock_response = {
-        "sources": [
-            {
-                "name": "prometheus-main",
-                "type": "prometheus",
-                "endpoint": "http://prometheus:9090",
-                "status": "connected",
-                "last_check": "2026-02-10T12:00:00Z",
-                "error": None,
-            }
-        ]
-    }
-    respx.get("http://mock-operator:8080/api/v1/sources").mock(
-        return_value=Response(200, json=mock_response)
-    )
-
-    response = client.get("/sources/")
-    assert response.status_code == 200
-    assert b"Data Sources" in response.data
-    assert b"prometheus-main" in response.data
-
-
-@respx.mock
-def test_sources_page_renders_error_when_operator_unavailable(client: FlaskClient) -> None:
-    """Test sources page gracefully handles operator unavailability."""
-    import httpx
-
-    respx.get("http://mock-operator:8080/api/v1/sources").mock(
-        side_effect=httpx.ConnectError("Connection refused")
-    )
-
-    response = client.get("/sources/")
-    assert response.status_code == 200
-    assert b"Data Sources" in response.data
-    assert b"Unable to fetch sources" in response.data
+# NOTE (Task 6.3 / D13-D14): `test_sources_page_renders_with_sources` and
+# `test_sources_page_renders_error_when_operator_unavailable` were removed
+# here — `/sources/` no longer renders a Jinja page (see
+# `test_routes.py::TestSourcesRoute` for the redirect coverage that replaces
+# them; the data/error rendering they used to prove now lives in the React
+# Sources view's own suite, `ui/frontend/src/test/SourcesPage.test.tsx`).
 
 
 @respx.mock

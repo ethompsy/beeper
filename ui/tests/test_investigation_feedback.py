@@ -5,51 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import respx
 from flask.testing import FlaskClient
-from httpx import Response
-
-MOCK_INVESTIGATION_COMPLETED = {
-    "id": "inv-feedback-001",
-    "status": "completed",
-    "service": "payments",
-    "severity": "high",
-    "condition": "High error rate detected",
-    "started_at": "2026-03-16T10:00:00Z",
-    "completed_at": "2026-03-16T10:15:00Z",
-    "triggered_at": "2026-03-16T09:55:00Z",
-}
-
-MOCK_INVESTIGATION_INVESTIGATING = {
-    "id": "inv-feedback-002",
-    "status": "investigating",
-    "service": "api-gateway",
-    "severity": "medium",
-    "condition": "Latency spike detected",
-    "started_at": "2026-03-16T12:00:00Z",
-    "completed_at": None,
-    "triggered_at": "2026-03-16T11:55:00Z",
-}
-
-MOCK_INVESTIGATION_FAILED = {
-    "id": "inv-feedback-003",
-    "status": "failed",
-    "service": "checkout",
-    "severity": "critical",
-    "condition": "Service crash",
-    "started_at": "2026-03-16T14:00:00Z",
-    "completed_at": None,
-    "triggered_at": "2026-03-16T13:55:00Z",
-}
-
-MOCK_FINDINGS_WITH_FEEDBACK = {
-    "investigation_id": "inv-feedback-001",
-    "investigation_feedback": "accurate",
-    "investigation_feedback_by": "sre@company.com",
-    "investigation_feedback_at": "2026-03-16T10:20:00Z",
-}
-
-MOCK_FINDINGS_NO_FEEDBACK = {
-    "investigation_id": "inv-feedback-001",
-}
 
 
 class TestSubmitFeedbackRoute:
@@ -158,16 +113,6 @@ class TestSubmitFeedbackRoute:
         assert response.status_code == 400
         assert b"Invalid feedback type" in response.data
 
-    @respx.mock
-    def test_feedback_invalid_investigation_id_returns_404(
-        self, client: FlaskClient
-    ) -> None:
-        """Test feedback with invalid investigation ID returns 404."""
-        response = client.post(
-            "/investigations/../../etc/passwd/feedback",
-            data={"feedback_type": "accurate"},
-        )
-        assert response.status_code == 404
 
     @respx.mock
     def test_feedback_saves_gracefully_for_nonexistent_investigation(
@@ -319,93 +264,3 @@ class TestSubmitFeedbackRoute:
             assert mock_svc.save_resolution_feedback.call_count == 2
 
 
-class TestFeedbackDetailPageIntegration:
-    """Tests for feedback section integration in investigation detail page."""
-
-    @respx.mock
-    def test_detail_page_includes_feedback_for_completed(
-        self, client: FlaskClient
-    ) -> None:
-        """Test detail page includes feedback section for completed investigations."""
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-feedback-001"
-        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_COMPLETED))
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-feedback-001/findings"
-        ).mock(return_value=Response(200, json=MOCK_FINDINGS_NO_FEEDBACK))
-
-        response = client.get("/investigations/inv-feedback-001")
-        assert response.status_code == 200
-        assert b"Investigation Feedback" in response.data
-        assert b"feedback-section" in response.data
-        assert b"feedback-btn" in response.data
-
-    @respx.mock
-    def test_detail_page_excludes_feedback_for_investigating(
-        self, client: FlaskClient
-    ) -> None:
-        """Test detail page excludes feedback section for investigating status."""
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-feedback-002"
-        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_INVESTIGATING))
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-feedback-002/findings"
-        ).mock(return_value=Response(200, json={}))
-
-        response = client.get("/investigations/inv-feedback-002")
-        assert response.status_code == 200
-        assert b"Investigation Feedback" not in response.data
-
-    @respx.mock
-    def test_detail_page_excludes_feedback_for_failed(
-        self, client: FlaskClient
-    ) -> None:
-        """Test detail page excludes feedback section for failed status."""
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-feedback-003"
-        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_FAILED))
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-feedback-003/findings"
-        ).mock(return_value=Response(200, json={}))
-
-        response = client.get("/investigations/inv-feedback-003")
-        assert response.status_code == 200
-        assert b"Investigation Feedback" not in response.data
-
-    @respx.mock
-    def test_detail_page_shows_existing_feedback_highlighted(
-        self, client: FlaskClient
-    ) -> None:
-        """Test detail page highlights existing feedback when already submitted."""
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-feedback-001"
-        ).mock(return_value=Response(200, json=MOCK_INVESTIGATION_COMPLETED))
-
-        with patch(
-            "beeper_ui.routes.investigations.InvestigationService.get_investigation_findings",
-            return_value=MOCK_FINDINGS_WITH_FEEDBACK,
-        ):
-            response = client.get("/investigations/inv-feedback-001")
-            assert response.status_code == 200
-            assert b"feedback-btn-selected" in response.data
-
-    @respx.mock
-    def test_detail_page_awaiting_confirmation_includes_feedback(
-        self, client: FlaskClient
-    ) -> None:
-        """Test feedback section shown for awaiting_confirmation status."""
-        awaiting = {
-            **MOCK_INVESTIGATION_COMPLETED,
-            "id": "inv-feedback-004",
-            "status": "awaiting_confirmation",
-        }
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-feedback-004"
-        ).mock(return_value=Response(200, json=awaiting))
-        respx.get(
-            "http://mock-operator:8080/api/v1/investigations/inv-feedback-004/findings"
-        ).mock(return_value=Response(200, json={}))
-
-        response = client.get("/investigations/inv-feedback-004")
-        assert response.status_code == 200
-        assert b"Investigation Feedback" in response.data

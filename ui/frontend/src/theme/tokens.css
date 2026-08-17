@@ -21,33 +21,65 @@
 
   /* ─────────────────────────────────────────────────────────────────
    * COLORS — Brand / interactive
+   *
+   * Task 6.0 (WCAG AA color-contrast token defect, Q10): `--color-primary`
+   * was #6366f1 (3.32-4.26:1 against the three surface tones above — fails
+   * the 4.5:1 small-text minimum). Lightened via HSL (hue/saturation held
+   * constant) to the minimum shift that clears 4.5:1 against the lightest
+   * (worst-case) surface, `surface-overlay`, with a safety margin against
+   * browser-level rounding: 5.94:1 / 5.33:1 / 4.63:1 vs base/raised/overlay.
+   * Still darker than `--color-primary-hover` (unchanged), so hover still
+   * reads as strictly brighter. Verified: `src/test/contrast.test.ts`.
    * ───────────────────────────────────────────────────────────────── */
-  --color-primary:       #6366f1; /* Indigo: active nav, links, buttons, focus rings */
+  --color-primary:       #8284f4; /* Indigo: active nav, links, buttons, focus rings, chart strokes */
   --color-primary-hover: #818cf8; /* Hover state for primary elements */
+  --color-on-primary:    #0f0f1a; /* Foreground for text/icons drawn on a solid --color-primary fill (buttons) — NOT for use on dark surfaces */
 
   /* ─────────────────────────────────────────────────────────────────
    * COLORS — Status (appears only to communicate state)
+   *
+   * Task 6.0: `--color-status-critical` was #ef4444 (3.94-5.06:1 direct;
+   * as low as 3.60:1 once blended into its own translucent badge
+   * backgrounds — fails 4.5:1). `--color-status-muted` was #6b7280
+   * (3.07-3.94:1 — fails 4.5:1; reachable via the `completed`/`pending`
+   * StatusBadge variants, not just large-text/non-text contexts). Both
+   * lightened via HSL (hue/saturation held constant) to clear 4.5:1 with
+   * margin against every surface AND the worst realistic translucent-badge
+   * blend (including a card's `hover:bg-surface-overlay` state). Verified:
+   * `src/test/contrast.test.ts`.
    * ───────────────────────────────────────────────────────────────── */
-  --color-status-healthy:  #22c55e; /* Active investigation border, healthy pipeline chip */
-  --color-status-warning:  #f59e0b; /* Warning severity, EWMA warming-up chip */
-  --color-status-critical: #ef4444; /* Failed investigation, unhealthy pipeline */
-  --color-status-muted:    #6b7280; /* Completed investigation border, disabled elements */
+  --color-status-healthy:  #22c55e; /* Active investigation border, healthy pipeline chip (6.50-8.35:1, already compliant) */
+  --color-status-warning:  #f59e0b; /* Warning severity, EWMA warming-up chip (6.90-8.86:1, already compliant) */
+  --color-status-critical: #f37373; /* Failed investigation, unhealthy pipeline */
+  --color-status-muted:    #989ea9; /* Completed investigation border, disabled elements */
 
   /* ─────────────────────────────────────────────────────────────────
    * COLORS — Text hierarchy
+   *
+   * Task 6.0: `--color-text-muted` was #64748b (3.11-4.00:1 against the
+   * three surfaces — despite the comment below previously (incorrectly)
+   * claiming "4.5:1 AA"; it was never actually verified against
+   * surface-raised/surface-overlay, only surface-base). Lightened via HSL
+   * (hue/saturation held constant) to clear 4.5:1 with margin against every
+   * surface. Verified: `src/test/contrast.test.ts`.
    * ───────────────────────────────────────────────────────────────── */
-  --color-text-primary:   #f8fafc; /* Headings, primary content, evidence values (17.4:1 AAA) */
-  --color-text-secondary: #94a3b8; /* Labels, timestamps, metadata (7.1:1 AAA) */
-  --color-text-muted:     #64748b; /* Placeholder, tertiary information (4.5:1 AA) */
+  --color-text-primary:   #f8fafc; /* Headings, primary content, evidence values (17.4:1 AAA vs. surfaces; see --color-on-primary for use on a --color-primary fill) */
+  --color-text-secondary: #94a3b8; /* Labels, timestamps, metadata (5.78-7.42:1, already compliant) */
+  --color-text-muted:     #8391a6; /* Placeholder, tertiary information (4.5:1+ AA vs. all three surface tones) */
 
   /* ─────────────────────────────────────────────────────────────────
    * COLORS — Investigation step type borders (reuse surface tokens)
+   *
+   * Task 6.0: kept in sync with the `--color-primary`/`--color-text-muted`
+   * updates above (`border-l-*`, non-text — 3:1 was already satisfied even
+   * before Task 6.0, but these values must still mirror their source token
+   * exactly or the same semantic color silently diverges into two hexes).
    * ───────────────────────────────────────────────────────────────── */
-  --color-step-metric:      #6366f1; /* MetricQueryStep → primary */
+  --color-step-metric:      #8284f4; /* MetricQueryStep → primary */
   --color-step-log:         #22c55e; /* LogQueryStep    → status-healthy */
   --color-step-kb:          #f59e0b; /* KBQueryStep     → status-warning */
   --color-step-correlation: #818cf8; /* Correlation     → primary-hover */
-  --color-step-summary:     #64748b; /* Summary         → text-muted */
+  --color-step-summary:     #8391a6; /* Summary         → text-muted */
 
   /* ─────────────────────────────────────────────────────────────────
    * SPACING — 4px base unit scale

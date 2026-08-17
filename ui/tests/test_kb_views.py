@@ -10,16 +10,24 @@ no-JS-runner convention.
     AC3 (FR31): Entry detail shows root cause, resolution, affected services,
                 source investigation ref.
     AC4:        Empty KB renders an explanatory empty state, not blank.
+
+Task 6.3 (Jinja retirement, D13/D14): the KB index/search/entry-detail pages
+(``GET /knowledge/``, ``GET /knowledge/search``, ``GET /knowledge/<id>``) are
+retired — they now 302-redirect to the React app (``/app/knowledge...``) via
+the ``react_registry`` before-request hook, so their route-level render
+assertions for AC1 (index), AC2 (search) and AC4 (empty state) no longer
+apply here and were removed. What remains: AC1/AC3 coverage of the
+``_entry_card.html`` component and ``KBEntry`` model parsing, which are still
+exercised outside the retired pages (e.g. ``service_knowledge.html``).
+Route-level coverage of AC1/AC2/AC3/AC4 now lives in the React app's own
+tests.
 """
 
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from flask import Flask
-from flask.testing import FlaskClient
 
-from beeper_ui.services.embedding_service import EmbeddingService
 from beeper_ui.services.kb_service import KBEntry
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "beeper_ui" / "templates" / "knowledge"
@@ -56,37 +64,13 @@ def _make_entry(
 
 
 class TestAC1ListShowsServiceTitleDate:
-    """AC1 / FR28: KB index lists entries with service, title and date."""
+    """AC1 / FR28: KB index lists entries with service, title and date.
 
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_kb_index_lists_service_title_and_date(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        created = datetime(2026, 5, 1, 14, 30, tzinfo=timezone.utc)
-        mock_service.list_recent_entries.return_value = [
-            _make_entry(
-                "kb-1",
-                "investigation",
-                "Payment latency spike",
-                service="payments",
-                created_at=created,
-            ),
-        ]
-        mock_service.get_available_services.return_value = ["payments"]
-        mock_service.get_entry_types.return_value = ["investigation"]
-
-        response = client.get("/knowledge/")
-        body = response.data.decode()
-
-        assert response.status_code == 200
-        # title
-        assert "Payment latency spike" in body
-        # service
-        assert "payments" in body
-        # date (rendered as %Y-%m-%d %H:%M in the entry card)
-        assert "2026-05-01 14:30" in body
+    The route-level render check (``GET /knowledge/``) was removed under
+    Task 6.3 — the index page is retired and now redirects to the React app.
+    What remains proves the underlying ``_entry_card.html`` component (still
+    used by the live ``service_knowledge.html`` view) surfaces these fields.
+    """
 
     def test_entry_card_uses_dark_tokens_not_legacy_only(self, app: Flask) -> None:
         """Migrated card is Tailwind dark-token only — the structural fields and
@@ -115,119 +99,15 @@ class TestAC1ListShowsServiceTitleDate:
         assert "text-[" not in src
 
 
-class TestAC2SearchFiltersToMatches:
-    """AC2 / FR29: search by keyword or by service filters to matches."""
-
-    @patch("beeper_ui.routes.knowledge.get_embedding_service")
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_keyword_search_returns_matching_entries(
-        self,
-        mock_get_kb_service: MagicMock,
-        mock_get_embedding_service: MagicMock,
-        client: FlaskClient,
-    ) -> None:
-        mock_kb_service = MagicMock()
-        mock_get_kb_service.return_value = mock_kb_service
-        mock_embedding = MagicMock(spec=EmbeddingService)
-        mock_embedding.is_configured.return_value = True
-        mock_get_embedding_service.return_value = mock_embedding
-
-        match = _make_entry("kb-1", "investigation", "Redis eviction storm")
-        match.relevance_score = 0.91
-        mock_kb_service.search_semantic.return_value = ([match], True)
-
-        response = client.get("/knowledge/search?q=redis")
-        body = response.data.decode()
-
-        assert response.status_code == 200
-        assert "Redis eviction storm" in body
-        # the query drove a semantic search
-        assert mock_kb_service.search_semantic.called
-        assert mock_kb_service.search_semantic.call_args.kwargs["query"] == "redis"
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_service_filter_returns_filtered_entries(
-        self, mock_get_kb_service: MagicMock, client: FlaskClient
-    ) -> None:
-        """Service filter with no keyword performs a filter-only search."""
-        mock_kb_service = MagicMock()
-        mock_get_kb_service.return_value = mock_kb_service
-        mock_kb_service.list_recent_entries.return_value = [
-            _make_entry("kb-1", "runbook", "API runbook", service="api"),
-        ]
-
-        response = client.get("/knowledge/search?service=api")
-        body = response.data.decode()
-
-        assert response.status_code == 200
-        assert "API runbook" in body
-        # filter-only search routed through list_recent_entries with the service
-        assert mock_kb_service.list_recent_entries.call_args.kwargs["service"] == "api"
-
-    @patch("beeper_ui.routes.knowledge.get_embedding_service")
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_search_no_matches_shows_no_results_message(
-        self,
-        mock_get_kb_service: MagicMock,
-        mock_get_embedding_service: MagicMock,
-        client: FlaskClient,
-    ) -> None:
-        mock_kb_service = MagicMock()
-        mock_get_kb_service.return_value = mock_kb_service
-        mock_embedding = MagicMock(spec=EmbeddingService)
-        mock_embedding.is_configured.return_value = True
-        mock_get_embedding_service.return_value = mock_embedding
-        mock_kb_service.search_semantic.return_value = ([], True)
-
-        response = client.get("/knowledge/search?q=zzz-nothing")
-        body = response.data.decode()
-
-        assert response.status_code == 200
-        assert "No results found" in body
-
-
 class TestAC3EntryDetailShowsFR31Fields:
     """AC3 / FR31: detail shows root cause, resolution, affected services and the
-    source investigation reference."""
+    source investigation reference.
 
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_entry_detail_renders_root_cause_resolution_affected_and_source(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.get_entry.return_value = _make_entry(
-            "kb-incident",
-            "investigation",
-            "Checkout 500s",
-            content="## Full record\n\nDetails here.",
-            service="checkout",
-            root_cause="Connection pool exhausted under load",
-            resolution="Raised pool size from 10 to 50 and added backpressure",
-            affected_services=["checkout", "payments"],
-        )
-        mock_service.list_related_entries.return_value = []
-        mock_service.get_entry_payload.return_value = {}
-        mock_service.get_source_investigation.return_value = {
-            "investigation_id": "inv-checkout-42",
-            "relationship": "source",
-        }
-        mock_service.get_contributing_investigations.return_value = []
-
-        response = client.get("/knowledge/kb-incident")
-        body = response.data.decode()
-
-        assert response.status_code == 200
-        # FR31 — each required field surfaced as a labeled section
-        assert "Root Cause" in body
-        assert "Connection pool exhausted under load" in body
-        assert "Resolution" in body
-        assert "Raised pool size from 10 to 50" in body
-        assert "Affected Services" in body
-        assert "payments" in body
-        # source investigation reference
-        assert "Source Investigation" in body
-        assert "inv-checkout-42" in body
+    The route-level render check (``GET /knowledge/<id>``) was removed under
+    Task 6.3 — the entry detail page is retired and now redirects to the
+    React app. What remains proves the ``KBEntry`` model correctly parses
+    these FR31 fields from the Qdrant payload, independent of rendering.
+    """
 
     def test_kbentry_parses_fr31_fields_from_payload(self) -> None:
         """The model surfaces structured FR31 fields from the Qdrant payload,
@@ -248,32 +128,9 @@ class TestAC3EntryDetailShowsFR31Fields:
         assert entry.affected_services == ["a", "b"]
 
 
-class TestAC4EmptyState:
-    """AC4: empty KB renders an explanatory empty state, not a blank page."""
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_empty_kb_renders_explanatory_empty_state(
-        self, mock_get_service: MagicMock, client: FlaskClient
-    ) -> None:
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.list_recent_entries.return_value = []
-        mock_service.get_available_services.return_value = []
-        mock_service.get_entry_types.return_value = []
-
-        response = client.get("/knowledge/")
-        body = response.data.decode()
-
-        assert response.status_code == 200
-        # explanatory copy (not a blank list)
-        assert "No knowledge base entries yet" in body
-        assert "import runbooks" in body.lower()
-        # uses the shared empty_state component markup
-        assert "empty-state" in body
-
-    def test_entry_list_uses_empty_state_macro(self) -> None:
-        """Static-source: the list partial imports + invokes the empty_state
-        macro rather than an inline legacy div."""
-        src = (TEMPLATES / "_entry_list.html").read_text()
-        assert 'import empty_state' in src
-        assert "empty_state(" in src
+# AC4 (empty KB renders an explanatory empty state) was covered here via
+# `GET /knowledge/` and the now-deleted `_entry_list.html` partial. Both the
+# index route and that partial were retired under Task 6.3 — the index page
+# now redirects to the React app, which owns the empty-state rendering.
+# There is no remaining Python-level surface for AC4; see the React app's
+# own tests for empty-state coverage.

@@ -12,6 +12,7 @@
  *   id, status, service, severity, condition, started_at, triggered_at,
  *   completed_at, workflow_state, workflow_state_changed_at.
  */
+import { apiFetch } from './http'
 
 /** Job-phase status values the operator emits (`InvestigationService.list_investigations`). */
 export type InvestigationStatus = 'investigating' | 'awaiting_confirmation' | 'completed' | 'failed'
@@ -73,12 +74,18 @@ function buildQuery(params: InvestigationListParams | undefined): string {
  * the group is a UI grouping concept the server doesn't expose as its own
  * param on this endpoint — this keeps the filter logic factored so Task 3.1
  * can lift it into the URL without touching this client.
+ *
+ * Task 8.4: routed through `apiFetch` (same-origin credentials + the shared
+ * 401/403 auth seam) instead of bare `fetch`. A thrown `PermissionDeniedError`
+ * (403) or a mode-aware login redirect (401) both surface here exactly like
+ * any other rejection — this function had no bespoke handling for either
+ * status before, so none is added now.
  */
 export async function fetchInvestigations(
   params?: InvestigationListParams,
   signal?: AbortSignal,
 ): Promise<InvestigationListItem[]> {
-  const response = await fetch(`${LIST_ENDPOINT}${buildQuery(params)}`, { signal })
+  const response = await apiFetch(`${LIST_ENDPOINT}${buildQuery(params)}`, { signal })
 
   if (!response.ok) {
     throw new InvestigationsListError(

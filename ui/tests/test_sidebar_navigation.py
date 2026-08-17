@@ -122,23 +122,29 @@ class TestGroupsAndMembership:
     """Observe / Learn / Manage groups + their superset items (FR40)."""
 
     # Spec items per group + the superset routes the product owner retained.
+    # Task 6.3 (D13/D14): Investigations, Sources, Knowledge Base, Metrics,
+    # and Spending are retired Jinja routes — the sidebar now links straight
+    # at their `/app/*` React URL rather than the bare, now-redirecting
+    # Jinja URL. Health/SLO/Services/Topology/Analytics/Reports/Handoff/
+    # Cost Insights/Notifications/Trust remain un-migrated Jinja pages and
+    # keep their bare URLs.
     OBSERVE = {
-        "/investigations/": "Investigations",
-        "/sources/": "Sources",
+        "/app/investigations": "Investigations",
+        "/app/sources": "Sources",
         "/health/": "Health",
         "/slo/": "SLO",
         "/services/": "Services",
         "/topology/": "Topology",
     }
     LEARN = {
-        "/knowledge/": "Knowledge Base",
-        "/metrics/": "Metrics",
+        "/app/knowledge": "Knowledge Base",
+        "/app/metrics": "Metrics",
         "/analytics/": "Analytics",
         "/reports/executive": "Reports",
         "/handoff/": "Handoff",
     }
     MANAGE = {
-        "/spending/": "Spending",
+        "/app/spending": "Spending",
         "/spending/costs": "Cost Insights",
         "/notifications/": "Notifications",
         "/settings/trust/": "Trust",
@@ -156,7 +162,7 @@ class TestGroupsAndMembership:
         nav = _sidebar_html(client)
         i_observe_header = nav.index("Observe")
         first_link = nav.index('href="', i_observe_header)
-        assert 'href="/investigations/"' in nav[first_link:first_link + 40]
+        assert 'href="/app/investigations"' in nav[first_link:first_link + 40]
 
     def test_observe_group_membership(self, client: FlaskClient) -> None:
         nav = _sidebar_html(client)

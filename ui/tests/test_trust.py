@@ -949,35 +949,12 @@ class TestTrustSettingsRoutes:
 
 # ── Entry Auto-Published Badge Route Test ──
 
-
-class TestEntryAutoPublishedBadge:
-    """Tests for auto-published badge on entry page."""
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_entry_shows_auto_published_badge(
-        self, mock_get_kb: MagicMock, client: FlaskClient
-    ) -> None:
-        mock_svc = MagicMock()
-        mock_get_kb.return_value = mock_svc
-        mock_svc.get_entry.return_value = _make_entry(auto_published=True)
-        mock_svc.list_related_entries.return_value = []
-
-        response = client.get("/knowledge/kb-test123")
-        assert response.status_code == 200
-        assert b"Auto-published" in response.data
-
-    @patch("beeper_ui.routes.knowledge.get_kb_service")
-    def test_entry_no_badge_when_not_auto_published(
-        self, mock_get_kb: MagicMock, client: FlaskClient
-    ) -> None:
-        mock_svc = MagicMock()
-        mock_get_kb.return_value = mock_svc
-        mock_svc.get_entry.return_value = _make_entry(auto_published=False)
-        mock_svc.list_related_entries.return_value = []
-
-        response = client.get("/knowledge/kb-test123")
-        assert response.status_code == 200
-        assert b"Auto-published" not in response.data
+# TestEntryAutoPublishedBadge was removed under Task 6.3 — both tests called
+# `client.get("/knowledge/<id>")` (bare) to check for the "Auto-published"
+# badge on the entry detail page. That page is retired and now
+# 302-redirects to the React app, so the badge lived on a page that no
+# longer renders here; there is no remaining Python-level surface to assert
+# against.
 
 
 # ── Trust Re-evaluation Hook Tests ──
@@ -1384,7 +1361,14 @@ class TestTrustRouteValidation:
 
 
 class TestKBIndexTrustLink:
-    """Tests for Trust Settings link on KB index page."""
+    """Tests for Trust Settings link on KB index page.
+
+    Task 6.3 (Jinja retirement, D13/D14): the KB index page (and its "Trust
+    Settings" link) is now rendered by the React app — `GET /knowledge/`
+    302-redirects to `/app/knowledge` before the Jinja view ever runs. This
+    Python test can no longer assert on that specific link's presence; it
+    now proves the redirect happens instead.
+    """
 
     @patch("beeper_ui.routes.knowledge.get_kb_service")
     def test_index_has_trust_settings_link(
@@ -1397,5 +1381,5 @@ class TestKBIndexTrustLink:
         mock_svc.get_available_entry_types.return_value = []
 
         response = client.get("/knowledge/")
-        assert response.status_code == 200
-        assert b"Trust Settings" in response.data
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/app/knowledge"

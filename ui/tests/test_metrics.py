@@ -366,139 +366,32 @@ class TestMetricsServiceExport:
 
 
 class TestMetricsRoutes:
-    """Tests for metrics routes."""
+    """Tests for metrics routes.
 
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_metrics_dashboard_full_page(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test GET /metrics/ renders full page."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-        mock_svc.get_mttr_data.return_value = {
-            "trend": [
-                {
-                    "period": "2026-01", "avg_mttr": 3600,
-                    "count": 5, "start": "2026-01-01", "end": "2026-01-31",
-                },
-                {
-                    "period": "2026-02", "avg_mttr": 2400,
-                    "count": 8, "start": "2026-02-01", "end": "2026-02-28",
-                },
-            ],
-            "overall_avg_mttr": 3000,
-            "total_count": 13,
-            "improvement_pct": 33.3,
-            "improving": True,
-        }
-        mock_svc.get_mttr_by_service.return_value = [
-            {"service": "api-gateway", "avg_mttr": 2100, "count": 8},
-        ]
-        mock_svc.get_mttr_by_severity.return_value = [
-            {"severity": "high", "avg_mttr": 5400, "count": 5},
-        ]
-        mock_svc.get_services.return_value = ["api-gateway", "payment-service"]
-        mock_svc.get_severities.return_value = ["high", "medium"]
+    Task 6.3 (D13/D14) retired the Jinja MTTR dashboard: `GET /metrics/`,
+    `GET /metrics/mttr`, and `GET /metrics/mttr/drilldown` are all gutted to
+    redirect to `/app/metrics` (react_registry.py) rather than rendering
+    `mttr.html`/`_mttr_content.html`/`_drilldown.html` (deleted). The
+    `_load_mttr_template_data()`/`_compute_chart_data()` helpers that fed
+    those templates are deleted too — the React `TrendChart` primitive
+    computes its own layout client-side.
 
-        response = client.get("/metrics/")
-        assert response.status_code == 200
-        assert b"<!DOCTYPE html>" in response.data
-        assert b"MTTR Trends" in response.data
-        assert b"api-gateway" in response.data
+    Tests that rendered those routes' HTML, or asserted on the route-level
+    `period`/`service`/`severity` sanitization + service-call arguments (that
+    logic is gone from the Jinja routes; it now lives only in
+    `_validate_filters()`, used exclusively by the JSON API), have been
+    removed. Equivalent sanitization coverage survives at the JSON API layer
+    in `test_api_v1_metrics.py` (`TestMttrJsonEndpoint::
+    test_invalid_period_defaults_to_month`, `test_invalid_severity_ignored`,
+    `test_invalid_service_name_ignored`; `TestMttrDrilldownJsonEndpoint::
+    test_missing_dates_returns_400_empty`,
+    `test_malformed_date_returns_400_empty`,
+    `test_start_after_end_returns_400_empty`), so no coverage was lost.
 
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_metrics_htmx_partial(self, mock_svc_cls: MagicMock, client: FlaskClient) -> None:
-        """Test HTMX request returns partial content."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-        mock_svc.get_mttr_data.return_value = {
-            "trend": [],
-            "overall_avg_mttr": 0,
-            "total_count": 0,
-            "improvement_pct": None,
-            "improving": None,
-        }
-        mock_svc.get_mttr_by_service.return_value = []
-        mock_svc.get_mttr_by_severity.return_value = []
-        mock_svc.get_services.return_value = []
-        mock_svc.get_severities.return_value = []
-
-        response = client.get("/metrics/", headers={"HX-Request": "true"})
-        assert response.status_code == 200
-        assert b"<!DOCTYPE html>" not in response.data
-
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_mttr_partial_filter_by_week(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test GET /metrics/mttr?period=week filters by week."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-        mock_svc.get_mttr_data.return_value = {
-            "trend": [],
-            "overall_avg_mttr": 0,
-            "total_count": 0,
-            "improvement_pct": None,
-            "improving": None,
-        }
-        mock_svc.get_mttr_by_service.return_value = []
-        mock_svc.get_mttr_by_severity.return_value = []
-        mock_svc.get_services.return_value = []
-        mock_svc.get_severities.return_value = []
-
-        response = client.get("/metrics/mttr?period=week")
-        assert response.status_code == 200
-        mock_svc.get_mttr_data.assert_called_once_with(
-            time_period="week", service=None, severity=None
-        )
-
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_mttr_partial_filter_by_service(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test GET /metrics/mttr?service=api-gateway filters by service."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-        mock_svc.get_mttr_data.return_value = {
-            "trend": [],
-            "overall_avg_mttr": 0,
-            "total_count": 0,
-            "improvement_pct": None,
-            "improving": None,
-        }
-        mock_svc.get_mttr_by_service.return_value = []
-        mock_svc.get_mttr_by_severity.return_value = []
-        mock_svc.get_services.return_value = ["api-gateway"]
-        mock_svc.get_severities.return_value = []
-
-        response = client.get("/metrics/mttr?service=api-gateway")
-        assert response.status_code == 200
-        mock_svc.get_mttr_data.assert_called_once_with(
-            time_period="month", service="api-gateway", severity=None
-        )
-
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_drilldown_returns_investigation_list(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test GET /metrics/mttr/drilldown returns investigation list."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-        mock_svc.get_investigations_for_period.return_value = [
-            {
-                "investigation_id": "inv-001",
-                "service": "api-gateway",
-                "severity": "high",
-                "mttr_seconds": 3600,
-                "resolved_at": "2026-02-15T10:00:00Z",
-                "resolution_outcome": "resolved",
-            }
-        ]
-
-        response = client.get("/metrics/mttr/drilldown?start=2026-02-01&end=2026-02-28")
-        assert response.status_code == 200
-        assert b"inv-001" in response.data
-        assert b"api-gateway" in response.data
+    `GET /metrics/export` (CSV/JSON download, no template) is untouched by
+    Task 6.3 and its tests below (`test_export_json`, `test_export_csv`,
+    `test_export_invalid_format_defaults_to_json`) are unaffected.
+    """
 
     @patch("beeper_ui.routes.metrics.MetricsService")
     def test_export_json(self, mock_svc_cls: MagicMock, client: FlaskClient) -> None:
@@ -522,109 +415,6 @@ class TestMetricsRoutes:
         response = client.get("/metrics/export?format=csv")
         assert response.status_code == 200
         assert "text/csv" in response.content_type
-
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_dashboard_qdrant_unavailable(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test dashboard shows error card when Qdrant unavailable."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-        mock_svc.get_mttr_data.side_effect = Exception("Connection refused")
-
-        response = client.get("/metrics/")
-        assert response.status_code == 200
-        assert b"Unable to connect to metrics data store" in response.data
-
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_invalid_period_defaults_to_month(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test invalid period parameter falls back to month."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-        mock_svc.get_mttr_data.return_value = {
-            "trend": [], "overall_avg_mttr": 0,
-            "total_count": 0, "improvement_pct": None, "improving": None,
-        }
-        mock_svc.get_mttr_by_service.return_value = []
-        mock_svc.get_mttr_by_severity.return_value = []
-        mock_svc.get_services.return_value = []
-        mock_svc.get_severities.return_value = []
-
-        response = client.get("/metrics/mttr?period=invalid")
-        assert response.status_code == 200
-        mock_svc.get_mttr_data.assert_called_once_with(
-            time_period="month", service=None, severity=None
-        )
-
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_invalid_service_ignored(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test invalid service name is sanitized to empty."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-        mock_svc.get_mttr_data.return_value = {
-            "trend": [], "overall_avg_mttr": 0,
-            "total_count": 0, "improvement_pct": None, "improving": None,
-        }
-        mock_svc.get_mttr_by_service.return_value = []
-        mock_svc.get_mttr_by_severity.return_value = []
-        mock_svc.get_services.return_value = []
-        mock_svc.get_severities.return_value = []
-
-        response = client.get("/metrics/mttr?service=../../etc/passwd")
-        assert response.status_code == 200
-        mock_svc.get_mttr_data.assert_called_once_with(
-            time_period="month", service=None, severity=None
-        )
-
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_invalid_severity_ignored(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test invalid severity is sanitized to empty."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-        mock_svc.get_mttr_data.return_value = {
-            "trend": [], "overall_avg_mttr": 0,
-            "total_count": 0, "improvement_pct": None, "improving": None,
-        }
-        mock_svc.get_mttr_by_service.return_value = []
-        mock_svc.get_mttr_by_severity.return_value = []
-        mock_svc.get_services.return_value = []
-        mock_svc.get_severities.return_value = []
-
-        response = client.get("/metrics/mttr?severity=invalid")
-        assert response.status_code == 200
-        mock_svc.get_mttr_data.assert_called_once_with(
-            time_period="month", service=None, severity=None
-        )
-
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_drilldown_invalid_date_format(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test drilldown with invalid date format returns empty."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-
-        response = client.get("/metrics/mttr/drilldown?start=2026/02/01&end=2026/02/28")
-        assert response.status_code == 200
-        mock_svc.get_investigations_for_period.assert_not_called()
-
-    @patch("beeper_ui.routes.metrics.MetricsService")
-    def test_drilldown_start_after_end(
-        self, mock_svc_cls: MagicMock, client: FlaskClient
-    ) -> None:
-        """Test drilldown with start > end returns empty."""
-        mock_svc = MagicMock()
-        mock_svc_cls.return_value = mock_svc
-
-        response = client.get("/metrics/mttr/drilldown?start=2026-02-28&end=2026-02-01")
-        assert response.status_code == 200
-        mock_svc.get_investigations_for_period.assert_not_called()
 
     @patch("beeper_ui.routes.metrics.MetricsService")
     def test_export_invalid_format_defaults_to_json(

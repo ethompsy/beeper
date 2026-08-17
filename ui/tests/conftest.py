@@ -70,3 +70,22 @@ def user_client(app: Flask) -> Generator[_RoleClient, None, None]:
     """Create test client with user role."""
     with app.test_client() as test_client:
         yield _RoleClient(test_client, "user")
+
+
+@pytest.fixture(autouse=True)
+def _reset_identity_store_between_tests() -> Generator[None, None, None]:
+    """Reset the identity-store singleton after every test (merge resolution,
+    Tasks 8.3 x 8.6).
+
+    Task 8.6 made `create_app()` in `local` mode initialize the store
+    singleton as a boot side effect (bootstrap -> refresh_zero_admin_alarm),
+    so test files that merely build a local-mode app leak the singleton
+    process-globally without ever importing it. The leaked store then makes
+    `/health/api` grow its `zero_active_admins` flag in unrelated mode-`none`
+    tests (exact-body assertions fail). Store-using test files already reset
+    locally; this autouse teardown kills the whole leak class.
+    """
+    yield
+    from beeper_ui.services.identity_store import reset_identity_store
+
+    reset_identity_store()

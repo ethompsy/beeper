@@ -97,6 +97,16 @@ export function AppShell({
          */}
         <main
           id="main-content"
+          // Task 5.5 a11y-audit finding (WCAG 2.4.1 Bypass Blocks): the skip
+          // link above targets this element via `href="#main-content"`, but
+          // a plain `<main>` has no native focus stop — browsers move the
+          // page's "sequential focus navigation starting point" to a
+          // fragment target but only actually set `document.activeElement`
+          // to it if it's focusable. `tabIndex={-1}` makes it a valid
+          // (not tab-reachable on its own, only via the anchor) focus
+          // target, so activating the skip link genuinely moves keyboard
+          // focus past the sidebar, not just the visual scroll position.
+          tabIndex={-1}
           data-slot="content-area"
           data-sidebar-expanded={expanded}
           data-sidebar-overlay={isOverlay}

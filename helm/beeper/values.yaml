@@ -30,6 +30,14 @@ operator:
 # UI configuration
 ui:
   replicaCount: 1
+  # Task 8.2 / ADR 0002 §8 (D3): sets the UI container's FLASK_ENV. Defaults
+  # to `production` — secure by default. `get_config()` (ui/beeper_ui/config.py)
+  # honors this: `production` refuses the spoofable `X-Beeper-Role` dev
+  # header (ALLOW_ROLE_HEADER=False), and any value it doesn't recognize
+  # also fails closed to production. `make demo-up`/`demo-deploy` override
+  # this to `development` via values-dev.yaml so the demo's header-driven
+  # admin affordance keeps working with zero interactive steps.
+  flaskEnv: production
   image:
     repository: beeper/ui
     tag: ""  # Defaults to Chart appVersion
@@ -54,6 +62,95 @@ ui:
           - path: /
             pathType: Prefix
     tls: []
+
+  # Task 8.9 / ADR 0002 §8 — one identity/auth tree, one existingSecret.
+  # Default `mode: none` is byte-identical to pre-8.9 behavior: NOTHING
+  # below this comment renders any env var or resource unless `mode` is
+  # changed away from "none" (see templates/ui-deployment.yaml and
+  # templates/ui-networkpolicy.yaml) — the demo (`values-dev.yaml`, which
+  # does not override this block at all) is therefore provably unaffected
+  # (NFR26). See docs/deployment-guide.md#authentication--identity for the
+  # full reference and worked examples per mode, and
+  # helm/beeper/examples/ for ready-to-use values snippets + the Secret
+  # template.
+  auth:
+    # none | local | oidc — mirrors BEEPER_AUTH_MODE (ui/beeper_ui/config.py).
+    # `oidc` requires oidc.issuer/clientId + a clientSecret key in
+    # existingSecret (validate_boot_config() refuses to boot otherwise);
+    # `local`/`oidc` both require a secretKey (SECRET_KEY) in
+    # existingSecret so sessions survive pod restarts and stay consistent
+    # across replicas.
+    mode: none
+
+    # Name of ONE pre-existing Kubernetes Secret (created out-of-band —
+    # this chart never templates a Secret resource for identity material,
+    # the same `existingSecret` convention `llm.apiKeySecret` already
+    # uses elsewhere in this chart) carrying whichever of these keys the
+    # enabled features need. Every key is consumed via an `optional: true`
+    # secretKeyRef (see ui-deployment.yaml): a Secret missing a key never
+    # crash-loops the pod at the Kubernetes layer — the application's own
+    # boot-time (`validate_boot_config()`) or request-time (SCIM bearer
+    # auth) checks produce a clearer, application-level error instead.
+    #   secretKey            -> SECRET_KEY                        (local/oidc; required)
+    #   clientSecret          -> BEEPER_OIDC_CLIENT_SECRET          (oidc; required)
+    #   scimToken              -> BEEPER_SCIM_TOKEN                  (scim.enabled; required)
+    #   scimTokenSecondary     -> BEEPER_SCIM_TOKEN_SECONDARY         (scim.enabled; optional — dual-token rotation)
+    #   bootstrapUsername      -> BEEPER_BOOTSTRAP_ADMIN_USERNAME      (local + bootstrap.enabled; optional)
+    #   bootstrapPassword      -> BEEPER_BOOTSTRAP_ADMIN_PASSWORD      (local + bootstrap.enabled; optional)
+    # NEVER put any of the above VALUES directly in a values.yaml file.
+    # See helm/beeper/examples/identity-secret.yaml.
+    existingSecret: ""
+
+    # https | http — drives BEEPER_EXTERNAL_SCHEME, which explicitly
+    # controls the session cookie's `Secure` flag (ADR §2 / security
+    # LOW-10: never inferred from request introspection). Set `http` only
+    # for the plain-HTTP kind-demo / `kubectl port-forward` path.
+    externalScheme: https
+
+    # BEEPER_SESSION_LIFETIME_HOURS — absolute session lifetime, hours.
+    sessionLifetimeHours: 8
+
+    # BEEPER_ADMIN_GROUPS / BEEPER_USER_GROUPS — comma-separated,
+    # case-insensitive group-name sets shared by OIDC login and SCIM role
+    # derivation (ADR §3). Empty userGroups = any authenticated principal
+    # not in adminGroups is role "user".
+    adminGroups: "Admins,beeper-admin"
+    userGroups: ""
+
+    oidc:
+      issuer: ""                                       # BEEPER_OIDC_ISSUER
+      clientId: ""                                      # BEEPER_OIDC_CLIENT_ID
+      redirectUrl: ""                                    # BEEPER_OIDC_REDIRECT_URL — empty derives from the request host (covers kubectl port-forward)
+      scopes: "openid profile email groups"                # BEEPER_OIDC_SCOPES
+      groupsClaim: "groups"                                  # BEEPER_OIDC_GROUPS_CLAIM
+      postLogoutRedirectUrl: ""                                # BEEPER_OIDC_POST_LOGOUT_REDIRECT_URL
+
+    scim:
+      enabled: false   # BEEPER_SCIM_ENABLED — valid ONLY when mode: oidc (validate_boot_config() refuses otherwise)
+      strict: false    # BEEPER_SCIM_STRICT — 403 an authenticated-but-never-provisioned principal instead of defaulting to role "user"
+      # Optional defense-in-depth for the SCIM bearer token (ADR §4 HIGH-5:
+      # "the SCIM token is an admin-equivalent secret"). NetworkPolicy is
+      # L3/L4 ONLY — it cannot restrict by HTTP path, so this does NOT
+      # scope to just `/scim/v2`; it restricts ALL ingress to the UI's
+      # port to `allowFrom`. Only enable this if `allowFrom` also covers
+      # every legitimate non-SCIM source that must reach the UI (browsers,
+      # an ingress controller, etc.) — see
+      # docs/deployment-guide.md#optional-scim-networkpolicy-defense-in-depth-not-path-isolation
+      # for the full honesty note. Disabled by default; template refuses
+      # to render (`fail`) if enabled with an empty `allowFrom`, since an
+      # empty NetworkPolicy `from` list means "allow all sources" in
+      # Kubernetes — the opposite of what enabling this feature implies.
+      networkPolicy:
+        enabled: false
+        allowFrom: []   # []NetworkPolicyPeer (podSelector/namespaceSelector/ipBlock) — required (non-empty) when enabled: true
+
+    # Local-mode admin bootstrap (ADR §6, FR61). `enabled: false` lets an
+    # operator use `existingSecret` for other keys (e.g. only scimToken)
+    # without also wiring bootstrapUsername/Password, e.g. when the first
+    # admin is instead created via `flask create-admin` through `kubectl
+    # exec`.
+    bootstrap:
+      enabled: true
 
 # Qdrant vector database
 qdrant:

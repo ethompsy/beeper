@@ -1,9 +1,12 @@
 """Tests for CollaborationService — message persistence and active user tracking."""
 
+import inspect
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from beeper_ui.services import collaboration_service as collaboration_service_module
 from beeper_ui.services.collaboration_service import (
     COLLABORATION_COLLECTION,
     CollaborationMessage,
@@ -279,3 +282,43 @@ class TestCollaborationServiceSingleton:
         reset_collaboration_service()
         svc2 = get_collaboration_service()
         assert svc1 is not svc2
+
+
+class TestCollaborationDataPreserved:
+    """AC (Task 6.2a / ADR 0001 §0(b)): dropping the SocketIO surface must
+    NOT delete the persisted `collaboration_messages` Qdrant collection —
+    only the live code surface (websocket handlers) is retired. Historical
+    chat/annotation/redirect/approval data stays recoverable.
+
+    These are static/source-inspection checks rather than behavioral ones:
+    the strongest proof that "nothing deletes this collection" is that no
+    delete/drop call against it exists anywhere in the codebase, not just
+    that a particular code path happens not to be exercised in a test.
+    """
+
+    def test_collection_name_constant_unchanged(self) -> None:
+        assert COLLABORATION_COLLECTION == "collaboration_messages"
+
+    def test_collaboration_service_module_has_no_delete_or_drop_call(self) -> None:
+        """The service module that owns this collection defines no
+        `delete_collection`/`drop_collection` call, and no bare
+        `.delete(...)` (point/record deletion) call either."""
+        source = inspect.getsource(collaboration_service_module)
+        assert "delete_collection" not in source
+        assert "drop_collection" not in source
+        assert ".delete(" not in source
+
+    def test_no_module_in_the_package_deletes_the_collaboration_collection(self) -> None:
+        """Belt-and-braces sweep of the whole `beeper_ui` package: no file
+        anywhere combines the collection name with a delete/drop call —
+        guards against a future caller reintroducing a deletion path
+        in some other module."""
+        package_root = Path(collaboration_service_module.__file__).resolve().parent.parent
+        offending: list[str] = []
+        for py_file in package_root.rglob("*.py"):
+            text = py_file.read_text()
+            if "collaboration_messages" in text and (
+                "delete_collection" in text or "drop_collection" in text
+            ):
+                offending.append(str(py_file.relative_to(package_root)))
+        assert offending == []
